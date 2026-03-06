@@ -1,0 +1,6 @@
+hash,date,message,files_changed,feature,tag
+a3f8c12,2026-02-23,feat: add BaseProvider retry+fallback logic,1,providers,refactor
+b7d2e45,2026-02-23,feat: add DeepSeek/Gemini/Grok providers,3,providers,new-provider
+c9a1f78,2026-02-23,feat: add core/cost_tracker.py with Rich table output,1,cost-tracking,feature
+d4b6c23,2026-02-23,feat: add core/context_builder.py for file injection,1,workflow,feature
+e2f9a56,2026-02-23,feat: add workflows/runner.py YAML executor,1,workflow,refactor

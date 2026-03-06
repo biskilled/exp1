@@ -1,0 +1,21 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Data
+*.db
+chroma_store/
+
+# Node
+node_modules/
+dist/
+
+# Tauri build
+src-tauri/target/
+
+# OS
+.DS_Store
+Thumbs.db

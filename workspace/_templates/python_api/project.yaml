@@ -1,0 +1,7 @@
+name: "{{PROJECT_NAME}}"
+description: "FastAPI project"
+code_dir: "../../{{PROJECT_NAME}}"
+default_provider: claude
+active_workflows:
+  - build_feature
+  - code_review

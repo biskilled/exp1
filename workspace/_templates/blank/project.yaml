@@ -1,0 +1,5 @@
+name: "{{PROJECT_NAME}}"
+description: "Project created from blank template"
+code_dir: "../../{{PROJECT_NAME}}"
+default_provider: claude
+active_workflows: []

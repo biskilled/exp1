@@ -1,0 +1,51 @@
+name: build_feature
+description: "Design FastAPI feature → Implement → Review"
+max_iterations: 3
+
+pre_actions:
+  - git_pull
+
+post_actions:
+  - git_commit
+  - git_push
+
+steps:
+  - name: design
+    provider: claude
+    role: prompts/roles/senior_engineer.md
+    prompt: prompts/01_design.md
+    inject_input: true
+    inject_files:
+      - PROJECT.md
+      - "{{code_dir}}/main.py"
+      - "{{code_dir}}/routers/"
+    inject_context: [memory, summary]
+
+  - name: implement
+    provider: claude
+    role: prompts/roles/senior_engineer.md
+    prompt: prompts/02_implement.md
+    inject_previous_output: true
+    inject_files:
+      - "{{code_dir}}/models/"
+      - "{{code_dir}}/core/"
+      - auto
+
+  - name: review
+    provider: deepseek
+    prompt: prompts/03_review.md
+    inject_previous_output: true
+    output_format: json
+    produces:
+      score: int
+      issues: list
+      approved: bool
+    on_fail:
+      loop_to: implement
+    on_pass:
+      next: end
+
+stop_condition:
+  type: score
+  field: score
+  threshold: 8

@@ -1,0 +1,121 @@
+working_folder: /Users/user/Documents/gdrive_cellqlick/2026/adviser
+module: ui
+rebuild_prompts_on_start: true
+
+# ------------------------------------------------------------------
+# Workspace: where project workspaces live
+# ------------------------------------------------------------------
+workspace_dir: /Users/user/Documents/gdrive_cellqlick/2026/aicli/workspace
+active_project: aicli    # current project workspace (workspace/aicli/)
+
+max_history: 200
+large_change_file_threshold: 20
+large_change_line_threshold: 1000
+run_tests: false
+test_command: "pytest"
+log_level: info
+log_path: ".aicli/logs.jsonl"
+memory_enabled: true
+memory_top_k: 5
+
+# ------------------------------------------------------------------
+# PROVIDERS
+# ------------------------------------------------------------------
+providers:
+  default: claude
+
+  claude:
+    type: sdk
+    model: claude-sonnet-4-6
+    api_key_env: ANTHROPIC_API_KEY
+    tools_enabled: true
+    max_retries: 2
+
+  openai:
+    type: api
+    model: gpt-4.1
+    api_key_env: OPENAI_API_KEY
+    max_retries: 3
+
+  deepseek:
+    type: api
+    model: deepseek-chat
+    api_key_env: DEEPSEEK_API_KEY
+    fallback: openai
+    max_retries: 3
+
+  gemini:
+    type: api
+    model: gemini-2.0-flash
+    api_key_env: GEMINI_API_KEY
+    max_retries: 2
+
+  grok:
+    type: api
+    model: grok-3
+    api_key_env: XAI_API_KEY
+    fallback: openai
+    max_retries: 3
+
+# ------------------------------------------------------------------
+# GIT
+# ------------------------------------------------------------------
+git:
+  auto_push: true
+  require_confirmation: false
+  branch_prefix: ai/
+  block_main: true
+
+# ------------------------------------------------------------------
+# MCP tool servers for Claude (optional)
+# ------------------------------------------------------------------
+mcp:
+  servers: []
+  # - name: github
+  #   type: github
+  #   token_env: GITHUB_TOKEN
+  #
+  # - name: my_server
+  #   type: http
+  #   url: https://my-mcp-server.example.com
+  #   token_env: MY_SERVER_TOKEN
+
+# ------------------------------------------------------------------
+# HOOKS  — shell scripts that run at lifecycle points.
+# Events: pre_prompt, post_prompt, post_commit, post_push
+# ------------------------------------------------------------------
+hooks:
+  post_commit:
+    []
+    # - name: log-commit
+    #   command: |
+    #     echo "$AICLI_COMMIT_HASH,$AICLI_FEATURE,$AICLI_TAG,$AICLI_COMMIT_MESSAGE" \
+    #       >> .aicli/commit_log.csv
+
+  post_push:
+    []
+
+  pre_prompt:
+    []
+
+  post_prompt:
+    []
+
+# ------------------------------------------------------------------
+# LEGACY WORKFLOWS (still supported via /workflow, but prefer workspace YAMLs)
+# ------------------------------------------------------------------
+workflows:
+  create_component:
+    description: "Generate new UI component then review with OpenAI"
+    steps:
+      - provider: claude
+        role: generator
+        prompt: "Create a new reusable React UI component named {component_name}"
+
+      - provider: openai
+        role: reviewer
+        system_prompt: "You are a senior React engineer reviewing code quality."
+        role_prompt: |
+          Review the code changes in git diff.
+          Optimize performance and improve code quality.
+          Return a concise list of improvements made.

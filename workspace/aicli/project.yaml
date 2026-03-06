@@ -1,0 +1,14 @@
+active_workflows:
+- build_feature
+- code_review
+- update_docs
+auto_commit_push: true
+code_dir: ../..
+default_provider: claude
+description: AI-powered development CLI with multi-provider support
+git_branch: master
+git_email: tal@biskilled.com
+git_username: biskilled
+github_client_id: Ov23ligfv0f2DBdvRdim
+github_repo: https://github.com/biskilled/exp1.git
+name: aicli

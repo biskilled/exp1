@@ -1,0 +1,28 @@
+name: code_review
+description: "Generate review checklist with Claude → Deep review with DeepSeek"
+max_iterations: 1
+
+steps:
+  - name: generate_checklist
+    provider: claude
+    role: prompts/roles/architect.md
+    prompt: prompts/01_generate.md
+    inject_input: true
+    inject_files:
+      - auto
+
+  - name: review
+    provider: deepseek
+    role: prompts/roles/reviewer.md
+    prompt: prompts/02_review.md
+    inject_previous_output: true
+    output_format: json
+    produces:
+      score: int
+      issues: list
+      approved: bool
+
+provider_config:
+  deepseek:
+    fallback: openai
+    max_retries: 3

@@ -1,0 +1,35 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.*
+node_modules/
+.DS_Store
+*.log
+_system/.git_token
+.venv/
+venv/
+
+# ── aicli secrets (auto-added) ────────────────────────────────
+.envrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+secrets/
+credentials/
+
+# ── aicli secrets (auto-added) ────────────────────────────────
+**/_system/
+**/.git_token
+**/.env
+**/.env.*
+**/.envrc
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.cert
+**/secrets/
+**/credentials/

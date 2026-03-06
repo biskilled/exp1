@@ -1,0 +1,42 @@
+name: trading_strategy
+description: "Research trading strategy: hypothesis → implementation → backtest analysis"
+max_iterations: 2
+
+steps:
+  - name: research
+    provider: claude
+    role: prompts/roles/quant_analyst.md
+    prompt: prompts/01_research.md
+    inject_input: true
+    inject_files:
+      - PROJECT.md
+    inject_context: [memory, summary]
+
+  - name: implement
+    provider: claude
+    role: prompts/roles/quant_analyst.md
+    prompt: prompts/02_implement.md
+    inject_previous_output: true
+    inject_files:
+      - "{{code_dir}}/strategies/"
+      - "{{code_dir}}/backtest/"
+      - auto
+
+  - name: analyse
+    provider: claude
+    role: prompts/roles/quant_analyst.md
+    prompt: prompts/03_analyse.md
+    inject_previous_output: true
+    output_format: json
+    produces:
+      sharpe: float
+      approved: bool
+    on_fail:
+      loop_to: research
+    on_pass:
+      next: end
+
+stop_condition:
+  type: score
+  field: sharpe
+  threshold: 1.0

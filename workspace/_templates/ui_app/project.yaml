@@ -1,0 +1,6 @@
+name: "{{PROJECT_NAME}}"
+description: "Frontend application"
+code_dir: "../../{{PROJECT_NAME}}"
+default_provider: claude
+active_workflows:
+  - ui_builder
