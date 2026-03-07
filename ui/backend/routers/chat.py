@@ -98,18 +98,23 @@ def _update_runtime_state(project: str, provider: str, prompt_preview: str, sess
         pass
 
 
-def _append_transaction(user_id: str, tx_type: str, amount_usd: float, description: str, ref: str = "") -> None:
+def _append_transaction(
+    user_id: str, tx_type: str, amount_usd: float,
+    description: str, ref: str = "", base_cost_usd: Optional[float] = None,
+) -> None:
     """Append a transaction record to transactions/{user_id}.jsonl."""
     try:
         tx_dir = Path(settings.data_dir) / "transactions"
         tx_dir.mkdir(parents=True, exist_ok=True)
-        record = {
+        record: dict = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "type": tx_type,
             "amount_usd": amount_usd,
             "description": description,
             "ref": ref,
         }
+        if base_cost_usd is not None:
+            record["base_cost_usd"] = base_cost_usd
         with open(tx_dir / f"{user_id}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
     except Exception:
@@ -137,15 +142,20 @@ def _debit_user(user_id: str, provider: str, model: str, input_tokens: int, outp
         from models.user import find_by_id, update_user
         pricing = load_pricing()
         markup = pricing.get("providers", {}).get(provider, {}).get("markup_percent", 0)
-        cost = calculate_cost(provider, model, input_tokens, output_tokens, markup)
-        if cost <= 0:
+        charged_cost = calculate_cost(provider, model, input_tokens, output_tokens, markup)
+        real_cost    = calculate_cost(provider, model, input_tokens, output_tokens, 0)
+        if charged_cost <= 0:
             return
         user = find_by_id(user_id)
         if not user:
             return
-        new_used = round(user.get("balance_used_usd", 0.0) + cost, 8)
+        new_used = round(user.get("balance_used_usd", 0.0) + charged_cost, 8)
         update_user(user_id, balance_used_usd=new_used)
-        _append_transaction(user_id, "usage_debit", cost, f"{provider} {model} {input_tokens}+{output_tokens} tokens")
+        _append_transaction(
+            user_id, "usage_debit", charged_cost,
+            f"{provider} {model} {input_tokens}+{output_tokens} tokens",
+            base_cost_usd=real_cost,
+        )
     except Exception:
         pass  # never block chat because of billing
 

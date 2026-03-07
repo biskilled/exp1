@@ -72,18 +72,34 @@ export async function renderAdmin(container) {
 // ── Users Tab ─────────────────────────────────────────────────────────────────
 
 async function _renderUsers(body) {
-  const data  = await api.adminListUsers();
+  const [data, stats] = await Promise.all([api.adminListUsers(), api.adminGetStats()]);
   const users = data.users || [];
 
+  const _fmt = (n) => `$${(n || 0).toFixed(2)}`;
+  const _stat = (label, val, color = 'var(--text)') =>
+    `<div style="display:flex;flex-direction:column;gap:0.2rem">
+       <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">${label}</div>
+       <div style="font-size:0.95rem;font-weight:700;color:${color}">${val}</div>
+     </div>`;
+
+  const statsBar = `
+    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;background:var(--surface2);
+                border:1px solid var(--border);border-radius:var(--radius);
+                padding:0.85rem 1.2rem;margin-bottom:1.1rem">
+      ${_stat('Users', `${stats.active_users ?? users.length} / ${stats.user_count ?? users.length}`)}
+      ${_stat('Total Balance', _fmt(stats.total_balance_usd), stats.total_balance_usd >= 0 ? 'var(--green)' : 'var(--red)')}
+      ${_stat('Total Added', _fmt(stats.total_added_usd))}
+      ${_stat('Total Charged', _fmt(stats.total_charged_usd), 'var(--accent)')}
+      ${_stat('Real Cost', _fmt(stats.total_real_cost_usd), 'var(--text2)')}
+      ${_stat('Margin', _fmt(stats.total_margin_usd), stats.total_margin_usd >= 0 ? 'var(--green)' : 'var(--red)')}
+    </div>`;
+
   if (!users.length) {
-    body.innerHTML = '<div class="empty-state"><p>No users yet.</p></div>';
+    body.innerHTML = statsBar + '<div class="empty-state"><p>No users yet.</p></div>';
     return;
   }
 
-  body.innerHTML = `
-    <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.75rem">
-      ${users.length} user(s)
-    </div>
+  body.innerHTML = statsBar + `
     <table style="width:100%;border-collapse:collapse;font-size:0.75rem">
       <thead>
         <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
@@ -390,7 +406,7 @@ function _inp() {
 // ── API Keys Tab ──────────────────────────────────────────────────────────────
 
 async function _renderApiKeys(body) {
-  const masked = await api.adminGetApiKeys();
+  const keysInfo = await api.adminGetApiKeys();
   const providers = [
     { id: 'claude',   label: 'Claude (Anthropic)' },
     { id: 'openai',   label: 'OpenAI' },
@@ -399,30 +415,45 @@ async function _renderApiKeys(body) {
     { id: 'grok',     label: 'Grok (xAI)' },
   ];
 
+  const _sourceBadge = (src) => {
+    const cfg = {
+      saved:  { label: 'saved',   color: 'var(--green)',  bg: 'rgba(34,197,94,0.1)' },
+      env:    { label: 'from .env', color: 'var(--accent)', bg: 'rgba(255,107,53,0.1)' },
+      unset:  { label: 'not set',  color: 'var(--muted)',  bg: 'var(--surface2)' },
+    }[src] || { label: src, color: 'var(--muted)', bg: 'var(--surface2)' };
+    return `<span style="font-size:0.6rem;padding:1px 6px;border-radius:10px;
+                         background:${cfg.bg};color:${cfg.color};font-weight:500">${cfg.label}</span>`;
+  };
+
   body.innerHTML = `
     <div style="max-width:600px">
       <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.25rem">Server API Keys</div>
       <div style="font-size:0.65rem;color:var(--muted);margin-bottom:1.25rem">
-        These keys are used server-side for all users. Leave blank to fall back to environment variables.
+        Keys are stored in <code>api_keys.json</code> — your <code>.env</code> file is never modified.
+        Leave a field blank to keep the current key. Keys from <code>.env</code> are used automatically
+        when no saved key is present.
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:0.75rem">
-        ${providers.map(p => `
+      <div style="display:flex;flex-direction:column;gap:0.9rem">
+        ${providers.map(p => {
+          const info = keysInfo[p.id] || { masked: '', source: 'unset' };
+          const placeholder = info.masked || 'Enter key…';
+          return `
           <div>
-            <div style="font-size:0.72rem;color:var(--text2);margin-bottom:0.3rem">${p.label}</div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">
+              <div style="font-size:0.72rem;color:var(--text2)">${p.label}</div>
+              ${_sourceBadge(info.source)}
+            </div>
             <div style="display:flex;gap:0.5rem;align-items:center">
               <input id="apikey-${p.id}" type="password"
-                placeholder="${masked[p.id] || 'Not set — uses env var'}"
+                placeholder="${info.masked ? info.masked : 'Not configured'}"
                 style="flex:1;${_inp()}" />
               <button onclick="window._toggleKeyVis('${p.id}')"
                 style="background:none;border:1px solid var(--border);border-radius:4px;
                        color:var(--text2);font-size:0.72rem;padding:4px 8px;cursor:pointer">👁</button>
             </div>
-            <div style="font-size:0.62rem;color:var(--muted);margin-top:0.2rem">
-              ${masked[p.id] ? `Stored: ${masked[p.id]}` : 'Not set'}
-            </div>
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
       </div>
 
       <div style="margin-top:1.25rem;display:flex;gap:0.75rem;align-items:center">
@@ -434,7 +465,8 @@ async function _renderApiKeys(body) {
         <span id="apikeys-status" style="font-size:0.68rem;color:var(--muted)"></span>
       </div>
       <div style="margin-top:0.75rem;font-size:0.65rem;color:var(--muted)">
-        Only filled fields are updated. Clear a field and save to remove a key (env var fallback will be used).
+        Only filled fields are updated. Leave a field blank to keep the current key.
+        Providers showing <em>from .env</em> are using your .env key — saving a new value here overrides it without modifying .env.
       </div>
     </div>
   `;

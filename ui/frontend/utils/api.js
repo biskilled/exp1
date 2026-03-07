@@ -113,6 +113,7 @@ export const api = {
   gitCommitPush:  (project, body)  => _post(`/git/${encodeURIComponent(project)}/commit-push`, body),
 
   // Admin — user management + pricing + coupons + api keys (admin only)
+  adminGetStats:    ()             => _get('/admin/stats'),
   adminListUsers:   ()             => _get('/admin/users'),
   adminPatchUser:   (id, body)     => fetch(_base() + `/admin/users/${encodeURIComponent(id)}`, {
                                        method: 'PATCH', headers: _headers(), body: JSON.stringify(body),

@@ -71,16 +71,31 @@ def get_key(provider: str, fallback: str = "") -> str:
     return env_key or fallback
 
 
+def _mask(k: str) -> str:
+    k = k.strip()
+    if not k:
+        return ""
+    return ("*" * (len(k) - 4) + k[-4:]) if len(k) > 4 else "****"
+
+
 def masked_keys() -> dict:
-    """Return keys with all but last 4 chars replaced by *. Empty stays empty."""
+    """
+    Return per-provider info: masked key + source ('saved' | 'env' | 'unset').
+
+    'saved' — key stored in api_keys.json
+    'env'   — json key empty, but env var is set (shown so admin knows it's active)
+    'unset' — nowhere configured
+    """
     keys = load_keys()
     result = {}
-    for p, k in keys.items():
-        k = k.strip()
-        if not k:
-            result[p] = ""
-        elif len(k) <= 4:
-            result[p] = "****"
+    for p in _PROVIDERS:
+        saved = keys.get(p, "").strip()
+        if saved:
+            result[p] = {"masked": _mask(saved), "source": "saved"}
         else:
-            result[p] = "*" * (len(k) - 4) + k[-4:]
+            env = _env_key(p)
+            if env:
+                result[p] = {"masked": _mask(env), "source": "env"}
+            else:
+                result[p] = {"masked": "", "source": "unset"}
     return result

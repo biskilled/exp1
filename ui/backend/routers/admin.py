@@ -104,6 +104,43 @@ def _save_coupons(coupons: list[dict]) -> None:
     _coupons_path().write_text(json.dumps(coupons, indent=2), encoding="utf-8")
 
 
+# ── Stats ──────────────────────────────────────────────────────────────────────
+
+@router.get("/stats")
+async def get_stats(_: dict = Depends(_require_admin)):
+    """Aggregate totals across all users: balance, charged cost, real cost, margin."""
+    users = list_users()
+    total_added  = sum(u.get("balance_added_usd",  0.0) for u in users)
+    total_charged = sum(u.get("balance_used_usd",  0.0) for u in users)
+
+    # Sum real (base) cost from transactions that include base_cost_usd.
+    # Falls back to amount_usd for legacy records without the field (margin = 0 for those).
+    total_real_cost = 0.0
+    tx_dir = Path(settings.data_dir) / "transactions"
+    if tx_dir.exists():
+        for txf in tx_dir.glob("*.jsonl"):
+            try:
+                for line in txf.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    r = json.loads(line)
+                    if r.get("type") == "usage_debit":
+                        total_real_cost += r.get("base_cost_usd", r.get("amount_usd", 0.0))
+            except Exception:
+                pass
+
+    return {
+        "user_count":        len(users),
+        "active_users":      sum(1 for u in users if u.get("is_active", True)),
+        "total_balance_usd": round(total_added - total_charged, 4),
+        "total_added_usd":   round(total_added, 4),
+        "total_charged_usd": round(total_charged, 4),
+        "total_real_cost_usd": round(total_real_cost, 4),
+        "total_margin_usd":  round(total_charged - total_real_cost, 4),
+    }
+
+
 # ── Users ──────────────────────────────────────────────────────────────────────
 
 @router.get("/users")

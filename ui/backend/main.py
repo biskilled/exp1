@@ -70,9 +70,20 @@ async def startup():
     db.init()   # connect to PostgreSQL if DATABASE_URL is set; no-op otherwise
     # Ensure monetization data files exist on first start
     from core.pricing import load_pricing
-    from core.api_keys import load_keys
+    from core.api_keys import load_keys, save_keys, _env_key, _PROVIDERS
     from routers.admin import _load_coupons
-    load_pricing(); load_keys(); _load_coupons()
+    load_pricing(); _load_coupons()
+    # Seed api_keys.json from env vars for any provider slot that is still empty
+    keys = load_keys()
+    updated = False
+    for p in _PROVIDERS:
+        if not keys.get(p, "").strip():
+            env_val = _env_key(p)
+            if env_val:
+                keys[p] = env_val
+                updated = True
+    if updated:
+        save_keys(keys)
     print(f"✅ aicli backend ready — http://localhost:8000")
     print(f"   workspace: {settings.workspace_dir}")
     print(f"   project:   {settings.active_project}")
