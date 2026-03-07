@@ -66,10 +66,25 @@ def decode_access_token(token: str) -> dict:
 
 # ── FastAPI dependencies ──────────────────────────────────────────────────────
 
+_DEV_ADMIN = {
+    "sub": "dev-admin",
+    "id": "dev-admin",
+    "email": "dev@localhost",
+    "role": "admin",
+    "is_admin": True,
+    "is_active": True,
+    "balance_added_usd": 999.0,
+    "balance_used_usd": 0.0,
+    "coupons_used": [],
+}
+
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> dict:
-    """Always requires a valid JWT. Use on protected routes."""
+    """Always requires a valid JWT. Use on protected routes. Dev mode bypasses auth."""
+    if settings.dev_mode:
+        return _DEV_ADMIN
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -83,6 +98,8 @@ async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> Optional[dict]:
     """Returns user dict or None (used when REQUIRE_AUTH may be False)."""
+    if settings.dev_mode:
+        return _DEV_ADMIN
     if not settings.require_auth:
         return None
     if credentials is None:

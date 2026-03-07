@@ -96,30 +96,18 @@ ui/
 │   │   ├── api.js      ← all HTTP calls to FastAPI backend
 │   │   ├── markdown.js ← renderMd(), highlightYaml(), validateYaml() (no npm)
 │   │   └── toast.js    ← toast notifications
-│   ├── chat.js     ← unified session list (UI+CLI+WF), source badges, resizable panel, welcome screen
-│   ├── prompts.js  ← resizable tree panel + textarea editor (save-disabled-until-changed)
-│   ├── workflow.js ← resizable sidebar + YAML editor + node flow diagram
 │   └── views/
 
-*See PROJECT.md for full documentation*
+
+*See PROJECT.md for full documentation (297 lines total)*
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-06] `claude_cli`: unified chat session list showing UI + CLI + WF history with source badges and seq numbers
-- [2026-03-06] `claude_cli`: fixed session sort (newest-first) and message order (oldest-first within session)
-- [2026-03-06] `claude_cli`: resizable panels for chat, prompts, and workflow views; new chat welcome screen
-- [2026-03-07] `claude_cli`: auto_commit_push.sh Stop hook for Claude CLI; wired into settings.local.json
-- [2026-03-07] `claude_cli`: fixed code_dir in project.yaml (was ../.. → now absolute path to git repo)
-
-## Key Hook Scripts (.aicli/scripts/)
-
-| Script | Event | Purpose |
-|--------|-------|---------|
-| `log_user_prompt.sh` | UserPromptSubmit | Appends prompt to history.jsonl |
-| `log_session_stop.sh` | Stop | Backfills response text into history |
-| `auto_commit_push.sh` | Stop | Commits + pushes code after every Claude CLI session |
-
-`auto_commit_push.sh` requires `auto_commit_push: true` in project.yaml and `code_dir` pointing to a git repo. Tries backend API first (LLM commit message); falls back to direct git with `_system/.git_token` credentials.
+- [2026-03-07] `claude_cli`: I would like to have the same behavour when I am using the claude cli using the hooks. you did some 
+- [2026-03-07] `claude_cli`: test it
+- [2026-03-07] `claude_cli`: can you explain the following : what is the prject is about, who can use that , are there any soluti
+- [2026-03-07] `claude_cli`: can you update all file acroidignly (project.md, claude.md..) so history is updated 
+- [2026-03-07] `claude_cli`: I would like to optimize the code files and strucure - I my mani folder I do CLAUDE.md, QUICKSTART.m
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

@@ -38,6 +38,10 @@ export function renderLogin(container, backendUrl, onSuccess) {
             <div class="login-field">
               <label>Confirm password</label>
               <input type="password" id="login-confirm" placeholder="••••••••" autocomplete="new-password" required />
+            </div>
+            <div class="login-field">
+              <label>Coupon code <span style="color:var(--text2,#777);font-weight:400">(optional)</span></label>
+              <input type="text" id="login-coupon" placeholder="e.g. AICLI" autocomplete="off" />
             </div>` : ''}
             <div id="login-error" class="login-error" style="display:none"></div>
             <button type="submit" class="login-btn" id="login-submit">
@@ -98,6 +102,21 @@ export function renderLogin(container, backendUrl, onSuccess) {
       // Store token
       localStorage.setItem('aicli_token', data.token);
       localStorage.setItem('aicli_user', JSON.stringify(data.user));
+
+      // Apply coupon code if provided during registration
+      if (mode === 'register') {
+        const couponEl = document.getElementById('login-coupon');
+        const coupon = couponEl?.value.trim();
+        if (coupon) {
+          try {
+            await fetch(`${backendUrl}/billing/apply-coupon`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${data.token}` },
+              body: JSON.stringify({ code: coupon }),
+            });
+          } catch (_) { /* coupon errors are non-fatal */ }
+        }
+      }
 
       // Clear login screen and continue
       container.innerHTML = '';

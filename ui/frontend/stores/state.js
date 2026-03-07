@@ -3,7 +3,7 @@ import { BACKEND_URL } from '../utils/config.js';
 // Central reactive state
 export const state = {
   // Auth
-  user: null,           // { id, email, is_admin } from /auth/me
+  user: null,           // { id, email, role, is_admin, balance_usd } from /auth/me + /billing/balance
   requireAuth: false,   // from /health
 
   // Navigation

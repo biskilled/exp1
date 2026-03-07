@@ -19,27 +19,27 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from config import settings
 from core.auth import get_current_user
+from core.pricing import calculate_cost
 from models.user import find_by_id, list_users
 
 router = APIRouter()
 
-# Cost per 1M tokens (input, output) — rough defaults, update as needed
-_PRICING: dict[str, tuple[float, float]] = {
-    "claude-sonnet-4-6":    (3.00,  15.00),
-    "claude-opus-4-6":      (15.00, 75.00),
-    "claude-haiku-4-5":     (0.80,  4.00),
-    "gpt-4.1":              (2.00,  8.00),
-    "gpt-4.1-mini":         (0.40,  1.60),
-    "deepseek-chat":        (0.27,  1.10),
-    "deepseek-reasoner":    (0.55,  2.19),
-    "gemini-2.0-flash":     (0.10,  0.40),
-    "grok-3":               (3.00,  15.00),
-}
-
 
 def _cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    inp_price, out_price = _PRICING.get(model, (1.00, 5.00))
-    return round((input_tokens * inp_price + output_tokens * out_price) / 1_000_000, 6)
+    """Derive provider from model name prefix for calculate_cost lookup."""
+    if model.startswith("claude"):
+        provider = "claude"
+    elif model.startswith("gpt"):
+        provider = "openai"
+    elif model.startswith("deepseek"):
+        provider = "deepseek"
+    elif model.startswith("gemini"):
+        provider = "gemini"
+    elif model.startswith("grok"):
+        provider = "grok"
+    else:
+        provider = "claude"  # safe default
+    return calculate_cost(provider, model, input_tokens, output_tokens, markup_pct=0)
 
 
 def _usage_path(user_id: str) -> Path:

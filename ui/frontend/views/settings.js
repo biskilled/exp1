@@ -3,6 +3,7 @@ import { invoke } from '../utils/tauri.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 import { BACKEND_URL } from '../utils/config.js';
+// updateBalanceChip accessed via window._updateBalance (set by main.js to avoid circular import)
 
 const LLM_CONFIG = [
   { id: 'claude',   label: 'Claude',   color: 'var(--claude)',   placeholder: 'sk-ant-api03-...',    models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'] },
@@ -34,6 +35,9 @@ export function renderSettings(container) {
           </div>
           <div class="settings-nav-item" onclick="window._settingsSection('backend')" id="snav-backend">
             <span>⚡</span> Backend
+          </div>
+          <div class="settings-nav-item" onclick="window._settingsSection('billing')" id="snav-billing">
+            <span>💳</span> Billing
           </div>
           <div class="settings-nav-item" onclick="window._settingsSection('security')" id="snav-security">
             <span>🔐</span> Security
@@ -67,6 +71,7 @@ function renderSettingsSection(section) {
     models:    renderModels,
     workspace: renderWorkspace,
     backend:   renderBackend,
+    billing:   renderBilling,
     security:  renderSecurity,
   };
 
@@ -686,9 +691,188 @@ function _esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Billing ───────────────────────────────────────────────────────────────────
+
+async function renderBilling(content) {
+  const isAdmin = state.user?.is_admin || state.user?.role === 'admin';
+  content.innerHTML = '<div style="color:var(--muted);font-size:0.72rem">Loading billing info…</div>';
+
+  try {
+    const b = await api.billingBalance();
+    const role = b.role || 'free';
+    const balance = b.balance_usd ?? 0;
+    const freeLimit = b.free_tier_limit_usd;
+    const freeUsed = b.free_tier_used_usd ?? 0;
+
+    // Balance display
+    let balanceHtml;
+    if (role === 'admin') {
+      balanceHtml = `<div style="font-size:1.5rem;font-weight:700;color:var(--accent)">Admin</div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:0.25rem">Admin accounts have unlimited access</div>`;
+    } else if (role === 'free') {
+      const pct = freeLimit ? Math.min(100, (freeUsed / freeLimit) * 100) : 0;
+      balanceHtml = `
+        <div style="font-size:1.2rem;font-weight:700;color:var(--text)">Free Tier</div>
+        <div style="font-size:0.72rem;color:var(--text2);margin-top:0.2rem">$${freeUsed.toFixed(4)} used of $${freeLimit?.toFixed(2)} limit</div>
+        <div style="margin-top:0.5rem;background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${pct>90?'var(--red)':pct>70?'var(--accent)':'var(--green)'}"></div>
+        </div>
+        <div style="font-size:0.62rem;color:var(--muted);margin-top:0.25rem">
+          Free models: ${(b.free_tier_models||[]).join(', ') || 'none'}
+        </div>`;
+    } else {
+      balanceHtml = `
+        <div style="font-size:1.5rem;font-weight:700;color:${balance>=1?'var(--green)':balance>=0.1?'var(--accent)':'var(--red)'}">
+          $${balance.toFixed(4)}
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:0.25rem">Available balance</div>`;
+    }
+
+    content.innerHTML = `
+      <div style="max-width:580px">
+        <div class="settings-section-title">Billing &amp; Balance</div>
+
+        <!-- Balance card -->
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+                    padding:1rem 1.25rem;margin-bottom:1.5rem">
+          <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em">Current Balance</div>
+          ${balanceHtml}
+          ${!isAdmin ? `
+          <div style="margin-top:1rem">
+            <button onclick="window._billingAddPayment()"
+              style="padding:0.45rem 1rem;background:var(--surface);border:1px solid var(--border);
+                     border-radius:6px;color:var(--text2);font-size:0.75rem;cursor:pointer">
+              + Add Payment (Coming Soon)
+            </button>
+          </div>` : ''}
+        </div>
+
+        ${!isAdmin ? `
+        <!-- Apply coupon -->
+        <div style="margin-bottom:1.5rem">
+          <div style="font-size:0.78rem;font-weight:600;margin-bottom:0.6rem">Apply Coupon Code</div>
+          <div style="display:flex;gap:0.5rem">
+            <input id="billing-coupon" placeholder="Enter coupon code" style="flex:1;
+              background:var(--bg);border:1px solid var(--border);border-radius:6px;
+              color:var(--text);font-size:0.82rem;padding:0.45rem 0.65rem" />
+            <button onclick="window._applyCoupon()"
+              style="padding:0.45rem 1rem;background:var(--accent);border:none;border-radius:6px;
+                     color:#fff;font-size:0.8rem;font-weight:600;cursor:pointer">Apply</button>
+          </div>
+          <div id="coupon-status" style="font-size:0.65rem;margin-top:0.35rem;color:var(--muted)"></div>
+        </div>
+        ` : `
+        <!-- Admin note -->
+        <div style="background:rgba(255,107,53,0.07);border:1px solid rgba(255,107,53,0.2);
+                    border-radius:var(--radius);padding:0.75rem 1rem;margin-bottom:1.5rem;font-size:0.72rem;color:var(--text2)">
+          💡 Manage API keys, pricing, coupons, and user credits in the
+          <a href="#" onclick="window._nav('admin');return false" style="color:var(--accent)">Admin Panel</a>.
+        </div>
+        `}
+
+        <!-- Transaction history -->
+        <div>
+          <div style="font-size:0.78rem;font-weight:600;margin-bottom:0.6rem">Transaction History</div>
+          <div id="billing-history-body">
+            <div style="color:var(--muted);font-size:0.72rem">Loading…</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    window._billingAddPayment = async () => {
+      try {
+        const r = await api.billingAddPayment();
+        toast(r.message, 'info');
+      } catch (e) { toast(e.message, 'error'); }
+    };
+
+    window._applyCoupon = async () => {
+      const code = document.getElementById('billing-coupon')?.value.trim();
+      const statusEl = document.getElementById('coupon-status');
+      if (!code) { if (statusEl) { statusEl.textContent = 'Enter a coupon code'; statusEl.style.color = 'var(--red)'; } return; }
+      try {
+        const r = await api.billingApplyCoupon(code);
+        if (statusEl) { statusEl.textContent = `✓ ${r.message}`; statusEl.style.color = 'var(--green)'; }
+        toast(r.message, 'success');
+        document.getElementById('billing-coupon').value = '';
+        window._updateBalance?.().catch(() => {});
+        // Refresh billing section
+        await renderBilling(content);
+      } catch (e) {
+        if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }
+        toast(e.message, 'error');
+      }
+    };
+
+    // Load transaction history
+    const histBody = document.getElementById('billing-history-body');
+    try {
+      const h = await api.billingHistory();
+      const txs = (h.transactions || []).slice().reverse();
+      if (!txs.length) {
+        if (histBody) histBody.innerHTML = '<div style="color:var(--muted);font-size:0.72rem">No transactions yet.</div>';
+      } else {
+        if (histBody) histBody.innerHTML = `
+          <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+                <th style="text-align:left;padding:0.3rem 0.4rem;font-weight:500">Date</th>
+                <th style="text-align:left;padding:0.3rem 0.4rem;font-weight:500">Type</th>
+                <th style="text-align:right;padding:0.3rem 0.4rem;font-weight:500">Amount</th>
+                <th style="text-align:left;padding:0.3rem 0.4rem;font-weight:500">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${txs.map(tx => {
+                const isCredit = tx.type?.includes('credit');
+                const amt = tx.amount_usd || 0;
+                const ts = tx.ts ? new Date(tx.ts).toLocaleDateString() : '';
+                return `
+                  <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:0.35rem 0.4rem;color:var(--muted)">${ts}</td>
+                    <td style="padding:0.35rem 0.4rem">${tx.type || ''}</td>
+                    <td style="padding:0.35rem 0.4rem;text-align:right;color:${isCredit?'var(--green)':'var(--text2)'}">
+                      ${isCredit?'+':'−'}$${amt.toFixed(4)}
+                    </td>
+                    <td style="padding:0.35rem 0.4rem;color:var(--text2)">${tx.description||''}</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+    } catch {
+      if (histBody) histBody.innerHTML = '<div style="color:var(--muted);font-size:0.72rem">Could not load history.</div>';
+    }
+
+  } catch (e) {
+    content.innerHTML = `<div style="color:var(--red);font-size:0.75rem">Could not load billing: ${e.message}</div>`;
+  }
+}
+
+
 // ── API Keys ──────────────────────────────────────────────────────────────────
 
 function renderApiKeys(content) {
+  const isAdmin = state.user?.is_admin || state.user?.role === 'admin';
+
+  // Admins: show note to use Admin Panel
+  if (isAdmin) {
+    content.innerHTML = `
+      <div>
+        <div class="settings-section-title">API Keys</div>
+        <div class="settings-section-desc">As an admin, API keys are managed server-side in the Admin Panel.</div>
+        <div style="background:rgba(255,107,53,0.07);border:1px solid rgba(255,107,53,0.2);
+                    border-radius:var(--radius);padding:0.75rem 1rem;margin-top:0.75rem;font-size:0.75rem;color:var(--text2)">
+          💡 Go to the <a href="#" onclick="window._nav('admin');return false" style="color:var(--accent)">Admin Panel → API Keys</a>
+          to set server-side API keys for all users.
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   content.innerHTML = `
     <div>
       <div class="settings-section-title">API Keys</div>

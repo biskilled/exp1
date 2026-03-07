@@ -1,6 +1,6 @@
 /**
- * Admin panel — user management table.
- * Only accessible to users with is_admin: true.
+ * Admin panel — 4-tab layout: Users / Pricing / Coupons / API Keys
+ * Only accessible to users with role === 'admin' or is_admin === true.
  */
 
 import { api } from '../utils/api.js';
@@ -13,146 +13,454 @@ export async function renderAdmin(container) {
 
   container.innerHTML = `
     <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
-      <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);
+      <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);
                   display:flex;align-items:center;gap:0.75rem;flex-shrink:0">
-        <span style="font-size:0.8rem;font-weight:600;color:var(--text)">Admin — User Management</span>
-        <span style="font-size:0.65rem;color:var(--muted)">
-          ${state.db_mode === 'postgresql' ? '🐘 PostgreSQL' : '📄 file store'}
-        </span>
+        <span style="font-size:0.85rem;font-weight:700;color:var(--text)">Admin Panel</span>
         <div style="flex:1"></div>
-        <button class="btn btn-ghost btn-sm" onclick="window._adminRefresh()">↻ Refresh</button>
       </div>
+
+      <!-- Tab bar -->
+      <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;padding:0 1.25rem">
+        ${['users','pricing','coupons','apikeys'].map((t, i) => `
+          <button id="admin-tab-${t}" onclick="window._adminTab('${t}')"
+            style="padding:0.55rem 1rem;border:none;border-bottom:2px solid ${i===0?'var(--accent)':'transparent'};
+                   background:none;cursor:pointer;font-size:0.75rem;
+                   color:${i===0?'var(--text)':'var(--text2)'};
+                   font-weight:${i===0?'600':'normal'};transition:all 0.15s">
+            ${{ users:'👥 Users', pricing:'💲 Pricing', coupons:'🎟 Coupons', apikeys:'🔑 API Keys' }[t]}
+          </button>
+        `).join('')}
+      </div>
+
       <div id="admin-body" style="flex:1;overflow-y:auto;padding:1rem 1.25rem"></div>
     </div>
   `;
 
-  window._adminRefresh = () => _loadUsers();
-  await _loadUsers();
-}
+  let _activeTab = 'users';
 
-async function _loadUsers() {
-  const body = document.getElementById('admin-body');
-  if (!body) return;
-  body.innerHTML = '<div style="color:var(--muted);font-size:0.72rem">Loading…</div>';
+  window._adminTab = (tab) => {
+    _activeTab = tab;
+    ['users','pricing','coupons','apikeys'].forEach(t => {
+      const btn = document.getElementById(`admin-tab-${t}`);
+      if (btn) {
+        btn.style.borderBottomColor = t === tab ? 'var(--accent)' : 'transparent';
+        btn.style.color = t === tab ? 'var(--text)' : 'var(--text2)';
+        btn.style.fontWeight = t === tab ? '600' : 'normal';
+      }
+    });
+    _renderTab(tab);
+  };
 
-  try {
-    const data  = await api.adminListUsers();
-    const users = data.users || [];
-
-    if (!users.length) {
-      body.innerHTML = '<div class="empty-state"><p>No users yet.</p></div>';
-      return;
+  async function _renderTab(tab) {
+    const body = document.getElementById('admin-body');
+    if (!body) return;
+    body.innerHTML = '<div style="color:var(--muted);font-size:0.72rem">Loading…</div>';
+    try {
+      if (tab === 'users')   await _renderUsers(body);
+      if (tab === 'pricing') await _renderPricing(body);
+      if (tab === 'coupons') await _renderCoupons(body);
+      if (tab === 'apikeys') await _renderApiKeys(body);
+    } catch (e) {
+      body.innerHTML = `<div style="color:var(--red);font-size:0.75rem">Error: ${e.message}</div>`;
     }
-
-    const myId = state.user?.id || '';
-
-    body.innerHTML = `
-      <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.75rem">
-        ${users.length} user${users.length !== 1 ? 's' : ''} registered
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
-        <thead>
-          <tr style="text-align:left;border-bottom:2px solid var(--border)">
-            <th style="padding:6px 8px;color:var(--muted);font-weight:500">Email</th>
-            <th style="padding:6px 8px;color:var(--muted);font-weight:500">Role</th>
-            <th style="padding:6px 8px;color:var(--muted);font-weight:500">Status</th>
-            <th style="padding:6px 8px;color:var(--muted);font-weight:500">Created</th>
-            <th style="padding:6px 8px;color:var(--muted);font-weight:500">Last login</th>
-            <th style="padding:6px 8px;color:var(--muted);font-weight:500">API calls</th>
-            <th style="padding:6px 8px;color:var(--muted);font-weight:500">Cost USD</th>
-            <th style="padding:6px 8px;color:var(--muted);font-weight:500">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${users.map(u => _userRow(u, myId)).join('')}
-        </tbody>
-      </table>
-    `;
-  } catch (e) {
-    body.innerHTML = `<div style="color:var(--red);font-size:0.72rem;padding:1rem">
-      Error: ${_esc(e.message)}<br>
-      <small style="color:var(--muted)">Make sure you are logged in as an admin user.</small>
-    </div>`;
   }
+
+  await _renderTab('users');
 }
 
-function _userRow(u, myId) {
-  const isMe    = u.id === myId;
-  const isAdmin = u.is_admin;
-  const active  = u.is_active !== false;
-  const created = u.created_at?.slice(0, 10) || '—';
-  const lastLogin = u.last_login?.slice(0, 16).replace('T', ' ') || '—';
-  const usage   = u.usage || {};
 
+// ── Users Tab ─────────────────────────────────────────────────────────────────
+
+async function _renderUsers(body) {
+  const data  = await api.adminListUsers();
+  const users = data.users || [];
+
+  if (!users.length) {
+    body.innerHTML = '<div class="empty-state"><p>No users yet.</p></div>';
+    return;
+  }
+
+  body.innerHTML = `
+    <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.75rem">
+      ${users.length} user(s)
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.75rem">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+          <th style="text-align:left;padding:0.4rem 0.5rem;font-weight:500">Email</th>
+          <th style="text-align:left;padding:0.4rem 0.5rem;font-weight:500">Role</th>
+          <th style="text-align:right;padding:0.4rem 0.5rem;font-weight:500">Balance</th>
+          <th style="text-align:right;padding:0.4rem 0.5rem;font-weight:500">Used</th>
+          <th style="text-align:right;padding:0.4rem 0.5rem;font-weight:500">Calls</th>
+          <th style="text-align:center;padding:0.4rem 0.5rem;font-weight:500">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="admin-users-tbody">
+        ${users.map(u => _userRow(u)).join('')}
+      </tbody>
+    </table>
+  `;
+
+  // Bind role selects and credit/delete buttons
+  users.forEach(u => _bindUserRow(u));
+}
+
+function _userRow(u) {
+  const balance = u.balance_usd ?? ((u.balance_added_usd || 0) - (u.balance_used_usd || 0));
+  const role = u.role || (u.is_admin ? 'admin' : 'free');
   return `
-    <tr style="border-bottom:1px solid var(--border);opacity:${active ? 1 : 0.5}"
-        id="user-row-${u.id}">
-      <td style="padding:8px">
-        <span style="color:var(--text)">${_esc(u.email)}</span>
-        ${isMe ? '<span style="font-size:0.6rem;color:var(--accent);margin-left:4px">(you)</span>' : ''}
+    <tr id="urow-${u.id}" style="border-bottom:1px solid var(--border)">
+      <td style="padding:0.5rem;color:var(--text)">${_esc(u.email)}</td>
+      <td style="padding:0.5rem">
+        <select id="role-${u.id}" style="background:var(--surface2);border:1px solid var(--border);
+                border-radius:4px;color:var(--text);font-size:0.72rem;padding:2px 4px">
+          ${['admin','paid','free'].map(r => `<option value="${r}" ${role===r?'selected':''}>${r}</option>`).join('')}
+        </select>
       </td>
-      <td style="padding:8px">
-        <span style="padding:2px 8px;border-radius:10px;font-size:0.62rem;
-               background:${isAdmin ? 'var(--accent)' : 'var(--surface2)'};
-               color:${isAdmin ? '#fff' : 'var(--text2)'}">
-          ${isAdmin ? 'admin' : 'user'}
-        </span>
+      <td style="padding:0.5rem;text-align:right;color:${balance>=0.1?'var(--green)':balance>=0?'var(--text2)':'var(--red)'}">
+        $${balance.toFixed(2)}
       </td>
-      <td style="padding:8px">
-        <span style="color:${active ? 'var(--green)' : 'var(--red)'}">
-          ${active ? '● active' : '○ inactive'}
-        </span>
+      <td style="padding:0.5rem;text-align:right;color:var(--muted)">
+        $${(u.balance_used_usd||0).toFixed(4)}
       </td>
-      <td style="padding:8px;color:var(--text2)">${created}</td>
-      <td style="padding:8px;color:var(--text2)">${lastLogin}</td>
-      <td style="padding:8px;color:var(--text2)">${usage.total_calls ?? 0}</td>
-      <td style="padding:8px;color:var(--text2)">$${(usage.total_cost_usd ?? 0).toFixed(4)}</td>
-      <td style="padding:8px">
-        ${!isMe ? `
-          <div style="display:flex;gap:4px">
-            <button class="btn btn-ghost btn-sm"
-              onclick="window._adminToggleAdmin('${u.id}', ${!isAdmin})"
-              title="${isAdmin ? 'Remove admin' : 'Make admin'}">
-              ${isAdmin ? '↓ user' : '↑ admin'}
-            </button>
-            <button class="btn btn-ghost btn-sm"
-              style="color:${active ? 'var(--red)' : 'var(--green)'}"
-              onclick="window._adminToggleActive('${u.id}', ${!active})">
-              ${active ? 'Deactivate' : 'Reactivate'}
-            </button>
-          </div>
-        ` : '<span style="color:var(--muted);font-size:0.62rem">—</span>'}
+      <td style="padding:0.5rem;text-align:right;color:var(--muted)">
+        ${u.usage?.total_calls || 0}
+      </td>
+      <td style="padding:0.5rem;text-align:center">
+        <div style="display:flex;gap:4px;justify-content:center;align-items:center">
+          <input id="credit-${u.id}" type="number" min="0" step="0.01" placeholder="$"
+            style="width:55px;background:var(--surface2);border:1px solid var(--border);
+                   border-radius:4px;color:var(--text);font-size:0.72rem;padding:2px 5px" />
+          <button id="credit-btn-${u.id}" onclick="window._adminCredit('${u.id}')"
+            style="padding:2px 8px;background:var(--accent);border:none;border-radius:4px;
+                   color:#fff;font-size:0.7rem;cursor:pointer">+$</button>
+          <button onclick="window._adminSaveRole('${u.id}')"
+            style="padding:2px 8px;background:var(--surface2);border:1px solid var(--border);
+                   border-radius:4px;color:var(--text2);font-size:0.7rem;cursor:pointer">✓</button>
+          <button onclick="window._adminDelUser('${u.id}', '${_esc(u.email)}')"
+            style="padding:2px 8px;background:none;border:1px solid var(--border);
+                   border-radius:4px;color:var(--red);font-size:0.7rem;cursor:pointer">✕</button>
+        </div>
       </td>
     </tr>
   `;
 }
 
-window._adminToggleAdmin = async (userId, makeAdmin) => {
-  try {
-    await api.adminPatchUser(userId, { is_admin: makeAdmin });
-    toast(`User ${makeAdmin ? 'promoted to admin' : 'set to user'}`, 'success');
-    await _loadUsers();
-  } catch (e) {
-    toast(`Error: ${e.message}`, 'error');
-  }
-};
+function _bindUserRow(u) {
+  window._adminSaveRole = async (uid) => {
+    const sel = document.getElementById(`role-${uid}`);
+    if (!sel) return;
+    try {
+      await api.adminPatchUser(uid, { role: sel.value });
+      toast('Role updated', 'success');
+    } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+  };
 
-window._adminToggleActive = async (userId, activate) => {
-  const verb = activate ? 'reactivate' : 'deactivate';
-  if (!confirm(`${verb.charAt(0).toUpperCase() + verb.slice(1)} this user?`)) return;
-  try {
-    if (activate) {
-      await api.adminPatchUser(userId, { is_active: true });
-    } else {
-      await api.adminDeleteUser(userId);
-    }
-    toast(`User ${verb}d`, 'success');
-    await _loadUsers();
-  } catch (e) {
-    toast(`Error: ${e.message}`, 'error');
-  }
-};
+  window._adminCredit = async (uid) => {
+    const inp = document.getElementById(`credit-${uid}`);
+    if (!inp) return;
+    const amt = parseFloat(inp.value);
+    if (!amt || amt <= 0) { toast('Enter a positive amount', 'error'); return; }
+    try {
+      await api.adminPatchUser(uid, { credit_usd: amt });
+      toast(`$${amt.toFixed(2)} credited`, 'success');
+      inp.value = '';
+      // Refresh users tab
+      const body = document.getElementById('admin-body');
+      if (body) { body.innerHTML = '<div style="color:var(--muted);font-size:0.72rem">Refreshing…</div>'; await _renderUsers(body); }
+    } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+  };
+
+  window._adminDelUser = async (uid, email) => {
+    if (!confirm(`Deactivate user: ${email}?`)) return;
+    try {
+      await api.adminDeleteUser(uid);
+      toast(`User deactivated: ${email}`, 'success');
+      const row = document.getElementById(`urow-${uid}`);
+      if (row) row.style.opacity = '0.3';
+    } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+  };
+}
 
 function _esc(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
+// ── Pricing Tab ───────────────────────────────────────────────────────────────
+
+async function _renderPricing(body) {
+  const p = await api.adminGetPricing();
+
+  const providers = ['claude','openai','deepseek','gemini','grok'];
+  const allModels = [
+    'claude-sonnet-4-6','claude-haiku-4-5-20251001','gpt-4.1','deepseek-chat',
+    'gemini-2.0-flash','grok-3',
+  ];
+
+  body.innerHTML = `
+    <div style="max-width:600px">
+      <div style="font-weight:700;font-size:0.8rem;margin-bottom:1rem">Pricing Configuration</div>
+
+      <div style="margin-bottom:1.25rem">
+        <div style="font-size:0.72rem;color:var(--text2);margin-bottom:0.4rem">Free Tier Limit (USD)</div>
+        <input id="price-free-limit" type="number" min="0" step="0.5"
+          value="${p.free_tier_limit_usd ?? 5}"
+          style="width:120px;background:var(--surface2);border:1px solid var(--border);
+                 border-radius:6px;color:var(--text);font-size:0.82rem;padding:0.4rem 0.6rem" />
+        <span style="font-size:0.65rem;color:var(--muted);margin-left:0.5rem">Maximum spend for free-tier users</span>
+      </div>
+
+      <div style="margin-bottom:1.25rem">
+        <div style="font-size:0.72rem;color:var(--text2);margin-bottom:0.5rem">Free Tier Models</div>
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem">
+          ${allModels.map(m => `
+            <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.72rem;cursor:pointer;
+                           background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:0.25rem 0.5rem">
+              <input type="checkbox" id="ftm-${m.replace(/[^a-z0-9]/gi,'-')}"
+                ${(p.free_tier_models||[]).includes(m)?'checked':''}
+                style="accent-color:var(--accent)" />
+              ${m}
+            </label>
+          `).join('')}
+        </div>
+      </div>
+
+      <div style="margin-bottom:1.5rem">
+        <div style="font-size:0.72rem;color:var(--text2);margin-bottom:0.5rem">Markup % per Provider</div>
+        <div style="display:flex;flex-direction:column;gap:0.5rem">
+          ${providers.map(prov => `
+            <div style="display:flex;align-items:center;gap:0.75rem">
+              <div style="width:80px;font-size:0.75rem">${prov}</div>
+              <input id="markup-${prov}" type="number" min="0" max="500" step="5"
+                value="${p.providers?.[prov]?.markup_percent ?? 0}"
+                style="width:80px;background:var(--surface2);border:1px solid var(--border);
+                       border-radius:6px;color:var(--text);font-size:0.8rem;padding:0.3rem 0.5rem" />
+              <span style="font-size:0.68rem;color:var(--muted)">%</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <button onclick="window._savePricing()"
+        style="padding:0.5rem 1.25rem;background:var(--accent);border:none;border-radius:6px;
+               color:#fff;font-size:0.82rem;font-weight:600;cursor:pointer">
+        Save Pricing
+      </button>
+      <span id="pricing-status" style="font-size:0.68rem;color:var(--muted);margin-left:0.75rem"></span>
+    </div>
+  `;
+
+  window._savePricing = async () => {
+    const freeLimit = parseFloat(document.getElementById('price-free-limit').value) || 5;
+    const freeModels = allModels.filter(m => {
+      const el = document.getElementById(`ftm-${m.replace(/[^a-z0-9]/gi,'-')}`);
+      return el?.checked;
+    });
+    const provCfg = {};
+    providers.forEach(prov => {
+      const el = document.getElementById(`markup-${prov}`);
+      provCfg[prov] = { markup_percent: parseFloat(el?.value || '0') };
+    });
+    const statusEl = document.getElementById('pricing-status');
+    try {
+      await api.adminSavePricing({
+        free_tier_limit_usd: freeLimit,
+        free_tier_models: freeModels,
+        providers: provCfg,
+      });
+      if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = 'var(--green)'; }
+      toast('Pricing saved', 'success');
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }
+      toast(`Save failed: ${e.message}`, 'error');
+    }
+  };
+}
+
+
+// ── Coupons Tab ───────────────────────────────────────────────────────────────
+
+async function _renderCoupons(body) {
+  const data = await api.adminGetCoupons();
+  const coupons = data.coupons || [];
+
+  body.innerHTML = `
+    <div style="max-width:700px">
+      <div style="font-weight:700;font-size:0.8rem;margin-bottom:1rem">Coupon Codes</div>
+
+      <!-- Create form -->
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+                  padding:0.75rem 1rem;margin-bottom:1.25rem">
+        <div style="font-size:0.72rem;font-weight:600;margin-bottom:0.6rem">Create New Coupon</div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end">
+          <div>
+            <div style="font-size:0.62rem;color:var(--muted);margin-bottom:0.2rem">Code</div>
+            <input id="new-coupon-code" placeholder="MYCODE" style="width:110px;${_inp()}"/>
+          </div>
+          <div>
+            <div style="font-size:0.62rem;color:var(--muted);margin-bottom:0.2rem">Amount ($)</div>
+            <input id="new-coupon-amount" type="number" min="0" step="0.5" value="10" style="width:80px;${_inp()}"/>
+          </div>
+          <div>
+            <div style="font-size:0.62rem;color:var(--muted);margin-bottom:0.2rem">Max Uses</div>
+            <input id="new-coupon-uses" type="number" min="1" value="999" style="width:80px;${_inp()}"/>
+          </div>
+          <div>
+            <div style="font-size:0.62rem;color:var(--muted);margin-bottom:0.2rem">Description</div>
+            <input id="new-coupon-desc" placeholder="Optional" style="width:160px;${_inp()}"/>
+          </div>
+          <button onclick="window._createCoupon()"
+            style="padding:0.4rem 1rem;background:var(--accent);border:none;border-radius:6px;
+                   color:#fff;font-size:0.78rem;cursor:pointer;white-space:nowrap">
+            + Create
+          </button>
+        </div>
+        <div id="coupon-create-status" style="font-size:0.65rem;color:var(--muted);margin-top:0.4rem"></div>
+      </div>
+
+      <!-- Coupon table -->
+      <table style="width:100%;border-collapse:collapse;font-size:0.75rem">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+            <th style="text-align:left;padding:0.4rem 0.5rem;font-weight:500">Code</th>
+            <th style="text-align:right;padding:0.4rem 0.5rem;font-weight:500">Amount</th>
+            <th style="text-align:right;padding:0.4rem 0.5rem;font-weight:500">Uses</th>
+            <th style="text-align:left;padding:0.4rem 0.5rem;font-weight:500">Description</th>
+            <th style="text-align:center;padding:0.4rem 0.5rem;font-weight:500">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${coupons.map(c => `
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:0.5rem;font-family:monospace;color:var(--accent)">${_esc(c.code)}</td>
+              <td style="padding:0.5rem;text-align:right">$${(c.amount_usd||0).toFixed(2)}</td>
+              <td style="padding:0.5rem;text-align:right;color:var(--muted)">${c.used_count||0} / ${c.max_uses||'∞'}</td>
+              <td style="padding:0.5rem;color:var(--text2)">${_esc(c.description||'')}</td>
+              <td style="padding:0.5rem;text-align:center">
+                <button onclick="window._deleteCoupon('${_esc(c.code)}')"
+                  style="padding:2px 8px;background:none;border:1px solid var(--border);
+                         border-radius:4px;color:var(--red);font-size:0.7rem;cursor:pointer">✕</button>
+              </td>
+            </tr>
+          `).join('')}
+          ${!coupons.length ? '<tr><td colspan="5" style="padding:1rem;text-align:center;color:var(--muted)">No coupons yet</td></tr>' : ''}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  window._createCoupon = async () => {
+    const code   = document.getElementById('new-coupon-code')?.value.trim().toUpperCase();
+    const amount = parseFloat(document.getElementById('new-coupon-amount')?.value || '0');
+    const uses   = parseInt(document.getElementById('new-coupon-uses')?.value || '1', 10);
+    const desc   = document.getElementById('new-coupon-desc')?.value.trim();
+    const st     = document.getElementById('coupon-create-status');
+    if (!code) { if (st) { st.textContent = 'Enter a code'; st.style.color = 'var(--red)'; } return; }
+    if (!amount || amount <= 0) { if (st) { st.textContent = 'Enter a positive amount'; st.style.color = 'var(--red)'; } return; }
+    try {
+      await api.adminCreateCoupon({ code, amount_usd: amount, max_uses: uses, description: desc });
+      if (st) { st.textContent = `✓ Coupon ${code} created`; st.style.color = 'var(--green)'; }
+      toast(`Coupon ${code} created`, 'success');
+      // Refresh
+      const body = document.getElementById('admin-body');
+      if (body) await _renderCoupons(body);
+    } catch (e) {
+      if (st) { st.textContent = `✕ ${e.message}`; st.style.color = 'var(--red)'; }
+      toast(`Error: ${e.message}`, 'error');
+    }
+  };
+
+  window._deleteCoupon = async (code) => {
+    if (!confirm(`Delete coupon ${code}?`)) return;
+    try {
+      await api.adminDeleteCoupon(code);
+      toast(`Coupon ${code} deleted`, 'success');
+      const body = document.getElementById('admin-body');
+      if (body) await _renderCoupons(body);
+    } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+  };
+}
+
+function _inp() {
+  return 'background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.78rem;padding:0.3rem 0.5rem;';
+}
+
+
+// ── API Keys Tab ──────────────────────────────────────────────────────────────
+
+async function _renderApiKeys(body) {
+  const masked = await api.adminGetApiKeys();
+  const providers = [
+    { id: 'claude',   label: 'Claude (Anthropic)' },
+    { id: 'openai',   label: 'OpenAI' },
+    { id: 'deepseek', label: 'DeepSeek' },
+    { id: 'gemini',   label: 'Gemini' },
+    { id: 'grok',     label: 'Grok (xAI)' },
+  ];
+
+  body.innerHTML = `
+    <div style="max-width:600px">
+      <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.25rem">Server API Keys</div>
+      <div style="font-size:0.65rem;color:var(--muted);margin-bottom:1.25rem">
+        These keys are used server-side for all users. Leave blank to fall back to environment variables.
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:0.75rem">
+        ${providers.map(p => `
+          <div>
+            <div style="font-size:0.72rem;color:var(--text2);margin-bottom:0.3rem">${p.label}</div>
+            <div style="display:flex;gap:0.5rem;align-items:center">
+              <input id="apikey-${p.id}" type="password"
+                placeholder="${masked[p.id] || 'Not set — uses env var'}"
+                style="flex:1;${_inp()}" />
+              <button onclick="window._toggleKeyVis('${p.id}')"
+                style="background:none;border:1px solid var(--border);border-radius:4px;
+                       color:var(--text2);font-size:0.72rem;padding:4px 8px;cursor:pointer">👁</button>
+            </div>
+            <div style="font-size:0.62rem;color:var(--muted);margin-top:0.2rem">
+              ${masked[p.id] ? `Stored: ${masked[p.id]}` : 'Not set'}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div style="margin-top:1.25rem;display:flex;gap:0.75rem;align-items:center">
+        <button onclick="window._saveApiKeys()"
+          style="padding:0.5rem 1.25rem;background:var(--accent);border:none;border-radius:6px;
+                 color:#fff;font-size:0.82rem;font-weight:600;cursor:pointer">
+          Save API Keys
+        </button>
+        <span id="apikeys-status" style="font-size:0.68rem;color:var(--muted)"></span>
+      </div>
+      <div style="margin-top:0.75rem;font-size:0.65rem;color:var(--muted)">
+        Only filled fields are updated. Clear a field and save to remove a key (env var fallback will be used).
+      </div>
+    </div>
+  `;
+
+  window._toggleKeyVis = (id) => {
+    const inp = document.getElementById(`apikey-${id}`);
+    if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+  };
+
+  window._saveApiKeys = async () => {
+    const keys = {};
+    providers.forEach(p => {
+      const val = document.getElementById(`apikey-${p.id}`)?.value.trim();
+      if (val) keys[p.id] = val;
+    });
+    const statusEl = document.getElementById('apikeys-status');
+    try {
+      await api.adminSaveApiKeys(keys);
+      if (statusEl) { statusEl.textContent = '✓ Keys saved'; statusEl.style.color = 'var(--green)'; }
+      toast('API keys saved', 'success');
+      // Refresh to show updated masked values
+      const body = document.getElementById('admin-body');
+      if (body) await _renderApiKeys(body);
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }
+      toast(`Error: ${e.message}`, 'error');
+    }
+  };
 }

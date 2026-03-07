@@ -1,5 +1,6 @@
 import { initLayout } from './utils/layout.js';
 import { api, addRecentProject } from './utils/api.js';
+import { renderAdmin as _renderAdminView } from './views/admin.js';
 import { state, setState } from './stores/state.js';
 import { toast } from './utils/toast.js';
 import { renderLogin, checkStoredAuth, logout } from './views/login.js';
@@ -10,7 +11,6 @@ import { renderPrompts } from './views/prompts.js';
 import { renderCode } from './views/code.js';
 import { renderWorkflow } from './views/workflow.js';
 import { renderSettings } from './views/settings.js';
-import { renderAdmin } from './views/admin.js';
 import { HistoryView } from './views/history.js';
 import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';
 
@@ -93,6 +93,11 @@ async function _continueToApp(user) {
   updateStatusDot();
   renderSidebarContent();
   navigateTo('home');
+
+  // Load balance chip (non-blocking)
+  if (user || state.backendOnline) {
+    updateBalanceChip().catch(() => {});
+  }
 }
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
@@ -113,6 +118,8 @@ function renderShell() {
         </div>
         <div class="titlebar-spacer"></div>
         <div class="titlebar-controls">
+          <div id="balance-chip" style="display:none;font-size:0.65rem;padding:0.2rem 0.5rem;
+               border-radius:var(--radius);background:var(--surface2);cursor:default"></div>
           <div class="status-pill">
             <div class="status-dot" id="status-dot"></div>
             <span id="status-text" style="font-size:0.62rem">Connecting…</span>
@@ -210,7 +217,7 @@ function renderSidebarFooter() {
   if (u) {
     // Logged-in user
     const initials = (u.email || '?').slice(0, 2).toUpperCase();
-    const isAdmin  = u.is_admin;
+    const isAdmin  = u.is_admin || u.role === 'admin';
     footer.innerHTML = `
       <div class="sidebar-user">
         <div class="sidebar-user-avatar" title="${u.email}">${initials}</div>
@@ -278,6 +285,7 @@ window._showLoginModal = (initialMode = 'login') => {
       setState({ user });
       renderSidebarFooter();
       toast(`Signed in as ${user.email}`, 'success');
+      updateBalanceChip().catch(() => {});
     });
 
     // The login card is now inside overlay — patch its mode if register
@@ -300,6 +308,37 @@ function updateStatusDot() {
   if (dot) dot.className = `status-dot ${state.backendOnline ? 'online' : ''}`;
   if (txt) txt.textContent = state.backendOnline ? 'Online' : 'Offline';
 }
+
+export async function updateBalanceChip() {
+  const chip = document.getElementById('balance-chip');
+  if (!chip) return;
+  try {
+    const b = await api.billingBalance();
+    chip.style.display = '';
+    const role = b.role || 'free';
+    if (role === 'admin') {
+      chip.textContent = 'Admin';
+      chip.style.color = 'var(--accent)';
+      chip.style.background = 'rgba(255,107,53,0.12)';
+    } else if (role === 'free') {
+      const used = b.free_tier_used_usd ?? 0;
+      const limit = b.free_tier_limit_usd ?? 5;
+      chip.textContent = `Free · $${used.toFixed(2)} / $${limit.toFixed(2)}`;
+      chip.style.color = 'var(--text2)';
+      chip.style.background = 'var(--surface2)';
+    } else {
+      const bal = b.balance_usd ?? 0;
+      chip.textContent = `$${bal.toFixed(2)}`;
+      chip.style.color = bal >= 1 ? 'var(--green)' : bal >= 0.1 ? 'var(--accent)' : 'var(--red)';
+      chip.style.background = 'var(--surface2)';
+    }
+    setState({ user: { ...(state.user || {}), role, balance_usd: b.balance_usd } });
+  } catch {
+    chip.style.display = 'none';
+  }
+}
+
+window._updateBalance = updateBalanceChip;
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 
@@ -329,7 +368,7 @@ export function navigateTo(viewId, opts = {}) {
     case 'workflow': renderWorkflow(view);                    break;
     case 'history':  renderHistory(view);                       break;
     case 'settings': renderSettings(view);                    break;
-    case 'admin':    renderAdmin(view);                       break;
+    case 'admin':    _renderAdminView(view);                  break;
     default:
       view.innerHTML = `<div class="empty-state"><p>View not found: ${viewId}</p></div>`;
   }

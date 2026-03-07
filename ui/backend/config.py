@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # PostgreSQL (optional — falls back to JSON file store when empty)
     database_url: str = ""   # set DATABASE_URL=postgresql://... in .env
 
+    # Developer / deployment mode
+    dev_mode: bool = False              # DEV_MODE=true → all requests treated as admin, no login
+
+    # Stripe (placeholder — real charging deferred)
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+
     # App
     cors_origins: str = "*"
 

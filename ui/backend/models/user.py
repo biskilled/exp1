@@ -62,6 +62,29 @@ def _save_all(users: list[dict]) -> None:
 _PG_COLS = "id, email, password_hash, is_admin, is_active, created_at, last_login"
 
 
+# Fields added for monetization — not in PostgreSQL schema yet (file store only for now)
+_BALANCE_DEFAULTS = {
+    "role": "free",
+    "balance_added_usd": 0.0,
+    "balance_used_usd": 0.0,
+    "coupons_used": [],
+    "stripe_customer_id": "",
+}
+
+
+def _migrate_user(user: dict) -> dict:
+    """Add missing monetization fields to legacy user records."""
+    # Derive role from is_admin BEFORE applying defaults (defaults include role="free")
+    if "role" not in user:
+        user["role"] = "admin" if user.get("is_admin") else "free"
+    for k, v in _BALANCE_DEFAULTS.items():
+        if k not in user:
+            user[k] = v
+    # Keep is_admin in sync with role
+    user["is_admin"] = user.get("role") == "admin"
+    return user
+
+
 def _pg_row(row: tuple) -> dict:
     keys = ["id", "email", "password_hash", "is_admin", "is_active", "created_at", "last_login"]
     d = dict(zip(keys, row))
@@ -93,13 +116,14 @@ def _pg_create_user(email: str, password: str) -> dict:
             cur.execute("SELECT COUNT(*) FROM users")
             is_admin = cur.fetchone()[0] == 0
     uid = str(uuid.uuid4())
+    role = "admin" if is_admin else "free"
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO users (id, email, password_hash, is_admin) VALUES (%s, %s, %s, %s)",
                 (uid, email, hash_password(password), is_admin),
             )
-    return {"id": uid, "email": email, "is_admin": is_admin, "is_active": True, "created_at": _now()}
+    return _migrate_user({"id": uid, "email": email, "is_admin": is_admin, "role": role, "is_active": True, "created_at": _now()})
 
 
 def _pg_list_users() -> list[dict]:
@@ -107,11 +131,11 @@ def _pg_list_users() -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(f"SELECT {_PG_COLS} FROM users ORDER BY created_at")
             rows = cur.fetchall()
-    return [_safe(_pg_row(r)) for r in rows]
+    return [_safe(_migrate_user(_pg_row(r))) for r in rows]
 
 
 def _pg_update_user(user_id: str, **fields) -> Optional[dict]:
-    allowed = {"is_admin", "is_active", "last_login"}
+    allowed = {"is_admin", "is_active", "last_login", "role", "balance_added_usd", "balance_used_usd", "coupons_used"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return _safe(_pg_find_by_id(user_id) or {}) or None
@@ -139,16 +163,16 @@ def find_by_email(email: str) -> Optional[dict]:
     email = email.lower().strip()
     for u in _load_all():
         if u.get("email") == email:
-            return u
+            return _migrate_user(u)
     return None
 
 
 def find_by_id(user_id: str) -> Optional[dict]:
     if db.is_available():
-        return _safe(_pg_find_by_id(user_id) or {}) or None
+        return _safe(_migrate_user(_pg_find_by_id(user_id) or {})) or None
     for u in _load_all():
         if u.get("id") == user_id:
-            return _safe(u)
+            return _safe(_migrate_user(u))
     return None
 
 
@@ -160,13 +184,20 @@ def create_user(email: str, password: str) -> dict:
     if db.is_available():
         return _pg_create_user(email, password)
     users = _load_all()
+    is_admin = len(users) == 0
+    role = "admin" if is_admin else "free"
     user = {
         "id": str(uuid.uuid4()),
         "email": email,
         "password_hash": hash_password(password),
         "created_at": _now(),
-        "is_admin": len(users) == 0,
+        "role": role,
+        "is_admin": is_admin,
         "is_active": True,
+        "balance_added_usd": 0.0,
+        "balance_used_usd": 0.0,
+        "coupons_used": [],
+        "stripe_customer_id": "",
     }
     users.append(user)
     _save_all(users)
@@ -195,19 +226,29 @@ def authenticate(email: str, password: str) -> Optional[dict]:
 def list_users() -> list[dict]:
     if db.is_available():
         return _pg_list_users()
-    return [_safe(u) for u in _load_all()]
+    return [_safe(_migrate_user(u)) for u in _load_all()]
+
+
+_UPDATABLE_FIELDS = {
+    "is_admin", "is_active", "last_login",
+    "role", "balance_added_usd", "balance_used_usd", "coupons_used", "stripe_customer_id",
+}
 
 
 def update_user(user_id: str, **fields) -> Optional[dict]:
-    """Update allowed fields: is_admin, is_active, last_login."""
+    """Update allowed fields."""
     if db.is_available():
         return _pg_update_user(user_id, **fields)
     users = _load_all()
     for u in users:
         if u.get("id") == user_id:
+            _migrate_user(u)
             for k, v in fields.items():
-                if k in ("is_admin", "is_active", "last_login"):
+                if k in _UPDATABLE_FIELDS:
                     u[k] = v
+            # Keep is_admin in sync with role
+            if "role" in fields:
+                u["is_admin"] = fields["role"] == "admin"
             _save_all(users)
             return _safe(u)
     return None

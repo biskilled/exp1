@@ -13,7 +13,7 @@ from pathlib import Path
 
 from config import settings
 from core.database import db
-from routers import auth, chat, history, usage, workflows, prompts, files, projects, config_sync, admin, git
+from routers import auth, chat, history, usage, workflows, prompts, files, projects, config_sync, admin, git, billing
 from pwa_router import router as pwa_router
 
 
@@ -46,6 +46,7 @@ app.include_router(projects.router,    prefix="/projects",    tags=["projects"])
 app.include_router(config_sync.router, prefix="/config",      tags=["config"])
 app.include_router(admin.router,       prefix="/admin",        tags=["admin"])
 app.include_router(git.router,         prefix="/git",           tags=["git"])
+app.include_router(billing.router,     prefix="/billing",       tags=["billing"])
 
 # Static files
 STATIC_DIR = Path(__file__).parent.parent / "static"
@@ -67,7 +68,14 @@ async def health():
 @app.on_event("startup")
 async def startup():
     db.init()   # connect to PostgreSQL if DATABASE_URL is set; no-op otherwise
+    # Ensure monetization data files exist on first start
+    from core.pricing import load_pricing
+    from core.api_keys import load_keys
+    from routers.admin import _load_coupons
+    load_pricing(); load_keys(); _load_coupons()
     print(f"✅ aicli backend ready — http://localhost:8000")
     print(f"   workspace: {settings.workspace_dir}")
     print(f"   project:   {settings.active_project}")
     print(f"   db:        {'PostgreSQL' if db.is_available() else 'file-based'}")
+    if settings.dev_mode:
+        print(f"   ⚠️  DEV_MODE=true — all requests authenticated as admin")

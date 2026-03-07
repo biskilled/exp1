@@ -59,4 +59,13 @@ async def login(req: LoginRequest):
 
 @router.get("/me")
 async def me(current_user: dict = Depends(get_current_user)):
+    # dev_mode returns synthetic admin dict directly
+    if current_user.get("id") == "dev-admin":
+        return current_user
+    # Normal mode: JWT has {sub, email, exp}; look up full user for role/balance
+    user_id = current_user.get("sub")
+    if user_id:
+        full = user_store.find_by_id(user_id)
+        if full:
+            return full
     return current_user

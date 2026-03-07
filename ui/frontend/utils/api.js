@@ -1,9 +1,9 @@
 /**
- * Backend API layer — wraps fetch() with auth + API key headers.
+ * Backend API layer — wraps fetch() with auth headers.
  *
- * API keys are stored in localStorage keyed by "aicli_api_keys" (JSON object).
+ * API keys are now stored server-side (admin sets them in Admin panel).
+ * Client only sends the JWT Bearer token — no X-*-Key headers.
  * JWT token is stored in localStorage as "aicli_token".
- * All LLM calls send the user's own keys as X-*-Key headers.
  */
 
 import { state } from '../stores/state.js';
@@ -12,21 +12,10 @@ function _base() {
   return (state.settings?.backend_url || 'http://localhost:8000').replace(/\/$/, '');
 }
 
-function _apiKeys() {
-  try { return JSON.parse(localStorage.getItem('aicli_api_keys') || '{}'); }
-  catch { return {}; }
-}
-
 function _headers(extra = {}) {
   const h = { 'Content-Type': 'application/json', ...extra };
   const tok = localStorage.getItem('aicli_token');
   if (tok) h['Authorization'] = `Bearer ${tok}`;
-  const keys = _apiKeys();
-  if (keys.claude)   h['X-Anthropic-Key']  = keys.claude;
-  if (keys.openai)   h['X-OpenAI-Key']     = keys.openai;
-  if (keys.deepseek) h['X-DeepSeek-Key']   = keys.deepseek;
-  if (keys.gemini)   h['X-Gemini-Key']     = keys.gemini;
-  if (keys.grok)     h['X-Grok-Key']       = keys.grok;
   return h;
 }
 
@@ -123,23 +112,26 @@ export const api = {
   gitSetup:       (project, body)  => _post(`/git/${encodeURIComponent(project)}/setup`, body),
   gitCommitPush:  (project, body)  => _post(`/git/${encodeURIComponent(project)}/commit-push`, body),
 
-  // Admin — user management (admin only)
-  adminListUsers:  ()              => _get('/admin/users'),
-  adminPatchUser:  (id, body)      => fetch(_base() + `/admin/users/${encodeURIComponent(id)}`, {
+  // Admin — user management + pricing + coupons + api keys (admin only)
+  adminListUsers:   ()             => _get('/admin/users'),
+  adminPatchUser:   (id, body)     => fetch(_base() + `/admin/users/${encodeURIComponent(id)}`, {
                                        method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
                                      }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail)))),
-  adminDeleteUser: (id)            => _del(`/admin/users/${encodeURIComponent(id)}`),
+  adminDeleteUser:  (id)           => _del(`/admin/users/${encodeURIComponent(id)}`),
+  adminGetPricing:  ()             => _get('/admin/pricing'),
+  adminSavePricing: (body)         => _put('/admin/pricing', body),
+  adminGetCoupons:  ()             => _get('/admin/coupons'),
+  adminCreateCoupon:(body)         => _post('/admin/coupons', body),
+  adminDeleteCoupon:(code)         => _del(`/admin/coupons/${encodeURIComponent(code)}`),
+  adminGetApiKeys:  ()             => _get('/admin/api-keys'),
+  adminSaveApiKeys: (body)         => _put('/admin/api-keys', body),
+
+  // Billing — per-user balance + coupon + history
+  billingBalance:      ()          => _get('/billing/balance'),
+  billingApplyCoupon:  (code)      => _post('/billing/apply-coupon', { code }),
+  billingHistory:      ()          => _get('/billing/history'),
+  billingAddPayment:   ()          => _post('/billing/add-payment', {}),
 };
-
-// ── API key helpers (localStorage) ───────────────────────────────────────────
-
-export function saveApiKeys(keys) {
-  localStorage.setItem('aicli_api_keys', JSON.stringify(keys));
-}
-
-export function loadApiKeys() {
-  return _apiKeys();
-}
 
 // ── Recent projects (localStorage) ───────────────────────────────────────────
 
