@@ -4,6 +4,8 @@ import { BACKEND_URL } from '../utils/config.js';
 export const state = {
   // Auth
   user: null,           // { id, email, role, is_admin, balance_usd } from /auth/me + /billing/balance
+  balanceInfo: null,    // full /billing/balance response (balance_usd, free_tier_used_usd, etc.)
+  platformStats: null,  // /admin/stats response (admin only — total_balance_usd, total_charged_usd, etc.)
   requireAuth: false,   // from /health
 
   // Navigation

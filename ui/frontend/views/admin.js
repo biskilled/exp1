@@ -66,6 +66,16 @@ export async function renderAdmin(container) {
   }
 
   await _renderTab('users');
+
+  window._adminRefreshUsers = async () => {
+    const btn  = document.getElementById('admin-stats-refresh');
+    const body = document.getElementById('admin-body');
+    if (btn) btn.style.opacity = '0.3';
+    if (body) await _renderUsers(body).catch(() => {});
+    if (btn) btn.style.opacity = '1';
+    // Also refresh balance chip + sidebar so platform totals stay in sync
+    if (window._updateBalance) window._updateBalance().catch(() => {});
+  };
 }
 
 
@@ -83,15 +93,19 @@ async function _renderUsers(body) {
      </div>`;
 
   const statsBar = `
-    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;background:var(--surface2);
+    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start;background:var(--surface2);
                 border:1px solid var(--border);border-radius:var(--radius);
-                padding:0.85rem 1.2rem;margin-bottom:1.1rem">
+                padding:0.85rem 1.2rem;margin-bottom:1.1rem;position:relative">
       ${_stat('Users', `${stats.active_users ?? users.length} / ${stats.user_count ?? users.length}`)}
       ${_stat('Total Balance', _fmt(stats.total_balance_usd), stats.total_balance_usd >= 0 ? 'var(--green)' : 'var(--red)')}
       ${_stat('Total Added', _fmt(stats.total_added_usd))}
       ${_stat('Total Charged', _fmt(stats.total_charged_usd), 'var(--accent)')}
       ${_stat('Real Cost', _fmt(stats.total_real_cost_usd), 'var(--text2)')}
       ${_stat('Margin', _fmt(stats.total_margin_usd), stats.total_margin_usd >= 0 ? 'var(--green)' : 'var(--red)')}
+      <button onclick="window._adminRefreshUsers()" title="Refresh"
+        style="position:absolute;top:0.5rem;right:0.5rem;background:none;border:none;
+               color:var(--muted);cursor:pointer;font-size:0.8rem;padding:2px 5px;
+               border-radius:4px;transition:opacity 0.2s" id="admin-stats-refresh">↺</button>
     </div>`;
 
   if (!users.length) {
