@@ -134,6 +134,16 @@ export const api = {
   adminSaveProviderCosts:       (body)       => _put('/admin/provider-costs', body),
   adminFetchProviderUsage:      (body)       => _post('/admin/fetch-provider-usage', body),
   adminGetProviderUsageHistory: (provider)   => _get(`/admin/provider-usage-history${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`),
+  adminDeleteProviderUsageRecord: (provider, fetched_at) =>
+    fetch(_base() + `/admin/provider-usage-history?provider=${encodeURIComponent(provider)}&fetched_at=${encodeURIComponent(fetched_at)}`,
+      { method: 'DELETE', headers: _headers() }).then(r => r.json()),
+  adminClearProviderUsageHistory: (provider) =>
+    fetch(_base() + `/admin/provider-usage-history?provider=${encodeURIComponent(provider)}`,
+      { method: 'DELETE', headers: _headers() }).then(r => r.json()),
+
+  // Admin — manual provider balances
+  adminGetProviderBalances:  ()     => _get('/admin/provider-balances'),
+  adminSaveProviderBalances: (body) => _put('/admin/provider-balances', body),
 
   // Billing — per-user balance + coupon + history
   billingBalance:      ()          => _get('/billing/balance'),

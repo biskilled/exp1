@@ -422,10 +422,11 @@ function _inp() {
 // ── API Keys Tab ──────────────────────────────────────────────────────────────
 
 async function _renderApiKeys(body) {
-  const [keysInfo, stats, liveBalances] = await Promise.all([
+  const [keysInfo, stats, liveBalances, manualBalances] = await Promise.all([
     api.adminGetApiKeys(),
     api.adminGetStats(),
     api.adminGetApiBalances().catch(() => ({})),
+    api.adminGetProviderBalances().catch(() => ({})),
   ]);
   const byProvider = stats.by_provider || {};
   const providers = [
@@ -446,30 +447,42 @@ async function _renderApiKeys(body) {
                          background:${cfg.bg};color:${cfg.color};font-weight:500">${cfg.label}</span>`;
   };
 
-  const _liveBalBadge = (bal) => {
-    if (!bal || !bal.available) {
-      const reason = bal?.reason === 'no_key' ? 'no key' : bal?.reason === 'unsupported' ? 'N/A' : 'N/A';
-      return `<span style="font-size:0.6rem;color:var(--muted)">API balance: ${reason}</span>`;
+  const _liveBalBadge = (live, manual) => {
+    // Live balance (only DeepSeek works via API)
+    if (live?.available) {
+      const color = live.balance_usd >= 5 ? 'var(--green)' : live.balance_usd >= 1 ? 'var(--accent)' : 'var(--red)';
+      return `<span style="font-size:0.65rem;font-weight:600;color:${color}">
+                live: $${live.balance_usd.toFixed(2)}
+              </span>`;
     }
-    const color = bal.balance_usd >= 5 ? 'var(--green)' : bal.balance_usd >= 1 ? 'var(--accent)' : 'var(--red)';
-    return `<span style="font-size:0.65rem;font-weight:600;color:${color}">
-              API balance: $${bal.balance_usd.toFixed(2)}
-            </span>`;
+    // Manual balance
+    if (manual?.balance_usd != null) {
+      const b = manual.balance_usd;
+      const color = b >= 5 ? 'var(--green)' : b >= 1 ? 'var(--accent)' : 'var(--red)';
+      const ago = manual.updated_at ? ` · ${new Date(manual.updated_at).toLocaleDateString()}` : '';
+      return `<span style="font-size:0.65rem;font-weight:600;color:${color}">
+                balance: $${b.toFixed(2)}<span style="font-weight:400;color:var(--muted)">${ago}</span>
+              </span>`;
+    }
+    return `<span style="font-size:0.6rem;color:var(--muted)">balance: not set</span>`;
   };
 
   body.innerHTML = `
-    <div style="max-width:640px">
+    <div style="max-width:680px">
       <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.25rem">Server API Keys</div>
       <div style="font-size:0.65rem;color:var(--muted);margin-bottom:1.25rem">
         Keys are stored in <code>api_keys.json</code> — your <code>.env</code> file is never modified.
-        Leave a field blank to keep the current key. Live balance shown where provider API supports it.
+        Leave a key field blank to keep the current value.
+        Enter your current provider balance manually (shown in the titlebar chip).
+        Only <strong>DeepSeek</strong> supports live balance queries via API.
       </div>
 
       <div style="display:flex;flex-direction:column;gap:1.1rem">
         ${providers.map(p => {
-          const info    = keysInfo[p.id]     || { masked: '', source: 'unset' };
-          const usage   = byProvider[p.id]   || null;
-          const liveBal = liveBalances[p.id] || null;
+          const info    = keysInfo[p.id]       || { masked: '', source: 'unset' };
+          const usage   = byProvider[p.id]     || null;
+          const liveBal = liveBalances[p.id]   || null;
+          const manual  = manualBalances[p.id] || null;
           const usageLine = usage
             ? `<span style="color:var(--accent)">$${usage.charged_usd.toFixed(4)} charged</span>
                <span style="color:var(--muted)">·</span>
@@ -477,26 +490,37 @@ async function _renderApiKeys(body) {
                <span style="color:var(--muted)">·</span>
                <span>${usage.calls} call${usage.calls !== 1 ? 's' : ''}</span>`
             : `<span style="color:var(--muted)">No usage recorded yet</span>`;
+          const manualVal = manual?.balance_usd != null ? manual.balance_usd : '';
           return `
           <div style="background:var(--surface2);border:1px solid var(--border);
                       border-radius:var(--radius);padding:0.65rem 0.85rem">
             <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;flex-wrap:wrap">
               <div style="font-size:0.75rem;font-weight:600;color:var(--text)">${p.label}</div>
               ${_sourceBadge(info.source)}
-              ${_liveBalBadge(liveBal)}
+              ${_liveBalBadge(liveBal, manual)}
             </div>
-            <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.4rem;
+            <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.55rem;
                         display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
-              <span style="color:var(--text2);font-weight:500">Your tracked spend:</span>
+              <span style="color:var(--text2);font-weight:500">Tracked spend:</span>
               ${usageLine}
             </div>
-            <div style="display:flex;gap:0.5rem;align-items:center">
+            <!-- API Key row -->
+            <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem">
+              <label style="font-size:0.6rem;color:var(--muted);white-space:nowrap;min-width:55px">API Key</label>
               <input id="apikey-${p.id}" type="password"
                 placeholder="${info.masked ? info.masked : 'Not configured'}"
                 style="flex:1;${_inp()}" />
               <button onclick="window._toggleKeyVis('${p.id}')"
                 style="background:none;border:1px solid var(--border);border-radius:4px;
                        color:var(--text2);font-size:0.72rem;padding:4px 8px;cursor:pointer">👁</button>
+            </div>
+            <!-- Manual balance row -->
+            <div style="display:flex;gap:0.5rem;align-items:center">
+              <label style="font-size:0.6rem;color:var(--muted);white-space:nowrap;min-width:55px">Balance $</label>
+              <input id="mbal-${p.id}" type="number" step="0.01" min="0"
+                placeholder="Enter current balance from provider dashboard"
+                value="${manualVal}"
+                style="flex:1;${_inp()}" />
             </div>
           </div>`;
         }).join('')}
@@ -506,16 +530,16 @@ async function _renderApiKeys(body) {
         <button onclick="window._saveApiKeys()"
           style="padding:0.5rem 1.25rem;background:var(--accent);border:none;border-radius:6px;
                  color:#fff;font-size:0.82rem;font-weight:600;cursor:pointer">
-          Save API Keys
+          Save Keys + Balances
         </button>
         <span id="apikeys-status" style="font-size:0.68rem;color:var(--muted)"></span>
       </div>
       <div style="margin-top:0.75rem;font-size:0.65rem;color:var(--muted)">
-        Only filled fields are updated. Leave blank to keep the current key.<br>
-        <strong>API balance</strong>: queried live from the provider API.
-        Only <strong>DeepSeek</strong> supports this — Anthropic and OpenAI do not expose a balance endpoint per API key
-        (check your account dashboard at console.anthropic.com / platform.openai.com).<br>
-        <strong>Tracked spend</strong>: what this server has charged users through these keys.
+        <strong>Balance</strong>: Enter the current balance shown in your provider dashboard
+        (console.anthropic.com → Billing, platform.openai.com → Usage).
+        This is stored locally and shown in the titlebar chip.
+        Only DeepSeek can be queried live via API.<br>
+        <strong>Tracked spend</strong>: what this server has billed through these keys.
       </div>
     </div>
   `;
@@ -526,19 +550,30 @@ async function _renderApiKeys(body) {
   };
 
   window._saveApiKeys = async () => {
-    const keys = {};
-    providers.forEach(p => {
-      const val = document.getElementById(`apikey-${p.id}`)?.value.trim();
-      if (val) keys[p.id] = val;
-    });
     const statusEl = document.getElementById('apikeys-status');
+    if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.style.color = 'var(--muted)'; }
     try {
-      await api.adminSaveApiKeys(keys);
-      if (statusEl) { statusEl.textContent = '✓ Keys saved'; statusEl.style.color = 'var(--green)'; }
-      toast('API keys saved', 'success');
-      // Refresh to show updated masked values
-      const body = document.getElementById('admin-body');
-      if (body) await _renderApiKeys(body);
+      // Save API keys (only non-empty values)
+      const keys = {};
+      providers.forEach(p => {
+        const val = document.getElementById(`apikey-${p.id}`)?.value.trim();
+        if (val) keys[p.id] = val;
+      });
+      if (Object.keys(keys).length) await api.adminSaveApiKeys(keys);
+
+      // Save manual balances (only filled values)
+      const balances = {};
+      providers.forEach(p => {
+        const val = document.getElementById(`mbal-${p.id}`)?.value.trim();
+        if (val !== '') balances[p.id] = parseFloat(val) || 0;
+      });
+      if (Object.keys(balances).length) await api.adminSaveProviderBalances(balances);
+
+      if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = 'var(--green)'; }
+      toast('Keys and balances saved', 'success');
+      if (window._updateBalance) window._updateBalance().catch(() => {});
+      const b = document.getElementById('admin-body');
+      if (b) await _renderApiKeys(b);
     } catch (e) {
       if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }
       toast(`Error: ${e.message}`, 'error');
@@ -763,41 +798,60 @@ async function _renderBilling(body) {
     </div>
   `).join('');
 
-  // Helper: build a history table row
+  // Helper: build a history table row (7 cols: time, source, range, ok, result, errors, delete)
   const _histRow = (r) => {
-    const ok   = r.ok ? '✓' : '✕';
-    const clr  = r.ok ? 'var(--green)' : 'var(--red)';
-    const dt   = r.fetched_at ? new Date(r.fetched_at).toLocaleString() : '—';
-    const allMsgs = [...(r.errors || []), ...(r.notes || [])];
-    const msgText = allMsgs.join(' | ') || '';
-    const msgColor = (r.errors||[]).length ? 'var(--red)' : 'var(--muted)';
-    let tokens = '—';
+    const ok      = r.ok ? '✓' : '✕';
+    const clr     = r.ok ? 'var(--green)' : 'var(--red)';
+    const dt      = r.fetched_at ? new Date(r.fetched_at).toLocaleString() : '—';
+    const errors  = r.errors || [];
+    const notes   = r.notes  || [];
+    const allMsgs = [...errors, ...notes];
+    const msgText = allMsgs.join('\n') || '';
+    const msgColor = errors.length ? 'var(--red)' : 'var(--muted)';
+    let result = '—';
     if (r.mode === 'local_recalculate') {
-      tokens = `${(r.records_processed||0)} recs · $${(r.total_estimated_usd||0).toFixed(4)}`;
+      result = `${(r.records_processed||0)} recs · $${(r.total_estimated_usd||0).toFixed(4)}`;
     } else if (r.total_prompt_tokens != null) {
-      tokens = `↑${r.total_prompt_tokens.toLocaleString()} ↓${(r.total_completion_tokens||0).toLocaleString()}`;
+      result = `↑${r.total_prompt_tokens.toLocaleString()} ↓${(r.total_completion_tokens||0).toLocaleString()}`;
     } else if (r.total_input_tokens != null) {
-      tokens = `↑${r.total_input_tokens.toLocaleString()} ↓${(r.total_output_tokens||0).toLocaleString()}`;
+      result = `↑${r.total_input_tokens.toLocaleString()} ↓${(r.total_output_tokens||0).toLocaleString()}`;
     }
     const label = r.mode === 'local_recalculate' ? 'local' : (r.provider || '—');
+    const provForDel = r.provider || r.mode || 'local_recalculate';
+    const fatEsc = _esc(r.fetched_at || '');
+    // Inline short error + copy button
+    const shortMsg = allMsgs.length
+      ? allMsgs[0].slice(0, 60) + (allMsgs[0].length > 60 || allMsgs.length > 1 ? '…' : '')
+      : '';
+    const copyBtn = msgText
+      ? `<button onclick="navigator.clipboard.writeText(${JSON.stringify(msgText)}).then(()=>window._cpToast())"
+           style="margin-left:4px;background:none;border:1px solid var(--border);border-radius:3px;
+                  font-size:0.58rem;padding:1px 4px;cursor:pointer;color:var(--muted)" title="Copy errors">📋</button>`
+      : '';
     return `
       <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:0.35rem 0.5rem;font-size:0.7rem;color:var(--muted)">${dt}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.65rem;color:var(--muted);white-space:nowrap">${dt}</td>
         <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-transform:capitalize">${_esc(label)}</td>
-        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;color:var(--muted)">${_esc(r.start_date||'—')} → ${_esc(r.end_date||'—')}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.68rem;color:var(--muted);white-space:nowrap">${_esc(r.start_date||'—')} → ${_esc(r.end_date||'—')}</td>
         <td style="padding:0.35rem 0.5rem;font-size:0.72rem;font-weight:700;color:${clr};text-align:center">${ok}</td>
-        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-align:right">${tokens}</td>
-        <td style="padding:0.35rem 0.5rem;font-size:0.65rem;color:${msgColor};max-width:220px;
-                   overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(msgText)}">${_esc(msgText)}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.68rem;text-align:right;white-space:nowrap">${result}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.62rem;color:${msgColor};max-width:240px">
+          <span title="${_esc(msgText)}">${_esc(shortMsg)}</span>${copyBtn}
+        </td>
+        <td style="padding:0.35rem 0.5rem;text-align:center">
+          <button onclick="window._deleteHistRow('${_esc(provForDel)}','${fatEsc}')"
+            style="background:none;border:1px solid var(--border);border-radius:3px;
+                   font-size:0.65rem;padding:1px 5px;color:var(--red);cursor:pointer"
+            title="Delete this record">✕</button>
+        </td>
       </tr>`;
   };
 
   // History rows
-  const histRows = history.length
-    ? history.map(_histRow).join('')
-    : `<tr><td colspan="6" style="padding:1rem;text-align:center;color:var(--muted);font-size:0.72rem">
-        No usage fetches yet. Use "⚡ Local Recalculate" above to estimate costs from local data.
-       </td></tr>`;
+  const emptyHistRow = `<tr><td colspan="7" style="padding:1rem;text-align:center;color:var(--muted);font-size:0.72rem">
+    No usage fetches yet. Use "⚡ Local Recalculate" above to estimate costs from local data.
+  </td></tr>`;
+  const histRows = history.length ? history.map(_histRow).join('') : emptyHistRow;
 
   // Get today and 7 days ago as default date range
   const today = new Date().toISOString().slice(0, 10);
@@ -884,21 +938,36 @@ async function _renderBilling(body) {
       <!-- Notes/warnings from last fetch -->
       <div id="fetch-notes" style="margin-top:0.6rem;font-size:0.65rem;color:var(--text2);display:none;
                                     background:var(--surface);border-left:3px solid var(--accent);
-                                    border-radius:2px;padding:0.4rem 0.6rem;line-height:1.55"></div>
+                                    border-radius:2px;padding:0.4rem 0.6rem;line-height:1.55;
+                                    position:relative">
+        <button onclick="window._copyNotes()" title="Copy to clipboard"
+          style="position:absolute;top:4px;right:4px;background:var(--surface2);border:1px solid var(--border);
+                 border-radius:4px;padding:2px 7px;font-size:0.6rem;color:var(--text2);cursor:pointer">📋 Copy</button>
+      </div>
     </div>
 
     <!-- Fetch History -->
-    <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.5rem">Fetch History</div>
-    <div id="billing-history-wrap" style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:0.72rem;min-width:600px">
-        <thead>
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.4rem">
+      <div style="font-weight:700;font-size:0.8rem">Fetch History</div>
+      <button onclick="window._refreshBillingHistory()" title="Refresh"
+        style="background:none;border:1px solid var(--border);border-radius:4px;
+               color:var(--text2);font-size:0.7rem;padding:2px 7px;cursor:pointer">↺</button>
+      <button onclick="window._clearBillingHistory()" title="Clear all"
+        style="background:none;border:1px solid var(--border);border-radius:4px;
+               color:var(--red);font-size:0.7rem;padding:2px 7px;cursor:pointer">🗑 Clear all</button>
+    </div>
+    <div id="billing-history-wrap"
+         style="overflow:auto;max-height:320px;border:1px solid var(--border);border-radius:6px">
+      <table style="width:100%;border-collapse:collapse;font-size:0.72rem;min-width:640px">
+        <thead style="position:sticky;top:0;background:var(--surface2);z-index:1">
           <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
             <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Fetched At</th>
-            <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Provider</th>
+            <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Source</th>
             <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Date Range</th>
             <th style="text-align:center;padding:0.35rem 0.5rem;font-weight:500">OK</th>
-            <th style="text-align:right;padding:0.35rem 0.5rem;font-weight:500">Tokens</th>
-            <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Errors</th>
+            <th style="text-align:right;padding:0.35rem 0.5rem;font-weight:500">Result</th>
+            <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Errors / Notes</th>
+            <th style="text-align:center;padding:0.35rem 0.5rem;font-weight:500"></th>
           </tr>
         </thead>
         <tbody id="billing-hist-tbody">${histRows}</tbody>
@@ -916,6 +985,47 @@ async function _renderBilling(body) {
     provSel.addEventListener('change', _updateOrgVis);
     _updateOrgVis();
   }
+
+  // Copy notes panel to clipboard
+  window._copyNotes = () => {
+    const el = document.getElementById('fetch-notes');
+    const text = el ? el.innerText.replace('📋 Copy', '').trim() : '';
+    if (text) navigator.clipboard.writeText(text).then(() => window._cpToast());
+  };
+  window._cpToast = () => toast('Copied to clipboard', 'success');
+
+  // Delete single history row
+  window._deleteHistRow = async (provider, fetched_at) => {
+    try {
+      await api.adminDeleteProviderUsageRecord(provider, fetched_at);
+      const h = await api.adminGetProviderUsageHistory();
+      const tbody = document.getElementById('billing-hist-tbody');
+      if (tbody) tbody.innerHTML = (h.records||[]).length ? (h.records||[]).map(_histRow).join('') : emptyHistRow;
+    } catch (e) { toast(`Delete failed: ${e.message}`, 'error'); }
+  };
+
+  // Refresh history table
+  window._refreshBillingHistory = async () => {
+    try {
+      const h = await api.adminGetProviderUsageHistory();
+      const tbody = document.getElementById('billing-hist-tbody');
+      if (tbody) tbody.innerHTML = (h.records||[]).length ? (h.records||[]).map(_histRow).join('') : emptyHistRow;
+    } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+  };
+
+  // Clear all history
+  window._clearBillingHistory = async () => {
+    if (!confirm('Clear all fetch history records?')) return;
+    try {
+      // Clear all known provider files
+      for (const prov of ['openai', 'anthropic', 'local_recalculate']) {
+        await api.adminClearProviderUsageHistory(prov).catch(() => {});
+      }
+      const tbody = document.getElementById('billing-hist-tbody');
+      if (tbody) tbody.innerHTML = emptyHistRow;
+      toast('History cleared', 'success');
+    } catch (e) { toast(`Error: ${e.message}`, 'error'); }
+  };
 
   window._saveCosts = async () => {
     const statusEl = document.getElementById('costs-status');
@@ -994,9 +1104,7 @@ async function _renderBilling(body) {
       try {
         const h2 = await api.adminGetProviderUsageHistory();
         const tbody = document.getElementById('billing-hist-tbody');
-        if (tbody && h2.records?.length) {
-          tbody.innerHTML = h2.records.map(_histRow).join('');
-        }
+        if (tbody) tbody.innerHTML = h2.records?.length ? h2.records.map(_histRow).join('') : emptyHistRow;
       } catch (_) {}
     } catch (e) {
       if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }

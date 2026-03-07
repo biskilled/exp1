@@ -48,6 +48,42 @@ def _save_result(provider: str, result: dict) -> None:
         pass
 
 
+def delete_history_record(provider: str, fetched_at: str) -> bool:
+    """Remove a single record from the provider's JSONL history by fetched_at timestamp."""
+    path = _usage_dir() / f"{provider}.jsonl"
+    if not path.exists():
+        return False
+    try:
+        lines = [l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        new_lines, deleted = [], False
+        for line in lines:
+            try:
+                r = json.loads(line)
+                if r.get("fetched_at") == fetched_at:
+                    deleted = True
+                    continue
+            except Exception:
+                pass
+            new_lines.append(line)
+        path.write_text("\n".join(new_lines) + ("\n" if new_lines else ""), encoding="utf-8")
+        return deleted
+    except Exception:
+        return False
+
+
+def clear_history(provider: Optional[str] = None) -> int:
+    """Delete all history records for a provider (or all if provider is None). Returns count deleted."""
+    d = _usage_dir()
+    files = [d / f"{provider}.jsonl"] if provider else list(d.glob("*.jsonl"))
+    total = 0
+    for fpath in files:
+        if fpath.exists():
+            lines = [l for l in fpath.read_text(encoding="utf-8").splitlines() if l.strip()]
+            total += len(lines)
+            fpath.write_text("", encoding="utf-8")
+    return total
+
+
 def load_usage_history(provider: Optional[str] = None, limit: int = 20) -> list[dict]:
     """Load the last N fetch records (newest first)."""
     d = _usage_dir()

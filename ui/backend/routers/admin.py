@@ -568,9 +568,42 @@ async def fetch_provider_usage_endpoint(
 @router.get("/provider-usage-history")
 async def get_provider_usage_history(
     provider: str | None = None,
-    limit: int = 20,
+    limit: int = 50,
     _: dict = Depends(_require_admin),
 ):
     """Return last N provider usage fetch results (from JSONL history)."""
     from core.provider_usage_api import load_usage_history
     return {"records": load_usage_history(provider=provider, limit=limit)}
+
+
+@router.delete("/provider-usage-history")
+async def delete_provider_usage_history(
+    provider: str,
+    fetched_at: str | None = None,
+    _: dict = Depends(_require_admin),
+):
+    """Delete a single record (by fetched_at) or all records for a provider."""
+    from core.provider_usage_api import delete_history_record, clear_history
+    if fetched_at:
+        ok = delete_history_record(provider, fetched_at)
+        return {"ok": ok, "deleted": 1 if ok else 0}
+    deleted = clear_history(provider)
+    return {"ok": True, "deleted": deleted}
+
+
+# ── Manual Provider Balances ────────────────────────────────────────────────────
+
+@router.get("/provider-balances")
+async def get_provider_balances(_: dict = Depends(_require_admin)):
+    """Return manually-entered provider balances (from provider_balances.json)."""
+    from core.provider_balances import load_balances
+    return load_balances()
+
+
+@router.put("/provider-balances")
+async def put_provider_balances(body: dict, admin: dict = Depends(_require_admin)):
+    """Save manually-entered provider balances."""
+    from core.provider_balances import save_balances
+    admin_email = admin.get("email", "admin")
+    data = save_balances(body, updated_by=admin_email)
+    return {"ok": True, "balances": data}
