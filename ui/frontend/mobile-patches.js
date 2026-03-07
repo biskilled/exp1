@@ -88,7 +88,7 @@ function addChatMobileFeatures(messages, input) {
     haptic('light');
     // Reload sessions
     try {
-      const r = await fetch(`${window.__BACKEND_URL__ || 'http://localhost:8000'}/history/sessions`);
+      const r = await fetch(`${state.settings.backend_url}/history/sessions`);
       const sessions = await r.json();
       updateMobileSessionBadge(sessions.length);
     } catch {}
@@ -141,7 +141,7 @@ function addSessionsButton() {
 async function showSessionsSheet() {
   haptic('light');
   try {
-    const r = await fetch(`${window.__BACKEND_URL__ || 'http://localhost:8000'}/history/sessions`);
+    const r = await fetch(`${state.settings.backend_url}/history/sessions`);
     const sessions = await r.json();
 
     const content = sessions.length === 0

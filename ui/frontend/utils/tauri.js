@@ -5,6 +5,8 @@
  * Falls back to mock responses when running in a plain browser (Vite dev without Electron).
  */
 
+import { BACKEND_URL } from './config.js';
+
 const _isElectron = typeof window !== "undefined" && !!window.electronAPI;
 
 // ── Core invoke (maps old Tauri command names to Electron IPC) ────────────────
@@ -50,7 +52,7 @@ function _defaultSettings() {
     api_keys: {},
     default_models: {},
     ui: { theme: "dark", font_size: 13, sidebar_width: 220 },
-    backend_url: "http://localhost:8000",
+    backend_url: BACKEND_URL,
   };
 }
 

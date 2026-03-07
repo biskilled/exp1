@@ -1,3 +1,5 @@
+import { BACKEND_URL } from '../utils/config.js';
+
 // Central reactive state
 export const state = {
   // Auth
@@ -19,7 +21,7 @@ export const state = {
 
   // Settings (UI preferences + backend URL; API keys live in localStorage)
   settings: {
-    backend_url: 'http://localhost:8000',
+    backend_url: BACKEND_URL,
     default_models: {
       claude:   'claude-sonnet-4-6',
       openai:   'gpt-4.1',

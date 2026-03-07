@@ -2,6 +2,9 @@ working_folder: /Users/user/Documents/gdrive_cellqlick/2026/adviser
 module: ui
 rebuild_prompts_on_start: true
 
+# Backend API URL (used by CLI /push and the auto_commit_push.sh hook)
+backend_url: http://localhost:8000
+
 # ------------------------------------------------------------------
 # Workspace: where project workspaces live
 # ------------------------------------------------------------------

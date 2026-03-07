@@ -1,22 +1,26 @@
 import { defineConfig } from "vite";
 
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+
+const PROXY_ROUTES = [
+  "/chat", "/history", "/workflows", "/prompts",
+  "/files", "/projects", "/config", "/health", "/git", "/auth", "/usage",
+];
+
 export default defineConfig({
   clearScreen: false,
   root: "frontend",
   publicDir: "../static",
+  define: {
+    // Inject backend URL into the frontend bundle
+    "import.meta.env.VITE_BACKEND_URL": JSON.stringify(BACKEND_URL),
+  },
   server: {
     port: 5173,
     strictPort: true,
-    proxy: {
-      "/chat": "http://localhost:8000",
-      "/history": "http://localhost:8000",
-      "/workflows": "http://localhost:8000",
-      "/prompts": "http://localhost:8000",
-      "/files": "http://localhost:8000",
-      "/projects": "http://localhost:8000",
-      "/config": "http://localhost:8000",
-      "/health": "http://localhost:8000",
-    },
+    proxy: Object.fromEntries(
+      PROXY_ROUTES.map((route) => [route, BACKEND_URL])
+    ),
   },
   build: {
     outDir: "../dist",

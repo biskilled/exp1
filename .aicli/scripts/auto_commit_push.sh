@@ -55,7 +55,15 @@ except:
 [ ! -d "${CODE_DIR}/.git" ] && exit 0
 
 # ── Try aicli backend API (preferred — uses LLM commit message + credentials) ─
-BACKEND_URL="http://localhost:8000"
+BACKEND_URL=$(python3 -c "
+import yaml, sys, os
+config = os.path.join(sys.argv[1], 'aicli.yaml')
+try:
+    d = yaml.safe_load(open(config)) or {}
+    print(d.get('backend_url', 'http://localhost:8000').rstrip('/'))
+except:
+    print('http://localhost:8000')
+" "$WORK_DIR" 2>/dev/null || echo "http://localhost:8000")
 
 BACKEND_OK=$(curl -sf --connect-timeout 2 \
     "${BACKEND_URL}/health" \

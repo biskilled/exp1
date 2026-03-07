@@ -2,6 +2,7 @@ import { state, setState } from '../stores/state.js';
 import { invoke } from '../utils/tauri.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
+import { BACKEND_URL } from '../utils/config.js';
 
 const LLM_CONFIG = [
   { id: 'claude',   label: 'Claude',   color: 'var(--claude)',   placeholder: 'sk-ant-api03-...',    models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'] },
@@ -1072,7 +1073,7 @@ function renderSecurity(content) {
           api_keys: {},
           default_models: { claude: 'claude-sonnet-4-6', deepseek: 'deepseek-chat', gemini: 'gemini-1.5-flash', grok: 'grok-3', openai: 'gpt-4o' },
           ui: { theme: 'dark', font_size: 13, sidebar_width: 220 },
-          backend_url: 'http://localhost:8000',
+          backend_url: BACKEND_URL,
         },
         password: 'default',
       });
