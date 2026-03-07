@@ -103,11 +103,11 @@ ui/
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-07] `claude_cli`: I would like to have the same behavour when I am using the claude cli using the hooks. you did some 
-- [2026-03-07] `claude_cli`: test it
 - [2026-03-07] `claude_cli`: can you explain the following : what is the prject is about, who can use that , are there any soluti
 - [2026-03-07] `claude_cli`: can you update all file acroidignly (project.md, claude.md..) so history is updated 
 - [2026-03-07] `claude_cli`: I would like to optimize the code files and strucure - I my mani folder I do CLAUDE.md, QUICKSTART.m
+- [2026-03-07] `claude_cli`: I would like to extend the prject in ordder to be able to start testing that from other users. in or
+- [2026-03-07] `claude_cli`: I think there is a ui error as it is not loading properly (empty screen) . also when I start the app
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

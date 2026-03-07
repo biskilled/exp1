@@ -65,15 +65,18 @@ ui/
 │       ├── code.js     ← code folder tree + read-only file viewer
 │       ├── workflow.js ← YAML editor + syntax highlight + node flow diagram
 │       ├── history.js  ← chat/commits/runs/evals tabs (HistoryView class)
-│       ├── settings.js ← global settings: API keys, backend URL, models
+│       ├── settings.js ← global settings + Project section + Billing tab (non-admin)
+│       ├── admin.js    ← 4-tab Admin panel: Users / Pricing / Coupons / API Keys
 │       ├── explorer.js ← Monaco editor + file tree + prompt compare
-│       └── login.js    ← JWT login/register UI
+│       └── login.js    ← JWT login/register UI; onClose param; coupon field on register
 └── backend/            ← FastAPI (localhost:8000)
     ├── main.py
-    ├── config.py       ← settings: workspace_dir, require_auth, secret_key
+    ├── config.py       ← settings: workspace_dir, require_auth, secret_key, dev_mode
     ├── routers/
     │   ├── auth.py         ← POST /auth/register, POST /auth/login, GET /auth/me
-    │   ├── chat.py         ← SSE streaming; reads per-request API key headers
+    │   ├── chat.py         ← SSE streaming; server-side keys via get_key(); balance check+debit
+    │   ├── billing.py      ← GET /billing/balance, POST /billing/apply-coupon, GET /billing/history
+    │   ├── admin.py        ← user mgmt, pricing CRUD, coupons CRUD, api-keys CRUD, user credit
     │   ├── history.py      ← GET /history/{chat,commits,runs,evals}
     │   ├── workflows.py    ← GET/PUT /workflows/{name}?project=
     │   ├── prompts.py      ← list/read/write workspace prompt files
@@ -81,9 +84,11 @@ ui/
     │   ├── projects.py     ← list/create/switch workspace projects
     │   └── config_sync.py  ← stub: future remote sync
     ├── models/
-    │   └── user.py         ← file store at DATA_DIR/users.json; first = admin
+    │   └── user.py         ← file store at DATA_DIR/users.json; roles: admin/paid/free; first = admin
     ├── core/
-    │   ├── auth.py         ← JWT (python-jose) + bcrypt (direct, not passlib)
+    │   ├── auth.py         ← JWT (python-jose) + bcrypt (direct); DEV_MODE synthetic admin bypass
+    │   ├── pricing.py      ← load pricing.json; calculate_cost(); can_user_access(); free-tier enforcement
+    │   ├── api_keys.py     ← load/save api_keys.json; get_key(provider) with env var fallback
     │   └── llm_clients.py  ← per-call api_key= param, falls back to settings
     └── storage/sessions.py ← JSON session persistence
 ```
@@ -107,9 +112,11 @@ ui/
 
 - `REQUIRE_AUTH=false` (local dev) — no login gate
 - `REQUIRE_AUTH=true` (Railway/cloud) — JWT required on all routes
-- Client sends own API keys per request in headers (`X-Anthropic-Key`, etc.)
-- Server never stores keys; only tracks token counts + cost
+- `DEV_MODE=true` — all requests treated as admin with no login; synthetic user returned
+- **Server-managed API keys**: Admin sets keys in Admin panel → stored in `{DATA_DIR}/api_keys.json`; `get_key(provider)` falls back to env vars; client sends no X-*-Key headers
 - JWT stored in `localStorage`; first registered user = admin
+- Role system: `admin | paid | free`; `is_admin` derived from `role == "admin"`
+- Balance: `balance_added_usd − balance_used_usd`; transactions logged to `{DATA_DIR}/transactions/{user_id}.jsonl`
 
 ---
 
@@ -170,6 +177,25 @@ ui/
   - Backend-first path: POST /git/{project}/commit-push with ANTHROPIC_API_KEY header
   - Fallback path: direct git with credentials from _system/.git_token
   - Registered in .claude/settings.local.json alongside log_session_stop.sh
+- [x] Multi-user monetization: server-managed API keys, per-user balance, markup pricing, coupons
+  - `core/api_keys.py`: load/save api_keys.json; `get_key(provider)` with env var fallback
+  - `core/pricing.py`: load pricing.json; `calculate_cost()`; `can_user_access()` (free tier + balance)
+  - `routers/billing.py`: GET /billing/balance, POST /billing/apply-coupon, GET /billing/history
+  - `routers/admin.py`: pricing CRUD, coupons CRUD, api-keys CRUD, PATCH /admin/users/{id}
+  - `DEV_MODE=true`: synthetic admin bypasses auth, all routes available, no balance deduction
+  - Free tier: `free_tier_limit_usd` + `free_tier_models` list in pricing.json; HTTP 402 when exceeded
+  - Markup: per-provider markup_percent in pricing.json applied to base LLM cost
+  - Coupons: pre-seeded AICLI=$10; apply at register or from Billing tab
+- [x] Admin panel (views/admin.js): 4-tab UI — Users / Pricing / Coupons / API Keys
+  - Users tab: role dropdown, balance, usage, +Credit input, delete
+  - Pricing tab: free tier limit + model checkboxes, markup % per provider
+  - Coupons tab: table with create/delete; AICLI coupon pre-seeded
+  - API Keys tab: masked key inputs, per-provider update
+- [x] Billing tab in settings.js (non-admin): balance card, apply coupon form, transaction history
+- [x] Balance chip in titlebar: shows Admin / Free·$X/$Y / $X.XX (green/orange/red by balance level)
+- [x] Sidebar role badge: color-coded admin (accent) / paid (green) / free (muted)
+- [x] Login modal: ✕ close button inside card (survives innerHTML reset); click-outside-to-close
+- [x] Coupon field on register form; auto-applied POST /billing/apply-coupon after successful register
 
 ### In Progress [ ]
 
@@ -189,8 +215,9 @@ ui/
 4. [ ] Add prompt compare split-pane in explorer.js (uses /compare CLI command)
 5. [ ] Add streaming token count to CostTracker (use Anthropic token counting API)
 6. [ ] Write integration tests for WorkflowRunner
-7. [ ] Verify all backend endpoints respond correctly when REQUIRE_AUTH=true
-8. [ ] Add per-project settings view (code_dir, default_provider, workflow params)
+7. [ ] Stripe real payment integration (currently placeholder returning "coming soon")
+8. [ ] Add PostgreSQL schema migration for role/balance fields (currently file store only)
+9. [ ] Admin dashboard: usage totals, top users by spend, revenue summary
 
 ---
 
@@ -234,11 +261,13 @@ steps:
     inject_previous_output: true
 ```
 
-### API Key Flow (Cloud Mode)
-- UI reads keys from localStorage
-- Each `api.js` call sets `X-Anthropic-Key` / `X-OpenAI-Key` / etc. headers
-- Backend `chat.py` reads headers, passes `api_key=` to llm_clients.py
-- Backend only stores token counts + cost in usage log; never the key itself
+### API Key Flow (Server-Managed)
+- Admin sets keys in Admin panel → saved to `{DATA_DIR}/api_keys.json`
+- `core/api_keys.py` `get_key(provider)` returns json key; falls back to env var if empty
+- Backend `chat.py` calls `get_key(provider)` before each LLM call — no client headers needed
+- Balance check via `can_user_access(user, provider, model)` before call; HTTP 402 if denied
+- Cost deducted via `_debit_user()` after successful response; transaction appended to JSONL
+- `DEV_MODE=true`: skips debit entirely; synthetic admin user used for all requests
 
 ---
 
@@ -282,6 +311,22 @@ steps:
 | 2026-03-07 | .aicli/scripts/auto_commit_push.sh: new Stop hook for Claude CLI auto-commit/push |
 | 2026-03-07 | .claude/settings.local.json: auto_commit_push.sh registered as Stop hook |
 | 2026-03-07 | project.yaml: code_dir set to absolute path (was ../.. which resolved outside git repo) |
+| 2026-03-07 | Multi-user monetization: server-managed API keys, per-user balance, markup pricing, coupons |
+| 2026-03-07 | core/pricing.py NEW: calculate_cost(), can_user_access(), free-tier enforcement |
+| 2026-03-07 | core/api_keys.py NEW: load/save api_keys.json; get_key() with env var fallback |
+| 2026-03-07 | routers/billing.py NEW: /billing/balance, /billing/apply-coupon, /billing/history |
+| 2026-03-07 | routers/admin.py EXTENDED: pricing CRUD, coupons CRUD, api-keys CRUD, user credit |
+| 2026-03-07 | routers/chat.py: removed X-*-Key header extraction; uses get_key() + balance check/debit |
+| 2026-03-07 | config.py: added dev_mode, stripe_secret_key, stripe_publishable_key |
+| 2026-03-07 | core/auth.py: DEV_MODE synthetic admin bypass in get_current_user() + get_optional_user() |
+| 2026-03-07 | models/user.py: added role/balance fields + _migrate_user(); authenticate() returns migrated user |
+| 2026-03-07 | main.py: registered billing router; startup seeds pricing.json, api_keys.json, coupons.json |
+| 2026-03-07 | views/admin.js NEW: 4-tab Admin panel (Users / Pricing / Coupons / API Keys) |
+| 2026-03-07 | views/settings.js: added Billing tab (balance, apply coupon, transaction history) |
+| 2026-03-07 | main.js: balance chip in titlebar; role badge in sidebar footer; updateBalanceChip() exported |
+| 2026-03-07 | views/login.js: onClose param; ✕ button rendered inside card (survives innerHTML reset) |
+| 2026-03-07 | views/login.js: coupon field on register; auto-apply POST /billing/apply-coupon after register |
+| 2026-03-07 | utils/api.js: removed X-*-Key headers; added billing + extended admin API methods |
 
 ---
 

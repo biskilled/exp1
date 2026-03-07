@@ -94,8 +94,8 @@ async function _continueToApp(user) {
   renderSidebarContent();
   navigateTo('home');
 
-  // Load balance chip (non-blocking)
-  if (user || state.backendOnline) {
+  // Load balance chip + refresh sidebar role badge (non-blocking)
+  if (state.backendOnline) {
     updateBalanceChip().catch(() => {});
   }
 }
@@ -215,15 +215,17 @@ function renderSidebarFooter() {
   const u = state.user;
 
   if (u) {
-    // Logged-in user
     const initials = (u.email || '?').slice(0, 2).toUpperCase();
-    const isAdmin  = u.is_admin || u.role === 'admin';
+    const role     = u.role || (u.is_admin ? 'admin' : 'free');
+    const isAdmin  = role === 'admin';
+    const roleColors = { admin: 'var(--accent)', paid: 'var(--green)', free: 'var(--muted)' };
+    const roleColor  = roleColors[role] || 'var(--muted)';
     footer.innerHTML = `
       <div class="sidebar-user">
         <div class="sidebar-user-avatar" title="${u.email}">${initials}</div>
         <div class="sidebar-user-info nav-label">
-          <div class="sidebar-user-email">${u.email}</div>
-          ${isAdmin ? '<div style="font-size:0.58rem;color:var(--accent)">admin</div>' : ''}
+          <div class="sidebar-user-email" style="font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
+          <div style="font-size:0.58rem;color:${roleColor};text-transform:uppercase;letter-spacing:0.04em;margin-top:1px">${role}</div>
         </div>
         <div class="sidebar-user-actions nav-label">
           ${isAdmin ? `<button class="sidebar-user-btn" title="Admin panel" onclick="window._nav('admin')">👥</button>` : ''}
@@ -251,7 +253,6 @@ function renderSidebarFooter() {
 // ── Login modal (opens over current view) ─────────────────────────────────────
 
 window._showLoginModal = (initialMode = 'login') => {
-  // Remove any existing modal
   document.getElementById('login-modal-overlay')?.remove();
 
   const overlay = document.createElement('div');
@@ -259,24 +260,11 @@ window._showLoginModal = (initialMode = 'login') => {
   overlay.style.cssText =
     'position:fixed;inset:0;z-index:9000;display:flex;align-items:center;' +
     'justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px)';
-
-  // Close button (top-right corner)
-  const closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '✕';
-  closeBtn.title = 'Close';
-  closeBtn.style.cssText =
-    'position:absolute;top:1rem;right:1rem;z-index:9001;background:none;border:none;' +
-    'color:var(--text2);font-size:1.1rem;cursor:pointer;width:32px;height:32px;' +
-    'display:flex;align-items:center;justify-content:center;border-radius:50%;' +
-    'transition:background 0.15s';
-  closeBtn.onmouseenter = () => { closeBtn.style.background = 'rgba(255,255,255,0.1)'; };
-  closeBtn.onmouseleave = () => { closeBtn.style.background = 'none'; };
-  closeBtn.onclick = () => overlay.remove();
-  overlay.appendChild(closeBtn);
-
   document.body.appendChild(overlay);
 
-  // The renderLogin card goes inside the overlay
+  const _close = () => overlay.remove();
+
+  // renderLogin now owns the close button inside the card via onClose param
   import('./views/login.js').then(({ renderLogin }) => {
     renderLogin(overlay, state.settings.backend_url, (token, user) => {
       overlay.remove();
@@ -285,21 +273,16 @@ window._showLoginModal = (initialMode = 'login') => {
       setState({ user });
       renderSidebarFooter();
       toast(`Signed in as ${user.email}`, 'success');
-      updateBalanceChip().catch(() => {});
-    });
+      updateBalanceChip().then(() => renderSidebarFooter()).catch(() => {});
+    }, _close);
 
-    // The login card is now inside overlay — patch its mode if register
     if (initialMode === 'register') {
-      setTimeout(() => {
-        document.getElementById('tab-register')?.click();
-      }, 50);
+      setTimeout(() => document.getElementById('tab-register')?.click(), 50);
     }
   });
 
-  // Click outside the card to close
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
+  // Click outside the card also closes
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) _close(); });
 };
 
 function updateStatusDot() {
@@ -332,7 +315,9 @@ export async function updateBalanceChip() {
       chip.style.color = bal >= 1 ? 'var(--green)' : bal >= 0.1 ? 'var(--accent)' : 'var(--red)';
       chip.style.background = 'var(--surface2)';
     }
+    // Update state and re-render sidebar so role badge appears immediately
     setState({ user: { ...(state.user || {}), role, balance_usd: b.balance_usd } });
+    renderSidebarFooter();
   } catch {
     chip.style.display = 'none';
   }

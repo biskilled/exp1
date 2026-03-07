@@ -9,7 +9,7 @@
  *   renderLogin(document.body, backendUrl, () => initApp());
  */
 
-export function renderLogin(container, backendUrl, onSuccess) {
+export function renderLogin(container, backendUrl, onSuccess, onClose = null) {
   let mode = 'login'; // 'login' | 'register'
 
   function render() {
@@ -17,6 +17,14 @@ export function renderLogin(container, backendUrl, onSuccess) {
     container.innerHTML = `
       <div class="login-overlay">
         <div class="login-card">
+          ${onClose ? `
+          <button id="login-close-btn" title="Close" style="
+            position:absolute;top:0.75rem;right:0.75rem;
+            background:none;border:none;color:var(--text2,#888);
+            font-size:1rem;cursor:pointer;width:28px;height:28px;
+            display:flex;align-items:center;justify-content:center;
+            border-radius:50%;transition:background 0.15s;line-height:1
+          ">✕</button>` : ''}
           <div class="login-logo">aicli</div>
           <div class="login-subtitle">AI-powered dev CLI</div>
 
@@ -50,14 +58,22 @@ export function renderLogin(container, backendUrl, onSuccess) {
           </form>
 
           <div class="login-note">
-            Your API keys are stored locally in this app and sent directly to AI providers.
-            The server only tracks token usage — it never sees your keys.
+            API keys are managed by the server admin.
+            The server tracks token usage for billing purposes.
           </div>
         </div>
       </div>
     `;
 
     _bindStyles();
+
+    // Close button — re-bind every render since innerHTML replaces the node
+    const closeBtn = document.getElementById('login-close-btn');
+    if (closeBtn && onClose) {
+      closeBtn.onclick = onClose;
+      closeBtn.onmouseenter = () => { closeBtn.style.background = 'rgba(128,128,128,0.15)'; };
+      closeBtn.onmouseleave = () => { closeBtn.style.background = 'none'; };
+    }
 
     document.getElementById('tab-login').onclick = () => { mode = 'login'; render(); };
     document.getElementById('tab-register').onclick = () => { mode = 'register'; render(); };
@@ -191,6 +207,7 @@ function _bindStyles() {
       padding: 2rem 2.5rem;
       width: 100%; max-width: 400px;
       box-shadow: 0 24px 64px rgba(0,0,0,.6);
+      position: relative;
     }
     .login-logo {
       font-family: var(--font-ui, monospace);

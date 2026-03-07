@@ -220,7 +220,7 @@ def authenticate(email: str, password: str) -> Optional[dict]:
 
     # Update last_login
     update_user(raw["id"], last_login=_now())
-    return _safe(raw)
+    return _safe(_migrate_user(raw))
 
 
 def list_users() -> list[dict]:
