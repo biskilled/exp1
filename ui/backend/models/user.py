@@ -59,7 +59,8 @@ def _save_all(users: list[dict]) -> None:
 
 # ── PostgreSQL implementations ────────────────────────────────────────────────
 
-_PG_COLS = "id, email, password_hash, is_admin, is_active, created_at, last_login"
+_PG_COLS = ("id, email, password_hash, is_admin, is_active, created_at, last_login, "
+            "role, balance_added_usd, balance_used_usd, coupons_used, stripe_customer_id")
 
 
 # Fields added for monetization — not in PostgreSQL schema yet (file store only for now)
@@ -86,11 +87,21 @@ def _migrate_user(user: dict) -> dict:
 
 
 def _pg_row(row: tuple) -> dict:
-    keys = ["id", "email", "password_hash", "is_admin", "is_active", "created_at", "last_login"]
+    keys = [
+        "id", "email", "password_hash", "is_admin", "is_active", "created_at", "last_login",
+        "role", "balance_added_usd", "balance_used_usd", "coupons_used", "stripe_customer_id",
+    ]
     d = dict(zip(keys, row))
     for k in ("created_at", "last_login"):
         if d.get(k) and hasattr(d[k], "isoformat"):
             d[k] = d[k].isoformat()
+    # Ensure numeric balance fields are Python floats (not Decimal)
+    for k in ("balance_added_usd", "balance_used_usd"):
+        if d.get(k) is not None:
+            d[k] = float(d[k])
+    # Ensure coupons_used is a list
+    if d.get("coupons_used") is None:
+        d["coupons_used"] = []
     return d
 
 

@@ -70,19 +70,32 @@ class _Database:
 
     @staticmethod
     def _ensure_schema(conn) -> None:
-        """Create tables if they don't exist."""
+        """Create tables and migrate missing columns — safe to run repeatedly."""
         ddl = """
+        -- Users table (full schema including monetization fields)
         CREATE TABLE IF NOT EXISTS users (
-            id            VARCHAR(36)  PRIMARY KEY,
-            email         VARCHAR(255) UNIQUE NOT NULL,
-            password_hash TEXT         NOT NULL,
-            is_admin      BOOLEAN      NOT NULL DEFAULT FALSE,
-            is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
-            created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-            last_login    TIMESTAMPTZ
+            id                 VARCHAR(36)    PRIMARY KEY,
+            email              VARCHAR(255)   UNIQUE NOT NULL,
+            password_hash      TEXT           NOT NULL,
+            is_admin           BOOLEAN        NOT NULL DEFAULT FALSE,
+            is_active          BOOLEAN        NOT NULL DEFAULT TRUE,
+            created_at         TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            last_login         TIMESTAMPTZ,
+            role               VARCHAR(20)    NOT NULL DEFAULT 'free',
+            balance_added_usd  NUMERIC(14, 8) NOT NULL DEFAULT 0,
+            balance_used_usd   NUMERIC(14, 8) NOT NULL DEFAULT 0,
+            coupons_used       TEXT[]         NOT NULL DEFAULT '{}',
+            stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT ''
         );
+        -- Migrate: add monetization columns if table already exists without them
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS role               VARCHAR(20)    NOT NULL DEFAULT 'free';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_added_usd  NUMERIC(14, 8) NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_used_usd   NUMERIC(14, 8) NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS coupons_used       TEXT[]         NOT NULL DEFAULT '{}';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT '';
         CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
+        -- Usage logs (real cost + charged cost)
         CREATE TABLE IF NOT EXISTS usage_logs (
             id            SERIAL         PRIMARY KEY,
             user_id       VARCHAR(36)    REFERENCES users(id) ON DELETE SET NULL,
@@ -91,10 +104,28 @@ class _Database:
             input_tokens  INTEGER        NOT NULL DEFAULT 0,
             output_tokens INTEGER        NOT NULL DEFAULT 0,
             cost_usd      NUMERIC(12, 8) NOT NULL DEFAULT 0,
+            charged_usd   NUMERIC(12, 8) NOT NULL DEFAULT 0,
             created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
         );
+        ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS charged_usd NUMERIC(12, 8) NOT NULL DEFAULT 0;
         CREATE INDEX IF NOT EXISTS idx_usage_user_id    ON usage_logs (user_id);
         CREATE INDEX IF NOT EXISTS idx_usage_created_at ON usage_logs (created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_usage_provider   ON usage_logs (provider);
+
+        -- Transactions (credits, debits, coupons)
+        CREATE TABLE IF NOT EXISTS transactions (
+            id            SERIAL         PRIMARY KEY,
+            user_id       VARCHAR(36)    REFERENCES users(id) ON DELETE SET NULL,
+            type          VARCHAR(50)    NOT NULL,
+            amount_usd    NUMERIC(12, 8) NOT NULL DEFAULT 0,
+            base_cost_usd NUMERIC(12, 8),
+            description   TEXT           NOT NULL DEFAULT '',
+            ref           VARCHAR(255)   NOT NULL DEFAULT '',
+            created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_tx_user_id    ON transactions (user_id);
+        CREATE INDEX IF NOT EXISTS idx_tx_created_at ON transactions (created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_tx_type       ON transactions (type);
         """
         with conn.cursor() as cur:
             cur.execute(ddl)

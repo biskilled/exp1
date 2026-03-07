@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from config import settings
 from core.auth import get_current_user
+from core.database import db
 from core.pricing import calculate_cost
 from models.user import find_by_id, list_users
 
@@ -54,16 +55,33 @@ def log_usage(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    charged_usd: float = 0.0,
 ) -> None:
-    """Append one usage record. Called from chat.py after each LLM call."""
+    """Append one usage record to PostgreSQL (when available) and JSONL file."""
+    real_cost = _cost(model, input_tokens, output_tokens)
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "provider": provider,
         "model": model,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "cost_usd": _cost(model, input_tokens, output_tokens),
+        "cost_usd": real_cost,
+        "charged_usd": charged_usd,
     }
+    # Primary: PostgreSQL
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """INSERT INTO usage_logs
+                           (user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                        (user_id, provider, model, input_tokens, output_tokens, real_cost, charged_usd),
+                    )
+        except Exception:
+            pass
+    # Always write to file (fallback / portability)
     with open(_usage_path(user_id), "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 

@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from config import settings
 from core.auth import get_current_user
+from core.database import db
 from core.pricing import load_pricing, save_pricing
 from core.api_keys import load_keys, save_keys, masked_keys
 from models.user import find_by_id, list_users, update_user, delete_user
@@ -109,36 +110,62 @@ def _save_coupons(coupons: list[dict]) -> None:
 @router.get("/stats")
 async def get_stats(_: dict = Depends(_require_admin)):
     """Aggregate totals across all users: balance, charged cost, real cost, margin."""
-    users = list_users()
-    total_added  = sum(u.get("balance_added_usd",  0.0) for u in users)
+    users         = list_users()
+    total_added   = sum(u.get("balance_added_usd", 0.0) for u in users)
     total_charged = sum(u.get("balance_used_usd",  0.0) for u in users)
 
-    # Scan all transaction files for usage_debit records.
-    # Accumulate total real cost and per-provider breakdowns.
     total_real_cost = 0.0
     by_provider: dict[str, dict] = {}
-    tx_dir = Path(settings.data_dir) / "transactions"
-    if tx_dir.exists():
-        for txf in tx_dir.glob("*.jsonl"):
-            try:
-                for line in txf.read_text(encoding="utf-8").splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    r = json.loads(line)
-                    if r.get("type") != "usage_debit":
-                        continue
-                    charged   = r.get("amount_usd", 0.0)
-                    real_cost = r.get("base_cost_usd", charged)
-                    total_real_cost += real_cost
-                    # First word of description is the provider name
-                    provider = (r.get("description") or "").split(" ")[0] or "unknown"
-                    p = by_provider.setdefault(provider, {"charged_usd": 0.0, "real_cost_usd": 0.0, "calls": 0})
-                    p["charged_usd"]   = round(p["charged_usd"]   + charged,   8)
-                    p["real_cost_usd"] = round(p["real_cost_usd"] + real_cost, 8)
-                    p["calls"]        += 1
-            except Exception:
-                pass
+
+    if db.is_available():
+        # Read from PostgreSQL transactions table
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            SPLIT_PART(description, ' ', 1) AS provider,
+                            SUM(amount_usd)::float           AS charged,
+                            SUM(COALESCE(base_cost_usd, amount_usd))::float AS real_cost,
+                            COUNT(*)::int                    AS calls
+                        FROM transactions
+                        WHERE type = 'usage_debit'
+                        GROUP BY SPLIT_PART(description, ' ', 1)
+                    """)
+                    for row in cur.fetchall():
+                        prov, charged, real_cost, calls = row
+                        prov = prov or "unknown"
+                        total_real_cost += real_cost or 0.0
+                        by_provider[prov] = {
+                            "charged_usd":   round(float(charged   or 0), 8),
+                            "real_cost_usd": round(float(real_cost or 0), 8),
+                            "calls":         calls,
+                        }
+        except Exception:
+            pass
+    else:
+        # Scan JSONL transaction files
+        tx_dir = Path(settings.data_dir) / "transactions"
+        if tx_dir.exists():
+            for txf in tx_dir.glob("*.jsonl"):
+                try:
+                    for line in txf.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        r = json.loads(line)
+                        if r.get("type") != "usage_debit":
+                            continue
+                        charged   = r.get("amount_usd", 0.0)
+                        real_cost = r.get("base_cost_usd", charged)
+                        total_real_cost += real_cost
+                        provider = (r.get("description") or "").split(" ")[0] or "unknown"
+                        p = by_provider.setdefault(provider, {"charged_usd": 0.0, "real_cost_usd": 0.0, "calls": 0})
+                        p["charged_usd"]   = round(p["charged_usd"]   + charged,   8)
+                        p["real_cost_usd"] = round(p["real_cost_usd"] + real_cost, 8)
+                        p["calls"]        += 1
+                except Exception:
+                    pass
 
     return {
         "user_count":          len(users),
@@ -310,139 +337,175 @@ async def get_usage_table(_: dict = Depends(_require_admin)):
     """
     Daily aggregated usage table — grain: (date, user_id, provider).
 
-    Aggregates usage/{user_id}.jsonl (tokens/cost) and
-    transactions/{user_id}.jsonl (revenue, topups) into one table.
+    Reads from PostgreSQL when DATABASE_URL is set; falls back to JSONL files.
     Also returns 'system_rows' with live API balances per provider.
     """
     from core.api_balances import get_all_balances
 
-    users     = list_users()
-    user_map  = {u["id"]: u for u in users}
+    users    = list_users()
+    user_map = {u["id"]: u for u in users}
+    mk       = masked_keys()
+    result: list[dict] = []
 
-    # (date, user_id, provider) → running totals
-    rows: dict[tuple, dict] = {}
-
-    def _row(date: str, user_id: str, provider: str) -> dict:
-        key = (date, user_id, provider)
-        if key not in rows:
-            rows[key] = {
-                "date":           date,
-                "user_id":        user_id,
-                "provider":       provider,
-                "tokens_input":   0,
-                "tokens_output":  0,
-                "cost":           0.0,    # real LLM cost (no markup)
-                "revenue":        0.0,    # charged to user (with markup)
-            }
-        return rows[key]
-
-    # (date, user_id) → topup buckets (shared across all provider rows that day)
-    topups: dict[tuple, dict] = {}
-
-    def _topup(date: str, user_id: str) -> dict:
-        key = (date, user_id)
-        if key not in topups:
-            topups[key] = {"cash": 0.0, "cash_cnt": 0, "coupon": 0.0, "coupon_cnt": 0}
-        return topups[key]
-
-    usage_dir = Path(settings.data_dir) / "usage"
-    tx_dir    = Path(settings.data_dir) / "transactions"
-
-    # Pass 1 — usage files: tokens + real cost
-    if usage_dir.exists():
-        for uf in usage_dir.glob("*.jsonl"):
-            uid = uf.stem
-            for line in uf.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    r        = json.loads(line)
-                    date     = r["ts"][:10]
-                    provider = r.get("provider", "unknown")
-                    row      = _row(date, uid, provider)
-                    row["tokens_input"]  += r.get("input_tokens", 0)
-                    row["tokens_output"] += r.get("output_tokens", 0)
-                    row["cost"]           = round(row["cost"] + r.get("cost_usd", 0.0), 8)
-                except Exception:
-                    pass
-
-    # Pass 2 — transaction files: revenue + topups
-    if tx_dir.exists():
-        for tf in tx_dir.glob("*.jsonl"):
-            uid = tf.stem
-            for line in tf.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    r        = json.loads(line)
-                    date     = r["ts"][:10]
-                    tx_type  = r.get("type", "")
-                    amount   = r.get("amount_usd", 0.0)
-
-                    if tx_type == "usage_debit":
-                        # First word of description = provider
-                        desc     = r.get("description", "")
-                        provider = desc.split(" ")[0] if desc else "unknown"
-                        real     = r.get("base_cost_usd", amount)
-                        row      = _row(date, uid, provider)
-                        row["revenue"] = round(row["revenue"] + amount, 8)
-                        # Back-fill cost from tx if usage file had nothing
-                        if row["cost"] == 0.0:
-                            row["cost"] = round(row["cost"] + real, 8)
-
-                    elif tx_type == "coupon_credit":
-                        t = _topup(date, uid)
-                        t["coupon"]     = round(t["coupon"] + amount, 6)
-                        t["coupon_cnt"] += 1
-
-                    elif tx_type in ("admin_credit", "stripe_payment"):
-                        t = _topup(date, uid)
-                        t["cash"]     = round(t["cash"] + amount, 6)
-                        t["cash_cnt"] += 1
-
-                except Exception:
-                    pass
-
-    # Build sorted result rows
-    mk = masked_keys()
-    result = []
-    for (date, uid, provider), row in sorted(rows.items()):
+    def _build_row(date: str, uid: str, provider: str, tin: int, tout: int,
+                   cost: float, revenue: float, tp: dict) -> dict:
         user    = user_map.get(uid, {})
-        balance = round(
-            user.get("balance_added_usd", 0.0) - user.get("balance_used_usd", 0.0), 4
-        )
-        tp      = topups.get((date, uid), {})
-        ki      = mk.get(provider, {})
-        result.append({
-            "date":             date,
-            "user_id":          uid,
-            "email":            user.get("email", uid),
+        balance = round(float(user.get("balance_added_usd", 0.0))
+                        - float(user.get("balance_used_usd", 0.0)), 4)
+        ki = mk.get(provider, {})
+        return {
+            "date":             date or "",
+            "user_id":          uid or "",
+            "email":            user.get("email", uid or ""),
             "llm":              provider,
             "api_key_masked":   ki.get("masked", ""),
-            "tokens":           row["tokens_input"] + row["tokens_output"],
-            "tokens_input":     row["tokens_input"],
-            "tokens_output":    row["tokens_output"],
-            "cost":             round(row["cost"], 6),
-            "revenue":          round(row["revenue"], 6),
-            "margin":           round(row["revenue"] - row["cost"], 6),
+            "tokens":           tin + tout,
+            "tokens_input":     tin,
+            "tokens_output":    tout,
+            "cost":             round(float(cost    or 0), 6),
+            "revenue":          round(float(revenue or 0), 6),
+            "margin":           round(float(revenue or 0) - float(cost or 0), 6),
             "balance":          balance,
-            "topup_cash":       tp.get("cash", 0.0),
-            "topup_cash_cnt":   tp.get("cash_cnt", 0),
-            "topup_coupon":     tp.get("coupon", 0.0),
-            "topup_coupon_cnt": tp.get("coupon_cnt", 0),
-        })
+            "topup_cash":       tp.get("cash",        0.0),
+            "topup_cash_cnt":   tp.get("cash_cnt",    0),
+            "topup_coupon":     tp.get("coupon",      0.0),
+            "topup_coupon_cnt": tp.get("coupon_cnt",  0),
+        }
 
-    # System rows — one per provider with live API balance
+    if db.is_available():
+        # ── PostgreSQL path ────────────────────────────────────────────────────
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            DATE(created_at)::text        AS date,
+                            user_id,
+                            COALESCE(provider, 'unknown') AS provider,
+                            SUM(input_tokens)::int        AS tokens_input,
+                            SUM(output_tokens)::int       AS tokens_output,
+                            SUM(cost_usd)::float          AS cost,
+                            SUM(charged_usd)::float       AS revenue
+                        FROM usage_logs
+                        WHERE user_id IS NOT NULL
+                        GROUP BY DATE(created_at), user_id, provider
+                        ORDER BY DATE(created_at) DESC, user_id, provider
+                    """)
+                    usage_rows = cur.fetchall()
+
+                    cur.execute("""
+                        SELECT
+                            DATE(created_at)::text AS date,
+                            user_id,
+                            type,
+                            SUM(amount_usd)::float AS total_amount,
+                            COUNT(*)::int          AS cnt
+                        FROM transactions
+                        WHERE type IN ('coupon_credit', 'admin_credit', 'stripe_payment')
+                          AND user_id IS NOT NULL
+                        GROUP BY DATE(created_at), user_id, type
+                    """)
+                    tx_rows = cur.fetchall()
+
+            # Build topups lookup: (date, user_id) → bucket
+            pg_topups: dict[tuple, dict] = {}
+            for date, uid, tx_type, amount, cnt in tx_rows:
+                key = (date, uid)
+                if key not in pg_topups:
+                    pg_topups[key] = {"cash": 0.0, "cash_cnt": 0, "coupon": 0.0, "coupon_cnt": 0}
+                if tx_type == "coupon_credit":
+                    pg_topups[key]["coupon"]     = round(pg_topups[key]["coupon"] + float(amount or 0), 6)
+                    pg_topups[key]["coupon_cnt"] += cnt
+                else:
+                    pg_topups[key]["cash"]     = round(pg_topups[key]["cash"] + float(amount or 0), 6)
+                    pg_topups[key]["cash_cnt"] += cnt
+
+            for date, uid, provider, tin, tout, cost, revenue in usage_rows:
+                tp = pg_topups.get((date, uid), {})
+                result.append(_build_row(date, uid, provider, tin or 0, tout or 0, cost or 0, revenue or 0, tp))
+
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Database error: {exc}") from exc
+
+    else:
+        # ── JSONL file path (when no DATABASE_URL) ─────────────────────────────
+        file_rows: dict[tuple, dict] = {}
+        file_topups: dict[tuple, dict] = {}
+
+        def _frow(date: str, uid: str, provider: str) -> dict:
+            key = (date, uid, provider)
+            if key not in file_rows:
+                file_rows[key] = {"tokens_input": 0, "tokens_output": 0, "cost": 0.0, "revenue": 0.0}
+            return file_rows[key]
+
+        def _ftopup(date: str, uid: str) -> dict:
+            key = (date, uid)
+            if key not in file_topups:
+                file_topups[key] = {"cash": 0.0, "cash_cnt": 0, "coupon": 0.0, "coupon_cnt": 0}
+            return file_topups[key]
+
+        usage_dir = Path(settings.data_dir) / "usage"
+        tx_dir    = Path(settings.data_dir) / "transactions"
+
+        if usage_dir.exists():
+            for uf in usage_dir.glob("*.jsonl"):
+                uid = uf.stem
+                for line in uf.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        r = json.loads(line)
+                        row = _frow(r["ts"][:10], uid, r.get("provider", "unknown"))
+                        row["tokens_input"]  += r.get("input_tokens", 0)
+                        row["tokens_output"] += r.get("output_tokens", 0)
+                        row["cost"]           = round(row["cost"] + r.get("cost_usd", 0.0), 8)
+                    except Exception:
+                        pass
+
+        if tx_dir.exists():
+            for tf in tx_dir.glob("*.jsonl"):
+                uid = tf.stem
+                for line in tf.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        r       = json.loads(line)
+                        date    = r["ts"][:10]
+                        tx_type = r.get("type", "")
+                        amount  = r.get("amount_usd", 0.0)
+                        if tx_type == "usage_debit":
+                            desc     = r.get("description", "")
+                            provider = desc.split(" ")[0] if desc else "unknown"
+                            row      = _frow(date, uid, provider)
+                            row["revenue"] = round(row["revenue"] + amount, 8)
+                            if row["cost"] == 0.0:
+                                row["cost"] = round(row["cost"] + r.get("base_cost_usd", amount), 8)
+                        elif tx_type == "coupon_credit":
+                            t = _ftopup(date, uid)
+                            t["coupon"] = round(t["coupon"] + amount, 6); t["coupon_cnt"] += 1
+                        elif tx_type in ("admin_credit", "stripe_payment"):
+                            t = _ftopup(date, uid)
+                            t["cash"] = round(t["cash"] + amount, 6); t["cash_cnt"] += 1
+                    except Exception:
+                        pass
+
+        for (date, uid, provider), row in sorted(file_rows.items()):
+            tp = file_topups.get((date, uid), {})
+            result.append(_build_row(date, uid, provider,
+                                     row["tokens_input"], row["tokens_output"],
+                                     row["cost"], row["revenue"], tp))
+
+    # ── System rows: live API balance per provider ─────────────────────────────
     api_balances = await get_all_balances()
-    system_rows  = []
-    for provider, bal in api_balances.items():
-        ki = mk.get(provider, {})
-        system_rows.append({
+    system_rows  = [
+        {
             "provider":       provider,
-            "api_key_masked": ki.get("masked", ""),
+            "api_key_masked": mk.get(provider, {}).get("masked", ""),
             "api_balance":    bal,
-        })
+        }
+        for provider, bal in api_balances.items()
+    ]
 
     return {"rows": result, "system_rows": system_rows}

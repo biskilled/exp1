@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from config import settings
 from core.auth import get_optional_user
 from core.api_keys import get_key
+from core.database import db
 from core.pricing import load_pricing, calculate_cost, can_user_access
 from core.llm_clients import call_claude, call_deepseek, call_gemini, call_grok
 from routers.usage import log_usage
@@ -102,8 +103,22 @@ def _append_transaction(
     user_id: str, tx_type: str, amount_usd: float,
     description: str, ref: str = "", base_cost_usd: Optional[float] = None,
 ) -> None:
-    """Append a transaction record to transactions/{user_id}.jsonl."""
+    """Append a transaction record to PostgreSQL (when available) and JSONL file."""
     try:
+        # Primary: PostgreSQL
+        if db.is_available():
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """INSERT INTO transactions
+                               (user_id, type, amount_usd, base_cost_usd, description, ref)
+                               VALUES (%s, %s, %s, %s, %s, %s)""",
+                            (user_id, tx_type, amount_usd, base_cost_usd, description, ref or ""),
+                        )
+            except Exception:
+                pass
+        # Always write to file (fallback / portability)
         tx_dir = Path(settings.data_dir) / "transactions"
         tx_dir.mkdir(parents=True, exist_ok=True)
         record: dict = {
@@ -137,13 +152,19 @@ async def _call_provider(provider: str, message: str, system: str) -> dict:
 
 
 def _debit_user(user_id: str, provider: str, model: str, input_tokens: int, output_tokens: int) -> None:
-    """Deduct usage cost from user balance and append transaction."""
+    """Log usage, deduct cost from user balance, append transaction."""
     try:
         from models.user import find_by_id, update_user
-        pricing = load_pricing()
-        markup = pricing.get("providers", {}).get(provider, {}).get("markup_percent", 0)
-        charged_cost = calculate_cost(provider, model, input_tokens, output_tokens, markup)
+        pricing      = load_pricing()
+        markup       = pricing.get("providers", {}).get(provider, {}).get("markup_percent", 0)
         real_cost    = calculate_cost(provider, model, input_tokens, output_tokens, 0)
+        charged_cost = calculate_cost(provider, model, input_tokens, output_tokens, markup)
+
+        # Write usage row with both real and charged cost
+        log_usage(user_id=user_id, provider=provider, model=model,
+                  input_tokens=input_tokens, output_tokens=output_tokens,
+                  charged_usd=charged_cost)
+
         if charged_cost <= 0:
             return
         user = find_by_id(user_id)
@@ -187,12 +208,10 @@ async def _stream_response(
         _append_history(project, provider, message, content, session_id, user_id, user_email)
         _update_runtime_state(project, provider, message, session_id, user_id)
 
-        # Log usage + debit balance
+        # Log usage + debit balance (log_usage is called inside _debit_user)
         input_t = result.get("input_tokens", 0)
         output_t = result.get("output_tokens", 0)
         if user_id and user_id != "dev-admin":
-            log_usage(user_id=user_id, provider=provider, model=actual_model,
-                      input_tokens=input_t, output_tokens=output_t)
             _debit_user(user_id, provider, actual_model, input_t, output_t)
 
     except Exception as e:
