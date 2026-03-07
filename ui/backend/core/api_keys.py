@@ -29,12 +29,20 @@ def _keys_path() -> Path:
     return p
 
 
+def _env_key(provider: str) -> str:
+    """Return the env-var value for a provider (empty string if not set)."""
+    attr = _ENV_FALLBACKS.get(provider, "")
+    return getattr(settings, attr, "").strip() if attr else ""
+
+
 def load_keys() -> dict:
-    """Read api_keys.json; returns all-empty dict if missing."""
+    """Read api_keys.json; on first creation seeds from current env vars."""
     path = _keys_path()
     if not path.exists():
-        save_keys(_DEFAULT_KEYS)
-        return dict(_DEFAULT_KEYS)
+        # Seed from env vars so admin sees existing keys immediately
+        initial = {p: _env_key(p) for p in _PROVIDERS}
+        save_keys(initial)
+        return dict(initial)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         # Ensure all providers present
