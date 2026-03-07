@@ -133,6 +133,11 @@ export const api = {
   billingAddPayment:   ()          => _post('/billing/add-payment', {}),
 };
 
+// ── API key stub (keys are now server-side; kept for backward compat) ─────────
+
+/** @deprecated Keys are managed server-side. Returns {} so old call-sites don't crash. */
+export function loadApiKeys() { return {}; }
+
 // ── Recent projects (localStorage) ───────────────────────────────────────────
 
 const RECENT_KEY = 'aicli_recent_projects';

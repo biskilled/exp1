@@ -1,5 +1,5 @@
 import { state, setState } from '../stores/state.js';
-import { api, loadApiKeys } from '../utils/api.js';
+import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 
 const PROVIDERS = [
@@ -22,8 +22,6 @@ export function renderChat(container) {
 
   container.className  = 'view active';
   container.style.cssText = 'display:flex;flex-direction:column;overflow:hidden;height:100%';
-
-  const apiKeys = loadApiKeys();
 
   const _savedPanelW = parseInt(localStorage.getItem('aicli_chat_sessions_w') || '190', 10);
 
@@ -61,7 +59,7 @@ export function renderChat(container) {
                    border-radius:var(--radius);cursor:pointer;outline:none">
             ${PROVIDERS.map(p => `
               <option value="${p.id}" ${p.id === _provider ? 'selected' : ''}>
-                ${p.label}${!apiKeys[p.id] ? ' ⚠' : ''}
+                ${p.label}
               </option>`).join('')}
           </select>
           <span style="font-size:0.62rem;color:var(--muted)">Role:</span>
@@ -723,12 +721,10 @@ window._chatSend = async () => {
 };
 
 async function _autoCommitPush(projectName, userMsg) {
-  const apiKeys = loadApiKeys();
   try {
     const result = await api.gitCommitPush(projectName, {
       message_hint: userMsg.slice(0, 200),
       provider:     _provider,
-      api_key:      apiKeys.claude || null,
     });
     if (result.committed === false) return; // no changes — silent
     if (result.pushed) {
