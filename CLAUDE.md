@@ -103,11 +103,11 @@ ui/
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-07] `claude_cli`: continue
 - [2026-03-07] `claude_cli`: I do see that I am undefined user and as admin. did you add that as a config value (for testing) , a
 - [2026-03-07] `claude_cli`: I have added dev_mode=true into my .env file. if that is set to False, how did I manage to register 
 - [2026-03-07] `claude_cli`: I would ike to see my current balance next to the role name (admin 3$ .. ) and add refresh button th
 - [2026-03-07] `claude_cli`: I would like to see the balance on the top right (left to the Online status) not at the button . als
+- [2026-03-07] `claude_cli`: admin users have access to the system api. for each api there is balance that I would like to see in
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

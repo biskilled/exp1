@@ -510,9 +510,11 @@ async function _renderApiKeys(body) {
         <span id="apikeys-status" style="font-size:0.68rem;color:var(--muted)"></span>
       </div>
       <div style="margin-top:0.75rem;font-size:0.65rem;color:var(--muted)">
-        Only filled fields are updated. Leave blank to keep the current key.
-        <em>API balance</em> is queried live from each provider (DeepSeek only; others don't expose a balance endpoint).
-        <em>Tracked spend</em> is what this server charged users through these keys.
+        Only filled fields are updated. Leave blank to keep the current key.<br>
+        <strong>API balance</strong>: queried live from the provider API.
+        Only <strong>DeepSeek</strong> supports this — Anthropic and OpenAI do not expose a balance endpoint per API key
+        (check your account dashboard at console.anthropic.com / platform.openai.com).<br>
+        <strong>Tracked spend</strong>: what this server has charged users through these keys.
       </div>
     </div>
   `;
@@ -547,7 +549,27 @@ async function _renderApiKeys(body) {
 // ── Usage Tab ─────────────────────────────────────────────────────────────────
 
 async function _renderUsage(body) {
-  const data = await api.adminGetUsageTable();
+  // Show a spinner while loading (api-balances can take a few seconds)
+  body.innerHTML = `<div style="color:var(--muted);font-size:0.72rem;padding:1rem">
+    Loading usage data… <span style="opacity:0.6">(querying API balances, may take a moment)</span>
+  </div>`;
+
+  let data;
+  try {
+    data = await api.adminGetUsageTable();
+  } catch (e) {
+    body.innerHTML = `
+      <div style="color:var(--red);font-size:0.75rem;margin-bottom:0.5rem">Error loading usage table: ${e.message}</div>
+      <div style="font-size:0.65rem;color:var(--muted)">
+        Make sure the backend was restarted after the last update, and that all dependencies are installed
+        (<code>pip install -r requirements.txt</code>).
+      </div>
+      <button onclick="window._adminTab('usage')" style="margin-top:0.75rem;padding:0.35rem 0.85rem;
+        background:var(--surface2);border:1px solid var(--border);border-radius:4px;
+        color:var(--text2);font-size:0.72rem;cursor:pointer">↺ Retry</button>`;
+    return;
+  }
+
   const rows  = data.rows        || [];
   const sys   = data.system_rows || [];
 
@@ -616,9 +638,23 @@ async function _renderUsage(body) {
                color:var(--muted);white-space:nowrap">${label}</th>`;
 
   body.innerHTML = `
-    <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.25rem">Usage & Revenue</div>
-    <div style="font-size:0.65rem;color:var(--muted);margin-bottom:1rem">
-      Daily aggregated by user × LLM. System rows show live API balance from provider.
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.25rem">
+      <div style="font-weight:700;font-size:0.8rem">Usage & Revenue</div>
+      <button onclick="window._adminTab('usage')"
+        style="background:none;border:1px solid var(--border);border-radius:4px;
+               color:var(--text2);font-size:0.7rem;padding:2px 7px;cursor:pointer"
+        title="Refresh usage table">↺ Refresh</button>
+    </div>
+    <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.6rem">
+      Daily aggregated by user × LLM provider.
+    </div>
+    <div style="font-size:0.65rem;background:rgba(255,107,53,0.08);border:1px solid rgba(255,107,53,0.2);
+                border-radius:4px;padding:0.45rem 0.75rem;margin-bottom:1rem;color:var(--text2)">
+      ℹ <strong>API provider balance</strong> (shown in System rows) is the credit remaining in your provider account.
+      Only <strong>DeepSeek</strong> supports live balance queries via API — Anthropic (Claude) and OpenAI do not expose
+      a balance endpoint per API key. Check those balances directly in their dashboards.<br>
+      <strong>Platform balance</strong> (Credits / Used in the titlebar chip) = total credits you've given to users
+      via top-ups and coupons, minus what they've spent. This is NOT your API provider credit.
     </div>
 
     <div style="overflow-x:auto">

@@ -304,48 +304,53 @@ export async function updateBalanceChip() {
   const refreshBtn = document.getElementById('balance-refresh-btn');
   if (!chip || !wrap) return;
 
-  if (refreshBtn) refreshBtn.style.opacity = '0.4';
+  // Show loading state
+  chip.style.opacity = '0.5';
+  if (refreshBtn) { refreshBtn.style.opacity = '0.3'; refreshBtn.style.pointerEvents = 'none'; }
+
+  const _set = (text, color, bg, title) => {
+    chip.innerHTML = `${text} <span style="opacity:0.45;font-size:0.6em">↺</span>`;
+    chip.style.color = color;
+    chip.style.background = bg || 'var(--surface2)';
+    chip.style.opacity = '1';
+    chip.title = title || 'Click to refresh';
+    wrap.style.display = 'flex';
+  };
 
   try {
     const b = await api.billingBalance();
     setState({ balanceInfo: b });
-
     const role = b.role || 'free';
 
     if (role === 'admin') {
-      // Admin chip shows platform total — fetch stats first
-      chip.textContent = 'Platform …';
-      chip.style.color = 'var(--accent)';
-      chip.style.background = 'rgba(255,107,53,0.12)';
-      wrap.style.display = 'flex';
+      // Placeholder while fetching platform stats
+      _set('Admin', 'var(--accent)', 'rgba(255,107,53,0.12)',
+           'Platform credit balance (sum of all user top-ups minus charges). Click to refresh.');
 
       api.adminGetStats().then(stats => {
         setState({ platformStats: stats });
-        const total = stats.total_balance_usd ?? 0;
-        chip.textContent = `Platform $${total.toFixed(2)}`;
-        chip.style.color = total >= 0 ? 'var(--accent)' : 'var(--red)';
+        const total   = stats.total_added_usd   ?? 0;
+        const charged = stats.total_charged_usd ?? 0;
+        _set(`Credits: $${total.toFixed(2)} · Used: $${charged.toFixed(2)}`,
+             'var(--accent)', 'rgba(255,107,53,0.12)',
+             'Platform: total user credits added / charged. Your API provider balance is separate — see API Keys tab.');
         renderSidebarFooter();
       }).catch(() => {
-        chip.textContent = 'Admin';
+        _set('Admin ↺', 'var(--accent)', 'rgba(255,107,53,0.12)', 'Click to refresh');
       });
 
     } else if (role === 'free') {
       const used  = b.free_tier_used_usd ?? 0;
       const limit = b.free_tier_limit_usd ?? 5;
-      chip.textContent = `Free · $${used.toFixed(2)} / $${limit.toFixed(2)}`;
-      chip.style.color = 'var(--text2)';
-      chip.style.background = 'var(--surface2)';
-      wrap.style.display = 'flex';
+      _set(`Free · $${used.toFixed(2)} / $${limit.toFixed(2)}`, 'var(--text2)', 'var(--surface2)',
+           'Free tier usage. Click to refresh.');
 
     } else {
       const bal = b.balance_usd ?? 0;
-      chip.textContent = `$${bal.toFixed(2)}`;
-      chip.style.color = bal >= 1 ? 'var(--green)' : bal >= 0.1 ? 'var(--accent)' : 'var(--red)';
-      chip.style.background = 'var(--surface2)';
-      wrap.style.display = 'flex';
+      const color = bal >= 1 ? 'var(--green)' : bal >= 0.1 ? 'var(--accent)' : 'var(--red)';
+      _set(`$${bal.toFixed(2)}`, color, 'var(--surface2)', 'Your platform credit balance. Click to refresh.');
     }
 
-    // Only update state.user when a real logged-in user exists (has email)
     if (state.user?.email) {
       setState({ user: { ...state.user, role, balance_usd: b.balance_usd } });
       renderSidebarFooter();
@@ -354,7 +359,7 @@ export async function updateBalanceChip() {
   } catch {
     if (wrap) wrap.style.display = 'none';
   } finally {
-    if (refreshBtn) refreshBtn.style.opacity = '1';
+    if (refreshBtn) { refreshBtn.style.opacity = '1'; refreshBtn.style.pointerEvents = ''; }
   }
 }
 
