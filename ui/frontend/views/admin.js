@@ -763,30 +763,41 @@ async function _renderBilling(body) {
     </div>
   `).join('');
 
-  // History rows
-  const histRows = history.length ? history.map(r => {
-    const ok = r.ok ? '✓' : '✕';
-    const clr = r.ok ? 'var(--green)' : 'var(--red)';
-    const dt = r.fetched_at ? new Date(r.fetched_at).toLocaleString() : '—';
-    const errors = (r.errors || []).join(', ') || '';
-    const tokens = r.total_prompt_tokens != null
-      ? `↑${r.total_prompt_tokens.toLocaleString()} ↓${(r.total_completion_tokens||0).toLocaleString()}`
-      : r.total_input_tokens != null
-      ? `↑${r.total_input_tokens.toLocaleString()} ↓${(r.total_output_tokens||0).toLocaleString()}`
-      : '—';
+  // Helper: build a history table row
+  const _histRow = (r) => {
+    const ok   = r.ok ? '✓' : '✕';
+    const clr  = r.ok ? 'var(--green)' : 'var(--red)';
+    const dt   = r.fetched_at ? new Date(r.fetched_at).toLocaleString() : '—';
+    const allMsgs = [...(r.errors || []), ...(r.notes || [])];
+    const msgText = allMsgs.join(' | ') || '';
+    const msgColor = (r.errors||[]).length ? 'var(--red)' : 'var(--muted)';
+    let tokens = '—';
+    if (r.mode === 'local_recalculate') {
+      tokens = `${(r.records_processed||0)} recs · $${(r.total_estimated_usd||0).toFixed(4)}`;
+    } else if (r.total_prompt_tokens != null) {
+      tokens = `↑${r.total_prompt_tokens.toLocaleString()} ↓${(r.total_completion_tokens||0).toLocaleString()}`;
+    } else if (r.total_input_tokens != null) {
+      tokens = `↑${r.total_input_tokens.toLocaleString()} ↓${(r.total_output_tokens||0).toLocaleString()}`;
+    }
+    const label = r.mode === 'local_recalculate' ? 'local' : (r.provider || '—');
     return `
       <tr style="border-bottom:1px solid var(--border)">
         <td style="padding:0.35rem 0.5rem;font-size:0.7rem;color:var(--muted)">${dt}</td>
-        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-transform:capitalize">${_esc(r.provider || '—')}</td>
-        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;color:var(--muted)">${_esc(r.start_date || '—')} → ${_esc(r.end_date || '—')}</td>
-        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;font-weight:700;color:${clr}">${ok}</td>
-        <td style="padding:0.35rem 0.5rem;font-size:0.72rem">${tokens}</td>
-        <td style="padding:0.35rem 0.5rem;font-size:0.65rem;color:var(--red);max-width:200px;
-                   overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(errors)}">${_esc(errors)}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-transform:capitalize">${_esc(label)}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;color:var(--muted)">${_esc(r.start_date||'—')} → ${_esc(r.end_date||'—')}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;font-weight:700;color:${clr};text-align:center">${ok}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-align:right">${tokens}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.65rem;color:${msgColor};max-width:220px;
+                   overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(msgText)}">${_esc(msgText)}</td>
       </tr>`;
-  }).join('') : `<tr><td colspan="6" style="padding:1rem;text-align:center;color:var(--muted);font-size:0.72rem">
-    No usage fetches yet. Use the form above to fetch actual usage from provider APIs.
-  </td></tr>`;
+  };
+
+  // History rows
+  const histRows = history.length
+    ? history.map(_histRow).join('')
+    : `<tr><td colspan="6" style="padding:1rem;text-align:center;color:var(--muted);font-size:0.72rem">
+        No usage fetches yet. Use "⚡ Local Recalculate" above to estimate costs from local data.
+       </td></tr>`;
 
   // Get today and 7 days ago as default date range
   const today = new Date().toISOString().slice(0, 10);
@@ -817,23 +828,32 @@ async function _renderBilling(body) {
     </div>
 
     <!-- Fetch Provider Usage Section -->
-    <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.5rem">Fetch Actual Provider Usage</div>
-    <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.75rem">
-      Pull real usage data from provider billing APIs. Results are saved and shown in the history below.<br>
-      <strong>OpenAI</strong>: uses /v1/usage + /v1/dashboard/billing (API key required).<br>
-      <strong>Anthropic</strong>: uses /v1/organizations/{org_id}/usage (API key + org ID required).
+    <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.5rem">Fetch / Estimate Usage</div>
+
+    <div style="font-size:0.65rem;background:rgba(255,107,53,0.07);border:1px solid rgba(255,107,53,0.2);
+                border-radius:4px;padding:0.5rem 0.75rem;margin-bottom:0.75rem;color:var(--text2);line-height:1.55">
+      <strong>OpenAI</strong>: First tries the Admin API (<code>/v1/organization/usage/completions</code>) — requires
+      an <strong>Admin API key</strong> from <em>platform.openai.com → Organization → Admin keys</em>.
+      Falls back to legacy per-day API (<code>/v1/usage?date=</code>) which works with regular API keys.
+      The billing dashboard (<code>/v1/dashboard/billing/*</code>) cannot be called with API keys (browser-only).<br>
+      <strong>Anthropic</strong>: Requires an <strong>Admin API key</strong> (<code>sk-ant-admin-…</code>) and
+      your <strong>Org ID</strong> from <em>console.anthropic.com → Settings</em>. Regular workspace keys
+      return 403. Beta feature — may not be available for all accounts.<br>
+      <strong>Local Recalculate</strong>: Re-estimates cost from our own usage_logs using the current cost config above.
+      No provider API key needed — recommended as the primary method.
     </div>
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;
-                padding:1rem;margin-bottom:1.5rem">
+                padding:1rem;margin-bottom:1rem">
       <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end">
         <div style="display:flex;flex-direction:column;gap:0.25rem">
-          <label style="font-size:0.65rem;color:var(--muted)">Provider</label>
+          <label style="font-size:0.65rem;color:var(--muted)">Source</label>
           <select id="fetch-provider"
             style="background:var(--surface);border:1px solid var(--border);border-radius:4px;
                    padding:0.3rem 0.5rem;font-size:0.72rem;color:var(--text)">
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="local">⚡ Local Recalculate (no API key needed)</option>
+            <option value="openai">OpenAI API (Admin or regular key)</option>
+            <option value="anthropic">Anthropic API (Admin key + Org ID)</option>
           </select>
         </div>
         <div style="display:flex;flex-direction:column;gap:0.25rem">
@@ -857,10 +877,14 @@ async function _renderBilling(body) {
         <button id="fetch-usage-btn" onclick="window._fetchProviderUsage()"
           style="padding:0.35rem 0.9rem;background:var(--accent);border:none;border-radius:5px;
                  color:#fff;font-size:0.72rem;font-weight:600;cursor:pointer">
-          ↓ Fetch Usage
+          ↓ Run
         </button>
-        <span id="fetch-status" style="font-size:0.65rem;color:var(--muted)"></span>
+        <span id="fetch-status" style="font-size:0.65rem;color:var(--muted);max-width:320px;word-break:break-word"></span>
       </div>
+      <!-- Notes/warnings from last fetch -->
+      <div id="fetch-notes" style="margin-top:0.6rem;font-size:0.65rem;color:var(--text2);display:none;
+                                    background:var(--surface);border-left:3px solid var(--accent);
+                                    border-radius:2px;padding:0.4rem 0.6rem;line-height:1.55"></div>
     </div>
 
     <!-- Fetch History -->
@@ -886,9 +910,11 @@ async function _renderBilling(body) {
   const provSel = document.getElementById('fetch-provider');
   const orgWrap = document.getElementById('org-id-wrap');
   if (provSel && orgWrap) {
-    provSel.addEventListener('change', () => {
+    const _updateOrgVis = () => {
       orgWrap.style.display = provSel.value === 'anthropic' ? 'flex' : 'none';
-    });
+    };
+    provSel.addEventListener('change', _updateOrgVis);
+    _updateOrgVis();
   }
 
   window._saveCosts = async () => {
@@ -935,44 +961,41 @@ async function _renderBilling(body) {
 
     try {
       const result = await api.adminFetchProviderUsage({ provider, start_date: start, end_date: end, org_id: orgId });
+
+      // Show notes/warnings
+      const notesEl = document.getElementById('fetch-notes');
+      const allNotes = [...(result.notes || []), ...(result.errors || [])];
+      if (notesEl && allNotes.length) {
+        notesEl.innerHTML = allNotes.map(n => `<div>⚠ ${_esc(n)}</div>`).join('');
+        notesEl.style.display = 'block';
+      } else if (notesEl) {
+        notesEl.style.display = 'none';
+      }
+
       if (result.ok) {
-        const tokens = result.total_prompt_tokens != null
-          ? `${(result.total_prompt_tokens || 0).toLocaleString()} input / ${(result.total_completion_tokens || 0).toLocaleString()} output tokens`
-          : result.total_input_tokens != null
-          ? `${(result.total_input_tokens || 0).toLocaleString()} input / ${(result.total_output_tokens || 0).toLocaleString()} output tokens`
-          : 'fetched';
-        if (statusEl) { statusEl.textContent = `✓ Done — ${tokens}`; statusEl.style.color = 'var(--green)'; }
-        toast(`Provider usage fetched: ${tokens}`, 'success');
+        let summary = '';
+        if (result.mode === 'local_recalculate') {
+          summary = `${result.records_processed} records · est. $${(result.total_estimated_usd || 0).toFixed(4)}`;
+        } else if (result.total_prompt_tokens != null) {
+          summary = `${(result.total_prompt_tokens||0).toLocaleString()} prompt / ${(result.total_completion_tokens||0).toLocaleString()} completion tokens`;
+        } else if (result.total_input_tokens != null) {
+          summary = `${(result.total_input_tokens||0).toLocaleString()} in / ${(result.total_output_tokens||0).toLocaleString()} out tokens`;
+        } else {
+          summary = 'done';
+        }
+        if (statusEl) { statusEl.textContent = `✓ ${summary}`; statusEl.style.color = 'var(--green)'; }
+        toast(`Done: ${summary}`, 'success');
       } else {
-        const err = result.error || (result.errors || []).join(', ') || 'Unknown error';
+        const err = result.error || (result.errors || []).slice(0, 1).join('') || 'Unknown error';
         if (statusEl) { statusEl.textContent = `✕ ${err}`; statusEl.style.color = 'var(--red)'; }
-        toast(`Fetch failed: ${err}`, 'error');
+        toast(`Failed: ${err.slice(0, 80)}`, 'error');
       }
       // Refresh history table
       try {
         const h2 = await api.adminGetProviderUsageHistory();
         const tbody = document.getElementById('billing-hist-tbody');
-        if (tbody && h2.records) {
-          const newRows = h2.records.length ? h2.records.map(r => {
-            const ok2  = r.ok ? '✓' : '✕';
-            const clr2 = r.ok ? 'var(--green)' : 'var(--red)';
-            const dt2  = r.fetched_at ? new Date(r.fetched_at).toLocaleString() : '—';
-            const errs2 = (r.errors || []).join(', ') || '';
-            const toks2 = r.total_prompt_tokens != null
-              ? `↑${r.total_prompt_tokens.toLocaleString()} ↓${(r.total_completion_tokens||0).toLocaleString()}`
-              : r.total_input_tokens != null
-              ? `↑${r.total_input_tokens.toLocaleString()} ↓${(r.total_output_tokens||0).toLocaleString()}`
-              : '—';
-            return `<tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:0.35rem 0.5rem;font-size:0.7rem;color:var(--muted)">${dt2}</td>
-              <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-transform:capitalize">${_esc(r.provider||'—')}</td>
-              <td style="padding:0.35rem 0.5rem;font-size:0.72rem;color:var(--muted)">${_esc(r.start_date||'—')} → ${_esc(r.end_date||'—')}</td>
-              <td style="padding:0.35rem 0.5rem;font-size:0.72rem;font-weight:700;color:${clr2};text-align:center">${ok2}</td>
-              <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-align:right">${toks2}</td>
-              <td style="padding:0.35rem 0.5rem;font-size:0.65rem;color:var(--red);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(errs2)}">${_esc(errs2)}</td>
-            </tr>`;
-          }).join('') : '';
-          tbody.innerHTML = newRows || tbody.innerHTML;
+        if (tbody && h2.records?.length) {
+          tbody.innerHTML = h2.records.map(_histRow).join('');
         }
       } catch (_) {}
     } catch (e) {
