@@ -103,11 +103,11 @@ ui/
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-07] `claude_cli`: I would like to optimize the code files and strucure - I my mani folder I do CLAUDE.md, QUICKSTART.m
-- [2026-03-07] `claude_cli`: I would like to extend the prject in ordder to be able to start testing that from other users. in or
 - [2026-03-07] `claude_cli`: I think there is a ui error as it is not loading properly (empty screen) . also when I start the app
 - [2026-03-07] `claude_cli`: ui imporvoment - there is not way to close the login/ register forms once user access. also I do not
 - [2026-03-07] `claude_cli`: I am trying to register and got [Object Object] error (probably not convertered to str. 
+- [2026-03-07] `claude_cli`: API key will be configured in my .env file which will be used to upload the keys. once keys are upda
+- [2026-03-07] `claude_cli`: continue
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

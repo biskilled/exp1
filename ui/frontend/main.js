@@ -94,8 +94,8 @@ async function _continueToApp(user) {
   renderSidebarContent();
   navigateTo('home');
 
-  // Load balance chip + refresh sidebar role badge (non-blocking)
-  if (state.backendOnline) {
+  // Load balance chip — only when a real user is logged in
+  if (state.backendOnline && state.user?.email) {
     updateBalanceChip().catch(() => {});
   }
 }
@@ -315,9 +315,13 @@ export async function updateBalanceChip() {
       chip.style.color = bal >= 1 ? 'var(--green)' : bal >= 0.1 ? 'var(--accent)' : 'var(--red)';
       chip.style.background = 'var(--surface2)';
     }
-    // Update state and re-render sidebar so role badge appears immediately
-    setState({ user: { ...(state.user || {}), role, balance_usd: b.balance_usd } });
-    renderSidebarFooter();
+    // Only update state.user when a real user is already logged in (has email).
+    // Without this guard, the billing response would create a partial user object
+    // with no email, causing the sidebar to show "undefined" and hide login buttons.
+    if (state.user?.email) {
+      setState({ user: { ...state.user, role, balance_usd: b.balance_usd } });
+      renderSidebarFooter();
+    }
   } catch {
     chip.style.display = 'none';
   }
