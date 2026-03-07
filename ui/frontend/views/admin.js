@@ -420,7 +420,8 @@ function _inp() {
 // ── API Keys Tab ──────────────────────────────────────────────────────────────
 
 async function _renderApiKeys(body) {
-  const keysInfo = await api.adminGetApiKeys();
+  const [keysInfo, stats] = await Promise.all([api.adminGetApiKeys(), api.adminGetStats()]);
+  const byProvider = stats.by_provider || {};
   const providers = [
     { id: 'claude',   label: 'Claude (Anthropic)' },
     { id: 'openai',   label: 'OpenAI' },
@@ -448,15 +449,27 @@ async function _renderApiKeys(body) {
         when no saved key is present.
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:0.9rem">
+      <div style="display:flex;flex-direction:column;gap:1rem">
         ${providers.map(p => {
-          const info = keysInfo[p.id] || { masked: '', source: 'unset' };
-          const placeholder = info.masked || 'Enter key…';
+          const info   = keysInfo[p.id] || { masked: '', source: 'unset' };
+          const usage  = byProvider[p.id] || null;
+          const usageLine = usage
+            ? `<span style="color:var(--muted)">·</span>
+               <span style="color:var(--accent)">$${usage.charged_usd.toFixed(4)} charged</span>
+               <span style="color:var(--muted)">·</span>
+               <span style="color:var(--text2)">$${usage.real_cost_usd.toFixed(4)} real</span>
+               <span style="color:var(--muted)">·</span>
+               <span>${usage.calls} call${usage.calls !== 1 ? 's' : ''}</span>`
+            : `<span style="color:var(--muted)">No usage recorded yet</span>`;
           return `
           <div>
             <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">
-              <div style="font-size:0.72rem;color:var(--text2)">${p.label}</div>
+              <div style="font-size:0.75rem;font-weight:600;color:var(--text)">${p.label}</div>
               ${_sourceBadge(info.source)}
+            </div>
+            <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.35rem;
+                        display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
+              ${usageLine}
             </div>
             <div style="display:flex;gap:0.5rem;align-items:center">
               <input id="apikey-${p.id}" type="password"

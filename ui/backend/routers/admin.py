@@ -113,9 +113,10 @@ async def get_stats(_: dict = Depends(_require_admin)):
     total_added  = sum(u.get("balance_added_usd",  0.0) for u in users)
     total_charged = sum(u.get("balance_used_usd",  0.0) for u in users)
 
-    # Sum real (base) cost from transactions that include base_cost_usd.
-    # Falls back to amount_usd for legacy records without the field (margin = 0 for those).
+    # Scan all transaction files for usage_debit records.
+    # Accumulate total real cost and per-provider breakdowns.
     total_real_cost = 0.0
+    by_provider: dict[str, dict] = {}
     tx_dir = Path(settings.data_dir) / "transactions"
     if tx_dir.exists():
         for txf in tx_dir.glob("*.jsonl"):
@@ -125,19 +126,29 @@ async def get_stats(_: dict = Depends(_require_admin)):
                     if not line:
                         continue
                     r = json.loads(line)
-                    if r.get("type") == "usage_debit":
-                        total_real_cost += r.get("base_cost_usd", r.get("amount_usd", 0.0))
+                    if r.get("type") != "usage_debit":
+                        continue
+                    charged   = r.get("amount_usd", 0.0)
+                    real_cost = r.get("base_cost_usd", charged)
+                    total_real_cost += real_cost
+                    # First word of description is the provider name
+                    provider = (r.get("description") or "").split(" ")[0] or "unknown"
+                    p = by_provider.setdefault(provider, {"charged_usd": 0.0, "real_cost_usd": 0.0, "calls": 0})
+                    p["charged_usd"]   = round(p["charged_usd"]   + charged,   8)
+                    p["real_cost_usd"] = round(p["real_cost_usd"] + real_cost, 8)
+                    p["calls"]        += 1
             except Exception:
                 pass
 
     return {
-        "user_count":        len(users),
-        "active_users":      sum(1 for u in users if u.get("is_active", True)),
-        "total_balance_usd": round(total_added - total_charged, 4),
-        "total_added_usd":   round(total_added, 4),
-        "total_charged_usd": round(total_charged, 4),
+        "user_count":          len(users),
+        "active_users":        sum(1 for u in users if u.get("is_active", True)),
+        "total_balance_usd":   round(total_added - total_charged, 4),
+        "total_added_usd":     round(total_added, 4),
+        "total_charged_usd":   round(total_charged, 4),
         "total_real_cost_usd": round(total_real_cost, 4),
-        "total_margin_usd":  round(total_charged - total_real_cost, 4),
+        "total_margin_usd":    round(total_charged - total_real_cost, 4),
+        "by_provider":         by_provider,
     }
 
 

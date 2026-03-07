@@ -103,11 +103,11 @@ ui/
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-07] `claude_cli`: I think there is a ui error as it is not loading properly (empty screen) . also when I start the app
-- [2026-03-07] `claude_cli`: ui imporvoment - there is not way to close the login/ register forms once user access. also I do not
-- [2026-03-07] `claude_cli`: I am trying to register and got [Object Object] error (probably not convertered to str. 
 - [2026-03-07] `claude_cli`: API key will be configured in my .env file which will be used to upload the keys. once keys are upda
 - [2026-03-07] `claude_cli`: continue
+- [2026-03-07] `claude_cli`: I do see that I am undefined user and as admin. did you add that as a config value (for testing) , a
+- [2026-03-07] `claude_cli`: I have added dev_mode=true into my .env file. if that is set to False, how did I manage to register 
+- [2026-03-07] `claude_cli`: I would ike to see my current balance next to the role name (admin 3$ .. ) and add refresh button th
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

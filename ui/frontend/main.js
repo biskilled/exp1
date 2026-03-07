@@ -118,8 +118,14 @@ function renderShell() {
         </div>
         <div class="titlebar-spacer"></div>
         <div class="titlebar-controls">
-          <div id="balance-chip" style="display:none;font-size:0.65rem;padding:0.2rem 0.5rem;
-               border-radius:var(--radius);background:var(--surface2);cursor:default"></div>
+          <div style="display:none;align-items:center;gap:0.3rem" id="balance-chip-wrap">
+            <div id="balance-chip" onclick="window._updateBalance()" title="Click to refresh balance"
+              style="font-size:0.65rem;padding:0.2rem 0.5rem;border-radius:var(--radius);
+                     background:var(--surface2);cursor:pointer;user-select:none"></div>
+            <button id="balance-refresh-btn" onclick="window._updateBalance()" title="Refresh balance"
+              style="background:none;border:none;color:var(--muted);cursor:pointer;
+                     font-size:0.72rem;padding:2px 3px;line-height:1;transition:opacity 0.2s">↺</button>
+          </div>
           <div class="status-pill">
             <div class="status-dot" id="status-dot"></div>
             <span id="status-text" style="font-size:0.62rem">Connecting…</span>
@@ -208,26 +214,6 @@ function renderSidebarNav() {
   }
 }
 
-function _balanceLine(role, balanceInfo, platformStats) {
-  if (!balanceInfo) return '';
-  const b = balanceInfo;
-  if (role === 'admin') {
-    const own = (b.balance_usd ?? 0).toFixed(2);
-    const total = platformStats?.total_balance_usd != null
-      ? ` · <span style="color:var(--text2)">$${platformStats.total_balance_usd.toFixed(2)} platform</span>`
-      : '';
-    return `<span style="color:var(--accent)">$${own}</span>${total}`;
-  }
-  if (role === 'free') {
-    const used  = (b.free_tier_used_usd ?? 0).toFixed(2);
-    const limit = (b.free_tier_limit_usd ?? 5).toFixed(2);
-    return `<span style="color:var(--text2)">$${used}</span><span style="color:var(--muted)"> / $${limit}</span>`;
-  }
-  const bal = b.balance_usd ?? 0;
-  const color = bal >= 1 ? 'var(--green)' : bal >= 0.1 ? 'var(--accent)' : 'var(--red)';
-  return `<span style="color:${color}">$${bal.toFixed(2)}</span>`;
-}
-
 function renderSidebarFooter() {
   const footer = document.getElementById('sidebar-footer');
   if (!footer) return;
@@ -240,21 +226,12 @@ function renderSidebarFooter() {
     const isAdmin  = role === 'admin';
     const roleColors = { admin: 'var(--accent)', paid: 'var(--green)', free: 'var(--muted)' };
     const roleColor  = roleColors[role] || 'var(--muted)';
-    const balHtml    = _balanceLine(role, state.balanceInfo, state.platformStats);
     footer.innerHTML = `
       <div class="sidebar-user">
         <div class="sidebar-user-avatar" title="${u.email}">${initials}</div>
         <div class="sidebar-user-info nav-label">
           <div class="sidebar-user-email" style="font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
-          <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.04em;margin-top:2px;
-                      display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap">
-            <span style="color:${roleColor}">${role}</span>
-            ${balHtml ? `<span style="color:var(--muted)">·</span>${balHtml}` : ''}
-            <button id="balance-refresh-btn" title="Refresh balance"
-              onclick="window._updateBalance()"
-              style="background:none;border:none;color:var(--muted);cursor:pointer;
-                     font-size:0.7rem;padding:0;line-height:1;transition:opacity 0.2s">↺</button>
-          </div>
+          <div style="font-size:0.58rem;color:${roleColor};text-transform:uppercase;letter-spacing:0.04em;margin-top:1px">${role}</div>
         </div>
         <div class="sidebar-user-actions nav-label">
           ${isAdmin ? `<button class="sidebar-user-btn" title="Admin panel" onclick="window._nav('admin')">👥</button>` : ''}
@@ -323,51 +300,59 @@ function updateStatusDot() {
 
 export async function updateBalanceChip() {
   const chip = document.getElementById('balance-chip');
-  if (!chip) return;
-
-  // Animate the refresh button (if visible) while loading
+  const wrap = document.getElementById('balance-chip-wrap');
   const refreshBtn = document.getElementById('balance-refresh-btn');
+  if (!chip || !wrap) return;
+
   if (refreshBtn) refreshBtn.style.opacity = '0.4';
 
   try {
     const b = await api.billingBalance();
     setState({ balanceInfo: b });
 
-    chip.style.display = '';
     const role = b.role || 'free';
+
     if (role === 'admin') {
-      chip.textContent = 'Admin';
+      // Admin chip shows platform total — fetch stats first
+      chip.textContent = 'Platform …';
       chip.style.color = 'var(--accent)';
       chip.style.background = 'rgba(255,107,53,0.12)';
+      wrap.style.display = 'flex';
+
+      api.adminGetStats().then(stats => {
+        setState({ platformStats: stats });
+        const total = stats.total_balance_usd ?? 0;
+        chip.textContent = `Platform $${total.toFixed(2)}`;
+        chip.style.color = total >= 0 ? 'var(--accent)' : 'var(--red)';
+        renderSidebarFooter();
+      }).catch(() => {
+        chip.textContent = 'Admin';
+      });
+
     } else if (role === 'free') {
-      const used = b.free_tier_used_usd ?? 0;
+      const used  = b.free_tier_used_usd ?? 0;
       const limit = b.free_tier_limit_usd ?? 5;
       chip.textContent = `Free · $${used.toFixed(2)} / $${limit.toFixed(2)}`;
       chip.style.color = 'var(--text2)';
       chip.style.background = 'var(--surface2)';
+      wrap.style.display = 'flex';
+
     } else {
       const bal = b.balance_usd ?? 0;
       chip.textContent = `$${bal.toFixed(2)}`;
       chip.style.color = bal >= 1 ? 'var(--green)' : bal >= 0.1 ? 'var(--accent)' : 'var(--red)';
       chip.style.background = 'var(--surface2)';
+      wrap.style.display = 'flex';
     }
 
-    // Only update state.user when a real user is already logged in (has email).
+    // Only update state.user when a real logged-in user exists (has email)
     if (state.user?.email) {
       setState({ user: { ...state.user, role, balance_usd: b.balance_usd } });
-
-      // Admins also get platform-wide totals for the sidebar
-      if (role === 'admin') {
-        api.adminGetStats().then(stats => {
-          setState({ platformStats: stats });
-          renderSidebarFooter();
-        }).catch(() => {});
-      }
-
       renderSidebarFooter();
     }
+
   } catch {
-    chip.style.display = 'none';
+    if (wrap) wrap.style.display = 'none';
   } finally {
     if (refreshBtn) refreshBtn.style.opacity = '1';
   }
