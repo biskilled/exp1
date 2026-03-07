@@ -21,13 +21,13 @@ export async function renderAdmin(container) {
 
       <!-- Tab bar -->
       <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;padding:0 1.25rem">
-        ${['users','pricing','coupons','apikeys'].map((t, i) => `
+        ${['users','pricing','coupons','apikeys','usage'].map((t, i) => `
           <button id="admin-tab-${t}" onclick="window._adminTab('${t}')"
             style="padding:0.55rem 1rem;border:none;border-bottom:2px solid ${i===0?'var(--accent)':'transparent'};
                    background:none;cursor:pointer;font-size:0.75rem;
                    color:${i===0?'var(--text)':'var(--text2)'};
                    font-weight:${i===0?'600':'normal'};transition:all 0.15s">
-            ${{ users:'👥 Users', pricing:'💲 Pricing', coupons:'🎟 Coupons', apikeys:'🔑 API Keys' }[t]}
+            ${{ users:'👥 Users', pricing:'💲 Pricing', coupons:'🎟 Coupons', apikeys:'🔑 API Keys', usage:'📊 Usage' }[t]}
           </button>
         `).join('')}
       </div>
@@ -40,7 +40,7 @@ export async function renderAdmin(container) {
 
   window._adminTab = (tab) => {
     _activeTab = tab;
-    ['users','pricing','coupons','apikeys'].forEach(t => {
+    ['users','pricing','coupons','apikeys','usage'].forEach(t => {
       const btn = document.getElementById(`admin-tab-${t}`);
       if (btn) {
         btn.style.borderBottomColor = t === tab ? 'var(--accent)' : 'transparent';
@@ -60,6 +60,7 @@ export async function renderAdmin(container) {
       if (tab === 'pricing') await _renderPricing(body);
       if (tab === 'coupons') await _renderCoupons(body);
       if (tab === 'apikeys') await _renderApiKeys(body);
+      if (tab === 'usage')   await _renderUsage(body);
     } catch (e) {
       body.innerHTML = `<div style="color:var(--red);font-size:0.75rem">Error: ${e.message}</div>`;
     }
@@ -420,7 +421,11 @@ function _inp() {
 // ── API Keys Tab ──────────────────────────────────────────────────────────────
 
 async function _renderApiKeys(body) {
-  const [keysInfo, stats] = await Promise.all([api.adminGetApiKeys(), api.adminGetStats()]);
+  const [keysInfo, stats, liveBalances] = await Promise.all([
+    api.adminGetApiKeys(),
+    api.adminGetStats(),
+    api.adminGetApiBalances().catch(() => ({})),
+  ]);
   const byProvider = stats.by_provider || {};
   const providers = [
     { id: 'claude',   label: 'Claude (Anthropic)' },
@@ -432,43 +437,56 @@ async function _renderApiKeys(body) {
 
   const _sourceBadge = (src) => {
     const cfg = {
-      saved:  { label: 'saved',   color: 'var(--green)',  bg: 'rgba(34,197,94,0.1)' },
+      saved:  { label: 'saved',     color: 'var(--green)',  bg: 'rgba(34,197,94,0.1)' },
       env:    { label: 'from .env', color: 'var(--accent)', bg: 'rgba(255,107,53,0.1)' },
-      unset:  { label: 'not set',  color: 'var(--muted)',  bg: 'var(--surface2)' },
+      unset:  { label: 'not set',   color: 'var(--muted)',  bg: 'var(--surface2)' },
     }[src] || { label: src, color: 'var(--muted)', bg: 'var(--surface2)' };
     return `<span style="font-size:0.6rem;padding:1px 6px;border-radius:10px;
                          background:${cfg.bg};color:${cfg.color};font-weight:500">${cfg.label}</span>`;
   };
 
+  const _liveBalBadge = (bal) => {
+    if (!bal || !bal.available) {
+      const reason = bal?.reason === 'no_key' ? 'no key' : bal?.reason === 'unsupported' ? 'N/A' : 'N/A';
+      return `<span style="font-size:0.6rem;color:var(--muted)">API balance: ${reason}</span>`;
+    }
+    const color = bal.balance_usd >= 5 ? 'var(--green)' : bal.balance_usd >= 1 ? 'var(--accent)' : 'var(--red)';
+    return `<span style="font-size:0.65rem;font-weight:600;color:${color}">
+              API balance: $${bal.balance_usd.toFixed(2)}
+            </span>`;
+  };
+
   body.innerHTML = `
-    <div style="max-width:600px">
+    <div style="max-width:640px">
       <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.25rem">Server API Keys</div>
       <div style="font-size:0.65rem;color:var(--muted);margin-bottom:1.25rem">
         Keys are stored in <code>api_keys.json</code> — your <code>.env</code> file is never modified.
-        Leave a field blank to keep the current key. Keys from <code>.env</code> are used automatically
-        when no saved key is present.
+        Leave a field blank to keep the current key. Live balance shown where provider API supports it.
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:1rem">
+      <div style="display:flex;flex-direction:column;gap:1.1rem">
         ${providers.map(p => {
-          const info   = keysInfo[p.id] || { masked: '', source: 'unset' };
-          const usage  = byProvider[p.id] || null;
+          const info    = keysInfo[p.id]     || { masked: '', source: 'unset' };
+          const usage   = byProvider[p.id]   || null;
+          const liveBal = liveBalances[p.id] || null;
           const usageLine = usage
-            ? `<span style="color:var(--muted)">·</span>
-               <span style="color:var(--accent)">$${usage.charged_usd.toFixed(4)} charged</span>
+            ? `<span style="color:var(--accent)">$${usage.charged_usd.toFixed(4)} charged</span>
                <span style="color:var(--muted)">·</span>
                <span style="color:var(--text2)">$${usage.real_cost_usd.toFixed(4)} real</span>
                <span style="color:var(--muted)">·</span>
                <span>${usage.calls} call${usage.calls !== 1 ? 's' : ''}</span>`
             : `<span style="color:var(--muted)">No usage recorded yet</span>`;
           return `
-          <div>
-            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">
+          <div style="background:var(--surface2);border:1px solid var(--border);
+                      border-radius:var(--radius);padding:0.65rem 0.85rem">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;flex-wrap:wrap">
               <div style="font-size:0.75rem;font-weight:600;color:var(--text)">${p.label}</div>
               ${_sourceBadge(info.source)}
+              ${_liveBalBadge(liveBal)}
             </div>
-            <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.35rem;
+            <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.4rem;
                         display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
+              <span style="color:var(--text2);font-weight:500">Your tracked spend:</span>
               ${usageLine}
             </div>
             <div style="display:flex;gap:0.5rem;align-items:center">
@@ -492,8 +510,9 @@ async function _renderApiKeys(body) {
         <span id="apikeys-status" style="font-size:0.68rem;color:var(--muted)"></span>
       </div>
       <div style="margin-top:0.75rem;font-size:0.65rem;color:var(--muted)">
-        Only filled fields are updated. Leave a field blank to keep the current key.
-        Providers showing <em>from .env</em> are using your .env key — saving a new value here overrides it without modifying .env.
+        Only filled fields are updated. Leave blank to keep the current key.
+        <em>API balance</em> is queried live from each provider (DeepSeek only; others don't expose a balance endpoint).
+        <em>Tracked spend</em> is what this server charged users through these keys.
       </div>
     </div>
   `;
@@ -522,4 +541,116 @@ async function _renderApiKeys(body) {
       toast(`Error: ${e.message}`, 'error');
     }
   };
+}
+
+
+// ── Usage Tab ─────────────────────────────────────────────────────────────────
+
+async function _renderUsage(body) {
+  const data = await api.adminGetUsageTable();
+  const rows  = data.rows        || [];
+  const sys   = data.system_rows || [];
+
+  const _fmt  = (n, d = 4) => n != null ? `$${Number(n).toFixed(d)}` : '—';
+  const _fmtN = (n) => n != null ? Number(n).toLocaleString() : '—';
+  const _mclr = (m) => m > 0 ? 'var(--green)' : m < 0 ? 'var(--red)' : 'var(--text2)';
+
+  // System totals header
+  const _sysRow = (s) => {
+    const bal = s.api_balance || {};
+    let balTxt = '—';
+    let balColor = 'var(--muted)';
+    if (bal.available) {
+      balTxt  = `$${bal.balance_usd.toFixed(2)}`;
+      balColor = bal.balance_usd >= 5 ? 'var(--green)' : bal.balance_usd >= 1 ? 'var(--accent)' : 'var(--red)';
+    } else if (bal.reason === 'unsupported') {
+      balTxt = 'N/A';
+    } else if (bal.reason === 'no_key') {
+      balTxt = 'no key';
+    }
+    return `
+      <tr style="background:var(--surface2)">
+        <td style="padding:0.45rem 0.5rem;font-size:0.7rem;color:var(--muted);font-style:italic">system</td>
+        <td style="padding:0.45rem 0.5rem;font-size:0.72rem;color:var(--text2)">${_esc(s.provider)}</td>
+        <td style="padding:0.45rem 0.5rem;font-family:monospace;font-size:0.65rem;color:var(--muted)">${_esc(s.api_key_masked || '—')}</td>
+        <td colspan="3" style="padding:0.45rem 0.5rem;font-size:0.7rem;color:var(--muted);text-align:center">
+          live API balance only
+        </td>
+        <td style="padding:0.45rem 0.5rem;font-size:0.72rem;font-weight:700;text-align:right;color:${balColor}">${balTxt}</td>
+        <td colspan="4" style="padding:0.45rem 0.5rem"></td>
+      </tr>`;
+  };
+
+  // Group rows by date for visual separation
+  let lastDate = '';
+  const _dataRows = rows.map(r => {
+    const dateHdr = r.date !== lastDate
+      ? `<tr><td colspan="11" style="padding:0.3rem 0.5rem;font-size:0.65rem;font-weight:600;
+              color:var(--muted);background:var(--surface);border-top:1px solid var(--border);
+              border-bottom:1px solid var(--border)">${r.date}</td></tr>`
+      : '';
+    lastDate = r.date;
+    return dateHdr + `
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:0.4rem 0.5rem;font-size:0.7rem;color:var(--muted)">${r.date}</td>
+        <td style="padding:0.4rem 0.5rem;font-size:0.72rem;overflow:hidden;max-width:120px;
+                   text-overflow:ellipsis;white-space:nowrap" title="${_esc(r.email)}">${_esc(r.email)}</td>
+        <td style="padding:0.4rem 0.5rem;font-size:0.72rem;color:var(--text2)">${_esc(r.llm)}</td>
+        <td style="padding:0.4rem 0.5rem;font-family:monospace;font-size:0.62rem;color:var(--muted)">${_esc(r.api_key_masked || '—')}</td>
+        <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem">${_fmtN(r.tokens)}</td>
+        <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem;color:var(--text2)">${_fmt(r.cost)}</td>
+        <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem;color:var(--accent)">${_fmt(r.revenue)}</td>
+        <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem;color:${_mclr(r.margin)}">${_fmt(r.margin)}</td>
+        <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem">${_fmt(r.balance, 2)}</td>
+        <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem;color:var(--green)">
+          ${r.topup_cash > 0 ? `${_fmt(r.topup_cash, 2)} (${r.topup_cash_cnt}×)` : '—'}
+        </td>
+        <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem;color:var(--accent)">
+          ${r.topup_coupon > 0 ? `${_fmt(r.topup_coupon, 2)} (${r.topup_coupon_cnt}×)` : '—'}
+        </td>
+      </tr>`;
+  }).join('');
+
+  const _th = (label, align = 'right') =>
+    `<th style="text-align:${align};padding:0.4rem 0.5rem;font-weight:500;font-size:0.65rem;
+               color:var(--muted);white-space:nowrap">${label}</th>`;
+
+  body.innerHTML = `
+    <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.25rem">Usage & Revenue</div>
+    <div style="font-size:0.65rem;color:var(--muted);margin-bottom:1rem">
+      Daily aggregated by user × LLM. System rows show live API balance from provider.
+    </div>
+
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:0.75rem;min-width:820px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border)">
+            ${_th('Date', 'left')}
+            ${_th('User', 'left')}
+            ${_th('LLM', 'left')}
+            ${_th('API Key', 'left')}
+            ${_th('Tokens')}
+            ${_th('Cost')}
+            ${_th('Revenue')}
+            ${_th('Margin')}
+            ${_th('Balance')}
+            ${_th('Cash Topup')}
+            ${_th('Coupon Topup')}
+          </tr>
+        </thead>
+        <tbody>
+          <!-- System rows (live API balances) -->
+          <tr><td colspan="11" style="padding:0.3rem 0.5rem;font-size:0.65rem;font-weight:600;
+                color:var(--muted);background:var(--surface2);border-bottom:1px solid var(--border)">
+            System — Live API Balances
+          </td></tr>
+          ${sys.map(_sysRow).join('')}
+          <!-- Data rows -->
+          ${_dataRows || `<tr><td colspan="11" style="padding:1.5rem;text-align:center;color:var(--muted);font-size:0.75rem">
+            No usage data yet. Usage will appear here after the first chat message.
+          </td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
 }

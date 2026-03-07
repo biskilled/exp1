@@ -124,8 +124,10 @@ export const api = {
   adminGetCoupons:  ()             => _get('/admin/coupons'),
   adminCreateCoupon:(body)         => _post('/admin/coupons', body),
   adminDeleteCoupon:(code)         => _del(`/admin/coupons/${encodeURIComponent(code)}`),
-  adminGetApiKeys:  ()             => _get('/admin/api-keys'),
-  adminSaveApiKeys: (body)         => _put('/admin/api-keys', body),
+  adminGetApiKeys:    ()           => _get('/admin/api-keys'),
+  adminSaveApiKeys:   (body)       => _put('/admin/api-keys', body),
+  adminGetApiBalances:()           => _get('/admin/api-balances'),
+  adminGetUsageTable: ()           => _get('/admin/usage-table'),
 
   // Billing — per-user balance + coupon + history
   billingBalance:      ()          => _get('/billing/balance'),
