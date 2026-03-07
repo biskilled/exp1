@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from config import settings
@@ -739,7 +739,7 @@ class CommitRequest(BaseModel):
 
 
 @router.post("/{project_name}/commit-push")
-async def commit_and_push(project_name: str, body: CommitRequest):
+async def commit_and_push(project_name: str, body: CommitRequest, request: Request):
     """Stage changed files, generate commit message via LLM, commit and push."""
     proj_dir = _proj_dir(project_name)
     if not proj_dir.exists():
@@ -747,12 +747,15 @@ async def commit_and_push(project_name: str, body: CommitRequest):
 
     code_dir = _resolve_code_dir(project_name)
     if not code_dir.exists():
-        raise HTTPException(status_code=404, detail=f"code_dir not found: {code_dir}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Code directory not found: {code_dir}. Set the correct path in Settings → Project → Code directory."
+        )
 
     if not _is_git_repo(code_dir):
         raise HTTPException(
             status_code=400,
-            detail="Not a git repository. Go to Settings → Project → Git and click Setup Git."
+            detail=f"Not a git repository: {code_dir}. Go to Settings → Project → Git and click 'Save & Setup Git'."
         )
 
     # Ensure .gitignore protects secrets and untrack any that slipped through
@@ -775,12 +778,15 @@ async def commit_and_push(project_name: str, body: CommitRequest):
     if not diff_stat:
         _, diff_stat, _ = _git(["diff", "--stat", "--cached"], code_dir)
 
+    # Resolve API key: body field takes priority, then request header
+    api_key = body.api_key or request.headers.get("X-Anthropic-Key") or None
+
     # Generate commit message
     commit_message = await _generate_commit_message(
         hint=body.message_hint,
         diff_stat=diff_stat,
         changed_files=changed,
-        api_key=body.api_key or None,
+        api_key=api_key,
     )
 
     # Stage all changed files

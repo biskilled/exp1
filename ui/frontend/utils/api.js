@@ -108,6 +108,9 @@ export const api = {
   chatSessions: ()    => _get('/chat/sessions'),
   chatSession:  (id)  => _get(`/chat/sessions/${encodeURIComponent(id)}`),
 
+  // Unified project history (all sources: ui, claude_cli, workflow)
+  historyChat: (project, limit = 200) => _get(`/history/chat?project=${encodeURIComponent(project || '')}&limit=${limit}`),
+
   // Git
   gitStatus:      (project)        => _get(`/git/${encodeURIComponent(project)}/status`),
   gitBranches:         (project)  => _get(`/git/${encodeURIComponent(project)}/branches`),

@@ -44,12 +44,16 @@ export function renderWorkflow(container) {
       </div>
     </div>
     <div class="workflow-body">
-      <div class="workflow-sidebar">
+      <div class="workflow-sidebar" id="wf-sidebar-panel">
         <div style="padding:0.5rem 0.5rem 0.25rem">
           <div class="nav-section-label">Workflows</div>
         </div>
         <div id="wf-list"></div>
       </div>
+      <!-- Sidebar resize handle -->
+      <div id="wf-resize-handle"
+           style="width:4px;cursor:col-resize;background:var(--border);flex-shrink:0"
+           title="Drag to resize panel"></div>
       <div class="workflow-canvas-area" id="wf-canvas-area"></div>
     </div>
   `;
@@ -69,6 +73,42 @@ export function renderWorkflow(container) {
 
   _loadWorkflowList(projectName);
   renderWorkflowEmpty();
+  _initWfResize();
+}
+
+// ── Sidebar resize ─────────────────────────────────────────────────────────────
+
+function _initWfResize() {
+  const handle = document.getElementById('wf-resize-handle');
+  const panel  = document.getElementById('wf-sidebar-panel');
+  if (!handle || !panel) return;
+
+  // Restore saved width
+  const saved = localStorage.getItem('aicli_wf_sidebar_w');
+  if (saved) panel.style.width = saved + 'px';
+
+  let dragging = false, startX = 0, startW = 0;
+
+  handle.addEventListener('mousedown', e => {
+    dragging = true; startX = e.clientX; startW = panel.offsetWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  handle.addEventListener('mouseover', () => { handle.style.background = 'var(--accent)'; });
+  handle.addEventListener('mouseout',  () => { if (!dragging) handle.style.background = 'var(--border)'; });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    panel.style.width = `${Math.max(120, Math.min(400, startW + (e.clientX - startX)))}px`;
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = document.body.style.userSelect = '';
+    handle.style.background = 'var(--border)';
+    localStorage.setItem('aicli_wf_sidebar_w', String(panel.offsetWidth));
+  });
 }
 
 // ── Workflow list ─────────────────────────────────────────────────────────────

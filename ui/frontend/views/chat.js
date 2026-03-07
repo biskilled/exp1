@@ -15,6 +15,7 @@ let _provider  = 'claude';
 let _streaming = false;
 let _roleOptions = [];       // { path, name } — loaded when project is open
 let _workflowOptions = [];   // workflow names — loaded when project is open
+let _sessionCache = [];      // merged session list (ui + cli + workflow)
 
 export function renderChat(container) {
   _provider = state.currentProject?.default_provider || 'claude';
@@ -24,11 +25,14 @@ export function renderChat(container) {
 
   const apiKeys = loadApiKeys();
 
+  const _savedPanelW = parseInt(localStorage.getItem('aicli_chat_sessions_w') || '190', 10);
+
   container.innerHTML = `
     <div style="display:flex;flex:1;overflow:hidden;min-height:0">
 
       <!-- Session sidebar -->
-      <div style="width:190px;border-right:1px solid var(--border);background:var(--surface);
+      <div id="chat-session-panel"
+           style="width:${_savedPanelW}px;border-right:1px solid var(--border);background:var(--surface);
                   display:flex;flex-direction:column;flex-shrink:0;overflow:hidden">
         <div style="padding:0.6rem;border-bottom:1px solid var(--border)">
           <button class="btn btn-ghost btn-sm" style="width:100%;font-size:0.7rem"
@@ -38,6 +42,11 @@ export function renderChat(container) {
                     letter-spacing:2px;text-transform:uppercase">Sessions</div>
         <div id="chat-sessions" style="flex:1;overflow-y:auto;padding:0.15rem 0.4rem 0.5rem"></div>
       </div>
+
+      <!-- Session panel resize handle -->
+      <div id="chat-resize-handle"
+           style="width:4px;cursor:col-resize;background:var(--border);flex-shrink:0"
+           title="Drag to resize panel"></div>
 
       <!-- Main chat -->
       <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden">
@@ -128,9 +137,10 @@ export function renderChat(container) {
   });
 
   _setupInput();
+  _initChatResize();
   _loadSessions();
-  _loadRolesAndWorkflows();
-  _showWelcome();
+  // Load roles+workflows first, then render welcome screen so buttons are populated
+  _loadRolesAndWorkflows().then(() => _showWelcome());
 }
 
 // ── Commands autocomplete ─────────────────────────────────────────────────────
@@ -316,27 +326,115 @@ function _setupInput() {
 async function _loadSessions() {
   const container = document.getElementById('chat-sessions');
   if (!container) return;
+
+  const projectName = state.currentProject?.name;
+  const merged = [];
+
+  // 1. UI sessions (have full message history loadable via chatSession)
   try {
-    const sessions = await api.chatSessions();
-    const list = Array.isArray(sessions) ? sessions : sessions.sessions || [];
-    if (!list.length) {
-      container.innerHTML = '<div style="font-size:0.65rem;color:var(--muted);padding:0.5rem 0.25rem">No sessions yet</div>';
-      return;
-    }
-    container.innerHTML = list.slice(0, 30).map(s => `
-      <div onclick="window._chatLoad('${s.id}')"
-        style="padding:0.4rem 0.5rem;border-radius:var(--radius);cursor:pointer;
-               font-size:0.65rem;color:var(--text2);overflow:hidden;text-overflow:ellipsis;
-               white-space:nowrap;transition:background 0.1s;margin-bottom:1px"
-        title="${_esc(s.title || s.id)}"
-        onmouseenter="this.style.background='var(--surface2)'"
-        onmouseleave="this.style.background='${s.id === _sessionId ? 'var(--surface2)' : ''}'">
-        ${_esc(s.title || s.id.slice(0, 14))}
-      </div>`).join('');
-  } catch {
-    // backend offline — silent
+    const uiData = await api.chatSessions();
+    const list = Array.isArray(uiData) ? uiData : uiData.sessions || [];
+    list.forEach(s => merged.push({
+      id: s.id,
+      title: s.title || s.id.slice(0, 14),
+      source: 'ui',
+      ts: s.created_at || s.id,
+      message_count: s.message_count || 0,
+      entries: null,  // load on demand
+    }));
+  } catch { /* backend offline */ }
+
+  // 2. Unified project history — claude_cli and workflow sources
+  if (projectName) {
+    try {
+      const histData = await api.historyChat(projectName, 300);
+      const bySession = new Map();
+      for (const e of (histData.entries || [])) {
+        const src = e.source || 'ui';
+        if (src === 'ui') continue;  // already in UI sessions above
+        const sid = e.session_id || ('hist_' + e.ts);
+        if (!bySession.has(sid)) {
+          bySession.set(sid, {
+            id: sid,
+            title: (e.user_input || '').slice(0, 60) || sid.slice(0, 14),
+            source: src,
+            ts: e.ts || '',
+            message_count: 0,
+            entries: [],
+          });
+        }
+        const s = bySession.get(sid);
+        s.message_count++;
+        s.entries.push(e);
+      }
+      merged.push(...bySession.values());
+    } catch { /* silent */ }
   }
+
+  // Sort newest first (#1 = most recent)
+  merged.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  _sessionCache = merged;
+
+  if (!merged.length) {
+    container.innerHTML = '<div style="font-size:0.65rem;color:var(--muted);padding:0.5rem 0.25rem">No sessions yet</div>';
+    return;
+  }
+
+  container.innerHTML = merged.slice(0, 50).map((s, idx) => {
+    const isActive = s.id === _sessionId;
+    const srcColor = s.source === 'ui' ? 'var(--accent)' : s.source === 'claude_cli' ? 'var(--blue)' : 'var(--green)';
+    const srcLabel = s.source === 'ui' ? 'UI' : s.source === 'claude_cli' ? 'CLI' : 'WF';
+    return `
+      <div onclick="window._chatLoadAny('${_esc(s.id)}')"
+        style="padding:0.35rem 0.45rem;border-radius:var(--radius);cursor:pointer;
+               font-size:0.63rem;color:${isActive ? 'var(--text)' : 'var(--text2)'};
+               background:${isActive ? 'var(--surface2)' : ''};
+               transition:background 0.1s;margin-bottom:1px"
+        title="${_esc(s.title)}"
+        onmouseenter="this.style.background='var(--surface2)'"
+        onmouseleave="this.style.background='${isActive ? 'var(--surface2)' : ''}'">
+        <div style="display:flex;align-items:center;gap:0.3rem;margin-bottom:2px">
+          <span style="font-size:0.52rem;color:var(--muted);flex-shrink:0">${idx + 1}.</span>
+          <span style="font-size:0.5rem;color:${srcColor};background:${srcColor}1a;
+                       padding:0 0.22rem;border-radius:2px;flex-shrink:0;letter-spacing:0.5px">${srcLabel}</span>
+        </div>
+        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(s.title)}</div>
+      </div>`;
+  }).join('');
 }
+
+// Load any session — UI sessions from store, CLI/WF sessions from history cache
+window._chatLoadAny = async (id) => {
+  const session = _sessionCache.find(s => s.id === id);
+  if (!session) return;
+
+  if (session.source === 'ui') {
+    await window._chatLoad(id);
+    return;
+  }
+
+  // History-only session (claude_cli or workflow): render entries read-only
+  _sessionId = id;
+  const msgs = document.getElementById('chat-messages');
+  if (!msgs) return;
+  msgs.innerHTML = '';
+  if (!session.entries?.length) {
+    _appendSystemMsg('No messages in this session.');
+    return;
+  }
+  // Sort entries oldest-first so messages flow top→bottom chronologically
+  const chronological = [...session.entries].sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+  for (const e of chronological) {
+    if (e.user_input) _appendUserMsg(e.user_input);
+    if (e.output) _appendAssistantMsg(e.output);
+  }
+  // Highlight active in sidebar
+  document.querySelectorAll('#chat-sessions > div').forEach((el, i) => {
+    const active = _sessionCache[i]?.id === id;
+    el.style.background = active ? 'var(--surface2)' : '';
+    el.style.color = active ? 'var(--text)' : 'var(--text2)';
+  });
+};
 
 async function _loadRolesAndWorkflows() {
   const proj = state.currentProject?.name;
@@ -367,9 +465,40 @@ window._chatNew = () => {
   _sessionId = null;
   const msgs = document.getElementById('chat-messages');
   if (msgs) msgs.innerHTML = '';
-  _showWelcome();
+  _showWelcome();  // roles already loaded — show immediately
   _loadSessions();
 };
+
+// ── Chat panel resize ─────────────────────────────────────────────────────────
+
+function _initChatResize() {
+  const handle = document.getElementById('chat-resize-handle');
+  const panel  = document.getElementById('chat-session-panel');
+  if (!handle || !panel) return;
+
+  let dragging = false, startX = 0, startW = 0;
+
+  handle.addEventListener('mousedown', e => {
+    dragging = true; startX = e.clientX; startW = panel.offsetWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  handle.addEventListener('mouseover', () => { handle.style.background = 'var(--accent)'; });
+  handle.addEventListener('mouseout',  () => { if (!dragging) handle.style.background = 'var(--border)'; });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    panel.style.width = `${Math.max(120, Math.min(400, startW + (e.clientX - startX)))}px`;
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = document.body.style.userSelect = '';
+    handle.style.background = 'var(--border)';
+    localStorage.setItem('aicli_chat_sessions_w', String(panel.offsetWidth));
+  });
+}
 
 window._chatLoad = async (id) => {
   _sessionId = id;
@@ -593,20 +722,25 @@ window._chatSend = async () => {
   }
 };
 
-async function _autoCommitPush(projectName, userMsg, aiResponse) {
+async function _autoCommitPush(projectName, userMsg) {
+  const apiKeys = loadApiKeys();
   try {
     const result = await api.gitCommitPush(projectName, {
       message_hint: userMsg.slice(0, 200),
-      provider: _provider,
+      provider:     _provider,
+      api_key:      apiKeys.claude || null,
     });
     if (result.committed === false) return; // no changes — silent
     if (result.pushed) {
-      toast(`Auto-committed & pushed: ${result.commit_message}`, 'success');
+      _appendSystemMsg(`↑ **Auto-pushed** \`${result.commit_hash}\` — ${result.commit_message}`);
     } else {
-      toast(`Auto-committed (push failed: ${result.push_error || 'check credentials in Settings'})`, 'error');
+      // Push failed — show in chat so user can see the error
+      const err = result.push_error || 'Check Git credentials in Settings → Project → Git';
+      _appendSystemMsg(`↑ Committed \`${result.commit_hash}\` but **push failed:** ${err}`);
     }
   } catch (e) {
-    toast(`Auto-commit failed: ${e.message}`, 'error');
+    // Show error in chat (not just a toast) — common causes: code_dir not set, not a git repo
+    _appendSystemMsg(`⚠ Auto-commit failed: ${e.message}\n\nCheck **Settings → Project** — make sure *Code directory* and *Git credentials* are configured.`);
   }
 }
 
@@ -689,30 +823,109 @@ function _showWelcome() {
   if (!container) return;
   const el = document.createElement('div');
   el.className  = 'chat-welcome';
-  el.style.cssText = 'text-align:center;padding:3rem 2rem;margin:auto;max-width:600px;width:100%';
+  el.style.cssText = 'padding:1.5rem 2rem;max-width:720px;width:100%';
   const proj = state.currentProject;
-  const hasSystem = !!(proj?.system_prompt);
-  el.innerHTML = `
-    <div style="font-family:var(--font-ui);font-size:1.6rem;font-weight:800;letter-spacing:-1px;color:var(--accent);margin-bottom:0.4rem">aicli Chat</div>
-    <div style="font-size:0.68rem;color:var(--muted);margin-bottom:0.75rem">Multi-LLM · SSE Streaming · Per-project context</div>
-    ${hasSystem ? `<div style="font-size:0.65rem;color:var(--green);margin-bottom:1.25rem;display:flex;align-items:center;gap:0.4rem;justify-content:center">
-      <span>✓</span> System prompt loaded from <strong>${proj.name}</strong> — use Role selector to switch
-    </div>` : `<div style="font-size:0.65rem;color:var(--muted);margin-bottom:1.25rem">
-      No project open — chat without context. Open a project for roles &amp; prompts.
-    </div>`}
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0.5rem">
-      ${['Ask a question', 'Write code', 'Review code', 'Explain concept', 'Debug error', 'Summarise text'].map(s => `
-        <div onclick="document.getElementById('chat-input').value='${s}: ';document.getElementById('chat-input').focus()"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-                 padding:0.6rem 0.75rem;cursor:pointer;font-size:0.7rem;text-align:left;transition:border-color 0.1s"
+
+  if (!proj) {
+    el.innerHTML = `
+      <div style="font-size:1.4rem;font-weight:800;color:var(--accent);margin-bottom:0.35rem">aicli Chat</div>
+      <div style="font-size:0.68rem;color:var(--muted)">Open a project from the sidebar to start chatting with context.</div>`;
+    container.appendChild(el);
+    return;
+  }
+
+  const roleButtons = _roleOptions.length ? `
+    <div style="margin-bottom:1.2rem">
+      <div style="font-size:0.52rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:0.4rem">Roles</div>
+      <div style="display:flex;flex-wrap:wrap;gap:0.3rem">
+        <button onclick="window._quickRole('')"
+          style="padding:0.22rem 0.55rem;font-size:0.63rem;background:var(--surface);border:1px solid var(--border);
+                 border-radius:20px;cursor:pointer;color:var(--text2);transition:border-color 0.1s"
           onmouseenter="this.style.borderColor='var(--accent)'"
-          onmouseleave="this.style.borderColor='var(--border)'">
-          ${s}
-        </div>`).join('')}
+          onmouseleave="this.style.borderColor='var(--border)'">Default</button>
+        ${_roleOptions.map(r => `
+          <button onclick="window._quickRole('${_esc(r.path)}')"
+            style="padding:0.22rem 0.55rem;font-size:0.63rem;background:var(--surface);border:1px solid var(--border);
+                   border-radius:20px;cursor:pointer;color:var(--text2);transition:border-color 0.1s"
+            onmouseenter="this.style.borderColor='var(--accent)'"
+            onmouseleave="this.style.borderColor='var(--border)'">${_esc(r.name.replace('.md', ''))}</button>`).join('')}
+      </div>
+    </div>` : '';
+
+  const wfButtons = _workflowOptions.length ? `
+    <div style="margin-bottom:1.2rem">
+      <div style="font-size:0.52rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:0.4rem">Workflows</div>
+      <div style="display:flex;flex-wrap:wrap;gap:0.3rem">
+        ${_workflowOptions.slice(0, 8).map(w => {
+          const name = typeof w === 'string' ? w : w.name;
+          return `<button onclick="document.getElementById('chat-input').value='/workflow ${_esc(name)}';document.getElementById('chat-input').focus()"
+            style="padding:0.22rem 0.55rem;font-size:0.63rem;background:var(--surface);border:1px solid var(--border);
+                   border-radius:20px;cursor:pointer;color:var(--text2);transition:border-color 0.1s"
+            onmouseenter="this.style.borderColor='var(--accent)'"
+            onmouseleave="this.style.borderColor='var(--border)'">⟳ ${_esc(name)}</button>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  // Store prompts in a global so onclick can reference by index (avoids quote escaping issues)
+  window._chatWelcomePrompts = [
+    'Explain the purpose, architecture and current state of this project.',
+    'Based on the project context and recent history, what should I focus on next?',
+    'Summarize the most recent changes and commits to this project.',
+  ];
+  const quickLabels = ['Explain this project', 'What should I work on?', 'Summarise recent changes'];
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:0.6rem;margin-bottom:0.2rem">
+      <div style="font-size:0.9rem;font-weight:700;color:var(--text)">${_esc(proj.name)}</div>
+      ${proj.system_prompt ? `<span style="font-size:0.58rem;color:var(--green)">✓ context loaded</span>` : ''}
+    </div>
+    <div style="font-size:0.62rem;color:var(--muted);margin-bottom:1.2rem">${_esc(proj.description || 'AI-assisted development workspace')}</div>
+    ${roleButtons}
+    ${wfButtons}
+    <div>
+      <div style="font-size:0.52rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:0.4rem">Quick start</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:0.4rem">
+        ${quickLabels.map((label, i) => `
+          <div onclick="window._chatQuickPrompt(${i})"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+                   padding:0.5rem 0.7rem;cursor:pointer;font-size:0.68rem;line-height:1.4;transition:border-color 0.1s"
+            onmouseenter="this.style.borderColor='var(--accent)'"
+            onmouseleave="this.style.borderColor='var(--border)'">${_esc(label)}</div>`).join('')}
+      </div>
     </div>
   `;
   container.appendChild(el);
 }
+
+// Quick-fill chat input from welcome prompt index
+window._chatQuickPrompt = (i) => {
+  const prompt = (window._chatWelcomePrompts || [])[i];
+  if (!prompt) return;
+  const input = document.getElementById('chat-input');
+  if (input) { input.value = prompt; input.focus(); }
+};
+
+// Quick-set role from welcome screen
+window._quickRole = async (path) => {
+  const proj = state.currentProject;
+  if (!proj) return;
+  const sel = document.getElementById('chat-role');
+  if (!path) {
+    // Reset to project default
+    const p = await api.getProject(proj.name).catch(() => proj);
+    setState({ currentProject: { ...state.currentProject, system_prompt: p.claude_md || p.project_md || '' } });
+    if (sel) sel.value = '';
+    toast('Role reset to default', 'info');
+  } else {
+    try {
+      const data = await api.readPrompt(path, proj.name);
+      setState({ currentProject: { ...state.currentProject, system_prompt: data.content || '' } });
+      if (sel) sel.value = path;
+      toast(`Role: ${path.split('/').pop().replace('.md', '')}`, 'info');
+    } catch (e) { toast(`Could not load role: ${e.message}`, 'error'); }
+  }
+};
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 

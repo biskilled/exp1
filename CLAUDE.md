@@ -103,11 +103,11 @@ ui/
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-06] `claude_cli`: it is started to work. but ask me to do git pull which make sense. I would like to add that into the
-- [2026-03-06] `claude_cli`: when ever I am doing pull it looks like config.mjs is changed (why is that) ? also I do not see any 
-- [2026-03-06] `claude_cli`: I am trying to check my git status. when I am doing git pull - I do see that here is no tracking inf
-- [2026-03-06] `claude_cli`: there is still update setting when I do pull which is suppose to be. now git try to push - but it is
-- [2026-03-06] `claude_cli`: I do have the same issse when I am trying to push - repository rule violations . cannot contain scre
+- [2026-03-06] `claude_cli`: in the chat - I do see only the history of the chat I have created in the aiCli, can I see all proje
+- [2026-03-06] `claude_cli`: the session are look good but they are sorted wrong (I would like to see the last prompt at the butt
+- [2026-03-06] `claude_cli`: sorry , the session numbvering is good and I would like to see the last session (number 10 cli in my
+- [2026-03-07] `claude_cli`: continue
+- [2026-03-07] `claude_cli`: I would like to have the same behavour when I am using the claude cli using the hooks. you did some 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

@@ -3,7 +3,7 @@ active_workflows:
 - code_review
 - update_docs
 auto_commit_push: true
-code_dir: ../..
+code_dir: /Users/user/Documents/gdrive_cellqlick/2026/aicli
 default_provider: claude
 description: AI-powered development CLI with multi-provider support
 git_branch: master

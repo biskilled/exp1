@@ -14,10 +14,12 @@ export async function renderPrompts(container, projectName) {
   container.className = 'view active';
   container.style.cssText = 'display:flex;flex-direction:column;overflow:hidden;height:100%';
 
+  const _savedTreeW = parseInt(localStorage.getItem('aicli_prompts_tree_w') || '200', 10);
+
   container.innerHTML = `
     <div class="prompts-view" style="flex:1;overflow:hidden">
       <!-- File tree -->
-      <div class="prompts-tree">
+      <div class="prompts-tree" id="prompts-tree-panel" style="width:${_savedTreeW}px">
         <div class="prompts-tree-header">
           <span class="prompts-tree-label">Prompts</span>
           <button class="btn btn-ghost btn-sm" style="padding:0.15rem 0.4rem;font-size:0.65rem"
@@ -29,6 +31,11 @@ export async function renderPrompts(container, projectName) {
           </div>
         </div>
       </div>
+
+      <!-- Tree resize handle -->
+      <div id="prompts-resize-handle"
+           style="width:4px;cursor:col-resize;background:var(--border);flex-shrink:0"
+           title="Drag to resize panel"></div>
 
       <!-- Editor / viewer -->
       <div class="prompts-editor-area">
@@ -76,6 +83,8 @@ export async function renderPrompts(container, projectName) {
     _renderEditorArea(_activePath, projectName);
   };
 
+  _initPromptsResize();
+
   if (!projectName) {
     document.getElementById('prompts-tree-body').innerHTML =
       '<div class="empty-state" style="padding:1.5rem"><p>No project open</p></div>';
@@ -83,6 +92,37 @@ export async function renderPrompts(container, projectName) {
   }
 
   await _loadTree(projectName);
+}
+
+// ── Tree panel resize ─────────────────────────────────────────────────────────
+
+function _initPromptsResize() {
+  const handle = document.getElementById('prompts-resize-handle');
+  const panel  = document.getElementById('prompts-tree-panel');
+  if (!handle || !panel) return;
+
+  let dragging = false, startX = 0, startW = 0;
+
+  handle.addEventListener('mousedown', e => {
+    dragging = true; startX = e.clientX; startW = panel.offsetWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  handle.addEventListener('mouseover', () => { handle.style.background = 'var(--accent)'; });
+  handle.addEventListener('mouseout',  () => { if (!dragging) handle.style.background = 'var(--border)'; });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    panel.style.width = `${Math.max(120, Math.min(500, startW + (e.clientX - startX)))}px`;
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = document.body.style.userSelect = '';
+    handle.style.background = 'var(--border)';
+    localStorage.setItem('aicli_prompts_tree_w', String(panel.offsetWidth));
+  });
 }
 
 // ── File tree ─────────────────────────────────────────────────────────────────
