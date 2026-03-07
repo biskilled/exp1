@@ -111,7 +111,11 @@ export function renderLogin(container, backendUrl, onSuccess, onClose = null) {
       const data = await res.json();
 
       if (!res.ok) {
-        _showError(data.detail || 'Authentication failed');
+        const detail = data.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map(d => d.msg || JSON.stringify(d)).join('; ')
+          : (typeof detail === 'string' ? detail : 'Authentication failed');
+        _showError(msg);
         return;
       }
 
