@@ -96,18 +96,30 @@ ui/
 │   │   ├── api.js      ← all HTTP calls to FastAPI backend
 │   │   ├── markdown.js ← renderMd(), highlightYaml(), validateYaml() (no npm)
 │   │   └── toast.js    ← toast notifications
+│   ├── chat.js     ← unified session list (UI+CLI+WF), source badges, resizable panel, welcome screen
+│   ├── prompts.js  ← resizable tree panel + textarea editor (save-disabled-until-changed)
+│   ├── workflow.js ← resizable sidebar + YAML editor + node flow diagram
 │   └── views/
 
-
-*See PROJECT.md for full documentation (274 lines total)*
+*See PROJECT.md for full documentation*
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-06] `claude_cli`: in the chat - I do see only the history of the chat I have created in the aiCli, can I see all proje
-- [2026-03-06] `claude_cli`: the session are look good but they are sorted wrong (I would like to see the last prompt at the butt
-- [2026-03-06] `claude_cli`: sorry , the session numbvering is good and I would like to see the last session (number 10 cli in my
-- [2026-03-07] `claude_cli`: continue
-- [2026-03-07] `claude_cli`: I would like to have the same behavour when I am using the claude cli using the hooks. you did some 
+- [2026-03-06] `claude_cli`: unified chat session list showing UI + CLI + WF history with source badges and seq numbers
+- [2026-03-06] `claude_cli`: fixed session sort (newest-first) and message order (oldest-first within session)
+- [2026-03-06] `claude_cli`: resizable panels for chat, prompts, and workflow views; new chat welcome screen
+- [2026-03-07] `claude_cli`: auto_commit_push.sh Stop hook for Claude CLI; wired into settings.local.json
+- [2026-03-07] `claude_cli`: fixed code_dir in project.yaml (was ../.. → now absolute path to git repo)
+
+## Key Hook Scripts (.aicli/scripts/)
+
+| Script | Event | Purpose |
+|--------|-------|---------|
+| `log_user_prompt.sh` | UserPromptSubmit | Appends prompt to history.jsonl |
+| `log_session_stop.sh` | Stop | Backfills response text into history |
+| `auto_commit_push.sh` | Stop | Commits + pushes code after every Claude CLI session |
+
+`auto_commit_push.sh` requires `auto_commit_push: true` in project.yaml and `code_dir` pointing to a git repo. Tries backend API first (LLM commit message); falls back to direct git with `_system/.git_token` credentials.
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

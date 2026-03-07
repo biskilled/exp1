@@ -158,6 +158,18 @@ ui/
 - [x] History pipeline: UI chat + CLI history + Claude Code hook log all merged in /history/chat
 - [x] project_state.json: static project metadata (tech stack, decisions, features, deployment)
 - [x] dev_runtime_state.json: auto-updated after each exchange (session_count, last_provider, etc.)
+- [x] Chat view: unified session list merging UI sessions + CLI/WF history with source badges (UI/CLI/WF)
+- [x] Chat view: sessions sorted newest-first; messages within session sorted oldest-first
+- [x] Chat view: sequence numbers on session list; resizable session panel (drag handle → localStorage)
+- [x] Chat welcome screen: project stats, role pill buttons, workflow launchers, contextual quick-starts
+- [x] Auto-commit inline errors: persistent in chat messages (not disappearing toasts)
+- [x] Prompts view: resizable tree panel (drag handle → localStorage)
+- [x] Workflow view: resizable sidebar (drag handle → localStorage)
+- [x] git.py: reads X-Anthropic-Key header as API key fallback for LLM commit message generation
+- [x] Claude CLI Stop hook: auto_commit_push.sh — fires after every Claude Code response
+  - Backend-first path: POST /git/{project}/commit-push with ANTHROPIC_API_KEY header
+  - Fallback path: direct git with credentials from _system/.git_token
+  - Registered in .claude/settings.local.json alongside log_session_stop.sh
 
 ### In Progress [ ]
 
@@ -259,6 +271,17 @@ steps:
 | 2026-02-26 | Created workspace/aicli/project_state.json — static project metadata |
 | 2026-02-26 | Created workspace/aicli/dev_runtime_state.json — auto-updated runtime state |
 | 2026-02-26 | projects.py: GET /{name} now includes project_state + dev_runtime_state in response |
+| 2026-03-06 | chat.js: session list merges UI sessions + history endpoint (CLI/WF); source badges + seq numbers |
+| 2026-03-06 | chat.js: sessions sorted newest-first; messages within session sorted oldest-first |
+| 2026-03-06 | chat.js: resizable session panel; new welcome screen with roles/workflows/quick-starts |
+| 2026-03-06 | chat.js: auto-commit errors shown as persistent inline messages (not dismissible toasts) |
+| 2026-03-06 | chat.js: API key forwarded to backend for LLM commit message generation |
+| 2026-03-06 | prompts.js: resizable tree panel with drag handle; width persisted in localStorage |
+| 2026-03-06 | workflow.js: resizable sidebar with drag handle; width persisted in localStorage |
+| 2026-03-07 | git.py: commit_and_push reads X-Anthropic-Key header; better error messages with actual paths |
+| 2026-03-07 | .aicli/scripts/auto_commit_push.sh: new Stop hook for Claude CLI auto-commit/push |
+| 2026-03-07 | .claude/settings.local.json: auto_commit_push.sh registered as Stop hook |
+| 2026-03-07 | project.yaml: code_dir set to absolute path (was ../.. which resolved outside git repo) |
 
 ---
 
