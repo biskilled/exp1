@@ -129,6 +129,12 @@ export const api = {
   adminGetApiBalances:()           => _get('/admin/api-balances'),
   adminGetUsageTable: ()           => _get('/admin/usage-table'),
 
+  // Admin — billing: provider cost config + actual usage fetch
+  adminGetProviderCosts:        ()           => _get('/admin/provider-costs'),
+  adminSaveProviderCosts:       (body)       => _put('/admin/provider-costs', body),
+  adminFetchProviderUsage:      (body)       => _post('/admin/fetch-provider-usage', body),
+  adminGetProviderUsageHistory: (provider)   => _get(`/admin/provider-usage-history${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`),
+
   // Billing — per-user balance + coupon + history
   billingBalance:      ()          => _get('/billing/balance'),
   billingApplyCoupon:  (code)      => _post('/billing/apply-coupon', { code }),

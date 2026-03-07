@@ -1,5 +1,5 @@
 """
-Admin router — user management, pricing, coupons, API keys (admin only).
+Admin router — user management, pricing, coupons, API keys, billing (admin only).
 
 GET    /admin/users              → list all users + usage + balance summary
 PATCH  /admin/users/{id}         → update role, is_active, balance_added_usd (credit)
@@ -14,6 +14,11 @@ DELETE /admin/coupons/{code}     → delete coupon
 
 GET    /admin/api-keys           → masked keys (last 4 chars)
 PUT    /admin/api-keys           → save full keys
+
+GET    /admin/provider-costs              → load provider_costs.json
+PUT    /admin/provider-costs              → save provider_costs.json
+POST   /admin/fetch-provider-usage        → fetch real usage from provider API
+GET    /admin/provider-usage-history      → last N fetch results
 """
 
 import json
@@ -509,3 +514,63 @@ async def get_usage_table(_: dict = Depends(_require_admin)):
     ]
 
     return {"rows": result, "system_rows": system_rows}
+
+
+# ── Provider Costs (per-token pricing config) ───────────────────────────────────
+
+@router.get("/provider-costs")
+async def get_provider_costs(_: dict = Depends(_require_admin)):
+    """Return provider_costs.json — per-token pricing used for cost estimation."""
+    from core.provider_costs import load_costs, get_model_list
+    cfg = load_costs()
+    return {**cfg, "model_list": get_model_list()}
+
+
+@router.put("/provider-costs")
+async def put_provider_costs(body: dict, admin: dict = Depends(_require_admin)):
+    """Save updated provider_costs.json."""
+    from core.provider_costs import save_costs
+    admin_email = admin.get("email", "admin")
+    save_costs(body, updated_by=admin_email)
+    return {"ok": True}
+
+
+# ── Fetch Provider Usage (actual costs from provider APIs) ──────────────────────
+
+class FetchUsageRequest(BaseModel):
+    provider: str                  # "openai" | "anthropic" / "claude"
+    start_date: str                # YYYY-MM-DD
+    end_date: str                  # YYYY-MM-DD
+    org_id: str | None = None      # Required for Anthropic
+    api_key: str | None = None     # Override server key (optional)
+
+
+@router.post("/fetch-provider-usage")
+async def fetch_provider_usage_endpoint(
+    body: FetchUsageRequest,
+    _: dict = Depends(_require_admin),
+):
+    """
+    Fetch actual usage data from the provider's billing API.
+    Results are stored and returned immediately.
+    """
+    from core.provider_usage_api import fetch_provider_usage
+    result = await fetch_provider_usage(
+        provider=body.provider,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        org_id=body.org_id,
+        api_key=body.api_key or None,
+    )
+    return result
+
+
+@router.get("/provider-usage-history")
+async def get_provider_usage_history(
+    provider: str | None = None,
+    limit: int = 20,
+    _: dict = Depends(_require_admin),
+):
+    """Return last N provider usage fetch results (from JSONL history)."""
+    from core.provider_usage_api import load_usage_history
+    return {"records": load_usage_history(provider=provider, limit=limit)}

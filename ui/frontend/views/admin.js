@@ -21,13 +21,13 @@ export async function renderAdmin(container) {
 
       <!-- Tab bar -->
       <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;padding:0 1.25rem">
-        ${['users','pricing','coupons','apikeys','usage'].map((t, i) => `
+        ${['users','pricing','coupons','apikeys','usage','billing'].map((t, i) => `
           <button id="admin-tab-${t}" onclick="window._adminTab('${t}')"
             style="padding:0.55rem 1rem;border:none;border-bottom:2px solid ${i===0?'var(--accent)':'transparent'};
                    background:none;cursor:pointer;font-size:0.75rem;
                    color:${i===0?'var(--text)':'var(--text2)'};
                    font-weight:${i===0?'600':'normal'};transition:all 0.15s">
-            ${{ users:'👥 Users', pricing:'💲 Pricing', coupons:'🎟 Coupons', apikeys:'🔑 API Keys', usage:'📊 Usage' }[t]}
+            ${{ users:'👥 Users', pricing:'💲 Pricing', coupons:'🎟 Coupons', apikeys:'🔑 API Keys', usage:'📊 Usage', billing:'🔬 Billing' }[t]}
           </button>
         `).join('')}
       </div>
@@ -40,7 +40,7 @@ export async function renderAdmin(container) {
 
   window._adminTab = (tab) => {
     _activeTab = tab;
-    ['users','pricing','coupons','apikeys','usage'].forEach(t => {
+    ['users','pricing','coupons','apikeys','usage','billing'].forEach(t => {
       const btn = document.getElementById(`admin-tab-${t}`);
       if (btn) {
         btn.style.borderBottomColor = t === tab ? 'var(--accent)' : 'transparent';
@@ -61,6 +61,7 @@ export async function renderAdmin(container) {
       if (tab === 'coupons') await _renderCoupons(body);
       if (tab === 'apikeys') await _renderApiKeys(body);
       if (tab === 'usage')   await _renderUsage(body);
+      if (tab === 'billing') await _renderBilling(body);
     } catch (e) {
       body.innerHTML = `<div style="color:var(--red);font-size:0.75rem">Error: ${e.message}</div>`;
     }
@@ -689,4 +690,296 @@ async function _renderUsage(body) {
       </table>
     </div>
   `;
+}
+
+
+// ── Billing Tab — Provider Costs + Actual Usage Fetch ─────────────────────────
+
+async function _renderBilling(body) {
+  body.innerHTML = '<div style="color:var(--muted);font-size:0.72rem;padding:1rem">Loading…</div>';
+
+  let costsData, historyData;
+  try {
+    [costsData, historyData] = await Promise.all([
+      api.adminGetProviderCosts(),
+      api.adminGetProviderUsageHistory(),
+    ]);
+  } catch (e) {
+    body.innerHTML = `<div style="color:var(--red);font-size:0.75rem">Error: ${e.message}</div>`;
+    return;
+  }
+
+  const modelList = costsData.model_list || [];
+  const history   = historyData.records  || [];
+  const updatedAt = costsData.updated_at ? new Date(costsData.updated_at).toLocaleString() : 'never';
+  const updatedBy = costsData.updated_by || '';
+
+  // Sanitize string for use as HTML id (replace non-alphanum with -)
+  const _toId = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '-');
+
+  // Group models by provider
+  const byProvider = {};
+  for (const m of modelList) {
+    if (!byProvider[m.provider]) byProvider[m.provider] = [];
+    byProvider[m.provider].push(m);
+  }
+
+  const providerBlocks = Object.entries(byProvider).map(([prov, models]) => `
+    <div style="margin-bottom:1.25rem">
+      <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:0.4rem;
+                  text-transform:capitalize">${_esc(prov)}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+            <th style="text-align:left;padding:0.3rem 0.5rem;font-weight:500">Model</th>
+            <th style="text-align:right;padding:0.3rem 0.5rem;font-weight:500">Input ($/token)</th>
+            <th style="text-align:right;padding:0.3rem 0.5rem;font-weight:500">Output ($/token)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${models.map(m => `
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:0.3rem 0.5rem;font-family:monospace;font-size:0.68rem;color:var(--text2)">${_esc(m.model)}</td>
+              <td style="padding:0.3rem 0.5rem;text-align:right">
+                <input type="number" step="0.000000001" min="0"
+                  id="cost-${_toId(prov)}-${_toId(m.model)}-in"
+                  value="${m.input}"
+                  style="width:110px;background:var(--surface);border:1px solid var(--border);
+                         border-radius:4px;padding:0.2rem 0.4rem;font-size:0.68rem;
+                         color:var(--text);text-align:right">
+              </td>
+              <td style="padding:0.3rem 0.5rem;text-align:right">
+                <input type="number" step="0.000000001" min="0"
+                  id="cost-${_toId(prov)}-${_toId(m.model)}-out"
+                  value="${m.output}"
+                  style="width:110px;background:var(--surface);border:1px solid var(--border);
+                         border-radius:4px;padding:0.2rem 0.4rem;font-size:0.68rem;
+                         color:var(--text);text-align:right">
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `).join('');
+
+  // History rows
+  const histRows = history.length ? history.map(r => {
+    const ok = r.ok ? '✓' : '✕';
+    const clr = r.ok ? 'var(--green)' : 'var(--red)';
+    const dt = r.fetched_at ? new Date(r.fetched_at).toLocaleString() : '—';
+    const errors = (r.errors || []).join(', ') || '';
+    const tokens = r.total_prompt_tokens != null
+      ? `↑${r.total_prompt_tokens.toLocaleString()} ↓${(r.total_completion_tokens||0).toLocaleString()}`
+      : r.total_input_tokens != null
+      ? `↑${r.total_input_tokens.toLocaleString()} ↓${(r.total_output_tokens||0).toLocaleString()}`
+      : '—';
+    return `
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:0.35rem 0.5rem;font-size:0.7rem;color:var(--muted)">${dt}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-transform:capitalize">${_esc(r.provider || '—')}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;color:var(--muted)">${_esc(r.start_date || '—')} → ${_esc(r.end_date || '—')}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.72rem;font-weight:700;color:${clr}">${ok}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.72rem">${tokens}</td>
+        <td style="padding:0.35rem 0.5rem;font-size:0.65rem;color:var(--red);max-width:200px;
+                   overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(errors)}">${_esc(errors)}</td>
+      </tr>`;
+  }).join('') : `<tr><td colspan="6" style="padding:1rem;text-align:center;color:var(--muted);font-size:0.72rem">
+    No usage fetches yet. Use the form above to fetch actual usage from provider APIs.
+  </td></tr>`;
+
+  // Get today and 7 days ago as default date range
+  const today = new Date().toISOString().slice(0, 10);
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+
+  body.innerHTML = `
+    <!-- Cost Config Section -->
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem">
+      <div style="font-weight:700;font-size:0.8rem">Provider Cost Config</div>
+      <span style="font-size:0.65rem;color:var(--muted)">
+        Last updated: <strong>${_esc(updatedAt)}</strong>${updatedBy ? ` by ${_esc(updatedBy)}` : ''}
+      </span>
+      <button id="save-costs-btn" onclick="window._saveCosts()"
+        style="margin-left:auto;padding:0.35rem 0.9rem;background:var(--accent);border:none;
+               border-radius:5px;color:#fff;font-size:0.72rem;font-weight:600;cursor:pointer">
+        Save Costs
+      </button>
+      <span id="costs-status" style="font-size:0.65rem;color:var(--muted)"></span>
+    </div>
+    <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.75rem">
+      Per-token pricing used for real-time cost estimation. Values are in USD per token
+      (e.g. 0.000003 = $3 per 1M tokens). Updated at: <em>${_esc(updatedAt)}</em>.
+    </div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+                padding:1rem;margin-bottom:1.5rem;max-height:400px;overflow-y:auto">
+      ${providerBlocks}
+    </div>
+
+    <!-- Fetch Provider Usage Section -->
+    <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.5rem">Fetch Actual Provider Usage</div>
+    <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.75rem">
+      Pull real usage data from provider billing APIs. Results are saved and shown in the history below.<br>
+      <strong>OpenAI</strong>: uses /v1/usage + /v1/dashboard/billing (API key required).<br>
+      <strong>Anthropic</strong>: uses /v1/organizations/{org_id}/usage (API key + org ID required).
+    </div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+                padding:1rem;margin-bottom:1.5rem">
+      <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end">
+        <div style="display:flex;flex-direction:column;gap:0.25rem">
+          <label style="font-size:0.65rem;color:var(--muted)">Provider</label>
+          <select id="fetch-provider"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:4px;
+                   padding:0.3rem 0.5rem;font-size:0.72rem;color:var(--text)">
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic (Claude)</option>
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0.25rem">
+          <label style="font-size:0.65rem;color:var(--muted)">Start Date</label>
+          <input type="date" id="fetch-start" value="${weekAgo}"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:4px;
+                   padding:0.3rem 0.5rem;font-size:0.72rem;color:var(--text)">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0.25rem">
+          <label style="font-size:0.65rem;color:var(--muted)">End Date</label>
+          <input type="date" id="fetch-end" value="${today}"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:4px;
+                   padding:0.3rem 0.5rem;font-size:0.72rem;color:var(--text)">
+        </div>
+        <div id="org-id-wrap" style="display:none;flex-direction:column;gap:0.25rem">
+          <label style="font-size:0.65rem;color:var(--muted)">Org ID (Anthropic)</label>
+          <input type="text" id="fetch-org-id" placeholder="org-XXXXXXXXXXXX"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:4px;
+                   padding:0.3rem 0.5rem;font-size:0.72rem;color:var(--text);width:180px">
+        </div>
+        <button id="fetch-usage-btn" onclick="window._fetchProviderUsage()"
+          style="padding:0.35rem 0.9rem;background:var(--accent);border:none;border-radius:5px;
+                 color:#fff;font-size:0.72rem;font-weight:600;cursor:pointer">
+          ↓ Fetch Usage
+        </button>
+        <span id="fetch-status" style="font-size:0.65rem;color:var(--muted)"></span>
+      </div>
+    </div>
+
+    <!-- Fetch History -->
+    <div style="font-weight:700;font-size:0.8rem;margin-bottom:0.5rem">Fetch History</div>
+    <div id="billing-history-wrap" style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:0.72rem;min-width:600px">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+            <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Fetched At</th>
+            <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Provider</th>
+            <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Date Range</th>
+            <th style="text-align:center;padding:0.35rem 0.5rem;font-weight:500">OK</th>
+            <th style="text-align:right;padding:0.35rem 0.5rem;font-weight:500">Tokens</th>
+            <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:500">Errors</th>
+          </tr>
+        </thead>
+        <tbody id="billing-hist-tbody">${histRows}</tbody>
+      </table>
+    </div>
+  `;
+
+  // Show/hide org-id field based on provider
+  const provSel = document.getElementById('fetch-provider');
+  const orgWrap = document.getElementById('org-id-wrap');
+  if (provSel && orgWrap) {
+    provSel.addEventListener('change', () => {
+      orgWrap.style.display = provSel.value === 'anthropic' ? 'flex' : 'none';
+    });
+  }
+
+  window._saveCosts = async () => {
+    const statusEl = document.getElementById('costs-status');
+    const btn      = document.getElementById('save-costs-btn');
+    if (btn) btn.disabled = true;
+    if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.style.color = 'var(--muted)'; }
+    try {
+      // Rebuild providers object from input fields
+      const providers = {};
+      for (const [prov, models] of Object.entries(byProvider)) {
+        providers[prov] = {};
+        for (const m of models) {
+          const inEl  = document.getElementById(`cost-${_toId(prov)}-${_toId(m.model)}-in`);
+          const outEl = document.getElementById(`cost-${_toId(prov)}-${_toId(m.model)}-out`);
+          providers[prov][m.model] = {
+            input:  parseFloat(inEl?.value  || m.input),
+            output: parseFloat(outEl?.value || m.output),
+          };
+        }
+      }
+      await api.adminSaveProviderCosts({ providers });
+      if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = 'var(--green)'; }
+      toast('Provider costs saved', 'success');
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }
+      toast(`Error: ${e.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
+
+  window._fetchProviderUsage = async () => {
+    const provider = document.getElementById('fetch-provider')?.value;
+    const start    = document.getElementById('fetch-start')?.value;
+    const end      = document.getElementById('fetch-end')?.value;
+    const orgId    = document.getElementById('fetch-org-id')?.value?.trim() || null;
+    const statusEl = document.getElementById('fetch-status');
+    const btn      = document.getElementById('fetch-usage-btn');
+
+    if (!start || !end) { toast('Please select a date range', 'error'); return; }
+    if (btn) btn.disabled = true;
+    if (statusEl) { statusEl.textContent = 'Fetching…'; statusEl.style.color = 'var(--muted)'; }
+
+    try {
+      const result = await api.adminFetchProviderUsage({ provider, start_date: start, end_date: end, org_id: orgId });
+      if (result.ok) {
+        const tokens = result.total_prompt_tokens != null
+          ? `${(result.total_prompt_tokens || 0).toLocaleString()} input / ${(result.total_completion_tokens || 0).toLocaleString()} output tokens`
+          : result.total_input_tokens != null
+          ? `${(result.total_input_tokens || 0).toLocaleString()} input / ${(result.total_output_tokens || 0).toLocaleString()} output tokens`
+          : 'fetched';
+        if (statusEl) { statusEl.textContent = `✓ Done — ${tokens}`; statusEl.style.color = 'var(--green)'; }
+        toast(`Provider usage fetched: ${tokens}`, 'success');
+      } else {
+        const err = result.error || (result.errors || []).join(', ') || 'Unknown error';
+        if (statusEl) { statusEl.textContent = `✕ ${err}`; statusEl.style.color = 'var(--red)'; }
+        toast(`Fetch failed: ${err}`, 'error');
+      }
+      // Refresh history table
+      try {
+        const h2 = await api.adminGetProviderUsageHistory();
+        const tbody = document.getElementById('billing-hist-tbody');
+        if (tbody && h2.records) {
+          const newRows = h2.records.length ? h2.records.map(r => {
+            const ok2  = r.ok ? '✓' : '✕';
+            const clr2 = r.ok ? 'var(--green)' : 'var(--red)';
+            const dt2  = r.fetched_at ? new Date(r.fetched_at).toLocaleString() : '—';
+            const errs2 = (r.errors || []).join(', ') || '';
+            const toks2 = r.total_prompt_tokens != null
+              ? `↑${r.total_prompt_tokens.toLocaleString()} ↓${(r.total_completion_tokens||0).toLocaleString()}`
+              : r.total_input_tokens != null
+              ? `↑${r.total_input_tokens.toLocaleString()} ↓${(r.total_output_tokens||0).toLocaleString()}`
+              : '—';
+            return `<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:0.35rem 0.5rem;font-size:0.7rem;color:var(--muted)">${dt2}</td>
+              <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-transform:capitalize">${_esc(r.provider||'—')}</td>
+              <td style="padding:0.35rem 0.5rem;font-size:0.72rem;color:var(--muted)">${_esc(r.start_date||'—')} → ${_esc(r.end_date||'—')}</td>
+              <td style="padding:0.35rem 0.5rem;font-size:0.72rem;font-weight:700;color:${clr2};text-align:center">${ok2}</td>
+              <td style="padding:0.35rem 0.5rem;font-size:0.72rem;text-align:right">${toks2}</td>
+              <td style="padding:0.35rem 0.5rem;font-size:0.65rem;color:var(--red);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(errs2)}">${_esc(errs2)}</td>
+            </tr>`;
+          }).join('') : '';
+          tbody.innerHTML = newRows || tbody.innerHTML;
+        }
+      } catch (_) {}
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }
+      toast(`Error: ${e.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
 }
