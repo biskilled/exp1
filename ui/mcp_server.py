@@ -143,6 +143,21 @@ async def list_tools() -> list[mcp_types.Tool]:
                 },
             },
         ),
+        mcp_types.Tool(
+            name="commit_push",
+            description=(
+                "Commit all changed files in the project's code directory and push to the remote. "
+                "Call this at the end of every Cursor session to persist your work. "
+                "Generates an AI commit message automatically. Logs to commit_log.jsonl with source='cursor_mcp'."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project": {"type": "string", "description": "Project name (uses active project if omitted)"},
+                    "message_hint": {"type": "string", "default": "", "description": "Optional hint for the commit message"},
+                },
+            },
+        ),
     ]
 
 
@@ -204,6 +219,14 @@ async def _dispatch(name: str, args: dict) -> Any:
         if args.get("limit"):
             params["limit"] = str(args["limit"])
         return await _get("/entities/tasks", params=params)
+
+    elif name == "commit_push":
+        return await _post(f"/git/{project}/commit-push", {
+            "message_hint": args.get("message_hint", "cursor session"),
+            "provider": "claude",
+            "skip_pull": False,
+            "source": "cursor_mcp",
+        })
 
     else:
         raise ValueError(f"Unknown tool: {name}")

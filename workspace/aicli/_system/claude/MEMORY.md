@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-08 03:15 UTC by aicli /memory command_
+_Generated: 2026-03-08 04:03 UTC by aicli /memory command_
 
 > This file is auto-generated. Reference it in CLAUDE.md so Claude reads it at session start.
 
@@ -27,6 +27,9 @@ _Generated: 2026-03-08 03:15 UTC by aicli /memory command_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-08 03:27]** `claude_cli/claude`
+Q: I am using postgresql already and can extend that to use pgvector for semantic embedding. node grapg will be used to build worklows / roles relatioship . for example - algo developer (deepseek) -> bac
+
 **[2026-03-08 03:14]** `claude_cli/claude`
 Q: I am thinking to add graphql supprt (node graph ) that user can manaege entities and relatioships. add project meta data (tasks, fetures, bugs..) in sql and injest all data into vectordb using relatio
 
@@ -53,6 +56,3 @@ Q: Would using vectordb and enabling you reading the data from vectordb will mak
 
 **[2026-03-08 00:44]** `claude_cli/claude`
 Q: The main goal of this project is to be able for you and other llm to share memory. I have started to do that, and I do see that all session are written to .aicli/proivder_usage by the hooks. are you u
-
-**[2026-03-08 00:40]** `claude_cli/claude`
-Q: Can you explain how you get all project info, I do see that sometime you compress the history. and start loading a new session, where do you get all the history of the project ?

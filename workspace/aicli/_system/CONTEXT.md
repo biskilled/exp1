@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 03:15 UTC — do not edit manually.
+> Auto-generated 2026-03-08 04:03 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 12
-- **Last active**: 2026-03-08T03:15:56Z
+- **Sessions**: 13
+- **Last active**: 2026-03-08T04:03:07Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -126,6 +126,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 03:27]** `claude_cli/claude`  
+→ I am using postgresql already and can extend that to use pgvector for semantic embedding. node grapg will be used to bui
+
 **[2026-03-08 03:14]** `claude_cli/claude`  
 → I am thinking to add graphql supprt (node graph ) that user can manaege entities and relatioships. add project meta data
 
@@ -167,6 +170,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-07 23:35]** `claude_cli/claude`  
 → apparntly both api calls not working. claude api works only for team or organisation account (I am using personal accoun
-
-**[2026-03-07 22:35]** `claude_cli/claude`  
-→ I have tried to fatch usage data from both api - claude and open ai, from both I got 400 and 404 errors. also I would li

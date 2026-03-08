@@ -5,15 +5,35 @@
 # Reads auto_commit_push from project.yaml — if false/absent, exits immediately.
 #
 # Strategy:
-#   1. Try the aicli backend API (http://localhost:8000) — preferred path because
-#      it handles credentials and LLM commit message generation.
-#   2. Fallback: direct git operations using creds from _system/.git_token.
+#   1. Try the aicli backend API (http://localhost:8000/git/{project}/commit-push) — preferred.
+#      The backend writes to commit_log.jsonl itself (source: "aicli_backend").
+#      This hook adds a thin wrapper entry (source: "claude_cli") with session_id + outcome.
+#   2. Fallback: direct git when backend is not running.
+#      This hook writes the log entry directly (source: "claude_cli_direct").
 #
-# Writes commit record to: workspace/{project}/_system/commit_log.jsonl
+# ALL outcomes are logged — success, push failure, no changes, API errors.
+# Log: workspace/{project}/_system/commit_log.jsonl
+
+set -euo pipefail
 
 INPUT=$(cat)  # Claude Code sends JSON on stdin; consume it
 
 WORK_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+_log_entry() {
+    # Usage: _log_entry <json-string>
+    python3 -c "
+import json, sys
+from pathlib import Path
+entry = json.loads(sys.argv[1])
+p = Path('$COMMIT_LOG')
+p.parent.mkdir(parents=True, exist_ok=True)
+with open(p, 'a') as f:
+    f.write(json.dumps(entry) + '\n')
+" "$1" 2>/dev/null || true
+}
 
 # ── Detect active project from aicli.yaml ────────────────────────────────────
 ACTIVE_PROJECT=$(python3 -c "
@@ -27,6 +47,8 @@ except:
 " "$WORK_DIR" 2>/dev/null || echo "aicli")
 
 PROJ_YAML="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/project.yaml"
+COMMIT_LOG="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system/commit_log.jsonl"
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # ── Check if auto_commit_push is enabled ─────────────────────────────────────
 ENABLED=$(python3 -c "
@@ -55,9 +77,6 @@ except:
 # Must be a git repo
 [ ! -d "${CODE_DIR}/.git" ] && exit 0
 
-COMMIT_LOG="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system/commit_log.jsonl"
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
 SESSION=$(echo "$INPUT" | python3 -c "
 import json, sys
 try:
@@ -84,14 +103,23 @@ if [ "$BACKEND_OK" = "yes" ]; then
     CLAUDE_KEY="${ANTHROPIC_API_KEY:-}"
     SESSION_HINT="after claude cli session ${SESSION:0:8}"
 
+    # The backend endpoint writes its own commit_log entry (source: "aicli_backend").
+    # We capture the result and write a thin wrapper entry with source: "claude_cli"
+    # so session_id is traceable even though the backend doesn't know it.
     RESULT=$(curl -sf --connect-timeout 5 --max-time 60 \
         -X POST "${BACKEND_URL}/git/${ACTIVE_PROJECT}/commit-push" \
         -H "Content-Type: application/json" \
         -H "X-Anthropic-Key: ${CLAUDE_KEY}" \
         -d "{\"message_hint\": \"${SESSION_HINT}\", \"provider\": \"claude\", \"skip_pull\": false}" \
         2>/dev/null)
+    CURL_RC=$?
 
-    COMMITTED=$(echo "$RESULT" | python3 -c "
+    if [ $CURL_RC -ne 0 ] || [ -z "$RESULT" ]; then
+        # Backend call failed — log the error
+        _log_entry "{\"ts\":\"$TIMESTAMP\",\"action\":\"api_error\",\"source\":\"claude_cli\",\"session_id\":\"$SESSION\",\"error\":\"curl failed (rc=$CURL_RC), backend may be unhealthy\"}"
+        echo "[aicli] ✗ Backend call failed (curl rc=$CURL_RC). Falling through to direct git." >&2
+    else
+        COMMITTED=$(echo "$RESULT" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -100,16 +128,30 @@ except:
     print('no')
 " 2>/dev/null || echo "no")
 
-    if [ "$COMMITTED" = "yes" ]; then
-        MSG=$(echo "$RESULT" | python3 -c "
+        REASON=$(echo "$RESULT" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
-    print(d.get('commit_message', ''))
+    print(d.get('reason', ''))
 except:
     print('')
 " 2>/dev/null || echo "")
-        HASH=$(echo "$RESULT" | python3 -c "
+
+        if [ "$COMMITTED" != "yes" ]; then
+            # No changes — backend already logged a "skipped" entry; add session_id wrapper
+            _log_entry "{\"ts\":\"$TIMESTAMP\",\"action\":\"skipped\",\"reason\":\"no_changes\",\"source\":\"claude_cli\",\"session_id\":\"$SESSION\"}"
+            echo "[aicli] Nothing to commit." >&2
+        else
+            MSG=$(echo "$RESULT" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    msg = d.get('commit_message', '')
+    print(msg.replace('\"', '\\\\\"').replace('\n', ' '))
+except:
+    print('')
+" 2>/dev/null || echo "")
+            HASH=$(echo "$RESULT" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -117,55 +159,46 @@ try:
 except:
     print('')
 " 2>/dev/null || echo "")
-        PUSHED=$(echo "$RESULT" | python3 -c "
+            PUSHED=$(echo "$RESULT" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
-    print('yes' if d.get('pushed') else 'no')
+    print('true' if d.get('pushed') else 'false')
 except:
-    print('no')
-" 2>/dev/null || echo "no")
-
-        # Log commit to commit_log.jsonl
-        python3 -c "
-import json
-from pathlib import Path
-entry = {
-    'ts': '$TIMESTAMP',
-    'session_id': '$SESSION',
-    'hash': '$HASH',
-    'message': '$MSG',
-    'pushed': '$PUSHED' == 'yes',
-    'source': 'claude_cli',
-    'via': 'backend_api',
-}
-Path('$COMMIT_LOG').parent.mkdir(parents=True, exist_ok=True)
-with open('$COMMIT_LOG', 'a') as f:
-    f.write(json.dumps(entry) + '\n')
-" 2>/dev/null
-
-        if [ "$PUSHED" = "yes" ]; then
-            echo "[aicli] ↑ Auto-pushed: ${MSG}" >&2
-        else
+    print('false')
+" 2>/dev/null || echo "false")
             PUSH_ERR=$(echo "$RESULT" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
-    print(d.get('push_error', '')[:120])
+    err = d.get('push_error', '')[:200]
+    print(err.replace('\"', '\\\\\"').replace('\n', ' '))
 except:
     print('')
 " 2>/dev/null || echo "")
-            echo "[aicli] ✓ Committed but push failed: ${PUSH_ERR}" >&2
+
+            # Write claude_cli wrapper entry (session_id not known to the backend)
+            _log_entry "{\"ts\":\"$TIMESTAMP\",\"action\":\"commit_push\",\"source\":\"claude_cli\",\"session_id\":\"$SESSION\",\"hash\":\"$HASH\",\"message\":\"$MSG\",\"pushed\":$PUSHED,\"push_error\":\"$PUSH_ERR\"}"
+
+            if [ "$PUSHED" = "true" ]; then
+                echo "[aicli] ↑ Auto-pushed: ${MSG}" >&2
+            else
+                echo "[aicli] ✓ Committed but push failed: ${PUSH_ERR}" >&2
+            fi
         fi
+        exit 0
     fi
-    exit 0
 fi
 
 # ── Fallback: direct git (backend not running) ────────────────────────────────
+echo "[aicli] Backend unavailable — using direct git." >&2
 cd "$CODE_DIR" || exit 0
 
 CHANGES=$(git status --porcelain 2>/dev/null)
-[ -z "$CHANGES" ] && exit 0
+if [ -z "$CHANGES" ]; then
+    _log_entry "{\"ts\":\"$TIMESTAMP\",\"action\":\"skipped\",\"reason\":\"no_changes\",\"source\":\"claude_cli_direct\",\"session_id\":\"$SESSION\"}"
+    exit 0
+fi
 
 # Load git credentials from _system/.git_token
 TOKEN_FILE="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system/.git_token"
@@ -203,14 +236,21 @@ print(f'GIT_BRANCH={branch!r}')
 git add -A 2>/dev/null
 
 STAGED=$(git diff --name-only --cached 2>/dev/null | wc -l | tr -d ' ')
-[ "$STAGED" -eq 0 ] && exit 0
+if [ "$STAGED" -eq 0 ]; then
+    _log_entry "{\"ts\":\"$TIMESTAMP\",\"action\":\"skipped\",\"reason\":\"nothing_staged\",\"source\":\"claude_cli_direct\",\"session_id\":\"$SESSION\"}"
+    exit 0
+fi
 
 TS_HUMAN=$(date -u +"%Y-%m-%d %H:%M UTC")
 COMMIT_MSG="chore(cli): auto-commit after AI session — ${STAGED} file(s) — ${TS_HUMAN}"
-git commit -m "$COMMIT_MSG" 2>/dev/null || exit 0
+COMMIT_OUT=$(git commit -m "$COMMIT_MSG" 2>&1) || {
+    _log_entry "{\"ts\":\"$TIMESTAMP\",\"action\":\"error\",\"reason\":\"commit_failed\",\"source\":\"claude_cli_direct\",\"session_id\":\"$SESSION\",\"error\":\"$(echo $COMMIT_OUT | head -c 200)\"}"
+    exit 0
+}
 
 HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "")
-PUSHED_OK="no"
+PUSHED_OK="false"
+PUSH_ERR_MSG=""
 
 # Push with inline credentials (never writes to .git/config)
 if [ -n "$GIT_TOKEN" ] && [ -n "$GITHUB_REPO" ]; then
@@ -225,37 +265,32 @@ print(f'{proto}://{user}:{token}@{rest}')
 " "$GITHUB_REPO" "$GIT_USERNAME" "$GIT_TOKEN" 2>/dev/null)
 
     if [ -n "$AUTHED_URL" ]; then
-        git -c "remote.origin.url=${AUTHED_URL}" \
-            push --set-upstream origin "$GIT_BRANCH" 2>/dev/null \
-            && PUSHED_OK="yes" \
-            && echo "[aicli] ↑ Auto-pushed (direct): ${COMMIT_MSG}" >&2 \
-            || echo "[aicli] ✓ Committed (push failed): ${COMMIT_MSG}" >&2
+        PUSH_OUT=$(git -c "remote.origin.url=${AUTHED_URL}" \
+            push --set-upstream origin "$GIT_BRANCH" 2>&1) && {
+            PUSHED_OK="true"
+            echo "[aicli] ↑ Auto-pushed (direct): ${COMMIT_MSG}" >&2
+        } || {
+            PUSH_ERR_MSG=$(echo "$PUSH_OUT" | tail -3 | tr '\n' ' ' | head -c 200)
+            echo "[aicli] ✓ Committed (push failed): ${PUSH_ERR_MSG}" >&2
+        }
     else
-        echo "[aicli] ✓ Committed (no credentials): ${COMMIT_MSG}" >&2
+        PUSH_ERR_MSG="could not build authenticated URL"
+        echo "[aicli] ✓ Committed (no auth URL): ${COMMIT_MSG}" >&2
     fi
 else
-    git push --set-upstream origin "$GIT_BRANCH" 2>/dev/null \
-        && PUSHED_OK="yes" \
-        && echo "[aicli] ↑ Auto-pushed (direct): ${COMMIT_MSG}" >&2 \
-        || echo "[aicli] ✓ Committed (push skipped): ${COMMIT_MSG}" >&2
+    PUSH_OUT=$(git push --set-upstream origin "$GIT_BRANCH" 2>&1) && {
+        PUSHED_OK="true"
+        echo "[aicli] ↑ Auto-pushed (direct, no token): ${COMMIT_MSG}" >&2
+    } || {
+        PUSH_ERR_MSG=$(echo "$PUSH_OUT" | tail -3 | tr '\n' ' ' | head -c 200)
+        echo "[aicli] ✓ Committed (push failed): ${PUSH_ERR_MSG}" >&2
+    }
 fi
 
-# Log commit to commit_log.jsonl
-python3 -c "
-import json
-from pathlib import Path
-entry = {
-    'ts': '$TIMESTAMP',
-    'session_id': '$SESSION',
-    'hash': '$HASH',
-    'message': '$COMMIT_MSG',
-    'pushed': '$PUSHED_OK' == 'yes',
-    'source': 'claude_cli',
-    'via': 'direct_git',
-}
-Path('$COMMIT_LOG').parent.mkdir(parents=True, exist_ok=True)
-with open('$COMMIT_LOG', 'a') as f:
-    f.write(json.dumps(entry) + '\n')
-" 2>/dev/null
+# Sanitise strings for JSON embedding
+COMMIT_MSG_J=$(echo "$COMMIT_MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))" 2>/dev/null || echo "\"$COMMIT_MSG\"")
+PUSH_ERR_J=$(echo "$PUSH_ERR_MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))" 2>/dev/null || echo "\"\"")
+
+_log_entry "{\"ts\":\"$TIMESTAMP\",\"action\":\"commit_push\",\"source\":\"claude_cli_direct\",\"session_id\":\"$SESSION\",\"hash\":\"$HASH\",\"message\":$COMMIT_MSG_J,\"pushed\":$PUSHED_OK,\"push_error\":$PUSH_ERR_J}"
 
 exit 0

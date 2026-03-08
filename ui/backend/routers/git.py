@@ -7,6 +7,7 @@ Credentials (GitHub token) are stored in _system/.git_token (never in project.ya
 
 import json
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -18,6 +19,29 @@ from config import settings
 from core.llm_clients import call_claude
 
 router = APIRouter()
+
+
+# ── Commit log helper ─────────────────────────────────────────────────────────
+
+def _write_commit_log(project_name: str, entry: dict) -> None:
+    """Append one JSON line to workspace/{project}/_system/commit_log.jsonl.
+
+    Called from every commit-push code path — backend API, direct git fallback,
+    and MCP tool — so the file becomes a single audit trail across all callers.
+    The 'source' field distinguishes who triggered the commit:
+      'aicli_backend'  — commit-push endpoint called (UI, aicli CLI, or hook via backend)
+      'direct_git'     — hook fallback when backend is not running
+      'cursor_mcp'     — Cursor triggered via MCP commit_push tool
+    """
+    try:
+        if "ts" not in entry:
+            entry["ts"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        log_path = Path(settings.workspace_dir) / project_name / "_system" / "commit_log.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass  # never break git operations because of logging
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -736,6 +760,7 @@ class CommitRequest(BaseModel):
     api_key: str = ""
     branch: str = ""         # optional push target; falls back to project.yaml git_branch → current branch
     skip_pull: bool = False  # set True to skip the pre-push pull step
+    source: str = "aicli_backend"  # audit source: "aicli_backend" | "claude_cli" | "cursor_mcp" | "aicli_ui"
 
 
 @router.post("/{project_name}/commit-push")
@@ -771,6 +796,11 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
     ))
 
     if not changed:
+        _write_commit_log(project_name, {
+            "action": "skipped",
+            "reason": "no_changes",
+            "source": body.source,
+        })
         return {"committed": False, "reason": "No changes to commit"}
 
     # Diff stat for commit message context
@@ -853,6 +883,19 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
         # Ensure local branch tracks the remote branch (idempotent)
         _ensure_upstream(push_target, code_dir)
 
+    push_error = stderr_push if not pushed else ""
+    _write_commit_log(project_name, {
+        "action": "commit_push",
+        "source": body.source,
+        "hash": commit_hash[:8] if commit_hash else "",
+        "message": commit_message,
+        "files_count": len(changed),
+        "pushed": pushed,
+        "push_error": push_error[:300] if push_error else "",
+        "branch": push_target,
+        "pull_message": pull_message,
+    })
+
     return {
         "committed": True,
         "commit_hash": commit_hash[:8] if commit_hash else "",
@@ -860,7 +903,7 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
         "files": changed,
         "pull_message": pull_message,
         "pushed": pushed,
-        "push_error": stderr_push if not pushed else "",
+        "push_error": push_error,
     }
 
 
