@@ -1848,3 +1848,211 @@ body.sidebar-collapsed .sidebar-user-actions { opacity: 0; pointer-events: none;
 .prompt-md-view hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
 .prompt-md-view a { color: var(--accent); text-decoration: none; }
 .prompt-md-view a:hover { text-decoration: underline; }
+
+/* ── Graph Workflow View ─────────────────────────────────────────────────────── */
+.gw-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.gw-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.gw-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.gw-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  background: var(--surface);
+}
+.gw-list-item {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.gw-list-item:hover  { background: var(--surface2); }
+.gw-list-item.active { background: rgba(255,107,53,0.08); border-left: 3px solid var(--accent); }
+
+.gw-canvas-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+#cy-container {
+  flex: 1;
+  background: var(--bg);
+  cursor: default;
+}
+
+/* Config panel (right side, slides in) */
+.gw-config-panel {
+  width: 280px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.gw-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.gw-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  font-size: 0.78rem;
+}
+.gw-config-form label { color: var(--muted); font-size: 0.72rem; margin-top: 0.25rem; }
+.gw-config-form .field-input { width: 100%; }
+
+/* Run log panel (bottom of canvas) */
+.gw-log-panel {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+.gw-log-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.gw-log-toggle { margin-left: auto; color: var(--muted); }
+.gw-log-body { overflow-y: auto; max-height: 200px; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.gw-log-entry { font-size: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+.gw-log-entry.gw-log-done  { border-color: var(--green); }
+.gw-log-entry.gw-log-error { border-color: var(--red); }
+.gw-log-node-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
+.gw-log-badge { font-size: 0.65rem; padding: 1px 6px; border-radius: 10px; background: var(--surface2); }
+.gw-log-badge-running { background: rgba(255,107,53,0.15); color: var(--accent); }
+.gw-log-badge-done    { background: rgba(22,163,74,0.15);  color: var(--green); }
+.gw-log-badge-error   { background: rgba(220,38,38,0.15);  color: var(--red); }
+.gw-log-output {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.7rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+/* ── Entities View ───────────────────────────────────────────────────────────── */
+.entities-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.entities-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.entities-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.entities-tab {
+  padding: 0.45rem 1rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  transition: color 0.15s;
+}
+.entities-tab:hover  { color: var(--text); }
+.entities-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.entities-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+.entities-table th {
+  background: var(--surface2);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+.entities-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.entities-table tr:hover td { background: var(--surface2); }
+.entities-badge {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--surface2);
+  display: inline-block;
+}
+.status-open     { background: rgba(2,132,199,0.12); color: var(--blue); }
+.status-done,
+.status-closed   { background: rgba(22,163,74,0.12); color: var(--green); }
+.status-proposed { background: rgba(124,58,237,0.12); color: var(--purple); }
+.priority-high   { background: rgba(220,38,38,0.12); color: var(--red); }
+.priority-low    { background: rgba(136,136,152,0.12); color: var(--muted); }
+
+/* ── Search panel ────────────────────────────────────────────────────────────── */
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  max-width: 720px;
+}
+.search-result-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  font-size: 0.78rem;
+}
+.search-result-item:hover { background: var(--surface2); }
+.search-result-meta { font-size: 0.68rem; color: var(--muted); margin-top: 0.25rem; }

@@ -10,6 +10,8 @@ import { renderChat } from './views/chat.js';
 import { renderPrompts } from './views/prompts.js';
 import { renderCode } from './views/code.js';
 import { renderWorkflow } from './views/workflow.js';
+import { renderGraphWorkflow } from './views/graph_workflow.js';
+import { renderEntities } from './views/entities.js';
 import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
 import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';
@@ -24,6 +26,8 @@ const PROJECT_TABS = [
   { id: 'prompts',  icon: '≡',  label: 'Prompts'  },
   { id: 'code',     icon: '</>',label: 'Code'     },
   { id: 'workflow', icon: '⟳',  label: 'Workflow' },
+  { id: 'graph',    icon: '◈',  label: 'Flows'    },
+  { id: 'entities', icon: '☰',  label: 'Entities' },
   { id: 'history',  icon: '⏱',  label: 'History'  },
   { id: 'settings', icon: '⚙',  label: 'Settings' },
 ];
@@ -410,6 +414,8 @@ export function navigateTo(viewId, opts = {}) {
     case 'prompts':  renderPrompts(view, proj?.name);         break;
     case 'code':     renderCode(view, proj?.name, proj);      break;
     case 'workflow': renderWorkflow(view);                    break;
+    case 'graph':    renderGraphWorkflow(view);               break;
+    case 'entities': renderEntities(view);                    break;
     case 'history':  renderHistory(view);                       break;
     case 'settings': renderSettings(view);                    break;
     case 'admin':    _renderAdminView(view);                  break;

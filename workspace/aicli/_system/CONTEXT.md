@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 03:08 UTC — do not edit manually.
+> Auto-generated 2026-03-08 03:15 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 11
-- **Last active**: 2026-03-08T03:08:39Z
+- **Sessions**: 12
+- **Last active**: 2026-03-08T03:15:56Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -126,6 +126,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 03:14]** `claude_cli/claude`  
+→ I am thinking to add graphql supprt (node graph ) that user can manaege entities and relatioships. add project meta data
+
 **[2026-03-08 03:07]** `claude_cli/claude`  
 → do I need the dev_runtime_state.json ? also - now (assuming all history wokrs properly) - how can you use that to improv
 
@@ -167,6 +170,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-07 22:35]** `claude_cli/claude`  
 → I have tried to fatch usage data from both api - claude and open ai, from both I got 400 and 404 errors. also I would li
-
-**[2026-03-07 21:15]** `claude_cli/claude`  
-→ I would like to create better Billing Tracker using the following steps  - Capture Usage Returned by Providers -      op

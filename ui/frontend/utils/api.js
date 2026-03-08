@@ -160,6 +160,53 @@ export const api = {
 /** @deprecated Keys are managed server-side. Returns {} so old call-sites don't crash. */
 export function loadApiKeys() { return {}; }
 
+// ── Graph Workflow API ────────────────────────────────────────────────────────
+
+function _patch(path, body = {}) {
+  return fetch(_base() + path, { method: 'PATCH', headers: _headers(), body: JSON.stringify(body) })
+    .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText))));
+}
+
+api.graphWorkflows = {
+  list:       (project)           => _get(`/graph-workflows/?project=${encodeURIComponent(project || '')}`),
+  get:        (id)                => _get(`/graph-workflows/${encodeURIComponent(id)}`),
+  create:     (body)              => _post('/graph-workflows/', body),
+  update:     (id, body)          => _put(`/graph-workflows/${encodeURIComponent(id)}`, body),
+  createNode: (wfId, body)        => _post(`/graph-workflows/${encodeURIComponent(wfId)}/nodes`, body),
+  updateNode: (wfId, nId, body)   => _patch(`/graph-workflows/${encodeURIComponent(wfId)}/nodes/${encodeURIComponent(nId)}`, body),
+  deleteNode: (wfId, nId)         => _del(`/graph-workflows/${encodeURIComponent(wfId)}/nodes/${encodeURIComponent(nId)}`),
+  createEdge: (wfId, body)        => _post(`/graph-workflows/${encodeURIComponent(wfId)}/edges`, body),
+  updateEdge: (wfId, eId, body)   => _patch(`/graph-workflows/${encodeURIComponent(wfId)}/edges/${encodeURIComponent(eId)}`, body),
+  deleteEdge: (wfId, eId)         => _del(`/graph-workflows/${encodeURIComponent(wfId)}/edges/${encodeURIComponent(eId)}`),
+  startRun:   (wfId, body)        => _post(`/graph-workflows/${encodeURIComponent(wfId)}/runs`, body),
+  getRun:     (runId)             => _get(`/graph-workflows/runs/${encodeURIComponent(runId)}`),
+  listRuns:   (wfId)              => _get(`/graph-workflows/${encodeURIComponent(wfId)}/runs`),
+};
+
+// ── Search API ────────────────────────────────────────────────────────────────
+
+api.search = {
+  semantic: (body)    => _post('/search/semantic', body),
+  ingest:   (project) => _get(`/search/ingest?project=${encodeURIComponent(project || '')}`),
+};
+
+// ── Entities API ──────────────────────────────────────────────────────────────
+
+api.entities = {
+  listFeatures:   (project)       => _get(`/entities/features?project=${encodeURIComponent(project || '')}`),
+  createFeature:  (body)          => _post('/entities/features', body),
+  updateFeature:  (id, body)      => _patch(`/entities/features/${encodeURIComponent(id)}`, body),
+  deleteFeature:  (id)            => _del(`/entities/features/${encodeURIComponent(id)}`),
+  listTasks:      (project)       => _get(`/entities/tasks?project=${encodeURIComponent(project || '')}`),
+  createTask:     (body)          => _post('/entities/tasks', body),
+  updateTask:     (id, body)      => _patch(`/entities/tasks/${encodeURIComponent(id)}`, body),
+  deleteTask:     (id)            => _del(`/entities/tasks/${encodeURIComponent(id)}`),
+  listBugs:       (project)       => _get(`/entities/bugs?project=${encodeURIComponent(project || '')}`),
+  createBug:      (body)          => _post('/entities/bugs', body),
+  updateBug:      (id, body)      => _patch(`/entities/bugs/${encodeURIComponent(id)}`, body),
+  deleteBug:      (id)            => _del(`/entities/bugs/${encodeURIComponent(id)}`),
+};
+
 // ── Recent projects (localStorage) ───────────────────────────────────────────
 
 const RECENT_KEY = 'aicli_recent_projects';

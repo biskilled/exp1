@@ -75,15 +75,17 @@ git:
 # MCP tool servers for Claude (optional)
 # ------------------------------------------------------------------
 mcp:
-  servers: []
+  servers:
+    - name: aicli_project
+      type: stdio
+      command: python3.12
+      args: ["/Users/user/Documents/gdrive_cellqlick/2026/aicli/ui/mcp_server.py"]
+      env:
+        BACKEND_URL: "http://localhost:8000"
+        ACTIVE_PROJECT: "aicli"
   # - name: github
   #   type: github
   #   token_env: GITHUB_TOKEN
-  #
-  # - name: my_server
-  #   type: http
-  #   url: https://my-mcp-server.example.com
-  #   token_env: MY_SERVER_TOKEN
 
 # ------------------------------------------------------------------
 # HOOKS  — shell scripts that run at lifecycle points.

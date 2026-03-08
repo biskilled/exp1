@@ -506,6 +506,12 @@ async def update_project_summary(project_name: str, body: dict = Body(...)):
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
     content = body.get("content", "")
     (proj_dir / "PROJECT.md").write_text(content)
+    # Embed updated PROJECT.md for semantic search (fire-and-forget)
+    try:
+        from core.embeddings import embed_and_store as _embed
+        asyncio.create_task(_embed(project_name, "project_md", "PROJECT.md", content))
+    except Exception:
+        pass
     return {"saved": True}
 
 
@@ -760,6 +766,14 @@ async def generate_memory(project_name: str):
                     copied_to.append(dest_rel)
                 except Exception:
                     pass
+
+    # Embed history + roles for semantic search (fire-and-forget)
+    try:
+        from core.embeddings import ingest_history as _ih, ingest_roles as _ir
+        asyncio.create_task(_ih(project_name))
+        asyncio.create_task(_ir(project_name))
+    except Exception:
+        pass
 
     return {"generated": generated, "copied_to": copied_to, "skipped_copy": skipped_copy}
 

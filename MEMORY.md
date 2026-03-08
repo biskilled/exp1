@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-08 03:08 UTC by aicli /memory command_
+_Generated: 2026-03-08 03:15 UTC by aicli /memory command_
 
 > This file is auto-generated. Reference it in CLAUDE.md so Claude reads it at session start.
 
@@ -27,6 +27,9 @@ _Generated: 2026-03-08 03:08 UTC by aicli /memory command_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-08 03:14]** `claude_cli/claude`
+Q: I am thinking to add graphql supprt (node graph ) that user can manaege entities and relatioships. add project meta data (tasks, fetures, bugs..) in sql and injest all data into vectordb using relatio
+
 **[2026-03-08 03:07]** `claude_cli/claude`
 Q: do I need the dev_runtime_state.json ? also - now (assuming all history wokrs properly) - how can you use that to improve your ability to understand the porject better ?
 
@@ -53,6 +56,3 @@ Q: The main goal of this project is to be able for you and other llm to share me
 
 **[2026-03-08 00:40]** `claude_cli/claude`
 Q: Can you explain how you get all project info, I do see that sometime you compress the history. and start loading a new session, where do you get all the history of the project ?
-
-**[2026-03-08 00:30]** `claude_cli/claude`
-Q: It is manage to save balance, but I dont see that when I am rephresh (top right corenr). also on users tab - I dont see total balance uodated. I would except that on any refresh - all calculation will

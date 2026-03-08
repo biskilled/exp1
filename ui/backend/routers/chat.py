@@ -208,6 +208,15 @@ async def _stream_response(
         _append_history(project, provider, message, content, session_id, user_id, user_email)
         _update_runtime_state(project, provider, message, session_id, user_id)
 
+        # Embed exchange for semantic search (fire-and-forget)
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            from core.embeddings import embed_and_store as _embed
+            _ts = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            asyncio.create_task(_embed(project, "history", _ts, f"Q: {message}\nA: {content}"))
+        except Exception:
+            pass
+
         # Log usage + debit balance (log_usage is called inside _debit_user)
         input_t = result.get("input_tokens", 0)
         output_t = result.get("output_tokens", 0)

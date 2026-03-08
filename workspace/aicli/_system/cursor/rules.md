@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 03:08 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 03:15 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -25,8 +25,8 @@ _Last updated: 2026-03-08_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-08] continue
 - [2026-03-08] before I continue, I would like to optimise the code - when ever possible to use config, and classes. I do see some code
 - [2026-03-08] Under workspace for each project there is _system and history folder. do I need the history folder as well? I do see tha
 - [2026-03-08] It is lookls like hooks are not working now as I dont see new commits into the git repo (I am currently using the claude
 - [2026-03-08] do I need the dev_runtime_state.json ? also - now (assuming all history wokrs properly) - how can you use that to improv
+- [2026-03-08] I am thinking to add graphql supprt (node graph ) that user can manaege entities and relatioships. add project meta data

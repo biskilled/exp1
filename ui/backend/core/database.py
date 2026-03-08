@@ -71,6 +71,125 @@ class _Database:
     @staticmethod
     def _ensure_schema(conn) -> None:
         """Create tables and migrate missing columns — safe to run repeatedly."""
+        _DDL_GRAPH = """
+        -- Graph Workflows (DAG-based multi-LLM pipelines)
+        CREATE TABLE IF NOT EXISTS graph_workflows (
+            id VARCHAR(36) PRIMARY KEY, project VARCHAR(255) NOT NULL,
+            name VARCHAR(255) NOT NULL, description TEXT NOT NULL DEFAULT '',
+            max_iterations INT NOT NULL DEFAULT 5,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (project, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_gw_project ON graph_workflows(project);
+
+        CREATE TABLE IF NOT EXISTS graph_nodes (
+            id VARCHAR(36) PRIMARY KEY,
+            workflow_id VARCHAR(36) NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            role_file VARCHAR(300),
+            role_prompt TEXT NOT NULL DEFAULT '',
+            provider VARCHAR(50) NOT NULL DEFAULT 'claude',
+            model VARCHAR(100) NOT NULL DEFAULT '',
+            output_schema JSONB,
+            inject_context BOOLEAN NOT NULL DEFAULT TRUE,
+            position_x FLOAT NOT NULL DEFAULT 100,
+            position_y FLOAT NOT NULL DEFAULT 100,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_gn_workflow ON graph_nodes(workflow_id);
+
+        CREATE TABLE IF NOT EXISTS graph_edges (
+            id VARCHAR(36) PRIMARY KEY,
+            workflow_id VARCHAR(36) NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
+            source_node_id VARCHAR(36) NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            target_node_id VARCHAR(36) NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            condition JSONB,
+            label VARCHAR(100) NOT NULL DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_ge_workflow ON graph_edges(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_ge_source   ON graph_edges(source_node_id);
+
+        CREATE TABLE IF NOT EXISTS graph_runs (
+            id VARCHAR(36) PRIMARY KEY,
+            workflow_id VARCHAR(36) REFERENCES graph_workflows(id) ON DELETE SET NULL,
+            project VARCHAR(255) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'running',
+            user_input TEXT NOT NULL DEFAULT '',
+            context JSONB NOT NULL DEFAULT '{}',
+            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            finished_at TIMESTAMPTZ,
+            total_cost_usd NUMERIC(12,8) NOT NULL DEFAULT 0,
+            error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_gr_workflow ON graph_runs(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_gr_project  ON graph_runs(project);
+        CREATE INDEX IF NOT EXISTS idx_gr_status   ON graph_runs(status);
+
+        CREATE TABLE IF NOT EXISTS graph_node_results (
+            id SERIAL PRIMARY KEY,
+            run_id VARCHAR(36) NOT NULL REFERENCES graph_runs(id) ON DELETE CASCADE,
+            node_id VARCHAR(36) REFERENCES graph_nodes(id) ON DELETE SET NULL,
+            node_name VARCHAR(255) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'running',
+            output TEXT NOT NULL DEFAULT '',
+            structured JSONB,
+            input_tokens INT NOT NULL DEFAULT 0,
+            output_tokens INT NOT NULL DEFAULT 0,
+            cost_usd NUMERIC(12,8) NOT NULL DEFAULT 0,
+            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            finished_at TIMESTAMPTZ,
+            iteration INT NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_gnr_run ON graph_node_results(run_id);
+        """
+
+        _DDL_EMBEDDINGS = """
+        -- pgvector semantic embeddings (Layer 4 memory upgrade)
+        CREATE EXTENSION IF NOT EXISTS vector;
+        CREATE TABLE IF NOT EXISTS embeddings (
+            id SERIAL PRIMARY KEY,
+            project VARCHAR(255) NOT NULL,
+            source_type VARCHAR(50) NOT NULL,
+            source_id VARCHAR(255) NOT NULL,
+            content TEXT NOT NULL,
+            embedding vector(1536),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (project, source_type, source_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_emb_project ON embeddings(project, source_type);
+        """
+
+        _DDL_ENTITIES = """
+        -- Project Entities (features, tasks, bugs)
+        CREATE TABLE IF NOT EXISTS features (
+            id VARCHAR(36) PRIMARY KEY, project VARCHAR(255) NOT NULL,
+            title VARCHAR(500) NOT NULL, description TEXT NOT NULL DEFAULT '',
+            status VARCHAR(20) NOT NULL DEFAULT 'proposed',
+            priority VARCHAR(10) NOT NULL DEFAULT 'medium',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS tasks (
+            id VARCHAR(36) PRIMARY KEY, project VARCHAR(255) NOT NULL,
+            feature_id VARCHAR(36) REFERENCES features(id) ON DELETE SET NULL,
+            title VARCHAR(500) NOT NULL, description TEXT NOT NULL DEFAULT '',
+            status VARCHAR(20) NOT NULL DEFAULT 'open',
+            priority VARCHAR(10) NOT NULL DEFAULT 'medium',
+            assignee VARCHAR(255),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS bugs (
+            id VARCHAR(36) PRIMARY KEY, project VARCHAR(255) NOT NULL,
+            task_id VARCHAR(36) REFERENCES tasks(id) ON DELETE SET NULL,
+            title VARCHAR(500) NOT NULL, description TEXT NOT NULL DEFAULT '',
+            severity VARCHAR(20) NOT NULL DEFAULT 'medium',
+            status VARCHAR(20) NOT NULL DEFAULT 'open',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        """
+
         ddl = """
         -- Users table (full schema including monetization fields)
         CREATE TABLE IF NOT EXISTS users (
@@ -129,6 +248,32 @@ class _Database:
         """
         with conn.cursor() as cur:
             cur.execute(ddl)
+            # Graph workflows DDL
+            try:
+                cur.execute(_DDL_GRAPH)
+            except Exception as e:
+                log.warning(f"Graph DDL skipped: {e}")
+                conn.rollback()
+            # Embeddings DDL (requires pgvector extension)
+            try:
+                cur.execute(_DDL_EMBEDDINGS)
+            except Exception as e:
+                log.warning(f"Embeddings DDL skipped (pgvector missing?): {e}")
+                conn.rollback()
+            # ivfflat index requires rows to exist first — create separately, ignore if fails
+            try:
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_emb_vec ON embeddings "
+                    "USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);"
+                )
+            except Exception:
+                conn.rollback()
+            # Entities DDL
+            try:
+                cur.execute(_DDL_ENTITIES)
+            except Exception as e:
+                log.warning(f"Entities DDL skipped: {e}")
+                conn.rollback()
 
 
 # Singleton used everywhere
