@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 03:04 UTC — do not edit manually.
+> Auto-generated 2026-03-08 03:08 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 9
-- **Last active**: 2026-03-06T14:50:21Z
+- **Sessions**: 11
+- **Last active**: 2026-03-08T03:08:39Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -126,6 +126,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 03:07]** `claude_cli/claude`  
+→ do I need the dev_runtime_state.json ? also - now (assuming all history wokrs properly) - how can you use that to improv
+
 **[2026-03-08 02:51]** `claude_cli/claude`  
 → It is lookls like hooks are not working now as I dont see new commits into the git repo (I am currently using the claude
 
@@ -167,6 +170,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-07 21:15]** `claude_cli/claude`  
 → I would like to create better Billing Tracker using the following steps  - Capture Usage Returned by Providers -      op
-
-**[2026-03-07 19:24]** `claude_cli/claude`  
-→ I do see the table usage_logs in my postgresql, but it is not loaded properly into the UI. also table is emplty (and I d

@@ -103,11 +103,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-08] `claude_cli`: Lets start to fix that , as this is the major goal of this project - shared memory between diffrent 
 - [2026-03-08] `claude_cli`: continue
 - [2026-03-08] `claude_cli`: before I continue, I would like to optimise the code - when ever possible to use config, and classes
 - [2026-03-08] `claude_cli`: Under workspace for each project there is _system and history folder. do I need the history folder a
 - [2026-03-08] `claude_cli`: It is lookls like hooks are not working now as I dont see new commits into the git repo (I am curren
+- [2026-03-08] `claude_cli`: do I need the dev_runtime_state.json ? also - now (assuming all history wokrs properly) - how can yo
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

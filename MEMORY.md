@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-08 03:04 UTC by aicli /memory command_
+_Generated: 2026-03-08 03:08 UTC by aicli /memory command_
 
 > This file is auto-generated. Reference it in CLAUDE.md so Claude reads it at session start.
 
@@ -27,6 +27,9 @@ _Generated: 2026-03-08 03:04 UTC by aicli /memory command_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-08 03:07]** `claude_cli/claude`
+Q: do I need the dev_runtime_state.json ? also - now (assuming all history wokrs properly) - how can you use that to improve your ability to understand the porject better ?
+
 **[2026-03-08 02:51]** `claude_cli/claude`
 Q: It is lookls like hooks are not working now as I dont see new commits into the git repo (I am currently using the claude cli, so it is supposed to run by the hooks) also history.jsonl - I do see that 
 
@@ -53,6 +56,3 @@ Q: Can you explain how you get all project info, I do see that sometime you comp
 
 **[2026-03-08 00:30]** `claude_cli/claude`
 Q: It is manage to save balance, but I dont see that when I am rephresh (top right corenr). also on users tab - I dont see total balance uodated. I would except that on any refresh - all calculation will
-
-**[2026-03-08 00:11]** `claude_cli/claude`
-Q: Usage tab - when I try to update - I do reciave an error - "Not found". billing tab - when I try to remove a row in the fetch history - row is not deleted (x is not removing a row) . can you also upda
