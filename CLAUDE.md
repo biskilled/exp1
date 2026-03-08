@@ -103,11 +103,11 @@ ui/
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-07] `claude_cli`: I do see that I am undefined user and as admin. did you add that as a config value (for testing) , a
-- [2026-03-07] `claude_cli`: I have added dev_mode=true into my .env file. if that is set to False, how did I manage to register 
-- [2026-03-07] `claude_cli`: I would ike to see my current balance next to the role name (admin 3$ .. ) and add refresh button th
-- [2026-03-07] `claude_cli`: I would like to see the balance on the top right (left to the Online status) not at the button . als
-- [2026-03-07] `claude_cli`: admin users have access to the system api. for each api there is balance that I would like to see in
+- [2026-03-07] `claude_cli`: There is an error loading the usage tab. also I do not see any balance (still on 0, but I do have ba
+- [2026-03-07] `claude_cli`: I do see the table usage_logs in my postgresql, but it is not loaded properly into the UI. also tabl
+- [2026-03-07] `claude_cli`: I would like to create better Billing Tracker using the following steps  - Capture Usage Returned by
+- [2026-03-07] `claude_cli`: I have tried to fatch usage data from both api - claude and open ai, from both I got 400 and 404 err
+- [2026-03-07] `claude_cli`: apparntly both api calls not working. claude api works only for team or organisation account (I am u
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

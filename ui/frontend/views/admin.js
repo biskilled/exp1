@@ -422,11 +422,10 @@ function _inp() {
 // ── API Keys Tab ──────────────────────────────────────────────────────────────
 
 async function _renderApiKeys(body) {
-  const [keysInfo, stats, liveBalances, manualBalances] = await Promise.all([
+  const [keysInfo, stats, liveBalances] = await Promise.all([
     api.adminGetApiKeys(),
     api.adminGetStats(),
     api.adminGetApiBalances().catch(() => ({})),
-    api.adminGetProviderBalances().catch(() => ({})),
   ]);
   const byProvider = stats.by_provider || {};
   const providers = [
@@ -447,24 +446,15 @@ async function _renderApiKeys(body) {
                          background:${cfg.bg};color:${cfg.color};font-weight:500">${cfg.label}</span>`;
   };
 
-  const _liveBalBadge = (live, manual) => {
-    // Live balance (only DeepSeek works via API)
+  const _liveBalBadge = (live) => {
+    // Only DeepSeek supports live balance via API; others managed in Usage tab
     if (live?.available) {
       const color = live.balance_usd >= 5 ? 'var(--green)' : live.balance_usd >= 1 ? 'var(--accent)' : 'var(--red)';
       return `<span style="font-size:0.65rem;font-weight:600;color:${color}">
                 live: $${live.balance_usd.toFixed(2)}
               </span>`;
     }
-    // Manual balance
-    if (manual?.balance_usd != null) {
-      const b = manual.balance_usd;
-      const color = b >= 5 ? 'var(--green)' : b >= 1 ? 'var(--accent)' : 'var(--red)';
-      const ago = manual.updated_at ? ` · ${new Date(manual.updated_at).toLocaleDateString()}` : '';
-      return `<span style="font-size:0.65rem;font-weight:600;color:${color}">
-                balance: $${b.toFixed(2)}<span style="font-weight:400;color:var(--muted)">${ago}</span>
-              </span>`;
-    }
-    return `<span style="font-size:0.6rem;color:var(--muted)">balance: not set</span>`;
+    return '';
   };
 
   body.innerHTML = `
@@ -473,16 +463,14 @@ async function _renderApiKeys(body) {
       <div style="font-size:0.65rem;color:var(--muted);margin-bottom:1.25rem">
         Keys are stored in <code>api_keys.json</code> — your <code>.env</code> file is never modified.
         Leave a key field blank to keep the current value.
-        Enter your current provider balance manually (shown in the titlebar chip).
-        Only <strong>DeepSeek</strong> supports live balance queries via API.
+        Provider balances are managed in the <strong>📊 Usage</strong> tab.
       </div>
 
       <div style="display:flex;flex-direction:column;gap:1.1rem">
         ${providers.map(p => {
-          const info    = keysInfo[p.id]       || { masked: '', source: 'unset' };
-          const usage   = byProvider[p.id]     || null;
-          const liveBal = liveBalances[p.id]   || null;
-          const manual  = manualBalances[p.id] || null;
+          const info    = keysInfo[p.id]     || { masked: '', source: 'unset' };
+          const usage   = byProvider[p.id]   || null;
+          const liveBal = liveBalances[p.id] || null;
           const usageLine = usage
             ? `<span style="color:var(--accent)">$${usage.charged_usd.toFixed(4)} charged</span>
                <span style="color:var(--muted)">·</span>
@@ -490,14 +478,13 @@ async function _renderApiKeys(body) {
                <span style="color:var(--muted)">·</span>
                <span>${usage.calls} call${usage.calls !== 1 ? 's' : ''}</span>`
             : `<span style="color:var(--muted)">No usage recorded yet</span>`;
-          const manualVal = manual?.balance_usd != null ? manual.balance_usd : '';
           return `
           <div style="background:var(--surface2);border:1px solid var(--border);
                       border-radius:var(--radius);padding:0.65rem 0.85rem">
             <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;flex-wrap:wrap">
               <div style="font-size:0.75rem;font-weight:600;color:var(--text)">${p.label}</div>
               ${_sourceBadge(info.source)}
-              ${_liveBalBadge(liveBal, manual)}
+              ${_liveBalBadge(liveBal)}
             </div>
             <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.55rem;
                         display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
@@ -505,7 +492,7 @@ async function _renderApiKeys(body) {
               ${usageLine}
             </div>
             <!-- API Key row -->
-            <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem">
+            <div style="display:flex;gap:0.5rem;align-items:center">
               <label style="font-size:0.6rem;color:var(--muted);white-space:nowrap;min-width:55px">API Key</label>
               <input id="apikey-${p.id}" type="password"
                 placeholder="${info.masked ? info.masked : 'Not configured'}"
@@ -513,14 +500,6 @@ async function _renderApiKeys(body) {
               <button onclick="window._toggleKeyVis('${p.id}')"
                 style="background:none;border:1px solid var(--border);border-radius:4px;
                        color:var(--text2);font-size:0.72rem;padding:4px 8px;cursor:pointer">👁</button>
-            </div>
-            <!-- Manual balance row -->
-            <div style="display:flex;gap:0.5rem;align-items:center">
-              <label style="font-size:0.6rem;color:var(--muted);white-space:nowrap;min-width:55px">Balance $</label>
-              <input id="mbal-${p.id}" type="number" step="0.01" min="0"
-                placeholder="Enter current balance from provider dashboard"
-                value="${manualVal}"
-                style="flex:1;${_inp()}" />
             </div>
           </div>`;
         }).join('')}
@@ -530,16 +509,13 @@ async function _renderApiKeys(body) {
         <button onclick="window._saveApiKeys()"
           style="padding:0.5rem 1.25rem;background:var(--accent);border:none;border-radius:6px;
                  color:#fff;font-size:0.82rem;font-weight:600;cursor:pointer">
-          Save Keys + Balances
+          Save Keys
         </button>
         <span id="apikeys-status" style="font-size:0.68rem;color:var(--muted)"></span>
       </div>
       <div style="margin-top:0.75rem;font-size:0.65rem;color:var(--muted)">
-        <strong>Balance</strong>: Enter the current balance shown in your provider dashboard
-        (console.anthropic.com → Billing, platform.openai.com → Usage).
-        This is stored locally and shown in the titlebar chip.
-        Only DeepSeek can be queried live via API.<br>
-        <strong>Tracked spend</strong>: what this server has billed through these keys.
+        <strong>Tracked spend</strong>: what this server has billed through these keys.<br>
+        To set and track provider balances, open the <strong>📊 Usage</strong> tab.
       </div>
     </div>
   `;
@@ -561,16 +537,8 @@ async function _renderApiKeys(body) {
       });
       if (Object.keys(keys).length) await api.adminSaveApiKeys(keys);
 
-      // Save manual balances (only filled values)
-      const balances = {};
-      providers.forEach(p => {
-        const val = document.getElementById(`mbal-${p.id}`)?.value.trim();
-        if (val !== '') balances[p.id] = parseFloat(val) || 0;
-      });
-      if (Object.keys(balances).length) await api.adminSaveProviderBalances(balances);
-
       if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = 'var(--green)'; }
-      toast('Keys and balances saved', 'success');
+      toast('Keys saved', 'success');
       if (window._updateBalance) window._updateBalance().catch(() => {});
       const b = document.getElementById('admin-body');
       if (b) await _renderApiKeys(b);
@@ -585,65 +553,96 @@ async function _renderApiKeys(body) {
 // ── Usage Tab ─────────────────────────────────────────────────────────────────
 
 async function _renderUsage(body) {
-  // Show a spinner while loading (api-balances can take a few seconds)
-  body.innerHTML = `<div style="color:var(--muted);font-size:0.72rem;padding:1rem">
-    Loading usage data… <span style="opacity:0.6">(querying API balances, may take a moment)</span>
-  </div>`;
+  body.innerHTML = `<div style="color:var(--muted);font-size:0.72rem;padding:1rem">Loading usage data…</div>`;
 
-  let data;
+  let data, balances, stats;
   try {
-    data = await api.adminGetUsageTable();
+    [data, balances, stats] = await Promise.all([
+      api.adminGetUsageTable(),
+      api.adminGetProviderBalances().catch(() => ({})),
+      api.adminGetStats().catch(() => ({})),
+    ]);
   } catch (e) {
     body.innerHTML = `
-      <div style="color:var(--red);font-size:0.75rem;margin-bottom:0.5rem">Error loading usage table: ${e.message}</div>
-      <div style="font-size:0.65rem;color:var(--muted)">
-        Make sure the backend was restarted after the last update, and that all dependencies are installed
-        (<code>pip install -r requirements.txt</code>).
-      </div>
+      <div style="color:var(--red);font-size:0.75rem;margin-bottom:0.5rem">Error loading usage: ${e.message}</div>
       <button onclick="window._adminTab('usage')" style="margin-top:0.75rem;padding:0.35rem 0.85rem;
         background:var(--surface2);border:1px solid var(--border);border-radius:4px;
         color:var(--text2);font-size:0.72rem;cursor:pointer">↺ Retry</button>`;
     return;
   }
 
-  const rows  = data.rows        || [];
-  const sys   = data.system_rows || [];
+  const rows   = data.rows        || [];
+  const sys    = data.system_rows || [];
+  const byProv = stats.by_provider || {};
+
+  const usageProviders = [
+    { id: 'claude',   label: 'Claude (Anthropic)' },
+    { id: 'openai',   label: 'OpenAI' },
+    { id: 'deepseek', label: 'DeepSeek' },
+    { id: 'gemini',   label: 'Gemini' },
+    { id: 'grok',     label: 'Grok (xAI)' },
+  ];
+
+  // Live balance lookup (only DeepSeek works via API)
+  const liveBals = {};
+  for (const s of sys) {
+    if (s.api_balance?.available) liveBals[s.provider] = s.api_balance;
+  }
+
+  // Snapshot originals for save-disabled-until-changed
+  const origBalances = {};
+  usageProviders.forEach(p => { origBalances[p.id] = balances[p.id]?.balance_usd ?? ''; });
 
   const _fmt  = (n, d = 4) => n != null ? `$${Number(n).toFixed(d)}` : '—';
   const _fmtN = (n) => n != null ? Number(n).toLocaleString() : '—';
   const _mclr = (m) => m > 0 ? 'var(--green)' : m < 0 ? 'var(--red)' : 'var(--text2)';
+  const _th   = (label, align = 'right') =>
+    `<th style="text-align:${align};padding:0.4rem 0.6rem;font-weight:500;font-size:0.65rem;
+               color:var(--muted);white-space:nowrap">${label}</th>`;
 
-  // System totals header
-  const _sysRow = (s) => {
-    const bal = s.api_balance || {};
-    let balTxt = '—';
-    let balColor = 'var(--muted)';
-    if (bal.available) {
-      balTxt  = `$${bal.balance_usd.toFixed(2)}`;
-      balColor = bal.balance_usd >= 5 ? 'var(--green)' : bal.balance_usd >= 1 ? 'var(--accent)' : 'var(--red)';
-    } else if (bal.reason === 'unsupported') {
-      balTxt = 'N/A';
-    } else if (bal.reason === 'no_key') {
-      balTxt = 'no key';
+  // ── Provider balance rows ──────────────────────────────────────────────────
+  const balRows = usageProviders.map(p => {
+    const pStats  = byProv[p.id] || null;
+    const manual  = balances[p.id] || null;
+    const live    = liveBals[p.id] || null;
+    const tracked = pStats?.real_cost_usd ?? null;
+    const manVal  = manual?.balance_usd != null ? manual.balance_usd : '';
+    const updAt   = manual?.updated_at ? new Date(manual.updated_at).toLocaleDateString() : null;
+
+    let remaining = null;
+    if (manVal !== '' && tracked != null) remaining = Number(manVal) - tracked;
+
+    const trackedStr = tracked != null ? `$${Number(tracked).toFixed(4)}` : '—';
+    let remainStr = '—', remColor = 'var(--muted)';
+    if (remaining != null) {
+      remainStr = `$${remaining.toFixed(2)}`;
+      remColor  = remaining >= 5 ? 'var(--green)' : remaining >= 1 ? 'var(--accent)' : 'var(--red)';
+    } else if (live?.available) {
+      remainStr = `$${live.balance_usd.toFixed(2)} (live)`;
+      remColor  = live.balance_usd >= 5 ? 'var(--green)' : live.balance_usd >= 1 ? 'var(--accent)' : 'var(--red)';
     }
-    return `
-      <tr style="background:var(--surface2)">
-        <td style="padding:0.45rem 0.5rem;font-size:0.7rem;color:var(--muted);font-style:italic">system</td>
-        <td style="padding:0.45rem 0.5rem;font-size:0.72rem;color:var(--text2)">${_esc(s.provider)}</td>
-        <td style="padding:0.45rem 0.5rem;font-family:monospace;font-size:0.65rem;color:var(--muted)">${_esc(s.api_key_masked || '—')}</td>
-        <td colspan="3" style="padding:0.45rem 0.5rem;font-size:0.7rem;color:var(--muted);text-align:center">
-          live API balance only
-        </td>
-        <td style="padding:0.45rem 0.5rem;font-size:0.72rem;font-weight:700;text-align:right;color:${balColor}">${balTxt}</td>
-        <td colspan="4" style="padding:0.45rem 0.5rem"></td>
-      </tr>`;
-  };
 
-  // Group rows by date for visual separation
+    return `
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:0.45rem 0.6rem;font-size:0.75rem;font-weight:600;color:var(--text)">${_esc(p.label)}</td>
+        <td style="padding:0.45rem 0.6rem;font-size:0.72rem;text-align:right;color:var(--accent)">${trackedStr}</td>
+        <td style="padding:0.45rem 0.6rem;text-align:right">
+          <input id="mbal-${p.id}" type="number" step="0.01" min="0"
+            placeholder="0.00" value="${manVal}"
+            style="width:90px;background:var(--surface);border:1px solid var(--border);
+                   border-radius:4px;padding:0.2rem 0.45rem;font-size:0.72rem;
+                   color:var(--text);text-align:right" />
+        </td>
+        <td style="padding:0.45rem 0.6rem;font-size:0.72rem;text-align:right;font-weight:600;color:${remColor}">${remainStr}</td>
+        <td style="padding:0.45rem 0.6rem;font-size:0.65rem;color:var(--muted)">${updAt ? `Updated ${updAt}` : '—'}</td>
+      </tr>`;
+  }).join('');
+
+  // ── Usage data rows (no API Key column — 10 cols) ─────────────────────────
   let lastDate = '';
   const _dataRows = rows.map(r => {
     const dateHdr = r.date !== lastDate
-      ? `<tr><td colspan="11" style="padding:0.3rem 0.5rem;font-size:0.65rem;font-weight:600;
+      ? `<tr><td colspan="10" style="padding:0.3rem 0.5rem;font-size:0.65rem;font-weight:600;
               color:var(--muted);background:var(--surface);border-top:1px solid var(--border);
               border-bottom:1px solid var(--border)">${r.date}</td></tr>`
       : '';
@@ -654,7 +653,6 @@ async function _renderUsage(body) {
         <td style="padding:0.4rem 0.5rem;font-size:0.72rem;overflow:hidden;max-width:120px;
                    text-overflow:ellipsis;white-space:nowrap" title="${_esc(r.email)}">${_esc(r.email)}</td>
         <td style="padding:0.4rem 0.5rem;font-size:0.72rem;color:var(--text2)">${_esc(r.llm)}</td>
-        <td style="padding:0.4rem 0.5rem;font-family:monospace;font-size:0.62rem;color:var(--muted)">${_esc(r.api_key_masked || '—')}</td>
         <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem">${_fmtN(r.tokens)}</td>
         <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem;color:var(--text2)">${_fmt(r.cost)}</td>
         <td style="padding:0.4rem 0.5rem;text-align:right;font-size:0.72rem;color:var(--accent)">${_fmt(r.revenue)}</td>
@@ -669,38 +667,55 @@ async function _renderUsage(body) {
       </tr>`;
   }).join('');
 
-  const _th = (label, align = 'right') =>
-    `<th style="text-align:${align};padding:0.4rem 0.5rem;font-weight:500;font-size:0.65rem;
-               color:var(--muted);white-space:nowrap">${label}</th>`;
-
   body.innerHTML = `
+    <!-- Provider Balances section -->
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.4rem">
+      <div style="font-weight:700;font-size:0.8rem">Provider Balances</div>
+      <span id="bal-status" style="font-size:0.65rem;color:var(--muted)"></span>
+      <button id="save-bal-btn" onclick="window._saveUsageBalances()" disabled
+        style="margin-left:auto;padding:0.3rem 0.85rem;background:var(--accent);border:none;
+               border-radius:5px;color:#fff;font-size:0.72rem;font-weight:600;cursor:pointer;opacity:0.4">
+        Save Balances
+      </button>
+    </div>
+    <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.6rem">
+      Enter the current balance from your provider's billing dashboard.
+      <em>Remaining</em> = manual balance − tracked spend on this server.
+      Only <strong>DeepSeek</strong> shows a live balance via API.
+    </div>
+    <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:1.75rem">
+      <table style="width:100%;border-collapse:collapse;font-size:0.75rem">
+        <thead>
+          <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
+            ${_th('Provider', 'left')}
+            ${_th('Tracked Spend')}
+            ${_th('Manual Balance')}
+            ${_th('Remaining (est.)')}
+            ${_th('Last Updated', 'left')}
+          </tr>
+        </thead>
+        <tbody>${balRows}</tbody>
+      </table>
+    </div>
+
+    <!-- Usage table -->
     <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.25rem">
       <div style="font-weight:700;font-size:0.8rem">Usage & Revenue</div>
       <button onclick="window._adminTab('usage')"
         style="background:none;border:1px solid var(--border);border-radius:4px;
                color:var(--text2);font-size:0.7rem;padding:2px 7px;cursor:pointer"
-        title="Refresh usage table">↺ Refresh</button>
+        title="Refresh">↺ Refresh</button>
     </div>
     <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.6rem">
-      Daily aggregated by user × LLM provider.
+      Daily aggregated by user × LLM.
     </div>
-    <div style="font-size:0.65rem;background:rgba(255,107,53,0.08);border:1px solid rgba(255,107,53,0.2);
-                border-radius:4px;padding:0.45rem 0.75rem;margin-bottom:1rem;color:var(--text2)">
-      ℹ <strong>API provider balance</strong> (shown in System rows) is the credit remaining in your provider account.
-      Only <strong>DeepSeek</strong> supports live balance queries via API — Anthropic (Claude) and OpenAI do not expose
-      a balance endpoint per API key. Check those balances directly in their dashboards.<br>
-      <strong>Platform balance</strong> (Credits / Used in the titlebar chip) = total credits you've given to users
-      via top-ups and coupons, minus what they've spent. This is NOT your API provider credit.
-    </div>
-
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:0.75rem;min-width:820px">
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:6px">
+      <table style="width:100%;border-collapse:collapse;font-size:0.75rem;min-width:720px">
         <thead>
-          <tr style="border-bottom:2px solid var(--border)">
+          <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
             ${_th('Date', 'left')}
             ${_th('User', 'left')}
             ${_th('LLM', 'left')}
-            ${_th('API Key', 'left')}
             ${_th('Tokens')}
             ${_th('Cost')}
             ${_th('Revenue')}
@@ -711,20 +726,48 @@ async function _renderUsage(body) {
           </tr>
         </thead>
         <tbody>
-          <!-- System rows (live API balances) -->
-          <tr><td colspan="11" style="padding:0.3rem 0.5rem;font-size:0.65rem;font-weight:600;
-                color:var(--muted);background:var(--surface2);border-bottom:1px solid var(--border)">
-            System — Live API Balances
-          </td></tr>
-          ${sys.map(_sysRow).join('')}
-          <!-- Data rows -->
-          ${_dataRows || `<tr><td colspan="11" style="padding:1.5rem;text-align:center;color:var(--muted);font-size:0.75rem">
+          ${_dataRows || `<tr><td colspan="10" style="padding:1.5rem;text-align:center;color:var(--muted);font-size:0.75rem">
             No usage data yet. Usage will appear here after the first chat message.
           </td></tr>`}
         </tbody>
       </table>
     </div>
   `;
+
+  // Save-disabled-until-changed
+  const saveBalBtn = document.getElementById('save-bal-btn');
+  const _checkBalChange = () => {
+    const changed = usageProviders.some(p => {
+      const v    = document.getElementById(`mbal-${p.id}`)?.value.trim() ?? '';
+      const orig = origBalances[p.id] !== '' ? String(origBalances[p.id]) : '';
+      return v !== orig;
+    });
+    if (saveBalBtn) { saveBalBtn.disabled = !changed; saveBalBtn.style.opacity = changed ? '1' : '0.4'; }
+  };
+  usageProviders.forEach(p => {
+    document.getElementById(`mbal-${p.id}`)?.addEventListener('input', _checkBalChange);
+  });
+
+  window._saveUsageBalances = async () => {
+    const statusEl = document.getElementById('bal-status');
+    if (saveBalBtn) { saveBalBtn.disabled = true; saveBalBtn.style.opacity = '0.4'; }
+    if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.style.color = 'var(--muted)'; }
+    try {
+      const updates = {};
+      usageProviders.forEach(p => {
+        const v = document.getElementById(`mbal-${p.id}`)?.value.trim();
+        if (v !== '') updates[p.id] = parseFloat(v) || 0;
+      });
+      await api.adminSaveProviderBalances(updates);
+      if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = 'var(--green)'; }
+      toast('Balances saved', 'success');
+      if (window._updateBalance) window._updateBalance().catch(() => {});
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }
+      toast(`Error: ${e.message}`, 'error');
+      if (saveBalBtn) { saveBalBtn.disabled = false; saveBalBtn.style.opacity = '1'; }
+    }
+  };
 }
 
 
@@ -818,7 +861,6 @@ async function _renderBilling(body) {
     }
     const label = r.mode === 'local_recalculate' ? 'local' : (r.provider || '—');
     const provForDel = r.provider || r.mode || 'local_recalculate';
-    const fatEsc = _esc(r.fetched_at || '');
     // Inline short error + copy button
     const shortMsg = allMsgs.length
       ? allMsgs[0].slice(0, 60) + (allMsgs[0].length > 60 || allMsgs.length > 1 ? '…' : '')
@@ -839,7 +881,8 @@ async function _renderBilling(body) {
           <span title="${_esc(msgText)}">${_esc(shortMsg)}</span>${copyBtn}
         </td>
         <td style="padding:0.35rem 0.5rem;text-align:center">
-          <button onclick="window._deleteHistRow('${_esc(provForDel)}','${fatEsc}')"
+          <button data-prov="${_esc(provForDel)}" data-ts="${_esc(r.fetched_at||'')}"
+            onclick="window._deleteHistRow(this.dataset.prov, this.dataset.ts)"
             style="background:none;border:1px solid var(--border);border-radius:3px;
                    font-size:0.65rem;padding:1px 5px;color:var(--red);cursor:pointer"
             title="Delete this record">✕</button>
@@ -864,9 +907,9 @@ async function _renderBilling(body) {
       <span style="font-size:0.65rem;color:var(--muted)">
         Last updated: <strong>${_esc(updatedAt)}</strong>${updatedBy ? ` by ${_esc(updatedBy)}` : ''}
       </span>
-      <button id="save-costs-btn" onclick="window._saveCosts()"
+      <button id="save-costs-btn" onclick="window._saveCosts()" disabled
         style="margin-left:auto;padding:0.35rem 0.9rem;background:var(--accent);border:none;
-               border-radius:5px;color:#fff;font-size:0.72rem;font-weight:600;cursor:pointer">
+               border-radius:5px;color:#fff;font-size:0.72rem;font-weight:600;cursor:pointer;opacity:0.4">
         Save Costs
       </button>
       <span id="costs-status" style="font-size:0.65rem;color:var(--muted)"></span>
@@ -975,6 +1018,31 @@ async function _renderBilling(body) {
     </div>
   `;
 
+  // Save-disabled-until-changed for cost config
+  const _getCostSnapshot = () => {
+    const snap = {};
+    for (const [prov, models] of Object.entries(byProvider)) {
+      for (const m of models) {
+        snap[`${prov}|${m.model}|in`]  = document.getElementById(`cost-${_toId(prov)}-${_toId(m.model)}-in`)?.value  ?? '';
+        snap[`${prov}|${m.model}|out`] = document.getElementById(`cost-${_toId(prov)}-${_toId(m.model)}-out`)?.value ?? '';
+      }
+    }
+    return snap;
+  };
+  let _costsOrig = _getCostSnapshot();
+  const _costsBtn = document.getElementById('save-costs-btn');
+  const _checkCostChange = () => {
+    const cur = _getCostSnapshot();
+    const changed = Object.keys(cur).some(k => cur[k] !== _costsOrig[k]);
+    if (_costsBtn) { _costsBtn.disabled = !changed; _costsBtn.style.opacity = changed ? '1' : '0.4'; }
+  };
+  for (const [prov, models] of Object.entries(byProvider)) {
+    for (const m of models) {
+      document.getElementById(`cost-${_toId(prov)}-${_toId(m.model)}-in`)?.addEventListener('input', _checkCostChange);
+      document.getElementById(`cost-${_toId(prov)}-${_toId(m.model)}-out`)?.addEventListener('input', _checkCostChange);
+    }
+  }
+
   // Show/hide org-id field based on provider
   const provSel = document.getElementById('fetch-provider');
   const orgWrap = document.getElementById('org-id-wrap');
@@ -1029,8 +1097,7 @@ async function _renderBilling(body) {
 
   window._saveCosts = async () => {
     const statusEl = document.getElementById('costs-status');
-    const btn      = document.getElementById('save-costs-btn');
-    if (btn) btn.disabled = true;
+    if (_costsBtn) { _costsBtn.disabled = true; _costsBtn.style.opacity = '0.4'; }
     if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.style.color = 'var(--muted)'; }
     try {
       // Rebuild providers object from input fields
@@ -1049,11 +1116,14 @@ async function _renderBilling(body) {
       await api.adminSaveProviderCosts({ providers });
       if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = 'var(--green)'; }
       toast('Provider costs saved', 'success');
+      // Reset baseline — button stays disabled until further changes
+      _costsOrig = _getCostSnapshot();
+      _checkCostChange();
     } catch (e) {
       if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }
       toast(`Error: ${e.message}`, 'error');
-    } finally {
-      if (btn) btn.disabled = false;
+      // Re-enable so user can retry
+      if (_costsBtn) { _costsBtn.disabled = false; _costsBtn.style.opacity = '1'; }
     }
   };
 
