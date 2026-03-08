@@ -84,8 +84,25 @@ export async function renderAdmin(container) {
 // ── Users Tab ─────────────────────────────────────────────────────────────────
 
 async function _renderUsers(body) {
-  const [data, stats] = await Promise.all([api.adminListUsers(), api.adminGetStats()]);
+  const [data, stats, provBals] = await Promise.all([
+    api.adminListUsers(),
+    api.adminGetStats(),
+    api.adminGetProviderBalances().catch(() => ({})),
+  ]);
   const users = data.users || [];
+
+  // Compute total API provider remaining budget
+  const tracked = stats.by_provider || {};
+  let apiRemaining = null;
+  Object.entries(provBals).forEach(([prov, bal]) => {
+    if (bal?.balance_usd != null) {
+      const spent = tracked[prov]?.real_cost_usd || 0;
+      if (apiRemaining === null) apiRemaining = 0;
+      apiRemaining += Math.max(0, bal.balance_usd - spent);
+    }
+  });
+  const apiColor = apiRemaining === null ? 'var(--muted)'
+    : apiRemaining >= 5 ? 'var(--green)' : apiRemaining >= 1 ? 'var(--accent)' : 'var(--red)';
 
   const _fmt = (n) => `$${(n || 0).toFixed(2)}`;
   const _stat = (label, val, color = 'var(--text)') =>
@@ -104,6 +121,7 @@ async function _renderUsers(body) {
       ${_stat('Total Charged', _fmt(stats.total_charged_usd), 'var(--accent)')}
       ${_stat('Real Cost', _fmt(stats.total_real_cost_usd), 'var(--text2)')}
       ${_stat('Margin', _fmt(stats.total_margin_usd), stats.total_margin_usd >= 0 ? 'var(--green)' : 'var(--red)')}
+      ${_stat('API Budget', apiRemaining !== null ? _fmt(apiRemaining) : '—', apiColor)}
       <button onclick="window._adminRefreshUsers()" title="Refresh"
         style="position:absolute;top:0.5rem;right:0.5rem;background:none;border:none;
                color:var(--muted);cursor:pointer;font-size:0.8rem;padding:2px 5px;
@@ -759,8 +777,11 @@ async function _renderUsage(body) {
         if (v !== '') updates[p.id] = parseFloat(v) || 0;
       });
       await api.adminSaveProviderBalances(updates);
-      if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = 'var(--green)'; }
       toast('Balances saved', 'success');
+      // Re-render Usage tab so Remaining column reflects new values
+      const adminBody = document.getElementById('admin-body');
+      if (adminBody) await _renderUsage(adminBody).catch(() => {});
+      // Also refresh titlebar chip (now includes API budget)
       if (window._updateBalance) window._updateBalance().catch(() => {});
     } catch (e) {
       if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }

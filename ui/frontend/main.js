@@ -323,17 +323,36 @@ export async function updateBalanceChip() {
     const role = b.role || 'free';
 
     if (role === 'admin') {
-      // Placeholder while fetching platform stats
-      _set('Admin', 'var(--accent)', 'rgba(255,107,53,0.12)',
-           'Platform credit balance (sum of all user top-ups minus charges). Click to refresh.');
+      // Placeholder while fetching platform stats + provider balances
+      _set('Admin', 'var(--accent)', 'rgba(255,107,53,0.12)', 'Click to refresh');
 
-      api.adminGetStats().then(stats => {
+      Promise.all([
+        api.adminGetStats(),
+        api.adminGetProviderBalances().catch(() => ({})),
+      ]).then(([stats, provBals]) => {
         setState({ platformStats: stats });
         const total   = stats.total_added_usd   ?? 0;
         const charged = stats.total_charged_usd ?? 0;
-        _set(`Credits: $${total.toFixed(2)} · Used: $${charged.toFixed(2)}`,
-             'var(--accent)', 'rgba(255,107,53,0.12)',
-             'Platform: total user credits added / charged. Your API provider balance is separate — see API Keys tab.');
+        // Compute total remaining API provider budget
+        const tracked = stats.by_provider || {};
+        let apiRemaining = null;
+        Object.entries(provBals).forEach(([prov, bal]) => {
+          if (bal?.balance_usd != null) {
+            const spent = tracked[prov]?.real_cost_usd || 0;
+            if (apiRemaining === null) apiRemaining = 0;
+            apiRemaining += Math.max(0, bal.balance_usd - spent);
+          }
+        });
+        const apiPart = apiRemaining !== null
+          ? ` | API: $${apiRemaining.toFixed(2)}`
+          : '';
+        const apiColor = apiRemaining === null ? 'var(--muted)'
+          : apiRemaining >= 5 ? 'var(--green)' : apiRemaining >= 1 ? 'var(--accent)' : 'var(--red)';
+        _set(
+          `Credits: $${total.toFixed(2)} · Used: $${charged.toFixed(2)}<span style="color:${apiColor}">${apiPart}</span>`,
+          'var(--accent)', 'rgba(255,107,53,0.12)',
+          'Platform credits (user wallets) + API provider remaining budget. Click to refresh.',
+        );
         renderSidebarFooter();
       }).catch(() => {
         _set('Admin ↺', 'var(--accent)', 'rgba(255,107,53,0.12)', 'Click to refresh');
