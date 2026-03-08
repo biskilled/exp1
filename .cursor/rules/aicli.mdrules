@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 23:10 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 23:23 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -17,7 +17,9 @@ _Last updated: 2026-03-08_
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
 - **planned**: GraphQL, node graph UI, pgvector semantic embeddings, unified provider logging
 - **orm**: SQLAlchemy
-- **tables**: users, user_usage, usage_logs, billing_logs, workflows, runs, entities (pending consolidation)
+- **tables**: users, user_usage, usage_logs, billing_logs, workflows, runs (graph tables dropped)
+- **vector_search**: pgvector for semantic embeddings and entity relationships
+- **workflow_execution**: Node-based multi-agent model with YAML config and UI node graphs
 
 ## Key Decisions
 
@@ -33,14 +35,14 @@ _Last updated: 2026-03-08_
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
 - dev_runtime_state.json + project_state.json auto-maintained for shared LLM context across sessions
 - Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl
-- GraphQL + node graph UI planned for workflow management and visual entity relationship representation
 - Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
 - Shared memory architecture: claude cli, aicli, cursor all read/write unified history files and vectordb for cross-session project comprehension
+- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced across all CLI tools to enable semantic search and memory continuity
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-08] let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do that using yaml . and
 - [2026-03-08] the second one - under _system/run
 - [2026-03-08] <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm</tool-use-id> <stat
 - [2026-03-08] I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the current solution is goo
 - [2026-03-08] I will create postgresql with pgvector. it is a new instanse (so required to create all users table as well). before you
+- [2026-03-08] dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys for each prompt ? for

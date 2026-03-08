@@ -38,9 +38,9 @@ You are a senior Python software architect with deep expertise in:
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
 - dev_runtime_state.json + project_state.json auto-maintained for shared LLM context across sessions
 - Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl
-- GraphQL + node graph UI planned for workflow management and visual entity relationship representation
 - Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
 - Shared memory architecture: claude cli, aicli, cursor all read/write unified history files and vectordb for cross-session project comprehension
+- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced across all CLI tools to enable semantic search and memory continuity
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-08] `claude_cli`: let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do t
 - [2026-03-08] `claude_cli`: the second one - under _system/run 
 - [2026-03-08] `claude_cli`: <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm
 - [2026-03-08] `claude_cli`: I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the cur
 - [2026-03-08] `claude_cli`: I will create postgresql with pgvector. it is a new instanse (so required to create all users table 
+- [2026-03-08] `claude_cli`: dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys f
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
