@@ -103,11 +103,11 @@ ui/
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-07] `claude_cli`: I would like to create better Billing Tracker using the following steps  - Capture Usage Returned by
-- [2026-03-07] `claude_cli`: I have tried to fatch usage data from both api - claude and open ai, from both I got 400 and 404 err
-- [2026-03-07] `claude_cli`: apparntly both api calls not working. claude api works only for team or organisation account (I am u
-- [2026-03-07] `claude_cli`: I dont see the balance endpoint at the ui. can you instead of adding a new tab, manage that at usage
 - [2026-03-08] `claude_cli`: Usage tab - when I try to update - I do reciave an error - "Not found". billing tab - when I try to 
+- [2026-03-08] `claude_cli`: It is manage to save balance, but I dont see that when I am rephresh (top right corenr). also on use
+- [2026-03-08] `claude_cli`: Can you explain how you get all project info, I do see that sometime you compress the history. and s
+- [2026-03-08] `claude_cli`: The main goal of this project is to be able for you and other llm to share memory. I have started to
+- [2026-03-08] `claude_cli`: Would using vectordb and enabling you reading the data from vectordb will make that more easy for yo
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
