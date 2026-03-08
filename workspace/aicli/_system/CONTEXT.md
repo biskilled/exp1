@@ -1,54 +1,54 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 04:33 UTC — do not edit manually.
+> Auto-generated 2026-03-08 05:06 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 16
-- **Last active**: 2026-03-08T04:32:55Z
+- **Sessions**: 17
+- **Last active**: 2026-03-08T05:06:01Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
 ## Tech Stack
 
 - **cli**: Python 3.12 + prompt_toolkit + rich
-- **backend**: FastAPI + python-jose + bcrypt
+- **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
 - **frontend**: Vanilla JS + Electron (xterm.js + Monaco editor)
 - **storage**: JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV
-- **database**: PostgreSQL (user_usage, usage_logs, billing logs) + pgvector (planned)
-- **authentication**: JWT (python-jose) + bcrypt
+- **database**: PostgreSQL (user_usage, usage_logs, billing_logs) + pgvector (planned)
+- **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
 - **planned**: GraphQL, node graph UI, pgvector semantic search, unified provider logging
-- **orm**: SQLAlchemy (inferred from PostgreSQL usage)
+- **orm**: SQLAlchemy
 
 ## In Progress
 
-- Fix hooks integration — commits not working from claude cli; verify history.jsonl captures responses
-- Complete billing/balance tracking — manual balance entry working but not persisting on refresh; admin sees total, users see own balance
-- PostgreSQL table creation — usage_logs table exists but entries not populating; need to ensure all providers log usage
-- Consolidate workflow management — 'flows' tab created but 'workflow' tab already exists; clarify entity vs workflow distinction
-- Memory system optimization — commit_log.jsonl not capturing all errors/logs from all sources; ensure claude cli, aicli, cursor hooks all write unified history
-- Shared memory architecture — define how LLMs read/compress history files; establish memory digest strategy for /memory command
+- Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl
+- Balance persistence on refresh — manual balance entry saves but doesn't persist on UI refresh; admin sees total, users see own balance
+- PostgreSQL usage_logs population — table created but entries not populating; ensure all providers log usage and refresh UI displays totals
+- Consolidate workflow/entity management — 'flows' tab created but 'workflow' tab exists; clarify distinction; build node graph UI instead of separate tabs
+- Memory system optimization — commit_log.jsonl not capturing all errors/logs from claude cli, aicli, cursor; ensure unified history across all sources
+- Shared memory architecture for LLM context — define how /memory command reads/compresses history files; establish memory digest strategy for project understanding
 
 ## Key Decisions
 
-- No ChromaDB / SQLite — flat files only (JSONL / JSON / CSV) for history tracking
-- Electron UI (not Tauri) with xterm.js terminal + Monaco editor
-- Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt for password hashing
-- Engine/workspace separation: aicli/ = code, workspace/ = per-project content
-- All LLM providers independent — CLI providers/ ≠ ui/backend/core/llm_clients.py
-- Client sends own API keys in request headers — server never stores keys
-- User roles: admin, paid, free tier with dev_mode toggle for testing
-- Manual balance setup via UI (no auto-fetch due to API limitations)
-- All history tracked to history.jsonl + commit_log.jsonl for shared LLM memory
-- PostgreSQL for user_usage / billing logs; pgvector planned for semantic search
-- Hooks auto-commit on claude cli / cursor; aicli tracks own history
-- Node graph / GraphQL planned for entity relationships and workflow management
-- dev_runtime_state.json + project_state.json auto-maintenance for LLM context
-- Memory auto-summarisation at token limit; /memory command uploads all relevant files
-- Shared memory architecture: claude cli, aicli, cursor all read/write unified history
+- No ChromaDB / SQLite — flat files only (JSONL / JSON / CSV) for history tracking; PostgreSQL for user_usage / billing logs only
+- Electron UI (not Tauri) with xterm.js terminal + Monaco editor; Vanilla JS frontend
+- Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt for password hashing; dev_mode for testing without login
+- Engine/workspace separation: aicli/ = code, workspace/ = per-project content; _system folder stores all project state
+- All LLM providers independent — CLI providers/ ≠ ui/backend/core/llm_clients.py; client sends own API keys in headers
+- User roles: admin, paid, free tier with dev_mode toggle; manual balance entry via UI (no auto-fetch due to API limitations)
+- All history tracked to history.jsonl + commit_log.jsonl for shared LLM memory across claude cli, aicli, cursor
+- PostgreSQL for user_usage / billing logs with pgvector planned for semantic search; SQLAlchemy ORM
+- Hooks auto-commit on claude cli / cursor; aicli tracks own history; unified history.jsonl + commit_log.jsonl
+- Node graph / GraphQL planned for entity relationships and workflow management with prompt-based node execution
+- Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
+- dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
+- Workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
+- Cost tracking: pricing managed by config/JSON (not hardcoded); usage logged per provider/user/date in PostgreSQL
+- Shared memory architecture: claude cli, aicli, cursor all read/write unified history files + commit_log.jsonl
 
 ---
 
@@ -142,6 +142,12 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 05:06]** `claude_cli/claude`  
+→ <task-notification> <task-id>ba21592</task-id> <tool-use-id>toolu_01X3GzA6q9L1GhyQMY72Yeqd</tool-use-id> <output-file>/p
+
+**[2026-03-08 04:47]** `claude_cli/claude`  
+→ I dont see any worklow. prevoiusly there was some workflow sample that can be managed by yaml config as well. worklow su
+
 **[2026-03-08 04:27]** `claude_cli/claude`  
 → I dont see any new table created in my postgresql . also I do see that you creaed new tab - flows, but there is already 
 
@@ -180,9 +186,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 00:44]** `claude_cli/claude`  
 → The main goal of this project is to be able for you and other llm to share memory. I have started to do that, and I do s
-
-**[2026-03-08 00:40]** `claude_cli/claude`  
-→ Can you explain how you get all project info, I do see that sometime you compress the history. and start loading a new s
-
-**[2026-03-08 00:30]** `claude_cli/claude`  
-→ It is manage to save balance, but I dont see that when I am rephresh (top right corenr). also on users tab - I dont see 

@@ -26,21 +26,21 @@ You are a senior Python software architect with deep expertise in:
 
 ## Key Architectural Decisions
 
-- No ChromaDB / SQLite — flat files only (JSONL / JSON / CSV) for history tracking
-- Electron UI (not Tauri) with xterm.js terminal + Monaco editor
-- Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt for password hashing
-- Engine/workspace separation: aicli/ = code, workspace/ = per-project content
-- All LLM providers independent — CLI providers/ ≠ ui/backend/core/llm_clients.py
-- Client sends own API keys in request headers — server never stores keys
-- User roles: admin, paid, free tier with dev_mode toggle for testing
-- Manual balance setup via UI (no auto-fetch due to API limitations)
-- All history tracked to history.jsonl + commit_log.jsonl for shared LLM memory
-- PostgreSQL for user_usage / billing logs; pgvector planned for semantic search
-- Hooks auto-commit on claude cli / cursor; aicli tracks own history
-- Node graph / GraphQL planned for entity relationships and workflow management
-- dev_runtime_state.json + project_state.json auto-maintenance for LLM context
-- Memory auto-summarisation at token limit; /memory command uploads all relevant files
-- Shared memory architecture: claude cli, aicli, cursor all read/write unified history
+- No ChromaDB / SQLite — flat files only (JSONL / JSON / CSV) for history tracking; PostgreSQL for user_usage / billing logs only
+- Electron UI (not Tauri) with xterm.js terminal + Monaco editor; Vanilla JS frontend
+- Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt for password hashing; dev_mode for testing without login
+- Engine/workspace separation: aicli/ = code, workspace/ = per-project content; _system folder stores all project state
+- All LLM providers independent — CLI providers/ ≠ ui/backend/core/llm_clients.py; client sends own API keys in headers
+- User roles: admin, paid, free tier with dev_mode toggle; manual balance entry via UI (no auto-fetch due to API limitations)
+- All history tracked to history.jsonl + commit_log.jsonl for shared LLM memory across claude cli, aicli, cursor
+- PostgreSQL for user_usage / billing logs with pgvector planned for semantic search; SQLAlchemy ORM
+- Hooks auto-commit on claude cli / cursor; aicli tracks own history; unified history.jsonl + commit_log.jsonl
+- Node graph / GraphQL planned for entity relationships and workflow management with prompt-based node execution
+- Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
+- dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
+- Workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
+- Cost tracking: pricing managed by config/JSON (not hardcoded); usage logged per provider/user/date in PostgreSQL
+- Shared memory architecture: claude cli, aicli, cursor all read/write unified history files + commit_log.jsonl
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-08] `claude_cli`: I am thinking to add graphql supprt (node graph ) that user can manaege entities and relatioships. a
-- [2026-03-08] `claude_cli`: I am using postgresql already and can extend that to use pgvector for semantic embedding. node grapg
 - [2026-03-08] `claude_cli`: I do not see that error in the commit_log.jsonl , can you make sure all logs are at this files (also
 - [2026-03-08] `claude_cli`: I would like to understand how the new update imporve your way to understand all code project, what 
 - [2026-03-08] `claude_cli`: I dont see any new table created in my postgresql . also I do see that you creaed new tab - flows, b
+- [2026-03-08] `claude_cli`: I dont see any worklow. prevoiusly there was some workflow sample that can be managed by yaml config
+- [2026-03-08] `claude_cli`: <task-notification> <task-id>ba21592</task-id> <tool-use-id>toolu_01X3GzA6q9L1GhyQMY72Yeqd</tool-use
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
