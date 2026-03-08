@@ -1,0 +1,45 @@
+{
+  "project": "aicli",
+  "description": "AI-powered development CLI with multi-LLM support, workflow automation, and Electron UI",
+  "last_updated": "2026-02-26",
+  "version": "0.3.0",
+  "tech_stack": {
+    "cli": "Python 3.12 + prompt_toolkit + rich",
+    "backend": "FastAPI + python-jose + bcrypt",
+    "frontend": "Vanilla JS + Electron (no framework)",
+    "storage": "JSONL / JSON / CSV — no databases"
+  },
+  "key_decisions": [
+    "No ChromaDB / SQLite — flat files only",
+    "Electron (not Tauri) with xterm.js terminal + Monaco editor",
+    "Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct (not passlib)",
+    "Engine/workspace separation: aicli/ = code, workspace/ = per-project content",
+    "All LLM providers independent — CLI providers/ ≠ ui/backend/core/llm_clients.py",
+    "Client sends own API keys in request headers — server never stores keys"
+  ],
+  "active_workflows": [
+    "update_docs",
+    "build_feature",
+    "code_review",
+    "health_review"
+  ],
+  "implemented_features": [
+    "Multi-LLM REPL (Claude, OpenAI, DeepSeek, Gemini, Grok)",
+    "YAML workflow runner with file injection and cost tracking",
+    "FastAPI backend with SSE streaming",
+    "Electron UI: collapsible sidebar, Summary/Chat/Prompts/Code/Workflow/History views",
+    "Markdown rendering + YAML syntax highlight (no npm packages)",
+    "JWT auth with REQUIRE_AUTH toggle for cloud deployment",
+    "Claude Code UserPromptSubmit hook → prompt_log.jsonl"
+  ],
+  "in_progress": [
+    "History view showing all sources (UI chat + CLI + Claude Code hooks)",
+    "project_state.json + dev_runtime_state.json auto-maintenance",
+    "Memory auto-summarisation at token limit"
+  ],
+  "deployment": {
+    "local": "uvicorn + npx vite",
+    "cloud": "Railway (Dockerfile + railway.toml)",
+    "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
+  }
+}

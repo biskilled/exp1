@@ -513,12 +513,18 @@ async def update_project_summary(project_name: str, body: dict = Body(...)):
 async def generate_memory(project_name: str):
     """Generate per-LLM memory files and copy to code_dir.
 
-    Reads history.jsonl + project_state.json to generate:
-      _system/claude/MEMORY.md    — distilled session history
-      _system/claude/CLAUDE.md    — refreshed project context
-      _system/cursor/rules.md     — Cursor AI rules
-      _system/aicli/context.md    — compact aicli injection block
-    Then copies files to code_dir if set in project.yaml.
+    Generates files for every AI tool in use:
+      _system/claude/MEMORY.md         — distilled Q&A history + decisions (Claude CLI reads at session start)
+      _system/claude/CLAUDE.md         — refreshed project context + MEMORY.md reference
+      _system/cursor/rules.md          — Cursor AI rules file
+      _system/aicli/context.md         — compact block injected by aicli CLI into ALL providers
+      _system/aicli/copilot.md         — GitHub Copilot instructions
+
+    Copies to code_dir:
+      {code_dir}/CLAUDE.md             → Claude CLI auto-loads
+      {code_dir}/MEMORY.md             → referenced in CLAUDE.md so Claude reads it
+      {code_dir}/.cursor/rules/aicli.mdrules  → Cursor AI
+      {code_dir}/.github/copilot-instructions.md → GitHub Copilot
     """
     proj_dir = _workspace() / project_name
     if not proj_dir.exists():
@@ -538,20 +544,20 @@ async def generate_memory(project_name: str):
 
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    # Load recent history (last 30 entries)
+    # Load recent history (last 40 entries with user_input)
     recent: list[dict] = []
     hist_file = sys_dir / "history.jsonl"
     if hist_file.exists():
         with open(hist_file) as f:
-            lines = [l.strip() for l in f if l.strip()]
-        for line in lines[-60:]:
+            raw_lines = [l.strip() for l in f if l.strip()]
+        for line in raw_lines[-80:]:
             try:
                 e = json.loads(line)
                 if e.get("user_input"):
                     recent.append(e)
             except Exception:
                 pass
-        recent = recent[-30:]
+        recent = recent[-40:]
 
     # Load project_state.json
     state_data: dict = {}
@@ -570,76 +576,164 @@ async def generate_memory(project_name: str):
 
     generated: list[str] = []
 
-    # ── 1. MEMORY.md ──────────────────────────────────────────────────────────
+    # ── 1. MEMORY.md — distilled history for Claude CLI ───────────────────────
+    # This is the key file that gives any LLM session history + decisions.
+    # Claude CLI reads CLAUDE.md at startup; CLAUDE.md references MEMORY.md.
     memory_lines = [
         f"# Project Memory — {project_name}",
-        f"_Generated: {ts}_\n",
-        "## Recent Sessions\n",
-        "| Date | Source | Prompt |",
-        "|------|--------|--------|",
+        f"_Generated: {ts} by aicli /memory command_\n",
+        "> This file is auto-generated. Reference it in CLAUDE.md so Claude reads it at session start.\n",
     ]
-    for e in recent[-10:]:
-        date = (e.get("ts") or "")[:10]
-        source = e.get("source", "")
-        preview = (e.get("user_input") or "")[:80].replace("\n", " ").replace("|", "\\|")
-        memory_lines.append(f"| {date} | {source} | {preview} |")
 
+    # Tech stack
+    if state_data.get("tech_stack"):
+        memory_lines.append("## Tech Stack\n")
+        for k, v in state_data["tech_stack"].items():
+            memory_lines.append(f"- **{k}**: {v}")
+        memory_lines.append("")
+
+    # Key decisions
     if state_data.get("key_decisions"):
-        memory_lines.append("\n## Key Decisions\n")
+        memory_lines.append("## Key Decisions\n")
         for d in state_data["key_decisions"]:
             memory_lines.append(f"- {d}")
+        memory_lines.append("")
 
-    if cfg.get("active_workflows"):
-        memory_lines.append("\n## Active Workflows\n")
-        for w in cfg["active_workflows"]:
-            memory_lines.append(f"- {w}")
+    # In-progress
+    if state_data.get("in_progress"):
+        memory_lines.append("## In Progress\n")
+        for item in state_data["in_progress"]:
+            memory_lines.append(f"- {item}")
+        memory_lines.append("")
+
+    # Recent Q&A pairs (last 10 with both question and answer)
+    memory_lines.append("## Recent Work (last 10 exchanges)\n")
+    shown = 0
+    for e in reversed(recent):
+        if shown >= 10:
+            break
+        date = (e.get("ts") or "")[:16].replace("T", " ")
+        src = e.get("source", "")
+        prov = e.get("provider", "")
+        q = (e.get("user_input") or "").strip()[:200].replace("\n", " ")
+        a = (e.get("output") or "").strip()[:300].replace("\n", " ")
+        memory_lines.append(f"**[{date}]** `{src}/{prov}`")
+        memory_lines.append(f"Q: {q}")
+        if a:
+            memory_lines.append(f"A: {a}")
+        memory_lines.append("")
+        shown += 1
 
     memory_md = "\n".join(memory_lines)
     (sys_dir / "claude" / "MEMORY.md").write_text(memory_md)
     generated.append("_system/claude/MEMORY.md")
 
-    # ── 2. CLAUDE.md — reuse get_context logic ────────────────────────────────
-    # Call get_context with save=True to regenerate both CONTEXT.md and CLAUDE.md
+    # ── 2. CLAUDE.md — refreshed context with MEMORY.md reference ─────────────
     try:
         ctx_result = await get_project_context(project_name, save=True)
         claude_md_content = ctx_result.get("claude_md", "")
+        # Append MEMORY.md reference so Claude CLI reads it
+        if claude_md_content and "MEMORY.md" not in claude_md_content:
+            claude_md_content += (
+                "\n\n---\n\n## Session Memory\n\n"
+                "Read `MEMORY.md` in this directory for recent work history, "
+                "key decisions, and in-progress items. It was generated by aicli `/memory` "
+                "and reflects the last 10 development exchanges.\n"
+            )
+            # Re-write with the reference included
+            (sys_dir / "claude" / "CLAUDE.md").write_text(claude_md_content)
+            (sys_dir / "CLAUDE.md").write_text(claude_md_content)
         generated.append("_system/claude/CLAUDE.md")
     except Exception:
         claude_md_content = ""
 
-    # ── 3. cursor/rules.md ────────────────────────────────────────────────────
+    # ── 3. cursor/rules.md — Cursor AI coding rules ───────────────────────────
+    # Cursor reads .cursor/rules/*.mdrules — keep focused on coding conventions.
     cursor_lines = [
-        f"# AI Rules — {project_name}",
-        "> Managed by aicli. Re-run `/memory` to refresh.\n",
-        "## Project\n",
-        project_md[:400] if project_md else f"Project: {project_name}",
+        f"# {project_name} — AI Coding Rules",
+        f"> Managed by aicli. Run `/memory` to refresh. Generated: {ts}\n",
     ]
+    # Project description (first paragraph of PROJECT.md)
+    if project_md:
+        first_section = project_md.split("\n## ")[0].strip()
+        cursor_lines.append(first_section[:500])
+        cursor_lines.append("")
+
     if state_data.get("tech_stack"):
-        cursor_lines.append("\n## Tech Stack\n")
+        cursor_lines.append("## Tech Stack\n")
         for k, v in state_data["tech_stack"].items():
             cursor_lines.append(f"- **{k}**: {v}")
+        cursor_lines.append("")
+
     if state_data.get("key_decisions"):
-        cursor_lines.append("\n## Key Decisions\n")
+        cursor_lines.append("## Key Decisions\n")
         for d in state_data["key_decisions"]:
             cursor_lines.append(f"- {d}")
+        cursor_lines.append("")
+
+    # Recent context for Cursor
+    if recent:
+        cursor_lines.append("## Recent Context (last 5 changes)\n")
+        for e in recent[-5:]:
+            date = (e.get("ts") or "")[:10]
+            q = (e.get("user_input") or "").strip()[:120].replace("\n", " ")
+            cursor_lines.append(f"- [{date}] {q}")
+
     cursor_md = "\n".join(cursor_lines)
     (sys_dir / "cursor" / "rules.md").write_text(cursor_md)
     generated.append("_system/cursor/rules.md")
 
-    # ── 4. aicli/context.md — compact injection block ─────────────────────────
-    aicli_lines = [f"# {project_name} context"]
-    if project_md:
-        aicli_lines.append(project_md[:500])
+    # ── 4. aicli/context.md — injected into ALL providers by aicli CLI ────────
+    # This is what OpenAI, DeepSeek, Grok, Gemini, etc. receive before every prompt.
+    # Keep it under ~600 chars — compact but informative.
+    aicli_lines = [
+        f"[PROJECT CONTEXT: {project_name}]",
+    ]
+    if cfg.get("description"):
+        aicli_lines.append(cfg["description"])
+
+    if state_data.get("tech_stack"):
+        stack_str = ", ".join(f"{k}={v}" for k, v in list(state_data["tech_stack"].items())[:5])
+        aicli_lines.append(f"Stack: {stack_str}")
+
     if state_data.get("in_progress"):
-        aicli_lines.append(f"\nIn progress: {', '.join(state_data['in_progress'][:3])}")
+        aicli_lines.append(f"In progress: {', '.join(state_data['in_progress'][:3])}")
+
+    if state_data.get("key_decisions"):
+        aicli_lines.append("Decisions: " + "; ".join(state_data["key_decisions"][:3]))
+
     if recent:
         last = recent[-1]
-        aicli_lines.append(f"\nLast prompt ({(last.get('ts') or '')[:10]}): {(last.get('user_input') or '')[:100]}")
+        aicli_lines.append(
+            f"Last work ({(last.get('ts') or '')[:10]}): "
+            f"{(last.get('user_input') or '').strip()[:150].replace(chr(10), ' ')}"
+        )
     aicli_context = "\n".join(aicli_lines)
     (sys_dir / "aicli" / "context.md").write_text(aicli_context)
     generated.append("_system/aicli/context.md")
 
-    # ── 5. Copy to code_dir ───────────────────────────────────────────────────
+    # ── 5. GitHub Copilot instructions ────────────────────────────────────────
+    copilot_lines = [
+        f"# {project_name} — GitHub Copilot Instructions",
+        f"> Generated by aicli {ts}\n",
+    ]
+    if project_md:
+        copilot_lines.append(project_md.split("\n## ")[0].strip()[:400])
+        copilot_lines.append("")
+    if state_data.get("tech_stack"):
+        copilot_lines.append("## Tech Stack\n")
+        for k, v in state_data["tech_stack"].items():
+            copilot_lines.append(f"- {k}: {v}")
+        copilot_lines.append("")
+    if state_data.get("key_decisions"):
+        copilot_lines.append("## Architectural Decisions\n")
+        for d in state_data["key_decisions"]:
+            copilot_lines.append(f"- {d}")
+    copilot_md = "\n".join(copilot_lines)
+    (sys_dir / "aicli" / "copilot.md").write_text(copilot_md)
+    generated.append("_system/aicli/copilot.md")
+
+    # ── 6. Copy to code_dir ───────────────────────────────────────────────────
     copied_to: list[str] = []
     skipped_copy = True
     code_dir_str = cfg.get("code_dir", "")
@@ -650,23 +744,22 @@ async def generate_memory(project_name: str):
         code_path = code_path.resolve()
         if code_path.exists() and code_path.is_dir():
             skipped_copy = False
-            try:
-                (code_path / "CLAUDE.md").write_text(claude_md_content)
-                copied_to.append(str(code_path / "CLAUDE.md"))
-            except Exception:
-                pass
-            try:
-                (code_path / "MEMORY.md").write_text(memory_md)
-                copied_to.append(str(code_path / "MEMORY.md"))
-            except Exception:
-                pass
-            try:
-                cursor_rules_path = code_path / ".cursor" / "rules"
-                cursor_rules_path.mkdir(parents=True, exist_ok=True)
-                (cursor_rules_path / "aicli.mdrules").write_text(cursor_md)
-                copied_to.append(str(cursor_rules_path / "aicli.mdrules"))
-            except Exception:
-                pass
+            for src_content, dest_rel, make_parents in [
+                (claude_md_content, "CLAUDE.md", False),
+                (memory_md, "MEMORY.md", False),
+                (cursor_md, ".cursor/rules/aicli.mdrules", True),
+                (copilot_md, ".github/copilot-instructions.md", True),
+            ]:
+                if not src_content:
+                    continue
+                dest = code_path / dest_rel
+                try:
+                    if make_parents:
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_text(src_content)
+                    copied_to.append(dest_rel)
+                except Exception:
+                    pass
 
     return {"generated": generated, "copied_to": copied_to, "skipped_copy": skipped_copy}
 
