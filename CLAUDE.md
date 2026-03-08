@@ -1,28 +1,19 @@
 # Senior Python Architect — aicli
 
-You are a senior Python software architect working on **aicli** — a shared-memory AI development platform.
-
-## What aicli Is
-
-aicli gives every LLM (Claude, OpenAI, DeepSeek, Gemini, Grok, Cursor) access to the **same project
-knowledge base** so that context is never lost when switching tools or models. It also manages
-roles/agents for multi-LLM workflows and automates the full development cycle.
-
-## Your Expertise
-
-- Python 3.12+ type system, pathlib, asyncio, dataclasses
+You are a senior Python software architect with deep expertise in:
+- Python 3.12+ type system, pathlib, asyncio
 - CLI tool design (prompt_toolkit, rich, typer)
 - LLM provider APIs (Anthropic, OpenAI, DeepSeek, Gemini, xAI)
-- FastAPI backend design with file-based storage (JSONL, JSON)
+- FastAPI backend design
 - YAML-based workflow systems
+- File-based persistence (JSONL, JSON, CSV) — no unnecessary databases
 
 ## Your Principles
 
 - **Simplicity over cleverness**: a 20-line function beats a 200-line abstraction
 - **Read before writing**: always understand existing code before modifying it
-- **Single source of truth**: config/pricing/paths must come from one place — not duplicated
-- **Engine/workspace separation**: `aicli/` is engine (code), `workspace/` is content (prompts, data)
-- **Provider contract**: every provider has `send(prompt, system) → str` and `stream() → Generator`
+- **Engine/workspace separation**: aicli/ is engine (code), workspace/ is content (prompts, data)
+- **Provider contract**: every provider has send(prompt, system) → str and stream() → Generator
 - **No shared state between CLI and UI backend** — they are independent services
 
 ## Code Quality Standards
@@ -32,51 +23,15 @@ roles/agents for multi-LLM workflows and automates the full development cycle.
 - No raw `print()` in library code — use `console.print()` or `logger`
 - Exception messages tell the user what to do, not just what went wrong
 - New modules get a one-paragraph docstring explaining why they exist
-- Config values (timeouts, limits, paths) come from `aicli.yaml` or `settings.py` — never hardcoded
 
 ## Key Architectural Decisions
 
-- No ChromaDB / SQLite — flat files only (JSONL, JSON)
+- No ChromaDB / SQLite — flat files only
 - Electron (not Tauri) with xterm.js terminal + Monaco editor
 - Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct (not passlib)
-- Engine/workspace separation: `aicli/` = code, `workspace/` = per-project content
-- All LLM providers independent — CLI `providers/` ≠ `ui/backend/core/llm_clients.py`
-- **Server-managed API keys**: admin sets keys in Admin panel → `{DATA_DIR}/api_keys.json`; client sends NO X-*-Key headers
-- **Single pricing source**: `ui/backend/data/provider_costs.json` — both CLI and backend read this
-- **cli_data_dir**: configurable in `aicli.yaml` (default `.aicli`) — never hardcode `.aicli/` in core modules
-
----
-
-## 5-Layer Memory Architecture
-
-Every project has 5 memory layers, each served by specific files:
-
-| Layer | Name | Storage | What Goes Here |
-|-------|------|---------|----------------|
-| 1 | **Immediate context** | `providers/*.messages` (in-memory) | Live conversation — current prompt + response chain |
-| 2 | **Working memory** | `core/session_store.py` → `{cli_data_dir}/sessions/` | Current task state: feature, tag, last commit, session handoff across providers |
-| 3 | **Project knowledge** | `workspace/{project}/PROJECT.md`, `project_state.json`, `_system/CLAUDE.md` | Architecture, modules, APIs, data models, coding standards, tech decisions |
-| 4 | **Historical knowledge** | `workspace/{project}/_system/history.jsonl`, `core/memory.py` | Past decisions, design discussions, feature history, refactor notes, bug postmortems |
-| 5 | **Global knowledge** | `workspace/_templates/` | Company coding standards, security policies, AI role prompts, architecture templates, best practices |
-
-`/memory` command writes layers 3–5 to `{code_dir}/CLAUDE.md`, `MEMORY.md`, `.cursor/rules/aicli.mdrules` so every LLM in the project finds them automatically.
-
-## Prompt Management — Roles & Agents
-
-Roles live in `workspace/{project}/prompts/roles/`.
-Each role is a Markdown file used as the system prompt for a specific agent type:
-
-| Role | Use Case |
-|------|----------|
-| `architect.md` | System design, API contracts, tech decisions |
-| `developer.md` | Code implementation, refactoring |
-| `reviewer.md` | Code review, quality checks |
-| `qa.md` | Test design, edge case analysis |
-| `security.md` | Security audit, OWASP checks |
-| `devops.md` | CI/CD, deployment, AWS/Railway |
-| `summariser.md` | Compress and summarise long conversations |
-
-Workflows chain roles: `design (architect) → implement (developer) → review (reviewer) → test (qa)`.
+- Engine/workspace separation: aicli/ = code, workspace/ = per-project content
+- All LLM providers independent — CLI providers/ ≠ ui/backend/core/llm_clients.py
+- Client sends own API keys in request headers — server never stores keys
 
 ---
 
@@ -84,101 +39,75 @@ Workflows chain roles: `design (architect) → implement (developer) → review 
 
 # aicli — Shared AI Memory Platform
 
-## Core Goals
-
-1. **Shared LLM memory**: Claude CLI, aicli CLI, Cursor, and the UI all read/write the same project knowledge base — so switching tools never loses context.
-2. **Prompt management**: Role-based agents (architect, developer, reviewer, QA, security, devops) with reusable prompt templates in `workspace/{project}/prompts/`.
-3. **5-layer memory**: Immediate → Working → Project Knowledge → Historical → Global (see above).
-4. **Auto-deploy**: Every AI response can trigger pull → commit → push via lifecycle hooks.
-5. **Billing & usage**: Multi-user, server-managed API keys, per-user balance, markup pricing, usage tracking.
-6. **Development workflows**: YAML-defined multi-step, multi-LLM cycles (design → review → develop → test) with cost tracking per step.
-
-## Architecture
-
-### Engine / Workspace Separation
-
-```
-aicli/          ← ENGINE (code, CLI, Electron UI, FastAPI backend) — never has prompt content
-workspace/      ← CONTENT (prompts, workflows, history, PROJECT.md per project)
-```
-
-### Per-LLM Output Structure (workspace/{project}/_system/)
-
-```
-_system/
-├── history.jsonl          ← ALL interactions: UI / CLI / workflow / Cursor (unified)
-├── CONTEXT.md             ← auto-generated project overview
-├── claude/
-│   ├── CLAUDE.md          ← project context for Claude Code CLI (auto-synced to code_dir)
-│   └── MEMORY.md          ← distilled session history for Claude Code
-├── cursor/
-│   └── rules.md           ← Cursor AI rules (auto-synced to .cursor/rules/aicli.mdrules)
-└── aicli/
-    └── context.md         ← compact injection block prepended to every aicli CLI prompt
-```
-
-### Core CLI Modules
-
-| Module | Status | Purpose |
-|--------|--------|---------|
-| `cli.py` | Active | Interactive REPL (prompt_toolkit + rich), all slash commands |
-| `providers/base.py` | Active | BaseProvider with retry/fallback logic |
-| `providers/claude_agent.py` | Active | Anthropic SDK: streaming, tool use, MCP |
-| `providers/openai_agent.py` | Active | OpenAI chat completions |
-| `providers/deepseek_agent.py` | Active | DeepSeek via OpenAI-compat API |
-| `providers/gemini_agent.py` | Active | Google Gemini via google-generativeai |
-| `providers/grok_agent.py` | Active | xAI Grok via OpenAI-compat API |
-| `workflows/runner.py` | Active | YAML workflow executor: file injection, retry, cost tracking |
-| `core/context_builder.py` | Active | Collects+formats files for LLM injection in workflows |
-| `core/cost_tracker.py` | Active | Token+cost per step — reads from `ui/backend/data/provider_costs.json` |
-| `core/memory.py` | Active | Layer 4 — JSONL memory store: keyword/tag/feature search |
-| `core/conversation.py` | Active | Layer 2 — JSON session persistence, feature+tag tracking |
-| `core/git_supervisor.py` | Active | Auto-commit+push via lifecycle hooks |
-| `core/hooks.py` | Active | Shell hook runner (pre_prompt, post_commit, etc.) |
-| `core/analytics.py` | Active | Usage stats from conversation data |
-| `core/session_store.py` | Active | Layer 2 — cross-provider session handoff |
-| `core/summary.py` | Active | Fast project summary from conversation history |
-| `core/logger.py` | Active | Structured JSONL logger |
-| `core/project_docs.py` | Deprecated | Use UI `/projects/{name}/summary` instead |
-| `core/env_loader.py` | Minimal | Thin wrapper around dotenv — consider inlining |
-
-### Backend Data Layout
-
-```
-ui/backend/data/           ← ALL server data (in .gitignore)
-├── api_keys.json          ← Provider API keys (admin-managed)
-├── pricing.json           ← Free tier + markup settings
-├── provider_costs.json    ← Per-token costs (SINGLE SOURCE for CLI + backend)
-├── provider_balances.json ← Manually-tracked provider spend
-├── coupons.json
-├── users.json
-├── transactions/
-└── provider_usage/
-```
-
-### Backend Routers
-
-| Router | Key Endpoints |
-|--------|--------------|
-| `auth.py` | POST /auth/register, POST /auth/login, GET /auth/me |
-| `chat.py` | POST /chat/stream (SSE), balance check, cost debit |
-| `projects.py` | CRUD + POST /projects/{name}/memory (generates all LLM files) |
-| `admin.py` | Users, pricing, coupons, API keys, provider costs, usage |
-| `billing.py` | GET /billing/balance, POST /billing/apply-coupon, GET /billing/history |
-| `git.py` | Status, branches, commit-push, OAuth, PAT setup |
-| `history.py` | Unified history from history.jsonl (all sources) |
-| `workflows.py` | YAML workflow CRUD |
-
-## Key Config
-
-- `aicli.yaml` — CLI: workspace_dir, active_project, providers, hooks, `cli_data_dir` (default: `.aicli`)
-- `ui/backend/config.py` — Backend: `data_dir` = `ui/backend/data/`, `require_auth`, `dev_mode`
-- Python version: 3.12 (`python3.12`)
-- Backend port: 8000
-
-## Recent Changes (last 5 prompts)
-
-See `workspace/aicli/_system/history.jsonl` for full history.
+_Last updated: 2026-03-08_
 
 ---
-*Full context: see `_system/CONTEXT.md` — refresh with `POST /projects/aicli/memory`*
+
+## Vision
+
+**aicli gives every LLM the same project memory.**
+
+When you switch between Claude CLI, the aicli terminal, Cursor, or the web UI, the AI picks up
+exactly where you left off — same codebase context, same decisions, same feature history.
+No more copy-pasting context. No more re-explaining your architecture.
+
+---
+
+## Core Goals
+
+| # | Goal | Status |
+|---|------|--------|
+| 1 | **Shared LLM memory** — Claude CLI, aicli CLI, Cursor, UI all read the same knowledge base | ✓ Implemented |
+| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Foundation done |
+| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Architecture in place |
+| 4 | **Auto-deploy** — pull → commit → push after every AI session | ✓ Hooks + git.py |
+| 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
+| 6 | **Multi-LLM workflows** — YAML chains: design → review → develop → test | ✓ Runner done |
+
+---
+
+## 5-Layer Memory Architecture
+
+```
+Layer 1 — Immediate Context
+  └── providers/{claude,openai,...}.messages  (in-memory, not persisted)
+      Live conversation: current prompt chain within the session
+
+Layer 2 — Working Memory
+  └── {cli_data_dir}/sessions/{provider}_messages.json
+  └── {cli_data_dir}/session_state.json
+      Short-term task state: active feature, tag, last commit, cross-provider handoff
+
+Layer 3 — Project Knowledge
+  └── workspace/{project}/PROJECT.md          — living project doc (this file)
+  └── workspace/{project}/project_state.json  — structured metadata: tech stack, modules, APIs
+  └── workspace/{project}/_system/CLAUDE.md   — synced to code_dir/CLAUDE.md for Claude Code
+      Architecture, decisions, coding standards, data models
+
+Layer 4 — Historical Knowledge
+  └── workspace/{project}/_system/history.jsonl    — all interactions (UI + CLI + workflow + Cursor)
+  └── {cli_data_dir}/memory.jsonl                  — tagged/featured entries, keyword-searchable
+      Past decisions, design discussions, feature history, bug postmortems, refactor notes
+
+Layer 5 — Global Knowledge
+  └── workspace/_templates/hooks/                  — canonical hook scripts for all projects
+  └── workspace/_templates/{blank,python_api,...}  — project starter templates
+  └── workspace/_templates/roles/                  — shared AI role prompts (TODO: create)
+      Company coding standards, security policies, AI role prompts, architecture templates
+```
+
+### How `/memory` syncs layers 3–5 to every LLM tool:
+
+
+*See PROJECT.md for full documentation (300 lines total)*
+
+## Recent Work (last 5 prompts)
+
+- [2026-03-08] `claude_cli`: The main goal of this project is to be able for you and other llm to share memory. I have started to
+- [2026-03-08] `claude_cli`: Would using vectordb and enabling you reading the data from vectordb will make that more easy for yo
+- [2026-03-08] `claude_cli`: Lets start to fix that , as this is the major goal of this project - shared memory between diffrent 
+- [2026-03-08] `claude_cli`: continue
+- [2026-03-08] `claude_cli`: before I continue, I would like to optimise the code - when ever possible to use config, and classes
+
+---
+*Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

@@ -472,12 +472,26 @@ def main():
     config = load_config()
     initialize_project(config)
 
-    _cli_data_dir = config.get("cli_data_dir", ".aicli")
+    # Compute CLI data dir: workspace/{project}/_system/aicli/
+    # Falls back to .aicli/ if workspace or project not set (e.g. first run).
+    workspace_dir_early = Path(config.get("workspace_dir", CLI_ROOT / "workspace"))
+    active_project_early = config.get("active_project", "")
+    if active_project_early and (workspace_dir_early / active_project_early / "_system").exists():
+        _cli_data_dir = str(workspace_dir_early / active_project_early / "_system" / "aicli")
+    else:
+        _cli_data_dir = config.get("cli_data_dir", str(CLI_ROOT / ".aicli"))
+
+    # Inject derived paths into config so sub-modules (logger, memory, etc.) pick them up
+    config["cli_data_dir"] = _cli_data_dir
+    config.setdefault("log_path", str(Path(_cli_data_dir) / "logs.jsonl"))
+
+    # Ensure the data dir exists before any module tries to write to it
+    Path(_cli_data_dir).mkdir(parents=True, exist_ok=True)
 
     logger = StructuredLogger(config)
     conversation = ConversationState(
         max_history=config.get("max_history", 200),
-        path=f"{_cli_data_dir}/current_session.json",
+        path=str(Path(_cli_data_dir) / "current_session.json"),
         cli_data_dir=_cli_data_dir,
     )
     hook_runner = HookRunner(config, logger=logger)
@@ -491,7 +505,7 @@ def main():
     )
     memory = MemoryStore(config, logger=logger)
 
-    # Session persistence and handoff state
+    # Session persistence and handoff state — stored inside _cli_data_dir
     working_dir = Path.cwd()
     session_store = SessionStore(working_dir, cli_data_dir=_cli_data_dir)
     session_state = load_session_state(working_dir, cli_data_dir=_cli_data_dir)
@@ -1306,7 +1320,7 @@ def main():
                 conversation.get_feature() or "", conversation.get_tag() or "",
                 user_input, output, _session_turn_count, cli_data_dir=_cli_data_dir,
             )
-            session_state = load_session_state(working_dir)
+            session_state = load_session_state(working_dir, cli_data_dir=_cli_data_dir)
 
         # ==============================================================
         # OTHER PROVIDERS (openai-role-free, deepseek, gemini, grok)
@@ -1387,7 +1401,7 @@ def main():
                 conversation.get_feature() or "", conversation.get_tag() or "",
                 user_input, output, _session_turn_count, cli_data_dir=_cli_data_dir,
             )
-            session_state = load_session_state(working_dir)
+            session_state = load_session_state(working_dir, cli_data_dir=_cli_data_dir)
 
     # ==================================================================
     # On exit: save all provider histories one last time

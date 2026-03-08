@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash {{CODE_DIR}}/.aicli/scripts/log_user_prompt.sh"
+            "command": "bash {{WORKSPACE_DIR}}/{{PROJECT_NAME}}/_system/hooks/log_user_prompt.sh"
           }
         ]
       }
@@ -15,11 +15,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash {{CODE_DIR}}/.aicli/scripts/log_session_stop.sh"
+            "command": "bash {{WORKSPACE_DIR}}/{{PROJECT_NAME}}/_system/hooks/log_session_stop.sh"
           },
           {
             "type": "command",
-            "command": "bash {{CODE_DIR}}/.aicli/scripts/auto_commit_push.sh"
+            "command": "bash {{WORKSPACE_DIR}}/{{PROJECT_NAME}}/_system/hooks/auto_commit_push.sh"
           }
         ]
       }

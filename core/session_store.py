@@ -30,7 +30,9 @@ class SessionStore:
     """Saves and loads provider message histories across sessions."""
 
     def __init__(self, working_dir: Path, cli_data_dir: str = ".aicli"):
-        self.dir = working_dir / cli_data_dir / "sessions"
+        # Accept absolute path in cli_data_dir (ignores working_dir in that case)
+        p = Path(cli_data_dir)
+        self.dir = (p / "sessions") if p.is_absolute() else (working_dir / cli_data_dir / "sessions")
         self.dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -95,13 +97,15 @@ def load_session_state(working_dir: Path, cli_data_dir: str = ".aicli") -> dict:
     Used to inject a [PREVIOUS SESSION] block into the first prompt of a
     new session so any provider immediately knows what was last worked on.
     """
-    path = working_dir / cli_data_dir / "session_state.json"
+    p = Path(cli_data_dir)
+    path = (p / "session_state.json") if p.is_absolute() else (working_dir / cli_data_dir / "session_state.json")
     if not path.exists():
         return {}
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
 
 
 def save_session_state(
@@ -132,7 +136,8 @@ def save_session_state(
         "last_output_preview": last_output[:400],
         "session_count": session_count,
     }
-    path = working_dir / cli_data_dir / "session_state.json"
+    _p = Path(cli_data_dir)
+    path = (_p / "session_state.json") if _p.is_absolute() else (working_dir / cli_data_dir / "session_state.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
 

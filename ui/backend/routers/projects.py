@@ -30,7 +30,7 @@ def _find_claude_md(sys_dir: Path) -> Path:
 
 def _ensure_per_llm_dirs(sys_dir: Path) -> None:
     """Create the per-LLM subdirectories and migrate legacy CLAUDE.md if needed."""
-    for subdir in ("claude", "cursor", "aicli"):
+    for subdir in ("claude", "cursor", "aicli", "hooks"):
         (sys_dir / subdir).mkdir(parents=True, exist_ok=True)
     # Migrate legacy _system/CLAUDE.md → _system/claude/CLAUDE.md
     legacy = sys_dir / "CLAUDE.md"
@@ -175,18 +175,22 @@ async def create_project(body: NewProject):
         hooks_src = ws / "_templates" / "hooks"
 
         if body.claude_cli_support and hooks_src.exists():
-            scripts_dir = code_path / ".aicli" / "scripts"
-            scripts_dir.mkdir(parents=True, exist_ok=True)
+            # Install hooks into _system/hooks/ (not .aicli/scripts/)
+            hooks_dest = sys_dir / "hooks"
+            hooks_dest.mkdir(parents=True, exist_ok=True)
             for sh in hooks_src.glob("*.sh"):
-                shutil.copy2(str(sh), str(scripts_dir / sh.name))
-            # Render settings.template.json → .claude/settings.local.json
+                shutil.copy2(str(sh), str(hooks_dest / sh.name))
+            # Render settings.template.json → {code_dir}/.claude/settings.local.json
+            # Hooks point to workspace/{project}/_system/hooks/ (canonical location)
             tpl_file = hooks_src / "settings.template.json"
             if tpl_file.exists():
-                tpl_content = tpl_file.read_text().replace("{{CODE_DIR}}", str(code_path))
+                tpl_content = (tpl_file.read_text()
+                               .replace("{{WORKSPACE_DIR}}", str(ws))
+                               .replace("{{PROJECT_NAME}}", body.name))
                 settings_dir = code_path / ".claude"
                 settings_dir.mkdir(parents=True, exist_ok=True)
                 (settings_dir / "settings.local.json").write_text(tpl_content)
-            setup_results["claude_cli"] = str(scripts_dir)
+            setup_results["claude_cli"] = str(hooks_dest)
 
         if body.cursor_support:
             cursor_rules_dir = code_path / ".cursor" / "rules"
