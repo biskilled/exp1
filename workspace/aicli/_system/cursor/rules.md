@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 05:29 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 22:34 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -38,8 +38,8 @@ _Last updated: 2026-03-08_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-08] <task-notification> <task-id>ba21592</task-id> <tool-use-id>toolu_01X3GzA6q9L1GhyQMY72Yeqd</tool-use-id> <output-file>/p
 - [2026-03-08] I do see lot of table in my postgresql - all are required as there were some changes. can you remove table not in use?
 - [2026-03-08] let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do that using yaml . and
 - [2026-03-08] the second one - under _system/run
 - [2026-03-08] <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm</tool-use-id> <stat
+- [2026-03-08] I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the current solution is goo

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 05:29 UTC — do not edit manually.
+> Auto-generated 2026-03-08 22:34 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 22
-- **Last active**: 2026-03-08T05:29:20Z
+- **Sessions**: 23
+- **Last active**: 2026-03-08T22:34:08Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -142,6 +142,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 22:32]** `claude_cli/claude`  
+→ I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the current solution is goo
+
 **[2026-03-08 05:29]** `claude_cli/claude`  
 → <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm</tool-use-id> <stat
 
@@ -183,6 +186,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 02:29]** `claude_cli/claude`  
 → Under workspace for each project there is _system and history folder. do I need the history folder as well? I do see tha
-
-**[2026-03-08 02:09]** `claude_cli/claude`  
-→ before I continue, I would like to optimise the code - when ever possible to use config, and classes. I do see some code
