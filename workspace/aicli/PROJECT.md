@@ -301,9 +301,9 @@ textarea.addEventListener('input', () => {
 
 ## Recent Work
 
-- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context across all tools
-- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance correctly
-- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals per user/provider/date
-- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/flows distinction and clarify entities vs node graph UI implementation
-- Hooks integration from claude cli — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated with errors/logs from all sources
-- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension and shared LLM understanding
+- Unified history + commit_log population — ensure all logs from claude cli hooks, aicli commits, cursor hooks captured; commit_log.jsonl must track errors and system events across all sources
+- Balance persistence across UI refresh — manual balance entry saves but doesn't persist; admin sees total across all users; usage_logs table not populating despite creation
+- PostgreSQL table cleanup — remove unused tables; consolidate workflow/flows distinction; clarify entities vs node graph UI implementation
+- Hooks integration from claude cli — commits not working; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated from all tools
+- Multi-agent workflow execution via node graph — transition from YAML config to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for branching
+- Shared memory strategy across tools — establish how claude cli, aicli, and cursor read/compress history files; implement /memory command to upload relevant context for cross-session project comprehension

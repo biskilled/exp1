@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-08 05:16 UTC by aicli /memory_
+_Generated: 2026-03-08 05:28 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling multiple LLM tools (claude cli, aicli, cursor) to collaborate on projects via unified history files, PostgreSQL tracking, and multi-agent workflows. The project supports user roles (admin/paid/free), manual API key/balance management via Electron UI, and is working toward GraphQL node graphs and pgvector semantic search for deeper project understanding across LLM sessions.
+aicli is a shared AI memory platform enabling multi-tool collaboration (claude cli, aicli, cursor) through unified history tracking (history.jsonl, commit_log.jsonl) and a FastAPI backend with PostgreSQL. Current focus is consolidating fragmented features (balance persistence, workflow node execution, hooks integration) and establishing the semantic search + multi-agent workflow infrastructure via pgvector and node graph UI.
 
 ## Tech Stack
 
@@ -13,7 +13,7 @@ aicli is a shared AI memory platform enabling multiple LLM tools (claude cli, ai
 - **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
 - **frontend**: Vanilla JS + Electron (xterm.js + Monaco editor)
 - **storage**: JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV
-- **database**: PostgreSQL (user_usage, usage_logs, billing_logs, users table) + pgvector (planned)
+- **database**: PostgreSQL (users, user_usage, usage_logs, billing_logs, workflows, runs) + pgvector (planned)
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
 - **planned**: GraphQL, node graph UI, pgvector semantic search, unified provider logging
 - **orm**: SQLAlchemy
@@ -29,20 +29,20 @@ aicli is a shared AI memory platform enabling multiple LLM tools (claude cli, ai
 - All history tracked to history.jsonl + commit_log.jsonl for shared LLM memory across claude cli, aicli, cursor
 - PostgreSQL for user_usage / billing logs with pgvector planned for semantic search; SQLAlchemy ORM
 - Hooks auto-commit on claude cli / cursor; aicli tracks own history; unified history.jsonl + commit_log.jsonl
-- Node graph / GraphQL planned for entity relationships and workflow management with prompt-based node execution
-- Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
-- dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
-- Multi-agent workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
+- Multi-agent workflows: node-based execution with LLM engines per node via YAML config (algo→backtest→qa→summary across different models)
 - Cost tracking: pricing managed by config/JSON (not hardcoded); usage logged per provider/user/date in PostgreSQL
 - Shared memory architecture: claude cli, aicli, cursor all read/write unified history files + commit_log.jsonl
+- GraphQL + node graph UI planned for entity relationships and workflow management with prompt-based node execution
+- Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
+- dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
 
 ## In Progress
 
-- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context across all tools
-- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance correctly
-- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals per user/provider/date
-- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/flows distinction and clarify entities vs node graph UI implementation
-- Hooks integration from claude cli — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated with errors/logs from all sources
-- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension and shared LLM understanding
+- Unified history + commit_log population — ensure all logs from claude cli hooks, aicli commits, cursor hooks captured; commit_log.jsonl must track errors and system events across all sources
+- Balance persistence across UI refresh — manual balance entry saves but doesn't persist; admin sees total across all users; usage_logs table not populating despite creation
+- PostgreSQL table cleanup — remove unused tables; consolidate workflow/flows distinction; clarify entities vs node graph UI implementation
+- Hooks integration from claude cli — commits not working; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated from all tools
+- Multi-agent workflow execution via node graph — transition from YAML config to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for branching
+- Shared memory strategy across tools — establish how claude cli, aicli, and cursor read/compress history files; implement /memory command to upload relevant context for cross-session project comprehension
 
-**[2026-03-08 05:15]** `claude_cli` — Multi-agent workflow architecture clarified: goal is to build flows with YAML-defined nodes where each node has a prompt (agent role) and assigned LLM engine; nodes execute sequentially until user satisfaction before advancing. **[2026-03-08 05:10]** `claude_cli` — Request to remove unused PostgreSQL tables created during recent changes. **[2026-03-08 04:47]** `claude_cli` — Workflow/flows distinction unclear; existing workflow tab expected to manage all workflows via YAML config with prompt-based node execution and LLM engine assignment per node. **[2026-03-08 04:27]** `claude_cli` — PostgreSQL workflow/entities tables not created; flows tab added but conflicts with existing workflow tab; need clarification on entities purpose vs node graph UI implementation. **[2026-03-08 04:13]** `claude_cli` — Requested clarification on how /memory command summarizes/compresses project data for LLM understanding; commit_log.jsonl should centralize all logs from claude cli hooks, aicli commits, cursor hooks. **[2026-03-08 04:05]** `claude_cli` — All logs and errors must be written to commit_log.jsonl from all sources (claude cli hooks, aicli, cursor) for unified project history.
+**[2026-03-08 05:18]** `claude_cli` — Clarified multi-agent workflow architecture: nodes execute YAML-based prompts with assigned LLM engines (algo→backtest→qa→summary), each producing scores for conditional progression; node graph UI will replace static YAML management. **[2026-03-08 05:10]** `claude_cli` — Identified PostgreSQL schema bloat; multiple tables created but unclear which are active; consolidation needed between workflows/flows and entities tables. **[2026-03-08 04:47]** `claude_cli` — Workflow execution model clarified: nodes contain prompts as agent roles, LLM engine assignment per node, user approval flow between nodes, output scoring drives next node selection. **[2026-03-08 04:13]** `claude_cli` — Established shared memory compression strategy: /memory command must upload all relevant history files; claude cli, aicli, cursor should leverage commit_log.jsonl + history.jsonl for cross-tool context; dev_runtime_state.json provides session snapshots. **[2026-03-08 00:40]** `claude_cli` — Recognized core project goal: enable shared AI memory between claude cli, aicli, and cursor via unified JSONL history files and PostgreSQL tracking; current gap is that provider_usage hooks exist but no consumer actively reads/ingests them. **[2026-03-07 23:35]** `claude_cli` — Implemented manual balance management: provider APIs (OpenAI, Claude) don't expose usage/balance for personal accounts; shifted to manual balance entry in UI with persistence to JSON config and PostgreSQL billing_logs.

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 05:16 UTC — do not edit manually.
+> Auto-generated 2026-03-08 05:29 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 20
-- **Last active**: 2026-03-08T05:16:40Z
+- **Sessions**: 21
+- **Last active**: 2026-03-08T05:28:53Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -18,19 +18,19 @@
 - **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
 - **frontend**: Vanilla JS + Electron (xterm.js + Monaco editor)
 - **storage**: JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV
-- **database**: PostgreSQL (user_usage, usage_logs, billing_logs, users table) + pgvector (planned)
+- **database**: PostgreSQL (users, user_usage, usage_logs, billing_logs, workflows, runs) + pgvector (planned)
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
 - **planned**: GraphQL, node graph UI, pgvector semantic search, unified provider logging
 - **orm**: SQLAlchemy
 
 ## In Progress
 
-- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context across all tools
-- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance correctly
-- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals per user/provider/date
-- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/flows distinction and clarify entities vs node graph UI implementation
-- Hooks integration from claude cli — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated with errors/logs from all sources
-- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension and shared LLM understanding
+- Unified history + commit_log population — ensure all logs from claude cli hooks, aicli commits, cursor hooks captured; commit_log.jsonl must track errors and system events across all sources
+- Balance persistence across UI refresh — manual balance entry saves but doesn't persist; admin sees total across all users; usage_logs table not populating despite creation
+- PostgreSQL table cleanup — remove unused tables; consolidate workflow/flows distinction; clarify entities vs node graph UI implementation
+- Hooks integration from claude cli — commits not working; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated from all tools
+- Multi-agent workflow execution via node graph — transition from YAML config to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for branching
+- Shared memory strategy across tools — establish how claude cli, aicli, and cursor read/compress history files; implement /memory command to upload relevant context for cross-session project comprehension
 
 ## Key Decisions
 
@@ -43,12 +43,12 @@
 - All history tracked to history.jsonl + commit_log.jsonl for shared LLM memory across claude cli, aicli, cursor
 - PostgreSQL for user_usage / billing logs with pgvector planned for semantic search; SQLAlchemy ORM
 - Hooks auto-commit on claude cli / cursor; aicli tracks own history; unified history.jsonl + commit_log.jsonl
-- Node graph / GraphQL planned for entity relationships and workflow management with prompt-based node execution
-- Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
-- dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
-- Multi-agent workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
+- Multi-agent workflows: node-based execution with LLM engines per node via YAML config (algo→backtest→qa→summary across different models)
 - Cost tracking: pricing managed by config/JSON (not hardcoded); usage logged per provider/user/date in PostgreSQL
 - Shared memory architecture: claude cli, aicli, cursor all read/write unified history files + commit_log.jsonl
+- GraphQL + node graph UI planned for entity relationships and workflow management with prompt-based node execution
+- Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
+- dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
 
 ---
 
@@ -142,6 +142,12 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 05:29]** `claude_cli/claude`  
+→ <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm</tool-use-id> <stat
+
+**[2026-03-08 05:18]** `claude_cli/claude`  
+→ the second one - under _system/run 
+
 **[2026-03-08 05:15]** `claude_cli/claude`  
 → let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do that using yaml . and
 
@@ -180,9 +186,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 02:09]** `claude_cli/claude`  
 → before I continue, I would like to optimise the code - when ever possible to use config, and classes. I do see some code
-
-**[2026-03-08 01:30]** `claude_cli/claude`  
-→ continue
-
-**[2026-03-08 01:18]** `claude_cli/claude`  
-→ Lets start to fix that , as this is the major goal of this project - shared memory between diffrent llm, so I can use cl
