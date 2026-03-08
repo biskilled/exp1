@@ -160,29 +160,19 @@ export const api = {
 /** @deprecated Keys are managed server-side. Returns {} so old call-sites don't crash. */
 export function loadApiKeys() { return {}; }
 
-// ── Graph Workflow API ────────────────────────────────────────────────────────
+// ── Workflow runs API ─────────────────────────────────────────────────────────
 
-function _patch(path, body = {}) {
-  return fetch(_base() + path, { method: 'PATCH', headers: _headers(), body: JSON.stringify(body) })
-    .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText))));
-}
-
-api.graphWorkflows = {
-  list:       (project)           => _get(`/graph-workflows/?project=${encodeURIComponent(project || '')}`),
-  get:        (id)                => _get(`/graph-workflows/${encodeURIComponent(id)}`),
-  create:     (body)              => _post('/graph-workflows/', body),
-  update:     (id, body)          => _put(`/graph-workflows/${encodeURIComponent(id)}`, body),
-  createNode: (wfId, body)        => _post(`/graph-workflows/${encodeURIComponent(wfId)}/nodes`, body),
-  updateNode: (wfId, nId, body)   => _patch(`/graph-workflows/${encodeURIComponent(wfId)}/nodes/${encodeURIComponent(nId)}`, body),
-  deleteNode: (wfId, nId)         => _del(`/graph-workflows/${encodeURIComponent(wfId)}/nodes/${encodeURIComponent(nId)}`),
-  createEdge: (wfId, body)        => _post(`/graph-workflows/${encodeURIComponent(wfId)}/edges`, body),
-  updateEdge: (wfId, eId, body)   => _patch(`/graph-workflows/${encodeURIComponent(wfId)}/edges/${encodeURIComponent(eId)}`, body),
-  deleteEdge: (wfId, eId)         => _del(`/graph-workflows/${encodeURIComponent(wfId)}/edges/${encodeURIComponent(eId)}`),
-  startRun:   (wfId, body)        => _post(`/graph-workflows/${encodeURIComponent(wfId)}/runs`, body),
-  getRun:     (runId)             => _get(`/graph-workflows/runs/${encodeURIComponent(runId)}`),
-  listRuns:   (wfId)              => _get(`/graph-workflows/${encodeURIComponent(wfId)}/runs`),
-  makeDecision: (runId, body) => _post(`/graph-workflows/runs/${runId}/decision`, body),
-  cancel: (runId) => _del(`/graph-workflows/runs/${runId}`),
+api.workflowRuns = {
+  start:    (project, wfName, userInput) =>
+              _post(`/workflows/${encodeURIComponent(wfName)}/runs?project=${encodeURIComponent(project || '')}`,
+                    { user_input: userInput }),
+  get:      (project, runId) =>
+              _get(`/workflows/runs/${encodeURIComponent(runId)}?project=${encodeURIComponent(project || '')}`),
+  list:     (project) =>
+              _get(`/workflows/runs?project=${encodeURIComponent(project || '')}`),
+  decide:   (project, runId, action, nextStep = null) =>
+              _post(`/workflows/runs/${encodeURIComponent(runId)}/decision?project=${encodeURIComponent(project || '')}`,
+                    { action, next_step: nextStep }),
 };
 
 // ── Search API ────────────────────────────────────────────────────────────────

@@ -71,82 +71,6 @@ class _Database:
     @staticmethod
     def _ensure_schema(conn) -> None:
         """Create tables and migrate missing columns — safe to run repeatedly."""
-        _DDL_GRAPH = """
-        -- Graph Workflows (DAG-based multi-LLM pipelines)
-        CREATE TABLE IF NOT EXISTS graph_workflows (
-            id VARCHAR(36) PRIMARY KEY, project VARCHAR(255) NOT NULL,
-            name VARCHAR(255) NOT NULL, description TEXT NOT NULL DEFAULT '',
-            max_iterations INT NOT NULL DEFAULT 5,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (project, name)
-        );
-        CREATE INDEX IF NOT EXISTS idx_gw_project ON graph_workflows(project);
-
-        CREATE TABLE IF NOT EXISTS graph_nodes (
-            id VARCHAR(36) PRIMARY KEY,
-            workflow_id VARCHAR(36) NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
-            name VARCHAR(255) NOT NULL,
-            role_file VARCHAR(300),
-            role_prompt TEXT NOT NULL DEFAULT '',
-            provider VARCHAR(50) NOT NULL DEFAULT 'claude',
-            model VARCHAR(100) NOT NULL DEFAULT '',
-            output_schema JSONB,
-            inject_context BOOLEAN NOT NULL DEFAULT TRUE,
-            position_x FLOAT NOT NULL DEFAULT 100,
-            position_y FLOAT NOT NULL DEFAULT 100,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_gn_workflow ON graph_nodes(workflow_id);
-
-        CREATE TABLE IF NOT EXISTS graph_edges (
-            id VARCHAR(36) PRIMARY KEY,
-            workflow_id VARCHAR(36) NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
-            source_node_id VARCHAR(36) NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-            target_node_id VARCHAR(36) NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-            condition JSONB,
-            label VARCHAR(100) NOT NULL DEFAULT '',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_ge_workflow ON graph_edges(workflow_id);
-        CREATE INDEX IF NOT EXISTS idx_ge_source   ON graph_edges(source_node_id);
-
-        CREATE TABLE IF NOT EXISTS graph_runs (
-            id VARCHAR(36) PRIMARY KEY,
-            workflow_id VARCHAR(36) REFERENCES graph_workflows(id) ON DELETE SET NULL,
-            project VARCHAR(255) NOT NULL,
-            status VARCHAR(20) NOT NULL DEFAULT 'running',
-            user_input TEXT NOT NULL DEFAULT '',
-            context JSONB NOT NULL DEFAULT '{}',
-            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            finished_at TIMESTAMPTZ,
-            total_cost_usd NUMERIC(12,8) NOT NULL DEFAULT 0,
-            error TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_gr_workflow ON graph_runs(workflow_id);
-        CREATE INDEX IF NOT EXISTS idx_gr_project  ON graph_runs(project);
-        CREATE INDEX IF NOT EXISTS idx_gr_status   ON graph_runs(status);
-
-        CREATE TABLE IF NOT EXISTS graph_node_results (
-            id SERIAL PRIMARY KEY,
-            run_id VARCHAR(36) NOT NULL REFERENCES graph_runs(id) ON DELETE CASCADE,
-            node_id VARCHAR(36) REFERENCES graph_nodes(id) ON DELETE SET NULL,
-            node_name VARCHAR(255) NOT NULL,
-            status VARCHAR(20) NOT NULL DEFAULT 'running',
-            output TEXT NOT NULL DEFAULT '',
-            structured JSONB,
-            input_tokens INT NOT NULL DEFAULT 0,
-            output_tokens INT NOT NULL DEFAULT 0,
-            cost_usd NUMERIC(12,8) NOT NULL DEFAULT 0,
-            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            finished_at TIMESTAMPTZ,
-            iteration INT NOT NULL DEFAULT 0
-        );
-        CREATE INDEX IF NOT EXISTS idx_gnr_run ON graph_node_results(run_id);
-
-        -- Migrations for approval workflow (idempotent)
-        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS require_approval BOOLEAN NOT NULL DEFAULT FALSE;
-        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS approval_msg TEXT NOT NULL DEFAULT '';
-        """
 
         _DDL_EMBEDDINGS = """
         -- pgvector semantic embeddings (Layer 4 memory upgrade)
@@ -229,7 +153,6 @@ class _Database:
         # Each optional block uses its own cursor + commit so a failure in one
         # does NOT roll back other blocks (psycopg2 shares one transaction by default).
         for label, sql in [
-            ("Graph workflow", _DDL_GRAPH),
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
         ]:
             try:

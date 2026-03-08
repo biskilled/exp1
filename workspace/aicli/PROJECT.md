@@ -301,9 +301,9 @@ textarea.addEventListener('input', () => {
 
 ## Recent Work
 
-- Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl with errors/logs
-- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance
-- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals
-- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/entity management (flows vs workflow tabs distinction)
-- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context
-- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension
+- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context across all tools
+- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance correctly
+- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals per user/provider/date
+- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/flows distinction and clarify entities vs node graph UI implementation
+- Hooks integration from claude cli — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated with errors/logs from all sources
+- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension and shared LLM understanding

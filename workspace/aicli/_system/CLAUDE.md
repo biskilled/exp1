@@ -38,7 +38,7 @@ You are a senior Python software architect with deep expertise in:
 - Node graph / GraphQL planned for entity relationships and workflow management with prompt-based node execution
 - Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
 - dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
-- Workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
+- Multi-agent workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
 - Cost tracking: pricing managed by config/JSON (not hardcoded); usage logged per provider/user/date in PostgreSQL
 - Shared memory architecture: claude cli, aicli, cursor all read/write unified history files + commit_log.jsonl
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-08] `claude_cli`: I would like to understand how the new update imporve your way to understand all code project, what 
 - [2026-03-08] `claude_cli`: I dont see any new table created in my postgresql . also I do see that you creaed new tab - flows, b
 - [2026-03-08] `claude_cli`: I dont see any worklow. prevoiusly there was some workflow sample that can be managed by yaml config
 - [2026-03-08] `claude_cli`: <task-notification> <task-id>ba21592</task-id> <tool-use-id>toolu_01X3GzA6q9L1GhyQMY72Yeqd</tool-use
 - [2026-03-08] `claude_cli`: I do see lot of table in my postgresql - all are required as there were some changes. can you remove
+- [2026-03-08] `claude_cli`: let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do t
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

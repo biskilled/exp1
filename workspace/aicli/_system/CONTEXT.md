@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 05:13 UTC — do not edit manually.
+> Auto-generated 2026-03-08 05:16 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 19
-- **Last active**: 2026-03-08T05:12:40Z
+- **Sessions**: 20
+- **Last active**: 2026-03-08T05:16:40Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -25,12 +25,12 @@
 
 ## In Progress
 
-- Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl with errors/logs
-- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance
-- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals
-- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/entity management (flows vs workflow tabs distinction)
-- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context
-- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension
+- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context across all tools
+- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance correctly
+- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals per user/provider/date
+- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/flows distinction and clarify entities vs node graph UI implementation
+- Hooks integration from claude cli — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated with errors/logs from all sources
+- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension and shared LLM understanding
 
 ## Key Decisions
 
@@ -46,7 +46,7 @@
 - Node graph / GraphQL planned for entity relationships and workflow management with prompt-based node execution
 - Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
 - dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
-- Workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
+- Multi-agent workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
 - Cost tracking: pricing managed by config/JSON (not hardcoded); usage logged per provider/user/date in PostgreSQL
 - Shared memory architecture: claude cli, aicli, cursor all read/write unified history files + commit_log.jsonl
 
@@ -142,6 +142,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 05:15]** `claude_cli/claude`  
+→ let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do that using yaml . and
+
 **[2026-03-08 05:10]** `claude_cli/claude`  
 → I do see lot of table in my postgresql - all are required as there were some changes. can you remove table not in use?
 
@@ -183,6 +186,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 01:18]** `claude_cli/claude`  
 → Lets start to fix that , as this is the major goal of this project - shared memory between diffrent llm, so I can use cl
-
-**[2026-03-08 00:53]** `claude_cli/claude`  
-→ Would using vectordb and enabling you reading the data from vectordb will make that more easy for you (or other llm) to 

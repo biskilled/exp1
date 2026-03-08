@@ -27,6 +27,9 @@ const PROVIDER_COLORS = {
   grok:     'var(--grok)',
 };
 
+let _pollInterval = null;
+let _activeRunId  = null;
+
 // ── Main render ───────────────────────────────────────────────────────────────
 
 export function renderWorkflow(container) {
@@ -40,7 +43,7 @@ export function renderWorkflow(container) {
       <div class="wf-mode-tabs" id="wf-mode-tabs">
         <div class="wf-mode-tab active" onclick="window._wfMode('yaml')">⌨ YAML</div>
         <div class="wf-mode-tab" onclick="window._wfMode('steps')">≡ Steps</div>
-        <div class="wf-mode-tab" onclick="window._wfMode('visual')">⬡ Visual</div>
+        <div class="wf-mode-tab" onclick="window._wfMode('run')">▶ Run</div>
       </div>
     </div>
     <div class="workflow-body">
@@ -63,7 +66,7 @@ export function renderWorkflow(container) {
   window._wfMode = (mode) => {
     setState({ workflowMode: mode });
     document.querySelectorAll('.wf-mode-tab').forEach(el => {
-      const labels = { yaml: 'YAML', steps: 'Steps', visual: 'Visual' };
+      const labels = { yaml: 'YAML', steps: 'Steps', run: 'Run' };
       el.classList.toggle('active', el.textContent.includes(labels[mode]));
     });
     if (state.currentWorkflow) renderWorkflowCanvas();
@@ -183,7 +186,7 @@ function renderWorkflowCanvas() {
   if (!area || !state.currentWorkflow) return;
 
   const mode = state.workflowMode || 'yaml';
-  if (mode === 'visual') _renderVisualCanvas(area);
+  if (mode === 'run')    _renderRunPanel(area);
   else if (mode === 'steps') _renderStepsList(area);
   else _renderYamlEditor(area);
 }
@@ -403,37 +406,228 @@ function _renderStepsList(area) {
   `;
 }
 
-// ── Visual canvas (simplified) ────────────────────────────────────────────────
+// ── Run panel ─────────────────────────────────────────────────────────────────
 
-function _renderVisualCanvas(area) {
-  const wf = state.currentWorkflow;
+function _renderRunPanel(area) {
+  const wf      = state.currentWorkflow;
+  const project = state.currentProject?.name;
   let steps = [];
   try { steps = _parseYamlSteps(wf?.yaml || ''); } catch {}
 
   area.innerHTML = `
-    <div class="wf-canvas">
-      <svg class="wf-connections"></svg>
-      ${steps.map((step, i) => {
-        const provider = step.provider || 'claude';
-        const color = PROVIDER_COLORS[provider] || 'var(--muted)';
-        const x = 80 + i * 200;
-        const y = 120;
-        return `
-          <div class="wf-node" style="left:${x}px;top:${y}px;--node-color:${color}">
-            <div class="wf-node-header">
-              <span class="wf-node-icon" style="color:${color}">◉</span>
-              <span class="wf-node-title">${_esc(step.name || `step${i+1}`)}</span>
-            </div>
-            <div class="wf-node-body">
-              <div style="color:${color};font-size:0.6rem">${_esc(provider)}</div>
-              ${step.prompt ? `<div style="font-size:0.6rem;opacity:0.7">${_esc(step.prompt.slice(0,40))}</div>` : ''}
-            </div>
-          </div>
-        `;
-      }).join('')}
-      ${steps.length === 0 ? `<div class="empty-state" style="height:100%"><p>Switch to YAML mode to add steps</p></div>` : ''}
+    <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+
+      <!-- Start bar -->
+      <div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;
+                  border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
+        <input class="field-input" id="wf-run-input" placeholder="Describe the task for the agents…"
+               style="flex:1;font-size:0.8rem" />
+        <button class="btn btn-primary btn-sm" id="wf-run-btn" onclick="window._wfStartRun()">▶ Run</button>
+        <button class="btn btn-ghost btn-sm" id="wf-stop-btn" style="display:none;color:var(--red)"
+                onclick="window._wfDecide('stop')">✕ Stop</button>
+      </div>
+
+      <!-- Pipeline diagram -->
+      <div class="wf-node-flow" id="wf-run-pipeline" style="flex-shrink:0">
+        ${steps.map((s, i) => {
+          const color = PROVIDER_COLORS[s.provider || 'claude'] || 'var(--muted)';
+          const arrow = i < steps.length - 1 ? '<div class="wf-flow-arrow">──▶</div>' : '';
+          const scoreHint = s.score_field && s.score_min
+            ? `<div style="font-size:0.55rem;color:var(--muted)">auto≥${s.score_min}</div>` : '';
+          return `
+            <div class="wf-flow-node" id="wf-pnode-${i}">
+              <div class="wf-flow-box" style="border-color:${color}">
+                <div class="wf-flow-name">${_esc(s.name || `step${i+1}`)}</div>
+                <div class="wf-flow-badge" style="background:${color}">${_esc(s.provider || 'claude')}</div>
+                ${scoreHint}
+              </div>
+            </div>${arrow}`;
+        }).join('')}
+      </div>
+
+      <!-- Step results -->
+      <div id="wf-run-results" style="flex:1;overflow-y:auto;padding:0.75rem;display:flex;flex-direction:column;gap:0.75rem">
+        ${steps.length === 0
+          ? '<div class="empty-state"><p>No steps defined — switch to YAML mode to add agents.</p></div>'
+          : '<div style="color:var(--muted);font-size:0.75rem;padding:0.5rem">Start a run to see agent outputs.</div>'}
+      </div>
     </div>
   `;
+
+  // Load recent runs list
+  _loadRecentRuns(project);
+
+  window._wfStartRun = () => _startRun(project, wf?.name);
+  window._wfDecide   = (action, nextStep) => _decide(project, action, nextStep);
+}
+
+async function _startRun(project, wfName) {
+  if (!project || !wfName) { toast('No workflow selected', 'error'); return; }
+  const input   = document.getElementById('wf-run-input')?.value.trim() || '';
+  const runBtn  = document.getElementById('wf-run-btn');
+  const stopBtn = document.getElementById('wf-stop-btn');
+
+  try {
+    if (runBtn)  { runBtn.disabled = true; runBtn.textContent = '…'; }
+    const { run_id } = await api.workflowRuns.start(project, wfName, input);
+    _activeRunId = run_id;
+    if (runBtn)  { runBtn.disabled = false; runBtn.textContent = '▶ Run'; }
+    if (stopBtn) stopBtn.style.display = '';
+    _pollRun(project, run_id);
+  } catch (e) {
+    if (runBtn) { runBtn.disabled = false; runBtn.textContent = '▶ Run'; }
+    toast(`Start failed: ${e.message}`, 'error');
+  }
+}
+
+function _pollRun(project, runId) {
+  if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+
+  _pollInterval = setInterval(async () => {
+    try {
+      const run = await api.workflowRuns.get(project, runId);
+      _renderRunResults(run);
+
+      if (run.status !== 'running' && run.status !== 'waiting') {
+        clearInterval(_pollInterval);
+        _pollInterval = null;
+        const stopBtn = document.getElementById('wf-stop-btn');
+        if (stopBtn) stopBtn.style.display = 'none';
+      }
+    } catch {
+      clearInterval(_pollInterval);
+      _pollInterval = null;
+    }
+  }, 2000);
+}
+
+function _renderRunResults(run) {
+  const results = document.getElementById('wf-run-results');
+  if (!results) return;
+
+  const wfSteps = [];
+  try { wfSteps.push(..._parseYamlSteps(state.currentWorkflow?.yaml || '')); } catch {}
+
+  // Update pipeline node highlight
+  (run.steps || []).forEach((step, i) => {
+    const el = document.getElementById(`wf-pnode-${i}`);
+    if (!el) return;
+    el.querySelector('.wf-flow-box')?.setAttribute('data-status', step.status);
+    const box = el.querySelector('.wf-flow-box');
+    if (!box) return;
+    if (step.status === 'running') {
+      box.style.borderStyle = 'dashed';
+      box.style.opacity = '1';
+    } else if (step.status === 'done') {
+      box.style.borderColor = 'var(--green)';
+      box.style.opacity = '1';
+    } else if (step.status === 'error') {
+      box.style.borderColor = 'var(--red)';
+    } else if (step.status === 'waiting') {
+      box.style.borderColor = '#f59e0b';
+    } else if (step.status === 'pending') {
+      box.style.opacity = '0.45';
+    }
+  });
+
+  // Render step cards
+  const waiting = run.status === 'waiting';
+  const currentIdx = run.current_step ?? 0;
+
+  results.innerHTML = (run.steps || []).map((step, i) => {
+    if (step.status === 'pending' && i > currentIdx) return '';
+    const color = PROVIDER_COLORS[step.provider] || 'var(--muted)';
+    const wfSpec = wfSteps[i] || {};
+    const isWaiting = waiting && i === currentIdx && step.status !== 'pending';
+
+    const approvalHtml = isWaiting ? `
+      <div style="margin-top:0.6rem;padding:0.6rem;background:rgba(245,158,11,0.08);
+                  border:1px solid #f59e0b;border-radius:var(--radius)">
+        <div style="font-size:0.72rem;color:#b45309;margin-bottom:0.4rem">
+          ${step.status === 'error' ? '⚠ Error — review and decide' : '⏸ Waiting for your decision'}
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" style="font-size:0.72rem"
+                  onclick="window._wfDecide('continue')">✓ Continue</button>
+          <button class="btn btn-ghost btn-sm" style="font-size:0.72rem"
+                  onclick="window._wfDecide('retry')">↺ Retry</button>
+          <button class="btn btn-ghost btn-sm" style="font-size:0.72rem;color:var(--red)"
+                  onclick="window._wfDecide('stop')">✗ Stop</button>
+        </div>
+      </div>` : '';
+
+    const iterBadge = step.iteration > 0
+      ? `<span style="font-size:0.62rem;color:var(--muted)">iter ${step.iteration + 1}</span>` : '';
+    const costBadge = step.cost_usd > 0
+      ? `<span style="font-size:0.62rem;color:var(--muted)">$${Number(step.cost_usd).toFixed(4)}</span>` : '';
+
+    const statusColor = {
+      running: 'var(--accent)', done: 'var(--green)',
+      error: 'var(--red)', waiting: '#f59e0b', pending: 'var(--muted)',
+    }[step.status] || 'var(--muted)';
+
+    return `
+      <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.65rem;
+                    background:var(--surface);border-bottom:1px solid var(--border)">
+          <span style="font-size:0.8rem;font-weight:600">${_esc(step.name)}</span>
+          <span style="font-size:0.65rem;padding:1px 6px;border-radius:10px;
+                       background:${color}22;color:${color}">${_esc(step.provider)}</span>
+          <span style="font-size:0.65rem;color:${statusColor};margin-left:0.2rem">● ${step.status}</span>
+          ${iterBadge}${costBadge}
+        </div>
+        ${step.output ? `
+          <div style="padding:0.6rem 0.75rem">
+            <pre style="font-size:0.72rem;white-space:pre-wrap;word-break:break-word;
+                        max-height:300px;overflow-y:auto;margin:0">${_esc(step.output)}</pre>
+          </div>` : ''}
+        ${approvalHtml}
+      </div>`;
+  }).join('');
+
+  // Run summary at top
+  const totalCost = Number(run.total_cost_usd || 0).toFixed(4);
+  const statusLine = {
+    running: `<span style="color:var(--accent)">● Running…</span>`,
+    waiting: `<span style="color:#f59e0b">⏸ Waiting for decision</span>`,
+    done:    `<span style="color:var(--green)">✓ Done — $${totalCost}</span>`,
+    stopped: `<span style="color:var(--muted)">✕ Stopped</span>`,
+    error:   `<span style="color:var(--red)">✗ Error</span>`,
+  }[run.status] || `<span>${run.status}</span>`;
+
+  results.insertAdjacentHTML('afterbegin',
+    `<div style="font-size:0.72rem;padding:0.3rem 0.1rem;color:var(--muted)">
+       Run ${_esc(run.run_id)} · ${statusLine}
+     </div>`
+  );
+}
+
+async function _decide(project, action, nextStep = null) {
+  if (!_activeRunId || !project) return;
+  try {
+    await api.workflowRuns.decide(project, _activeRunId, action, nextStep);
+    if (action === 'stop') {
+      if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+      const stopBtn = document.getElementById('wf-stop-btn');
+      if (stopBtn) stopBtn.style.display = 'none';
+    } else if (!_pollInterval) {
+      _pollRun(project, _activeRunId);
+    }
+  } catch (e) {
+    toast(`Decision failed: ${e.message}`, 'error');
+  }
+}
+
+async function _loadRecentRuns(project) {
+  // Intentionally lightweight — just shows count in toolbar for now
+  if (!project) return;
+  try {
+    const { runs } = await api.workflowRuns.list(project);
+    const active = runs.find(r => r.run_id === _activeRunId);
+    if (active && (active.status === 'running' || active.status === 'waiting')) {
+      _pollRun(project, active.run_id);
+    }
+  } catch { /* ignore */ }
 }
 
 // ── New workflow modal ────────────────────────────────────────────────────────

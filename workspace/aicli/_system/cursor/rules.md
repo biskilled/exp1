@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 05:12 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 05:16 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -32,14 +32,14 @@ _Last updated: 2026-03-08_
 - Node graph / GraphQL planned for entity relationships and workflow management with prompt-based node execution
 - Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
 - dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
-- Workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
+- Multi-agent workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
 - Cost tracking: pricing managed by config/JSON (not hardcoded); usage logged per provider/user/date in PostgreSQL
 - Shared memory architecture: claude cli, aicli, cursor all read/write unified history files + commit_log.jsonl
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-08] I would like to understand how the new update imporve your way to understand all code project, what are you doing in ord
 - [2026-03-08] I dont see any new table created in my postgresql . also I do see that you creaed new tab - flows, but there is already 
 - [2026-03-08] I dont see any worklow. prevoiusly there was some workflow sample that can be managed by yaml config as well. worklow su
 - [2026-03-08] <task-notification> <task-id>ba21592</task-id> <tool-use-id>toolu_01X3GzA6q9L1GhyQMY72Yeqd</tool-use-id> <output-file>/p
 - [2026-03-08] I do see lot of table in my postgresql - all are required as there were some changes. can you remove table not in use?
+- [2026-03-08] let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do that using yaml . and

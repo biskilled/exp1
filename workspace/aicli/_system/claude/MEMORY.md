@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-08 05:12 UTC by aicli /memory_
+_Generated: 2026-03-08 05:16 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform designed to enable multiple LLMs (claude cli, aicli, cursor) to maintain and access unified project history across sessions. It features a Python CLI with FastAPI backend, Electron UI with terminal/editor, PostgreSQL for billing/usage tracking, JWT authentication with role-based access (admin/paid/free), and JSONL-based shared history. Current focus is fixing hooks integration, ensuring unified commit/error logging across all sources, implementing balance persistence, and planning node-graph workflows with pgvector semantic search.
+aicli is a shared AI memory platform enabling multiple LLM tools (claude cli, aicli, cursor) to collaborate on projects via unified history files, PostgreSQL tracking, and multi-agent workflows. The project supports user roles (admin/paid/free), manual API key/balance management via Electron UI, and is working toward GraphQL node graphs and pgvector semantic search for deeper project understanding across LLM sessions.
 
 ## Tech Stack
 
@@ -32,26 +32,17 @@ aicli is a shared AI memory platform designed to enable multiple LLMs (claude cl
 - Node graph / GraphQL planned for entity relationships and workflow management with prompt-based node execution
 - Memory auto-summarisation at token limit; /memory command uploads all relevant files for LLM context
 - dev_runtime_state.json + project_state.json auto-maintenance for shared LLM context across sessions
-- Workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
+- Multi-agent workflows: node-based execution with LLM engines per node (e.g., algo→backtest→qa→summary across different models)
 - Cost tracking: pricing managed by config/JSON (not hardcoded); usage logged per provider/user/date in PostgreSQL
 - Shared memory architecture: claude cli, aicli, cursor all read/write unified history files + commit_log.jsonl
 
 ## In Progress
 
-- Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl with errors/logs
-- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance
-- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals
-- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/entity management (flows vs workflow tabs distinction)
-- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context
-- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension
+- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context across all tools
+- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance correctly
+- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals per user/provider/date
+- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/flows distinction and clarify entities vs node graph UI implementation
+- Hooks integration from claude cli — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated with errors/logs from all sources
+- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension and shared LLM understanding
 
-**[2026-03-08 05:10]** `claude_cli` — Completed cleanup of unused PostgreSQL tables; multiple tables created during recent changes need removal.
-**[2026-03-08 04:47]** `claude_cli` — Consolidated workflow management: clarified distinction between 'flows' and 'workflow' tabs; node-based execution with LLM engines per node (algo→backtest→qa→summary).
-**[2026-03-08 04:27]** `claude_cli` — Identified missing workflow tables in PostgreSQL; workflow/entity management tabs need unification via node graph UI instead of separate tabs.
-**[2026-03-08 04:13]** `claude_cli` — Established commit_log.jsonl as unified error/log capture from all sources (claude cli hooks, aicli commits, cursor); /memory command strategy to compress history for LLM context.
-**[2026-03-08 04:05]** `claude_cli` — Ensured all logs (errors included) written to commit_log.jsonl from all places; shared memory architecture across claude cli, aicli, cursor.
-**[2026-03-08 03:14]** `claude_cli` — Planned GraphQL + node graph for entities and relationships; pgvector semantic embedding for relational tagging; workflow example (deepseek algo → claude backtest → claude qa → openai summary).
-**[2026-03-08 02:51]** `claude_cli` — Diagnosed hooks not working (no new commits); history.jsonl captures prompts but not responses; commit_log.jsonl not populated.
-**[2026-03-08 00:40]** `claude_cli` — Questioned shared memory architecture: how LLM loads history from compressed sessions and utilizes provider_usage files.
-**[2026-03-08 00:30]** `claude_cli` — Balance saving implemented but not persisted on refresh; users tab balance totals not updating after manual entry.
-**[2026-03-07 23:54]** `claude_cli` — Manual balance entry added to usage page (replaced separate tab); fixed remove row functionality for Fetch history; marked save changes visually.
+**[2026-03-08 05:15]** `claude_cli` — Multi-agent workflow architecture clarified: goal is to build flows with YAML-defined nodes where each node has a prompt (agent role) and assigned LLM engine; nodes execute sequentially until user satisfaction before advancing. **[2026-03-08 05:10]** `claude_cli` — Request to remove unused PostgreSQL tables created during recent changes. **[2026-03-08 04:47]** `claude_cli` — Workflow/flows distinction unclear; existing workflow tab expected to manage all workflows via YAML config with prompt-based node execution and LLM engine assignment per node. **[2026-03-08 04:27]** `claude_cli` — PostgreSQL workflow/entities tables not created; flows tab added but conflicts with existing workflow tab; need clarification on entities purpose vs node graph UI implementation. **[2026-03-08 04:13]** `claude_cli` — Requested clarification on how /memory command summarizes/compresses project data for LLM understanding; commit_log.jsonl should centralize all logs from claude cli hooks, aicli commits, cursor hooks. **[2026-03-08 04:05]** `claude_cli` — All logs and errors must be written to commit_log.jsonl from all sources (claude cli hooks, aicli, cursor) for unified project history.
