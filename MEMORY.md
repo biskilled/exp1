@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-08 22:34 UTC by aicli /memory_
+_Generated: 2026-03-08 23:10 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling claude cli, aicli, and cursor to collaboratively understand project state across sessions via unified history.jsonl + commit_log.jsonl files. It features a FastAPI backend with JWT auth, PostgreSQL user/billing tracking, and an Electron UI for multi-agent YAML workflows, with planned pgvector semantic search and node-graph UI for workflow management. Current focus is fixing hooks integration, balance persistence, and consolidating the database schema while establishing a shared memory strategy across all tools.
+aicli is a shared AI memory platform enabling multi-tool collaboration (claude cli, aicli, cursor) through unified history tracking, cost management, and multi-agent workflow orchestration. Current focus: implementing pgvector semantic search in PostgreSQL for cross-session project comprehension, consolidating database schema, fixing hooks to properly populate commit_log.jsonl from all tools, and transitioning workflow management from YAML config to UI-managed node graphs with visual entity relationship representation.
 
 ## Tech Stack
 
@@ -13,36 +13,47 @@ aicli is a shared AI memory platform enabling claude cli, aicli, and cursor to c
 - **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
 - **frontend**: Vanilla JS + Electron with xterm.js + Monaco editor
 - **storage**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV
-- **database**: PostgreSQL (users, user_usage, usage_logs, billing_logs, workflows, runs) + pgvector (planned)
+- **database**: PostgreSQL with pgvector + SQLAlchemy ORM
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
-- **planned**: GraphQL, node graph UI, pgvector semantic search, unified provider logging
+- **planned**: GraphQL, node graph UI, pgvector semantic embeddings, unified provider logging
 - **orm**: SQLAlchemy
+- **tables**: users, user_usage, usage_logs, billing_logs, workflows, runs, entities (pending consolidation)
 
 ## Key Decisions
 
-- Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL for user_usage/billing logs; no ChromaDB/SQLite
+- Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL with pgvector for semantic search and entity relationships; no ChromaDB/SQLite
 - Electron UI with xterm.js terminal + Monaco editor; Vanilla JS frontend (not Tauri)
 - JWT auth via python-jose + bcrypt; dev_mode toggle for testing without login; three user roles (admin/paid/free)
 - Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state
 - All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven)
-- Multi-agent workflows via node-based execution with YAML config (transitioning to UI-managed node graphs)
+- Multi-agent workflows via node-based execution model with YAML config transitioning to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
 - Unified history.jsonl + commit_log.jsonl shared across claude cli, aicli, cursor via hooks and commits
-- Manual balance entry in UI (no auto-fetch due to API limitations); admin sees total across all users
-- PostgreSQL with SQLAlchemy ORM; pgvector planned for semantic search and entity relationships
-- Memory auto-summarization at token limit; /memory command uploads relevant files for LLM context
+- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users
+- PostgreSQL with SQLAlchemy ORM; pgvector for semantic embeddings and entity relationship search
+- Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
 - dev_runtime_state.json + project_state.json auto-maintained for shared LLM context across sessions
 - Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl
-- GraphQL + node graph UI planned for workflow management and entity relationship visualization
-- Cost tracking: per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data
-- Shared memory architecture: claude cli, aicli, cursor all read/write unified history files for cross-session project comprehension
+- GraphQL + node graph UI planned for workflow management and visual entity relationship representation
+- Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
+- Shared memory architecture: claude cli, aicli, cursor all read/write unified history files and vectordb for cross-session project comprehension
 
 ## In Progress
 
-- PostgreSQL table cleanup and consolidation — remove unused tables; clarify workflow vs flows distinction; align database schema with node-graph workflow execution model
-- Hooks integration from claude cli — commits not auto-executing; history.jsonl captures prompts but missing responses; ensure commit_log.jsonl populated from all tools (claude cli, aicli, cursor)
-- Balance persistence and refresh — manual balance entry saves but doesn't persist across UI refresh; admin dashboard not showing total balance; usage_logs table empty despite creation
-- Multi-agent workflow execution — transition from YAML config to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Shared memory strategy across tools — establish how claude cli, aicli, and cursor read/compress history files; determine how /memory command uploads relevant context for cross-session project understanding
-- Project memory optimization — remove unused code files (e.g., hardcoded cost_tracker); consolidate QUICKSTART.md and README.md into single source-of-truth system files; clarify dev_runtime_state.json necessity
+- PostgreSQL schema optimization: consolidate unused tables; clarify workflow vs flows distinction; align database schema with node-graph execution model
+- Hooks integration and history tracking: ensure commit_log.jsonl populated from all tools (claude cli, aicli, cursor); capture both prompts and responses in history.jsonl
+- Balance persistence and admin dashboard: manual balance entry saves but doesn't persist on refresh; admin dashboard must show total balance and per-user usage aggregation
+- Multi-agent workflow execution: transition from YAML config to UI-managed node graphs; each node execution with LLM engine selection and score-based branching
+- Pgvector semantic search and entity relationships: implement PostgreSQL vector storage for project metadata (tasks, features, bugs); add relational tagging for quick cross-session retrieval
+- Project memory optimization and code consolidation: remove hardcoded cost_tracker with pricing; consolidate QUICKSTART.md and README.md; clarify necessity of dev_runtime_state.json
 
-**[2026-03-08 05:29]** `claude_cli` — Dropped unused graph tables and removed graph-related code; consolidated database schema to focus on workflows/runs distinction. **[2026-03-08 05:15]** `claude_cli` — Clarified multi-agent workflow architecture: YAML-based node execution where each node runs a prompt with specified LLM, outputs score for conditional branching, and persists runs in _system/runs. **[2026-03-08 04:27]** `claude_cli` — Identified confusion between flows/workflows tables and entities tab; workflows should be primary UI with node-graph visualization planned; removed premature entities implementation. **[2026-03-08 03:14]** `claude_cli` — Proposed GraphQL + pgvector semantic embedding layer for project metadata (tasks, features, bugs) with node-graph UI for multi-agent workflow definition; enables cross-tool context injection via commit_log.jsonl. **[2026-03-08 02:51]** `claude_cli` — Diagnosed hooks not committing; history.jsonl captures prompts but missing responses; commit_log.jsonl not auto-populated from claude cli, aicli, cursor; requires unified hook implementation. **[2026-03-08 02:09]** `claude_cli` — Initiated code optimization: move hardcoded PRICING from cost_tracker to config/JSON under ui/backend/data; remove unused files; consolidate history folder redundancy in workspace structure.
+**2026-03-08 23:08** `claude_cli` — Decided to create new PostgreSQL instance with pgvector for unified semantic search across project history, aiming to improve cross-session memory sharing for claude cli, aicli, and cursor; focuses on maintaining project lifecycle (discovery, planning, tracking).
+
+**2026-03-08 22:32** `claude_cli` — Proposed rethinking AI knowledge layer architecture for better memory sharing and project management; planning pgvector-based semantic embeddings with relational tagging for quick entity/task retrieval across tools.
+
+**2026-03-08 05:29** `claude_cli` — Completed cleanup: removed unused graph tables and graph code; streamlined database schema to align with workflow/node-graph execution model.
+
+**2026-03-08 05:10** `claude_cli` — Identified schema bloat in PostgreSQL; requested removal of unused tables created during prior changes; clarified that workflows should support multi-agent YAML-configured nodes transitioning to UI-managed node graphs.
+
+**2026-03-08 04:47** `claude_cli` — Clarified workflow execution model: nodes contain prompts with LLM engine assignment (e.g., QA using OpenAI); output score enables conditional branching; workflows managed via YAML config transitioning to node-graph UI; removed unused entities/flows tabs.
+
+**2026-03-08 02:51** `claude_cli` — Identified critical issues: hooks not auto-committing to git; history.jsonl captures prompts but not responses; commit_log.jsonl not populated from all tools; requested consolidation of history tracking across claude cli, aicli, cursor hooks.

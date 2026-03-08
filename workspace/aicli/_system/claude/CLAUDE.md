@@ -26,21 +26,21 @@ You are a senior Python software architect with deep expertise in:
 
 ## Key Architectural Decisions
 
-- Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL for user_usage/billing logs; no ChromaDB/SQLite
+- Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL with pgvector for semantic search and entity relationships; no ChromaDB/SQLite
 - Electron UI with xterm.js terminal + Monaco editor; Vanilla JS frontend (not Tauri)
 - JWT auth via python-jose + bcrypt; dev_mode toggle for testing without login; three user roles (admin/paid/free)
 - Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state
 - All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven)
-- Multi-agent workflows via node-based execution with YAML config (transitioning to UI-managed node graphs)
+- Multi-agent workflows via node-based execution model with YAML config transitioning to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
 - Unified history.jsonl + commit_log.jsonl shared across claude cli, aicli, cursor via hooks and commits
-- Manual balance entry in UI (no auto-fetch due to API limitations); admin sees total across all users
-- PostgreSQL with SQLAlchemy ORM; pgvector planned for semantic search and entity relationships
-- Memory auto-summarization at token limit; /memory command uploads relevant files for LLM context
+- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users
+- PostgreSQL with SQLAlchemy ORM; pgvector for semantic embeddings and entity relationship search
+- Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
 - dev_runtime_state.json + project_state.json auto-maintained for shared LLM context across sessions
 - Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl
-- GraphQL + node graph UI planned for workflow management and entity relationship visualization
-- Cost tracking: per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data
-- Shared memory architecture: claude cli, aicli, cursor all read/write unified history files for cross-session project comprehension
+- GraphQL + node graph UI planned for workflow management and visual entity relationship representation
+- Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
+- Shared memory architecture: claude cli, aicli, cursor all read/write unified history files and vectordb for cross-session project comprehension
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-08] `claude_cli`: I do see lot of table in my postgresql - all are required as there were some changes. can you remove
 - [2026-03-08] `claude_cli`: let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do t
 - [2026-03-08] `claude_cli`: the second one - under _system/run 
 - [2026-03-08] `claude_cli`: <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm
 - [2026-03-08] `claude_cli`: I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the cur
+- [2026-03-08] `claude_cli`: I will create postgresql with pgvector. it is a new instanse (so required to create all users table 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

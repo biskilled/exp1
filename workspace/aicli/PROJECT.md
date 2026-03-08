@@ -301,9 +301,9 @@ textarea.addEventListener('input', () => {
 
 ## Recent Work
 
-- PostgreSQL table cleanup and consolidation — remove unused tables; clarify workflow vs flows distinction; align database schema with node-graph workflow execution model
-- Hooks integration from claude cli — commits not auto-executing; history.jsonl captures prompts but missing responses; ensure commit_log.jsonl populated from all tools (claude cli, aicli, cursor)
-- Balance persistence and refresh — manual balance entry saves but doesn't persist across UI refresh; admin dashboard not showing total balance; usage_logs table empty despite creation
-- Multi-agent workflow execution — transition from YAML config to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Shared memory strategy across tools — establish how claude cli, aicli, and cursor read/compress history files; determine how /memory command uploads relevant context for cross-session project understanding
-- Project memory optimization — remove unused code files (e.g., hardcoded cost_tracker); consolidate QUICKSTART.md and README.md into single source-of-truth system files; clarify dev_runtime_state.json necessity
+- PostgreSQL schema optimization: consolidate unused tables; clarify workflow vs flows distinction; align database schema with node-graph execution model
+- Hooks integration and history tracking: ensure commit_log.jsonl populated from all tools (claude cli, aicli, cursor); capture both prompts and responses in history.jsonl
+- Balance persistence and admin dashboard: manual balance entry saves but doesn't persist on refresh; admin dashboard must show total balance and per-user usage aggregation
+- Multi-agent workflow execution: transition from YAML config to UI-managed node graphs; each node execution with LLM engine selection and score-based branching
+- Pgvector semantic search and entity relationships: implement PostgreSQL vector storage for project metadata (tasks, features, bugs); add relational tagging for quick cross-session retrieval
+- Project memory optimization and code consolidation: remove hardcoded cost_tracker with pricing; consolidate QUICKSTART.md and README.md; clarify necessity of dev_runtime_state.json
