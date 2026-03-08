@@ -33,3 +33,6 @@ credentials/
 **/*.cert
 **/secrets/
 **/credentials/
+
+# ── Backend data (API keys, billing, user accounts — never commit) ────────────
+ui/backend/data/

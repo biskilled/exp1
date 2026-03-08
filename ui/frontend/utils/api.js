@@ -65,6 +65,7 @@ export const api = {
   getProjectSummary:   (name)       => _get(`/projects/${encodeURIComponent(name)}/summary`),
   updateProjectSummary:(name, content) => _put(`/projects/${encodeURIComponent(name)}/summary`, { content }),
   getProjectContext:   (name, save = false) => _get(`/projects/${encodeURIComponent(name)}/context?save=${save}`),
+  generateMemory:      (name)       => _post(`/projects/${encodeURIComponent(name)}/memory`, {}),
   runCommand:          (name, cmd)  => _post(`/projects/${encodeURIComponent(name)}/run-command`, { command: cmd }),
 
   // Prompts

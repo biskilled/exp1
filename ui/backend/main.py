@@ -9,9 +9,31 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
+import shutil
 from pathlib import Path
 
 from config import settings
+
+
+def _migrate_server_data():
+    """One-time migration: copy files from old .aicli/server_data/ to ui/backend/data/."""
+    engine_root = Path(__file__).parent.parent.parent.resolve()
+    old_path = engine_root / ".aicli" / "server_data"
+    new_path = Path(settings.data_dir)
+    if not old_path.exists():
+        return
+    new_path.mkdir(parents=True, exist_ok=True)
+    migrated = []
+    for item in old_path.iterdir():
+        dest = new_path / item.name
+        if not dest.exists():
+            if item.is_dir():
+                shutil.copytree(str(item), str(dest))
+            else:
+                shutil.copy2(str(item), str(dest))
+            migrated.append(item.name)
+    if migrated:
+        print(f"✅ Migrated server_data to ui/backend/data/: {', '.join(migrated)}")
 from core.database import db
 from routers import auth, chat, history, usage, workflows, prompts, files, projects, config_sync, admin, git, billing
 from pwa_router import router as pwa_router
@@ -68,6 +90,10 @@ async def health():
 @app.on_event("startup")
 async def startup():
     db.init()   # connect to PostgreSQL if DATABASE_URL is set; no-op otherwise
+
+    # Migrate server_data from old .aicli/server_data/ path to ui/backend/data/
+    _migrate_server_data()
+
     # Ensure monetization data files exist on first start
     from core.pricing import load_pricing
     from core.api_keys import load_keys, save_keys, _env_key, _PROVIDERS

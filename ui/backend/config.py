@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 7   # 7 days
 
     # Data storage (user accounts, usage logs)
-    data_dir: str = str(_ENGINE_ROOT / ".aicli" / "server_data")
+    data_dir: str = str(_BACKEND_DIR / "data")
 
     # PostgreSQL (optional — falls back to JSON file store when empty)
     database_url: str = ""   # set DATABASE_URL=postgresql://... in .env

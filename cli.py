@@ -152,13 +152,18 @@ def _build_claude_prompt(
     max_memory_chars: int = 3000,
     session_state: dict | None = None,
     memory_summary: str = "",
+    aicli_context: str = "",
 ) -> str:
     """
     Build an augmented prompt for any provider (not just Claude).
-    Injects: session state → memory summary → project summary →
+    Injects: aicli context → session state → memory summary → project summary →
              current context → relevant memory → current request.
     """
     sections: list[str] = []
+
+    # 0. aicli project context (from _system/aicli/context.md)
+    if aicli_context:
+        sections.append(f"[PROJECT CONTEXT]\n{aicli_context.strip()}")
 
     # 1. Previous session handoff (most prominent — tells the LLM where work stands)
     if session_state:
@@ -522,6 +527,20 @@ def main():
     workspace_dir = Path(config.get("workspace_dir", CLI_ROOT / "workspace"))
     active_project = config.get("active_project", "")
 
+    def _load_aicli_context() -> str:
+        """Read _system/aicli/context.md for the active project."""
+        if not active_project:
+            return ""
+        ctx_file = workspace_dir / active_project / "_system" / "aicli" / "context.md"
+        if ctx_file.exists():
+            try:
+                return ctx_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+        return ""
+
+    aicli_context = _load_aicli_context()
+
     def _make_runner() -> WorkflowRunner | None:
         if not active_project:
             return None
@@ -649,7 +668,7 @@ def main():
             continue
 
         # ----------------------------------------------------------
-        # /memory  — refresh CLAUDE.md + CONTEXT.md, copy to code dir
+        # /memory  — generate per-LLM memory files, copy to code dir
         # ----------------------------------------------------------
         if user_input == "/memory":
             if not active_project:
@@ -659,18 +678,32 @@ def main():
             refreshed = False
             try:
                 import urllib.request as _urlreq
-                url = f"{backend_url}/projects/{active_project}/context?save=true"
-                with _urlreq.urlopen(url, timeout=10) as _resp:
+                import urllib.error as _urlerr
+                req = _urlreq.Request(
+                    f"{backend_url}/projects/{active_project}/memory",
+                    data=b"{}",
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with _urlreq.urlopen(req, timeout=30) as _resp:
                     _data = _json.loads(_resp.read())
-                if _data.get("saved"):
-                    console.print("[green]✓ CLAUDE.md + CONTEXT.md refreshed and copied to code directory.[/green]")
-                    claude.reload_system_prompt()
-                    refreshed = True
+                generated = _data.get("generated", [])
+                copied = _data.get("copied_to", [])
+                if generated:
+                    console.print(f"[green]✓ Generated: {', '.join(generated)}[/green]")
+                if copied:
+                    console.print(f"[green]✓ Copied to: {', '.join(copied)}[/green]")
+                claude.reload_system_prompt()
+                aicli_context = _load_aicli_context()
+                refreshed = True
             except Exception:
                 pass
             if not refreshed:
-                # Backend offline — copy existing _system/CLAUDE.md to code_dir directly
-                sys_claude = workspace_dir / active_project / "_system" / "CLAUDE.md"
+                # Backend offline — copy existing _system/claude/CLAUDE.md to code_dir directly
+                sys_dir = workspace_dir / active_project / "_system"
+                sys_claude = sys_dir / "claude" / "CLAUDE.md"
+                if not sys_claude.exists():
+                    sys_claude = sys_dir / "CLAUDE.md"  # legacy fallback
                 if sys_claude.exists():
                     try:
                         import yaml as _yaml
@@ -1165,6 +1198,7 @@ def main():
                 user_input, conversation, memory,
                 session_state=session_state,
                 memory_summary=memory_summary,
+                aicli_context=aicli_context,
             )
 
             try:
@@ -1316,6 +1350,7 @@ def main():
                     user_input, conversation, memory,
                     session_state=session_state,
                     memory_summary=memory_summary,
+                    aicli_context=aicli_context,
                 )
 
                 output = ""
