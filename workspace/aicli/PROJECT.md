@@ -301,9 +301,9 @@ textarea.addEventListener('input', () => {
 
 ## Recent Work
 
-- Unified history + commit_log population — ensure all logs from claude cli hooks, aicli commits, cursor hooks captured; commit_log.jsonl must track errors and system events across all sources
-- Balance persistence across UI refresh — manual balance entry saves but doesn't persist; admin sees total across all users; usage_logs table not populating despite creation
-- PostgreSQL table cleanup — remove unused tables; consolidate workflow/flows distinction; clarify entities vs node graph UI implementation
-- Hooks integration from claude cli — commits not working; history.jsonl captures prompts but not responses; ensure commit_log.jsonl populated from all tools
-- Multi-agent workflow execution via node graph — transition from YAML config to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for branching
-- Shared memory strategy across tools — establish how claude cli, aicli, and cursor read/compress history files; implement /memory command to upload relevant context for cross-session project comprehension
+- PostgreSQL table cleanup and consolidation — remove unused tables; clarify workflow vs flows distinction; align database schema with node-graph workflow execution model
+- Hooks integration from claude cli — commits not auto-executing; history.jsonl captures prompts but missing responses; ensure commit_log.jsonl populated from all tools (claude cli, aicli, cursor)
+- Balance persistence and refresh — manual balance entry saves but doesn't persist across UI refresh; admin dashboard not showing total balance; usage_logs table empty despite creation
+- Multi-agent workflow execution — transition from YAML config to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
+- Shared memory strategy across tools — establish how claude cli, aicli, and cursor read/compress history files; determine how /memory command uploads relevant context for cross-session project understanding
+- Project memory optimization — remove unused code files (e.g., hardcoded cost_tracker); consolidate QUICKSTART.md and README.md into single source-of-truth system files; clarify dev_runtime_state.json necessity
