@@ -5,7 +5,7 @@ _Generated: 2026-03-08 05:06 UTC by aicli /memory_
 
 ## Project Summary
 
-aicli is a shared AI memory platform that enables claude cli, aicli (custom CLI), and cursor to collaborate with unified history across JSONL files and PostgreSQL. Users (admin/paid/free) manage API keys, track balance and usage per provider, and design LLM workflows using a planned node graph UI with pgvector semantic search. Current focus: fix hook integration for commit_log.jsonl, persist balance across refreshes, populate PostgreSQL usage_logs, and consolidate workflow/entity management into a single node-based system.
+aicli is a shared AI memory platform enabling multiple LLMs (Claude CLI, aicli, Cursor) to collaborate on projects by maintaining unified history files (history.jsonl, commit_log.jsonl) and PostgreSQL-backed user/billing logs. Currently stabilizing core features: hooks-based git integration, balance tracking via manual entry, and multi-user role management (admin/paid/free) with dev_mode testing support; next phase introduces node-graph workflows and pgvector semantic search for intelligent project comprehension.
 
 ## Tech Stack
 
@@ -38,11 +38,16 @@ aicli is a shared AI memory platform that enables claude cli, aicli (custom CLI)
 
 ## In Progress
 
-- Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl
-- Balance persistence on refresh — manual balance entry saves but doesn't persist on UI refresh; admin sees total, users see own balance
-- PostgreSQL usage_logs population — table created but entries not populating; ensure all providers log usage and refresh UI displays totals
-- Consolidate workflow/entity management — 'flows' tab created but 'workflow' tab exists; clarify distinction; build node graph UI instead of separate tabs
-- Memory system optimization — commit_log.jsonl not capturing all errors/logs from claude cli, aicli, cursor; ensure unified history across all sources
-- Shared memory architecture for LLM context — define how /memory command reads/compresses history files; establish memory digest strategy for project understanding
+- Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl with errors/logs
+- Balance persistence on UI refresh — manual balance entry saves but doesn't persist; admin sees total across all users, users see own balance
+- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals
+- Consolidate workflow/entity management — 'flows' tab created but 'workflow' tab exists; clarify distinction and build unified node graph UI instead of separate tabs
+- Memory system optimization for LLM understanding — define /memory command strategy to read/compress history files; establish memory digest for cross-session project comprehension
+- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context
 
-**[2026-03-08 04:47]** `claude_cli` — Workflow system requires node-based execution (prompts as nodes with LLM engines per node, e.g., algo→backtest→qa→summary); consolidate 'flows' + 'workflow' tabs into single node graph UI. **[2026-03-08 04:27]** `claude_cli` — PostgreSQL tables not created; 'entities' vs 'workflows' distinction needed; workflows should use YAML config or UI-managed prompt flows. **[2026-03-08 04:13]** `claude_cli` — /memory command must upload all project files for LLM context; clarify memory compression strategy for understanding project state. **[2026-03-08 04:05]** `claude_cli` — All logs (errors, commits, responses) must write to commit_log.jsonl from claude cli hooks, aicli commits, cursor hooks for unified history. **[2026-03-08 03:14]** `claude_cli` — GraphQL + node graph UI planned for entities/relationships; pgvector for semantic tagging + relational search; vectordb ingestion enables faster project understanding. **[2026-03-08 02:51]** `claude_cli` — Hooks not committing (claude cli); history.jsonl captures prompts only, not responses; commit_log.jsonl not tracking all history. **[2026-03-08 00:30]** `claude_cli` — Balance saved but doesn't persist on refresh; admin sees total balance, users see own; all calculations should update on refresh. **[2026-03-07 23:54]** `claude_cli` — Manual balance setup via usage page; remove row deletion (x) not working; mark unsaved changes in billing UI. **[2026-03-07 21:15]** `claude_cli` — Billing tracker: capture usage from OpenAI/Claude APIs; manual balance entry as fallback (APIs unavailable for personal accounts); track cost per provider/user/date. **[2026-03-07 14:45]** `claude_cli` — UI: add role/plan display; close login/register forms; show refresh symbol for balance updates; persist user status on UI reload.
+**[2026-03-07 13:42]** `claude_cli` — Restructured documentation: consolidated CLAUDE.md (system-copied) and README.md (system-updated) instead of maintaining separate QUICKSTART.md, reducing documentation drift.
+**[2026-03-07 14:33]** `claude_cli` — Added user role system (admin, paid, free) with dev_mode toggle for testing without login; backend address conflict and empty UI screen issues fixed.
+**[2026-03-07 18:04]** `claude_cli` — Implemented manual balance entry for API keys (avoiding rate-limited balance endpoints); admin dashboard shows total balance/usage across all users; users see personal balance only.
+**[2026-03-07 23:35]** `claude_cli` — Confirmed Claude API only works for team accounts (not personal); OpenAI usage API returns zero; decided to support manual balance updates via UI instead of auto-fetch.
+**[2026-03-08 01:18]** `claude_cli` — Identified core architectural priority: shared memory between claude cli, aicli, and cursor via unified history.jsonl + commit_log.jsonl for LLM cross-session context.
+**[2026-03-08 03:14]** `claude_cli` — Proposed GraphQL + node graph UI for workflows (algo→backtest→qa→summary across different LLM models) + pgvector semantic search with relational tagging for entity/relationship management in PostgreSQL.

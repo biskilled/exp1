@@ -11,7 +11,6 @@ import { renderPrompts } from './views/prompts.js';
 import { renderCode } from './views/code.js';
 import { renderWorkflow } from './views/workflow.js';
 import { renderGraphWorkflow } from './views/graph_workflow.js';
-import { renderEntities } from './views/entities.js';
 import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
 import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';

@@ -164,35 +164,6 @@ class _Database:
         CREATE INDEX IF NOT EXISTS idx_emb_project ON embeddings(project, source_type);
         """
 
-        _DDL_ENTITIES = """
-        -- Project Entities (features, tasks, bugs)
-        CREATE TABLE IF NOT EXISTS features (
-            id VARCHAR(36) PRIMARY KEY, project VARCHAR(255) NOT NULL,
-            title VARCHAR(500) NOT NULL, description TEXT NOT NULL DEFAULT '',
-            status VARCHAR(20) NOT NULL DEFAULT 'proposed',
-            priority VARCHAR(10) NOT NULL DEFAULT 'medium',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS tasks (
-            id VARCHAR(36) PRIMARY KEY, project VARCHAR(255) NOT NULL,
-            feature_id VARCHAR(36) REFERENCES features(id) ON DELETE SET NULL,
-            title VARCHAR(500) NOT NULL, description TEXT NOT NULL DEFAULT '',
-            status VARCHAR(20) NOT NULL DEFAULT 'open',
-            priority VARCHAR(10) NOT NULL DEFAULT 'medium',
-            assignee VARCHAR(255),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS bugs (
-            id VARCHAR(36) PRIMARY KEY, project VARCHAR(255) NOT NULL,
-            task_id VARCHAR(36) REFERENCES tasks(id) ON DELETE SET NULL,
-            title VARCHAR(500) NOT NULL, description TEXT NOT NULL DEFAULT '',
-            severity VARCHAR(20) NOT NULL DEFAULT 'medium',
-            status VARCHAR(20) NOT NULL DEFAULT 'open',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        """
 
         ddl = """
         -- Users table (full schema including monetization fields)
@@ -260,7 +231,6 @@ class _Database:
         for label, sql in [
             ("Graph workflow", _DDL_GRAPH),
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
-            ("Entity", _DDL_ENTITIES),
         ]:
             try:
                 with conn.cursor() as cur:

@@ -192,22 +192,6 @@ api.search = {
   ingest:   (project) => _get(`/search/ingest?project=${encodeURIComponent(project || '')}`),
 };
 
-// ── Entities API ──────────────────────────────────────────────────────────────
-
-api.entities = {
-  listFeatures:   (project)       => _get(`/entities/features?project=${encodeURIComponent(project || '')}`),
-  createFeature:  (body)          => _post('/entities/features', body),
-  updateFeature:  (id, body)      => _patch(`/entities/features/${encodeURIComponent(id)}`, body),
-  deleteFeature:  (id)            => _del(`/entities/features/${encodeURIComponent(id)}`),
-  listTasks:      (project)       => _get(`/entities/tasks?project=${encodeURIComponent(project || '')}`),
-  createTask:     (body)          => _post('/entities/tasks', body),
-  updateTask:     (id, body)      => _patch(`/entities/tasks/${encodeURIComponent(id)}`, body),
-  deleteTask:     (id)            => _del(`/entities/tasks/${encodeURIComponent(id)}`),
-  listBugs:       (project)       => _get(`/entities/bugs?project=${encodeURIComponent(project || '')}`),
-  createBug:      (body)          => _post('/entities/bugs', body),
-  updateBug:      (id, body)      => _patch(`/entities/bugs/${encodeURIComponent(id)}`, body),
-  deleteBug:      (id)            => _del(`/entities/bugs/${encodeURIComponent(id)}`),
-};
 
 // ── Recent projects (localStorage) ───────────────────────────────────────────
 

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 05:06 UTC — do not edit manually.
+> Auto-generated 2026-03-08 05:07 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 17
-- **Last active**: 2026-03-08T05:06:01Z
+- **Sessions**: 18
+- **Last active**: 2026-03-08T05:06:24Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -25,12 +25,12 @@
 
 ## In Progress
 
-- Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl
-- Balance persistence on refresh — manual balance entry saves but doesn't persist on UI refresh; admin sees total, users see own balance
-- PostgreSQL usage_logs population — table created but entries not populating; ensure all providers log usage and refresh UI displays totals
-- Consolidate workflow/entity management — 'flows' tab created but 'workflow' tab exists; clarify distinction; build node graph UI instead of separate tabs
-- Memory system optimization — commit_log.jsonl not capturing all errors/logs from claude cli, aicli, cursor; ensure unified history across all sources
-- Shared memory architecture for LLM context — define how /memory command reads/compresses history files; establish memory digest strategy for project understanding
+- Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl with errors/logs
+- Balance persistence on UI refresh — manual balance entry saves but doesn't persist; admin sees total across all users, users see own balance
+- PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals
+- Consolidate workflow/entity management — 'flows' tab created but 'workflow' tab exists; clarify distinction and build unified node graph UI instead of separate tabs
+- Memory system optimization for LLM understanding — define /memory command strategy to read/compress history files; establish memory digest for cross-session project comprehension
+- Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context
 
 ## Key Decisions
 
