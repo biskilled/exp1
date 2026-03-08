@@ -246,34 +246,37 @@ class _Database:
         CREATE INDEX IF NOT EXISTS idx_tx_created_at ON transactions (created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_tx_type       ON transactions (type);
         """
+        # Core tables — always required; commit first so other blocks don't roll this back
         with conn.cursor() as cur:
             cur.execute(ddl)
-            # Graph workflows DDL
+        conn.commit()
+
+        # Each optional block uses its own cursor + commit so a failure in one
+        # does NOT roll back other blocks (psycopg2 shares one transaction by default).
+        for label, sql in [
+            ("Graph workflow", _DDL_GRAPH),
+            ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
+            ("Entity", _DDL_ENTITIES),
+        ]:
             try:
-                cur.execute(_DDL_GRAPH)
+                with conn.cursor() as cur:
+                    cur.execute(sql)
+                conn.commit()
+                log.info(f"✅ {label} tables ready")
             except Exception as e:
-                log.warning(f"Graph DDL skipped: {e}")
                 conn.rollback()
-            # Embeddings DDL (requires pgvector extension)
-            try:
-                cur.execute(_DDL_EMBEDDINGS)
-            except Exception as e:
-                log.warning(f"Embeddings DDL skipped (pgvector missing?): {e}")
-                conn.rollback()
-            # ivfflat index requires rows to exist first — create separately, ignore if fails
-            try:
+                log.warning(f"{label} DDL skipped: {e}")
+
+        # ivfflat index requires rows to exist first — best-effort, ignore if fails
+        try:
+            with conn.cursor() as cur:
                 cur.execute(
                     "CREATE INDEX IF NOT EXISTS idx_emb_vec ON embeddings "
                     "USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);"
                 )
-            except Exception:
-                conn.rollback()
-            # Entities DDL
-            try:
-                cur.execute(_DDL_ENTITIES)
-            except Exception as e:
-                log.warning(f"Entities DDL skipped: {e}")
-                conn.rollback()
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
 
 # Singleton used everywhere

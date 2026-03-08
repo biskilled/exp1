@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 04:17 UTC — do not edit manually.
+> Auto-generated 2026-03-08 04:30 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 14
-- **Last active**: 2026-03-08T04:12:18Z
+- **Sessions**: 15
+- **Last active**: 2026-03-08T04:22:43Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -16,23 +16,38 @@
 
 - **cli**: Python 3.12 + prompt_toolkit + rich
 - **backend**: FastAPI + python-jose + bcrypt
-- **frontend**: Vanilla JS + Electron (no framework)
-- **storage**: JSONL / JSON / CSV — no databases
+- **frontend**: Vanilla JS + Electron (xterm.js + Monaco editor)
+- **storage**: JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV
+- **database**: PostgreSQL (user_usage, billing logs); pgvector planned
+- **authentication**: JWT (python-jose) + bcrypt
+- **planned**: GraphQL, node graph, pgvector semantic search
 
 ## In Progress
 
-- History view showing all sources (UI chat + CLI + Claude Code hooks)
-- project_state.json + dev_runtime_state.json auto-maintenance
-- Memory auto-summarisation at token limit
+- Commit hooks integration — ensure all claude cli, aicli, cursor changes auto-commit to git
+- Billing/usage tracking UI — balance display (top-right), per-API-key balance in admin panel, refresh button
+- History tracking completeness — verify all prompts + responses captured in history.jsonl
+- Memory/context optimization — LLM reads commit_log.jsonl, project.md, history files to understand project state
+- PostgreSQL + pgvector integration — user_usage table, semantic search for project entities
+- GraphQL node graph for workflows — entity relationships, task/feature/bug metadata management
 
 ## Key Decisions
 
-- No ChromaDB / SQLite — flat files only
-- Electron (not Tauri) with xterm.js terminal + Monaco editor
-- Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct (not passlib)
+- No ChromaDB / SQLite — flat files only (JSONL / JSON / CSV)
+- Electron UI (not Tauri) with xterm.js terminal + Monaco editor
+- Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct
 - Engine/workspace separation: aicli/ = code, workspace/ = per-project content
 - All LLM providers independent — CLI providers/ ≠ ui/backend/core/llm_clients.py
 - Client sends own API keys in request headers — server never stores keys
+- User roles: admin, paid, free tier with dev_mode toggle for testing
+- Balance tracking: manual setup via UI (no auto-fetch due to API limitations)
+- All history tracked to history.jsonl + commit_log.jsonl for LLM memory sharing
+- PostgreSQL for user_usage / billing logs; pgvector planned for semantic search
+- Hooks auto-commit on claude cli / cursor; aicli tracks own history
+- Node graph / GraphQL planned for entity relationships and workflow management
+- dev_runtime_state.json + project_state.json auto-maintenance for LLM context
+- Memory auto-summarisation at token limit; /memory command uploads all relevant files
+- Shared memory architecture: claude cli, aicli, cursor all read/write unified history
 
 ---
 
@@ -120,11 +135,14 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 | `qa.md` | Test design, edge cases, regression | DeepSeek / Claude |
 
 
-*...220 more lines in PROJECT.md*
+*...229 more lines in PROJECT.md*
 
 ---
 
 ## Recent Development History
+
+**[2026-03-08 04:27]** `claude_cli/claude`  
+→ I dont see any new table created in my postgresql . also I do see that you creaed new tab - flows, but there is already 
 
 **[2026-03-08 04:13]** `claude_cli/claude`  
 → I would like to understand how the new update imporve your way to understand all code project, what are you doing in ord
@@ -167,6 +185,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 00:30]** `claude_cli/claude`  
 → It is manage to save balance, but I dont see that when I am rephresh (top right corenr). also on users tab - I dont see 
-
-**[2026-03-08 00:11]** `claude_cli/claude`  
-→ Usage tab - when I try to update - I do reciave an error - "Not found". billing tab - when I try to remove a row in the 

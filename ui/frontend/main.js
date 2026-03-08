@@ -25,9 +25,7 @@ const PROJECT_TABS = [
   { id: 'chat',     icon: '◉',  label: 'Chat'     },
   { id: 'prompts',  icon: '≡',  label: 'Prompts'  },
   { id: 'code',     icon: '</>',label: 'Code'     },
-  { id: 'workflow', icon: '⟳',  label: 'Workflow' },
-  { id: 'graph',    icon: '◈',  label: 'Flows'    },
-  { id: 'entities', icon: '☰',  label: 'Entities' },
+  { id: 'workflow', icon: '◈',  label: 'Workflow' },
   { id: 'history',  icon: '⏱',  label: 'History'  },
   { id: 'settings', icon: '⚙',  label: 'Settings' },
 ];
@@ -413,9 +411,8 @@ export function navigateTo(viewId, opts = {}) {
     case 'chat':     renderChat(view);                        break;
     case 'prompts':  renderPrompts(view, proj?.name);         break;
     case 'code':     renderCode(view, proj?.name, proj);      break;
-    case 'workflow': renderWorkflow(view);                    break;
-    case 'graph':    renderGraphWorkflow(view);               break;
-    case 'entities': renderEntities(view);                    break;
+    case 'workflow':      renderGraphWorkflow(view);           break;
+    case 'yaml-workflow': renderWorkflow(view);               break;
     case 'history':  renderHistory(view);                       break;
     case 'settings': renderSettings(view);                    break;
     case 'admin':    _renderAdminView(view);                  break;

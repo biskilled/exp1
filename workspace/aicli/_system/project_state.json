@@ -6,16 +6,28 @@
   "tech_stack": {
     "cli": "Python 3.12 + prompt_toolkit + rich",
     "backend": "FastAPI + python-jose + bcrypt",
-    "frontend": "Vanilla JS + Electron (no framework)",
-    "storage": "JSONL / JSON / CSV — no databases"
+    "frontend": "Vanilla JS + Electron (xterm.js + Monaco editor)",
+    "storage": "JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV",
+    "database": "PostgreSQL (user_usage, billing logs); pgvector planned",
+    "authentication": "JWT (python-jose) + bcrypt",
+    "planned": "GraphQL, node graph, pgvector semantic search"
   },
   "key_decisions": [
-    "No ChromaDB / SQLite — flat files only",
-    "Electron (not Tauri) with xterm.js terminal + Monaco editor",
-    "Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct (not passlib)",
+    "No ChromaDB / SQLite — flat files only (JSONL / JSON / CSV)",
+    "Electron UI (not Tauri) with xterm.js terminal + Monaco editor",
+    "Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct",
     "Engine/workspace separation: aicli/ = code, workspace/ = per-project content",
     "All LLM providers independent — CLI providers/ ≠ ui/backend/core/llm_clients.py",
-    "Client sends own API keys in request headers — server never stores keys"
+    "Client sends own API keys in request headers — server never stores keys",
+    "User roles: admin, paid, free tier with dev_mode toggle for testing",
+    "Balance tracking: manual setup via UI (no auto-fetch due to API limitations)",
+    "All history tracked to history.jsonl + commit_log.jsonl for LLM memory sharing",
+    "PostgreSQL for user_usage / billing logs; pgvector planned for semantic search",
+    "Hooks auto-commit on claude cli / cursor; aicli tracks own history",
+    "Node graph / GraphQL planned for entity relationships and workflow management",
+    "dev_runtime_state.json + project_state.json auto-maintenance for LLM context",
+    "Memory auto-summarisation at token limit; /memory command uploads all relevant files",
+    "Shared memory architecture: claude cli, aicli, cursor all read/write unified history"
   ],
   "active_workflows": [
     "update_docs",
@@ -33,9 +45,12 @@
     "Claude Code UserPromptSubmit hook → prompt_log.jsonl"
   ],
   "in_progress": [
-    "History view showing all sources (UI chat + CLI + Claude Code hooks)",
-    "project_state.json + dev_runtime_state.json auto-maintenance",
-    "Memory auto-summarisation at token limit"
+    "Commit hooks integration — ensure all claude cli, aicli, cursor changes auto-commit to git",
+    "Billing/usage tracking UI — balance display (top-right), per-API-key balance in admin panel, refresh button",
+    "History tracking completeness — verify all prompts + responses captured in history.jsonl",
+    "Memory/context optimization — LLM reads commit_log.jsonl, project.md, history files to understand project state",
+    "PostgreSQL + pgvector integration — user_usage table, semantic search for project entities",
+    "GraphQL node graph for workflows — entity relationships, task/feature/bug metadata management"
   ],
   "deployment": {
     "local": "uvicorn + npx vite",

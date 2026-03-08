@@ -298,3 +298,12 @@ textarea.addEventListener('input', () => {
   → Proposal: yes — WorkflowRunner appends to history.jsonl with `source: workflow`
 - Should the Electron app ship with `python3.12` bundled, or require system install?
   → Current: requires system python3.12. Bundling adds ~50MB but removes user friction.
+
+## Recent Work
+
+- Commit hooks integration — ensure all claude cli, aicli, cursor changes auto-commit to git
+- Billing/usage tracking UI — balance display (top-right), per-API-key balance in admin panel, refresh button
+- History tracking completeness — verify all prompts + responses captured in history.jsonl
+- Memory/context optimization — LLM reads commit_log.jsonl, project.md, history files to understand project state
+- PostgreSQL + pgvector integration — user_usage table, semantic search for project entities
+- GraphQL node graph for workflows — entity relationships, task/feature/bug metadata management

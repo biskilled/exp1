@@ -1,6 +1,6 @@
 [PROJECT CONTEXT: aicli]
-AI-powered development CLI with multi-provider support
-Stack: cli=Python 3.12 + prompt_toolkit + rich, backend=FastAPI + python-jose + bcrypt, frontend=Vanilla JS + Electron (no framework), storage=JSONL / JSON / CSV — no databases
-In progress: History view showing all sources (UI chat + CLI + Claude Code hooks), project_state.json + dev_runtime_state.json auto-maintenance, Memory auto-summarisation at token limit
-Decisions: No ChromaDB / SQLite — flat files only; Electron (not Tauri) with xterm.js terminal + Monaco editor; Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct (not passlib)
-Last work (2026-03-08): I do not see that error in the commit_log.jsonl , can you make sure all logs are at this files (also errros). also this file should be updated from al
+**aicli** is a shared AI memory platform enabling multiple LLMs (Claude, aicli CLI, Cursor) to collaboratively develop projects by reading/writing unified history, commit logs, and metadata. Currently building: PostgreSQL billing tracker, auto-commit hooks across all editors, pgvector semantic search, and a GraphQL node graph for entity relationships and multi-LLM workflows.
+Stack: cli=Python 3.12 + prompt_toolkit + rich, backend=FastAPI + python-jose + bcrypt, frontend=Vanilla JS + Electron (xterm.js + Monaco editor), storage=JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV, database=PostgreSQL (user_usage, billing logs); pgvector planned
+In progress: Commit hooks integration — ensure all claude cli, aicli, cursor changes auto-commit to git, Billing/usage tracking UI — balance display (top-right), per-API-key balance in admin panel, refresh button, History tracking completeness — verify all prompts + responses captured in history.jsonl
+Decisions: No ChromaDB / SQLite — flat files only (JSONL / JSON / CSV); Electron UI (not Tauri) with xterm.js terminal + Monaco editor; Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct
+Last work (2026-03-08): I would like to understand how the new update imporve your way to understand all code project, what are you doing in order to reciave all memory and h

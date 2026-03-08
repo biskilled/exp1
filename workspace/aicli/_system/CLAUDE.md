@@ -26,12 +26,21 @@ You are a senior Python software architect with deep expertise in:
 
 ## Key Architectural Decisions
 
-- No ChromaDB / SQLite — flat files only
-- Electron (not Tauri) with xterm.js terminal + Monaco editor
-- Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct (not passlib)
+- No ChromaDB / SQLite — flat files only (JSONL / JSON / CSV)
+- Electron UI (not Tauri) with xterm.js terminal + Monaco editor
+- Auth: REQUIRE_AUTH toggle; JWT via python-jose; bcrypt direct
 - Engine/workspace separation: aicli/ = code, workspace/ = per-project content
 - All LLM providers independent — CLI providers/ ≠ ui/backend/core/llm_clients.py
 - Client sends own API keys in request headers — server never stores keys
+- User roles: admin, paid, free tier with dev_mode toggle for testing
+- Balance tracking: manual setup via UI (no auto-fetch due to API limitations)
+- All history tracked to history.jsonl + commit_log.jsonl for LLM memory sharing
+- PostgreSQL for user_usage / billing logs; pgvector planned for semantic search
+- Hooks auto-commit on claude cli / cursor; aicli tracks own history
+- Node graph / GraphQL planned for entity relationships and workflow management
+- dev_runtime_state.json + project_state.json auto-maintenance for LLM context
+- Memory auto-summarisation at token limit; /memory command uploads all relevant files
+- Shared memory architecture: claude cli, aicli, cursor all read/write unified history
 
 ---
 
@@ -99,15 +108,15 @@ Layer 5 — Global Knowledge
 ### How `/memory` syncs layers 3–5 to every LLM tool:
 
 
-*See PROJECT.md for full documentation (300 lines total)*
+*See PROJECT.md for full documentation (309 lines total)*
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-08] `claude_cli`: do I need the dev_runtime_state.json ? also - now (assuming all history wokrs properly) - how can yo
 - [2026-03-08] `claude_cli`: I am thinking to add graphql supprt (node graph ) that user can manaege entities and relatioships. a
 - [2026-03-08] `claude_cli`: I am using postgresql already and can extend that to use pgvector for semantic embedding. node grapg
 - [2026-03-08] `claude_cli`: I do not see that error in the commit_log.jsonl , can you make sure all logs are at this files (also
 - [2026-03-08] `claude_cli`: I would like to understand how the new update imporve your way to understand all code project, what 
+- [2026-03-08] `claude_cli`: I dont see any new table created in my postgresql . also I do see that you creaed new tab - flows, b
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
