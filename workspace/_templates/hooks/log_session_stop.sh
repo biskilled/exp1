@@ -157,4 +157,22 @@ state['source']           = 'claude_cli'
 runtime_file.write_text(json.dumps(state, indent=2))
 " "$RUNTIME_FILE" "$SESSION" 2>/dev/null
 
+# ── Auto-regenerate MEMORY.md so next session starts with fresh context ───────
+# Call the backend /memory endpoint if it's running.
+# This means Claude (and any LLM) always reads up-to-date history at next startup.
+BACKEND_URL=$(python3 -c "
+import yaml, sys, os
+config = os.path.join(sys.argv[1], 'aicli.yaml')
+try:
+    d = yaml.safe_load(open(config)) or {}
+    print(d.get('backend_url', 'http://localhost:8000').rstrip('/'))
+except:
+    print('http://localhost:8000')
+" "$WORK_DIR" 2>/dev/null || echo "http://localhost:8000")
+
+curl -sf --connect-timeout 2 --max-time 15 \
+    -X POST "${BACKEND_URL}/projects/${ACTIVE_PROJECT}/memory" \
+    -H "Content-Type: application/json" \
+    -o /dev/null 2>/dev/null &   # run in background, don't block
+
 exit 0
