@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 04:03 UTC — do not edit manually.
+> Auto-generated 2026-03-08 04:17 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 13
-- **Last active**: 2026-03-08T04:03:07Z
+- **Sessions**: 14
+- **Last active**: 2026-03-08T04:12:18Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -126,6 +126,12 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 04:13]** `claude_cli/claude`  
+→ I would like to understand how the new update imporve your way to understand all code project, what are you doing in ord
+
+**[2026-03-08 04:05]** `claude_cli/claude`  
+→ I do not see that error in the commit_log.jsonl , can you make sure all logs are at this files (also errros). also this 
+
 **[2026-03-08 03:27]** `claude_cli/claude`  
 → I am using postgresql already and can extend that to use pgvector for semantic embedding. node grapg will be used to bui
 
@@ -164,9 +170,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 00:11]** `claude_cli/claude`  
 → Usage tab - when I try to update - I do reciave an error - "Not found". billing tab - when I try to remove a row in the 
-
-**[2026-03-07 23:54]** `claude_cli/claude`  
-→ I dont see the balance endpoint at the ui. can you instead of adding a new tab, manage that at usage page. Ui update - m
-
-**[2026-03-07 23:35]** `claude_cli/claude`  
-→ apparntly both api calls not working. claude api works only for team or organisation account (I am using personal accoun

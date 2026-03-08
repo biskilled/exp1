@@ -4,6 +4,7 @@ Projects router — list/create/switch projects from templates.
 
 import asyncio
 import json
+import re
 import shutil
 import yaml
 from datetime import datetime
@@ -515,6 +516,129 @@ async def update_project_summary(project_name: str, body: dict = Body(...)):
     return {"saved": True}
 
 
+# ── Memory generation helpers ─────────────────────────────────────────────────
+
+def _save_project_state(sys_dir: Path, state_data: dict) -> None:
+    """Persist updated project_state.json to _system/ directory."""
+    try:
+        state_path = sys_dir / "project_state.json"
+        state_path.write_text(json.dumps(state_data, indent=2, ensure_ascii=False))
+    except Exception:
+        pass
+
+
+def _update_project_md_section(proj_dir: Path, section_title: str, new_body: str) -> None:
+    """Update or append a '## {section_title}' section in PROJECT.md without touching other content."""
+    try:
+        proj_md_path = proj_dir / "PROJECT.md"
+        if not proj_md_path.exists():
+            return
+        content = proj_md_path.read_text()
+        marker = f"## {section_title}"
+        if marker in content:
+            before, rest = content.split(marker, 1)
+            next_h2 = re.search(r"\n## ", rest)
+            after = rest[next_h2.start():] if next_h2 else ""
+            content = before + marker + "\n\n" + new_body.rstrip() + "\n" + after
+        else:
+            content = content.rstrip() + "\n\n" + marker + "\n\n" + new_body.rstrip() + "\n"
+        proj_md_path.write_text(content)
+    except Exception:
+        pass
+
+
+async def _synthesize_with_llm(
+    project_name: str,
+    history: list[dict],
+    state_data: dict,
+    project_md: str,
+) -> dict | None:
+    """Use Claude Haiku to intelligently synthesize project history into structured memory.
+
+    Reads the last 40 history entries and produces a dict with:
+      key_decisions, in_progress, tech_stack, memory_digest, project_summary.
+    Returns None silently if the API key is missing or any error occurs — callers
+    fall back to mechanical string-slicing in that case.
+    """
+    try:
+        import anthropic
+        from core.api_keys import get_key
+
+        key = get_key("claude")
+        if not key:
+            return None
+
+        # Build history text (oldest first, last 40 entries with user_input)
+        history_lines: list[str] = []
+        for e in history[-40:]:
+            ts = (e.get("ts") or "")[:16].replace("T", " ")
+            src = e.get("source", "?")
+            q = (e.get("user_input") or "").strip()[:300].replace("\n", " ")
+            a = (e.get("output") or "").strip()[:400].replace("\n", " ")
+            history_lines.append(f"[{ts} | {src}]")
+            history_lines.append(f"Q: {q}")
+            if a:
+                history_lines.append(f"A: {a}")
+            history_lines.append("")
+        history_text = "\n".join(history_lines)
+
+        current_state = json.dumps({
+            "tech_stack": state_data.get("tech_stack", {}),
+            "key_decisions": state_data.get("key_decisions", []),
+            "in_progress": state_data.get("in_progress", []),
+        }, indent=2)
+        proj_intro = (project_md.split("\n## ")[0].strip()[:600] if project_md else "")
+
+        prompt = (
+            f'You are analyzing development history for project "{project_name}".\n\n'
+            f"Current structured state:\n{current_state}\n\n"
+            f"Project intro (from PROJECT.md):\n{proj_intro}\n\n"
+            f"Development history ({len(history)} sessions, oldest→newest):\n{history_text}\n\n"
+            "Return ONLY valid JSON (no markdown fences) with exactly these fields:\n"
+            "{\n"
+            '  "key_decisions": ["up to 15 stable architectural/technical decisions any LLM must know"],\n'
+            '  "in_progress": ["up to 6 items most recently worked on, based on last 5 sessions"],\n'
+            '  "tech_stack": {"component": "technology or version"},\n'
+            '  "memory_digest": "Markdown: synthesize the 10 most important recent work items. '
+            'Format each as: **[date]** `source` — description of what was done/decided.",\n'
+            '  "project_summary": "2-3 sentence description of what this project is and its current state."\n'
+            "}\n\n"
+            "Rules:\n"
+            "- key_decisions: permanent facts (tech choices, auth approach, architecture patterns)\n"
+            "- in_progress: what was MOST RECENTLY worked on (infer from last 5 sessions)\n"
+            "- tech_stack: merge existing + any new tech mentioned in history\n"
+            "- memory_digest: synthesize meaningfully, don't just copy. Focus on decisions + features.\n"
+            "- Return ONLY valid JSON, no explanation outside the JSON."
+        )
+
+        client = anthropic.AsyncAnthropic(api_key=key)
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        content = (response.content[0].text if response.content else "").strip()
+        # Strip markdown code fences if the model wrapped its output
+        if "```" in content:
+            for part in content.split("```"):
+                stripped = part.strip()
+                if stripped.startswith("json"):
+                    stripped = stripped[4:].strip()
+                if stripped.startswith("{"):
+                    content = stripped
+                    break
+
+        parsed: dict = json.loads(content)
+        required = {"key_decisions", "in_progress", "tech_stack", "memory_digest", "project_summary"}
+        if not required.issubset(parsed.keys()):
+            return None
+        return parsed
+
+    except Exception:
+        return None  # Caller falls back to mechanical approach
+
+
 @router.post("/{project_name}/memory")
 async def generate_memory(project_name: str):
     """Generate per-LLM memory files and copy to code_dir.
@@ -582,53 +706,75 @@ async def generate_memory(project_name: str):
 
     generated: list[str] = []
 
+    # ── LLM synthesis (optional — degrades to mechanical approach if API unavailable) ──
+    synthesis = await _synthesize_with_llm(project_name, recent, state_data, project_md)
+    if synthesis:
+        # Merge LLM-extracted structured data into state_data (LLM wins on new fields)
+        if synthesis.get("tech_stack"):
+            state_data.setdefault("tech_stack", {}).update(synthesis["tech_stack"])
+        if synthesis.get("key_decisions"):
+            state_data["key_decisions"] = synthesis["key_decisions"]
+        if synthesis.get("in_progress"):
+            state_data["in_progress"] = synthesis["in_progress"]
+        # Persist updated project_state.json so get_project_context() reads fresh data below
+        _save_project_state(sys_dir, state_data)
+        # Refresh PROJECT.md "Recent Work" section with LLM-extracted items
+        if synthesis.get("in_progress"):
+            recent_body = "\n".join(f"- {item}" for item in synthesis["in_progress"]) + "\n"
+            _update_project_md_section(proj_dir, "Recent Work", recent_body)
+
     # ── 1. MEMORY.md — distilled history for Claude CLI ───────────────────────
-    # This is the key file that gives any LLM session history + decisions.
     # Claude CLI reads CLAUDE.md at startup; CLAUDE.md references MEMORY.md.
     memory_lines = [
         f"# Project Memory — {project_name}",
-        f"_Generated: {ts} by aicli /memory command_\n",
-        "> This file is auto-generated. Reference it in CLAUDE.md so Claude reads it at session start.\n",
+        f"_Generated: {ts} by aicli /memory_\n",
+        "> Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.\n",
     ]
 
-    # Tech stack
+    if synthesis and synthesis.get("project_summary"):
+        memory_lines.append("## Project Summary\n")
+        memory_lines.append(synthesis["project_summary"])
+        memory_lines.append("")
+
     if state_data.get("tech_stack"):
         memory_lines.append("## Tech Stack\n")
         for k, v in state_data["tech_stack"].items():
             memory_lines.append(f"- **{k}**: {v}")
         memory_lines.append("")
 
-    # Key decisions
     if state_data.get("key_decisions"):
         memory_lines.append("## Key Decisions\n")
         for d in state_data["key_decisions"]:
             memory_lines.append(f"- {d}")
         memory_lines.append("")
 
-    # In-progress
     if state_data.get("in_progress"):
         memory_lines.append("## In Progress\n")
         for item in state_data["in_progress"]:
             memory_lines.append(f"- {item}")
         memory_lines.append("")
 
-    # Recent Q&A pairs (last 10 with both question and answer)
-    memory_lines.append("## Recent Work (last 10 exchanges)\n")
-    shown = 0
-    for e in reversed(recent):
-        if shown >= 10:
-            break
-        date = (e.get("ts") or "")[:16].replace("T", " ")
-        src = e.get("source", "")
-        prov = e.get("provider", "")
-        q = (e.get("user_input") or "").strip()[:200].replace("\n", " ")
-        a = (e.get("output") or "").strip()[:300].replace("\n", " ")
-        memory_lines.append(f"**[{date}]** `{src}/{prov}`")
-        memory_lines.append(f"Q: {q}")
-        if a:
-            memory_lines.append(f"A: {a}")
-        memory_lines.append("")
-        shown += 1
+    if synthesis and synthesis.get("memory_digest"):
+        # LLM-synthesized meaningful digest of recent work
+        memory_lines.append(synthesis["memory_digest"])
+    else:
+        # Fallback: mechanical Q&A truncation (no API key or synthesis failed)
+        memory_lines.append("## Recent Work (last 10 exchanges)\n")
+        shown = 0
+        for e in reversed(recent):
+            if shown >= 10:
+                break
+            date = (e.get("ts") or "")[:16].replace("T", " ")
+            src = e.get("source", "")
+            prov = e.get("provider", "")
+            q = (e.get("user_input") or "").strip()[:200].replace("\n", " ")
+            a = (e.get("output") or "").strip()[:300].replace("\n", " ")
+            memory_lines.append(f"**[{date}]** `{src}/{prov}`")
+            memory_lines.append(f"Q: {q}")
+            if a:
+                memory_lines.append(f"A: {a}")
+            memory_lines.append("")
+            shown += 1
 
     memory_md = "\n".join(memory_lines)
     (sys_dir / "claude" / "MEMORY.md").write_text(memory_md)
@@ -640,11 +786,15 @@ async def generate_memory(project_name: str):
         claude_md_content = ctx_result.get("claude_md", "")
         # Append MEMORY.md reference so Claude CLI reads it
         if claude_md_content and "MEMORY.md" not in claude_md_content:
+            digest_note = (
+                "LLM-synthesized project digest" if synthesis
+                else "last 10 development exchanges"
+            )
             claude_md_content += (
                 "\n\n---\n\n## Session Memory\n\n"
-                "Read `MEMORY.md` in this directory for recent work history, "
-                "key decisions, and in-progress items. It was generated by aicli `/memory` "
-                "and reflects the last 10 development exchanges.\n"
+                f"Read `MEMORY.md` in this directory for recent work history, "
+                f"key decisions, and in-progress items. It was generated by aicli `/memory` "
+                f"({digest_note}).\n"
             )
             # Re-write with the reference included
             (sys_dir / "claude" / "CLAUDE.md").write_text(claude_md_content)
@@ -695,7 +845,9 @@ async def generate_memory(project_name: str):
     aicli_lines = [
         f"[PROJECT CONTEXT: {project_name}]",
     ]
-    if cfg.get("description"):
+    if synthesis and synthesis.get("project_summary"):
+        aicli_lines.append(synthesis["project_summary"])
+    elif cfg.get("description"):
         aicli_lines.append(cfg["description"])
 
     if state_data.get("tech_stack"):
@@ -775,7 +927,12 @@ async def generate_memory(project_name: str):
     except Exception:
         pass
 
-    return {"generated": generated, "copied_to": copied_to, "skipped_copy": skipped_copy}
+    return {
+        "generated": generated,
+        "copied_to": copied_to,
+        "skipped_copy": skipped_copy,
+        "synthesized": synthesis is not None,
+    }
 
 
 @router.get("/{project_name}")

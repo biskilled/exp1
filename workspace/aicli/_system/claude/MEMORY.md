@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-08 04:03 UTC by aicli /memory command_
+_Generated: 2026-03-08 04:12 UTC by aicli /memory command_
 
 > This file is auto-generated. Reference it in CLAUDE.md so Claude reads it at session start.
 
@@ -27,6 +27,9 @@ _Generated: 2026-03-08 04:03 UTC by aicli /memory command_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-08 04:05]** `claude_cli/claude`
+Q: I do not see that error in the commit_log.jsonl , can you make sure all logs are at this files (also errros). also this file should be updated from all places (clouade cli hooks, aicli commits, cursor
+
 **[2026-03-08 03:27]** `claude_cli/claude`
 Q: I am using postgresql already and can extend that to use pgvector for semantic embedding. node grapg will be used to build worklows / roles relatioship . for example - algo developer (deepseek) -> bac
 
@@ -53,6 +56,3 @@ Q: Lets start to fix that , as this is the major goal of this project - shared m
 
 **[2026-03-08 00:53]** `claude_cli/claude`
 Q: Would using vectordb and enabling you reading the data from vectordb will make that more easy for you (or other llm) to understand the project more ? I am using you, but can use also my aicli which mu
-
-**[2026-03-08 00:44]** `claude_cli/claude`
-Q: The main goal of this project is to be able for you and other llm to share memory. I have started to do that, and I do see that all session are written to .aicli/proivder_usage by the hooks. are you u
