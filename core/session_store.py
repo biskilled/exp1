@@ -1,5 +1,7 @@
 """
-SessionStore — persists provider conversation history and session handoff state.
+SessionStore — Layer 2 (Working Memory) of the 5-layer memory system.
+
+Persists provider conversation history and cross-LLM session handoff state.
 
 Why this matters:
   Without persistence, every new aicli session starts cold. With it:
@@ -9,8 +11,10 @@ Why this matters:
   - Any LLM picking up mid-project sees what was last worked on
 
 Files written:
-  .aicli/sessions/<provider>_messages.json  ← per-provider message history
-  .aicli/session_state.json                 ← "sticky note" for cross-LLM handoff
+  {cli_data_dir}/sessions/<provider>_messages.json  ← per-provider message history
+  {cli_data_dir}/session_state.json                 ← "sticky note" for cross-LLM handoff
+
+cli_data_dir defaults to ".aicli" and is configured in aicli.yaml.
 """
 
 import json
@@ -25,8 +29,8 @@ MAX_STORED_MESSAGES = 200
 class SessionStore:
     """Saves and loads provider message histories across sessions."""
 
-    def __init__(self, working_dir: Path):
-        self.dir = working_dir / ".aicli" / "sessions"
+    def __init__(self, working_dir: Path, cli_data_dir: str = ".aicli"):
+        self.dir = working_dir / cli_data_dir / "sessions"
         self.dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -84,14 +88,14 @@ class SessionStore:
 # session_state.json — the "sticky note" for cross-LLM handoff
 # ------------------------------------------------------------------
 
-def load_session_state(working_dir: Path) -> dict:
+def load_session_state(working_dir: Path, cli_data_dir: str = ".aicli") -> dict:
     """
     Load the last session's state. Returns {} if no previous session.
 
     Used to inject a [PREVIOUS SESSION] block into the first prompt of a
     new session so any provider immediately knows what was last worked on.
     """
-    path = working_dir / ".aicli" / "session_state.json"
+    path = working_dir / cli_data_dir / "session_state.json"
     if not path.exists():
         return {}
     try:
@@ -109,6 +113,7 @@ def save_session_state(
     last_input: str,
     last_output: str,
     session_count: int = 0,
+    cli_data_dir: str = ".aicli",
 ) -> None:
     """
     Update session_state.json after each turn.
@@ -127,7 +132,7 @@ def save_session_state(
         "last_output_preview": last_output[:400],
         "session_count": session_count,
     }
-    path = working_dir / ".aicli" / "session_state.json"
+    path = working_dir / cli_data_dir / "session_state.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
 

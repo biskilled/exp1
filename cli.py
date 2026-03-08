@@ -472,8 +472,14 @@ def main():
     config = load_config()
     initialize_project(config)
 
+    _cli_data_dir = config.get("cli_data_dir", ".aicli")
+
     logger = StructuredLogger(config)
-    conversation = ConversationState(max_history=config.get("max_history", 200))
+    conversation = ConversationState(
+        max_history=config.get("max_history", 200),
+        path=f"{_cli_data_dir}/current_session.json",
+        cli_data_dir=_cli_data_dir,
+    )
     hook_runner = HookRunner(config, logger=logger)
     git_supervisor = GitSupervisor(config, logger=logger, hook_runner=hook_runner)
 
@@ -487,8 +493,8 @@ def main():
 
     # Session persistence and handoff state
     working_dir = Path.cwd()
-    session_store = SessionStore(working_dir)
-    session_state = load_session_state(working_dir)
+    session_store = SessionStore(working_dir, cli_data_dir=_cli_data_dir)
+    session_state = load_session_state(working_dir, cli_data_dir=_cli_data_dir)
     memory_summary = memory.load_summary()
 
     # Collect startup notices quietly — display them AFTER the panel
@@ -1235,9 +1241,9 @@ def main():
             save_session_state(
                 working_dir, "claude", active_project,
                 conversation.get_feature() or "", conversation.get_tag() or "",
-                user_input, output, _session_turn_count,
+                user_input, output, _session_turn_count, cli_data_dir=_cli_data_dir,
             )
-            session_state = load_session_state(working_dir)  # keep in sync
+            session_state = load_session_state(working_dir, cli_data_dir=_cli_data_dir)  # keep in sync
 
         # ==============================================================
         # OPENAI MODE (legacy role-based)
@@ -1298,7 +1304,7 @@ def main():
             save_session_state(
                 working_dir, "openai", active_project,
                 conversation.get_feature() or "", conversation.get_tag() or "",
-                user_input, output, _session_turn_count,
+                user_input, output, _session_turn_count, cli_data_dir=_cli_data_dir,
             )
             session_state = load_session_state(working_dir)
 
@@ -1379,7 +1385,7 @@ def main():
             save_session_state(
                 working_dir, current_mode, active_project,
                 conversation.get_feature() or "", conversation.get_tag() or "",
-                user_input, output, _session_turn_count,
+                user_input, output, _session_turn_count, cli_data_dir=_cli_data_dir,
             )
             session_state = load_session_state(working_dir)
 

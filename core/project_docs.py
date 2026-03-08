@@ -1,9 +1,20 @@
 """
 core/project_docs.py
 
-Manages PROJECT.md in the working folder — a living project knowledge document
-that is injected into CLAUDE.md so both the native claude CLI and aicli
-always have full project context in the system prompt.
+DEPRECATED — use the backend API instead:
+  GET  /projects/{name}/summary  — read PROJECT.md
+  PUT  /projects/{name}/summary  — update PROJECT.md
+  POST /projects/{name}/memory   — regenerate all LLM context files
+
+This module remains for legacy CLI /docs commands but is no longer the
+primary way to manage project documentation. The workspace/{project}/PROJECT.md
+file is now managed via the UI backend (routers/projects.py).
+
+----
+
+Original purpose: Manages PROJECT.md in the working folder — a living project
+knowledge document injected into CLAUDE.md so both the native claude CLI and
+aicli always have full project context in the system prompt.
 
 Structure of PROJECT.md:
   # PROJECT

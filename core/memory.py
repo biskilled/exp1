@@ -1,7 +1,7 @@
 """
-Lightweight memory store — replaces ChromaDB + sentence-transformers.
+Lightweight memory store — Layer 4 (Historical Knowledge) of the 5-layer memory system.
 
-Stores entries as JSONL (one JSON object per line) in .aicli/memory.jsonl.
+Stores entries as JSONL (one JSON object per line) in {cli_data_dir}/memory.jsonl.
 Supports retrieval by:
   - tag (exact)
   - feature (exact)
@@ -12,6 +12,9 @@ No ML dependencies, no model downloads, instant startup.
 For a personal dev tool this covers all practical memory needs.
 The "semantic" gap is covered by CLAUDE.md (project context) and the
 self.messages list (full in-session conversation history).
+
+cli_data_dir is read from config['cli_data_dir'] (default: '.aicli').
+Set in aicli.yaml to change the storage location.
 """
 
 import json
@@ -26,7 +29,8 @@ class MemoryStore:
         self.enabled = config.get("memory_enabled", True)
         self.top_k = config.get("memory_top_k", 5)
         self.logger = logger
-        self.path = Path(".aicli/memory.jsonl")
+        _data_dir = config.get("cli_data_dir", ".aicli")
+        self.path = Path(_data_dir) / "memory.jsonl"
 
         if not self.enabled:
             return

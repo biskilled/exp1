@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 class ConversationState:
 
-    def __init__(self, max_history: int = 200, path: str = ".aicli/current_session.json"):
+    def __init__(self, max_history: int = 200, path: str = ".aicli/current_session.json", cli_data_dir: str = ".aicli"):
         self.max_history = max_history
         self.path = path
 

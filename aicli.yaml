@@ -11,6 +11,10 @@ backend_url: http://localhost:8000
 workspace_dir: /Users/user/Documents/gdrive_cellqlick/2026/aicli/workspace
 active_project: aicli    # current project workspace (workspace/aicli/)
 
+# Directory for CLI runtime data (sessions, memory, logs) — relative to CWD
+# Change this if you want to store CLI data somewhere other than .aicli/
+cli_data_dir: ".aicli"
+
 max_history: 200
 large_change_file_threshold: 20
 large_change_line_threshold: 1000
