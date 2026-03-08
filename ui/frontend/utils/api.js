@@ -136,10 +136,12 @@ export const api = {
   adminGetProviderUsageHistory: (provider)   => _get(`/admin/provider-usage-history${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`),
   adminDeleteProviderUsageRecord: (provider, fetched_at) =>
     fetch(_base() + `/admin/provider-usage-history?provider=${encodeURIComponent(provider)}&fetched_at=${encodeURIComponent(fetched_at)}`,
-      { method: 'DELETE', headers: _headers() }).then(r => r.json()),
+      { method: 'DELETE', headers: _headers() })
+      .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
   adminClearProviderUsageHistory: (provider) =>
     fetch(_base() + `/admin/provider-usage-history?provider=${encodeURIComponent(provider)}`,
-      { method: 'DELETE', headers: _headers() }).then(r => r.json()),
+      { method: 'DELETE', headers: _headers() })
+      .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
 
   // Admin — manual provider balances
   adminGetProviderBalances:  ()     => _get('/admin/provider-balances'),

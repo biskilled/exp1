@@ -103,11 +103,11 @@ ui/
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-07] `claude_cli`: There is an error loading the usage tab. also I do not see any balance (still on 0, but I do have ba
-- [2026-03-07] `claude_cli`: I do see the table usage_logs in my postgresql, but it is not loaded properly into the UI. also tabl
 - [2026-03-07] `claude_cli`: I would like to create better Billing Tracker using the following steps  - Capture Usage Returned by
 - [2026-03-07] `claude_cli`: I have tried to fatch usage data from both api - claude and open ai, from both I got 400 and 404 err
 - [2026-03-07] `claude_cli`: apparntly both api calls not working. claude api works only for team or organisation account (I am u
+- [2026-03-07] `claude_cli`: I dont see the balance endpoint at the ui. can you instead of adding a new tab, manage that at usage
+- [2026-03-08] `claude_cli`: Usage tab - when I try to update - I do reciave an error - "Not found". billing tab - when I try to 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
