@@ -1970,6 +1970,15 @@ body.sidebar-collapsed .sidebar-user-actions { opacity: 0; pointer-events: none;
   max-height: 100px;
   overflow-y: auto;
 }
+.gw-log-badge-waiting_approval { background: rgba(245,158,11,0.15); color: #b45309; }
+
+/* Sidebar helpers */
+.gw-sidebar-loading { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.72rem; }
+.gw-sidebar-empty   { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.72rem; }
+.gw-sidebar-section { display: flex; flex-direction: column; }
+
+/* Template picker */
+.gw-template-option:hover { background: var(--surface2); border-color: var(--accent) !important; }
 
 /* ── Entities View ───────────────────────────────────────────────────────────── */
 .entities-view {

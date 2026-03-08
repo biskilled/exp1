@@ -69,6 +69,8 @@ class NodeCreate(BaseModel):
     model: str = ""
     output_schema: Optional[dict] = None
     inject_context: bool = True
+    require_approval: bool = False
+    approval_msg: str = ""
     position_x: float = 100
     position_y: float = 100
 
@@ -81,6 +83,8 @@ class NodeUpdate(BaseModel):
     model: Optional[str] = None
     output_schema: Optional[dict] = None
     inject_context: Optional[bool] = None
+    require_approval: Optional[bool] = None
+    approval_msg: Optional[str] = None
     position_x: Optional[float] = None
     position_y: Optional[float] = None
 
@@ -119,6 +123,8 @@ def _row_to_node(row) -> dict:
         "model": row[6], "output_schema": row[7], "inject_context": row[8],
         "position_x": row[9], "position_y": row[10],
         "created_at": row[11].isoformat() if row[11] else None,
+        "require_approval": row[12] if len(row) > 12 else False,
+        "approval_msg": row[13] if len(row) > 13 else "",
     }
 
 
@@ -241,7 +247,8 @@ async def get_workflow(workflow_id: str, user=Depends(get_optional_user)):
 
             cur.execute(
                 """SELECT id, workflow_id, name, role_file, role_prompt, provider, model,
-                          output_schema, inject_context, position_x, position_y, created_at
+                          output_schema, inject_context, position_x, position_y, created_at,
+                          require_approval, approval_msg
                    FROM graph_nodes WHERE workflow_id=%s ORDER BY created_at""",
                 (workflow_id,),
             )
@@ -308,15 +315,18 @@ async def create_node(
             cur.execute(
                 """INSERT INTO graph_nodes
                    (id, workflow_id, name, role_file, role_prompt, provider, model,
-                    output_schema, inject_context, position_x, position_y)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    output_schema, inject_context, require_approval, approval_msg,
+                    position_x, position_y)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    RETURNING id, workflow_id, name, role_file, role_prompt, provider, model,
-                             output_schema, inject_context, position_x, position_y, created_at""",
+                             output_schema, inject_context, position_x, position_y, created_at,
+                             require_approval, approval_msg""",
                 (
                     node_id, workflow_id, body.name, body.role_file, body.role_prompt,
                     body.provider, body.model,
                     json.dumps(body.output_schema) if body.output_schema else None,
-                    body.inject_context, body.position_x, body.position_y,
+                    body.inject_context, body.require_approval, body.approval_msg,
+                    body.position_x, body.position_y,
                 ),
             )
             row = cur.fetchone()
@@ -337,6 +347,8 @@ async def update_node(
         "name": body.name, "role_file": body.role_file, "role_prompt": body.role_prompt,
         "provider": body.provider, "model": body.model,
         "inject_context": body.inject_context,
+        "require_approval": body.require_approval,
+        "approval_msg": body.approval_msg,
         "position_x": body.position_x, "position_y": body.position_y,
     }
     for col, val in mapping.items():
@@ -483,6 +495,95 @@ async def start_run(
 
     asyncio.create_task(_run())
     return {"run_id": run_id, "status": "running", "workflow_id": workflow_id}
+
+
+class DecisionRequest(BaseModel):
+    approved: bool
+    next_node_id: Optional[str] = None  # override which node to run next
+    retry: bool = False                  # re-run the waiting node
+    reason: str = ""
+
+
+@router.post("/runs/{run_id}/decision")
+async def make_run_decision(
+    run_id: str,
+    body: DecisionRequest,
+    user=Depends(get_optional_user),
+):
+    """User approval decision for a paused run.
+
+    approved=True  → continue to next node(s) (or to next_node_id if specified)
+    retry=True     → re-run the waiting node
+    approved=False → stop the run
+    """
+    _require_db()
+    from core.graph_runner import resume_graph_workflow
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT workflow_id, project, context, total_cost_usd FROM graph_runs WHERE id=%s AND status='waiting_approval'",
+                (run_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(404, "Run not found or not in waiting_approval state")
+            workflow_id, project, ctx, total_cost = row[0], row[1], row[2] or {}, float(row[3])
+
+    waiting = ctx.get("_waiting", {})
+    waiting_node_id = waiting.get("node_id")
+    successors = waiting.get("successors", [])
+
+    if not body.approved and not body.retry:
+        # Stop the run
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE graph_runs SET status='stopped', finished_at=NOW() WHERE id=%s",
+                    (run_id,),
+                )
+        return {"status": "stopped", "run_id": run_id}
+
+    if body.retry and waiting_node_id:
+        # Re-run the waiting node: clear its result so runner re-executes it
+        ctx.pop("_waiting", None)
+        node_name = waiting.get("node_name", "")
+        ctx.pop(node_name, None)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE graph_runs SET status='running', context=%s WHERE id=%s",
+                    (json.dumps(ctx), run_id),
+                )
+        asyncio.create_task(resume_graph_workflow(run_id, [waiting_node_id], project))
+        return {"status": "resuming", "from_node": waiting_node_id, "run_id": run_id}
+
+    # Approved — determine next nodes
+    ctx.pop("_waiting", None)
+    if body.next_node_id:
+        next_nodes = [body.next_node_id]
+    else:
+        next_nodes = successors
+
+    if not next_nodes:
+        # No successors — run is done
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE graph_runs SET status='done', context=%s, finished_at=NOW() WHERE id=%s",
+                    (json.dumps(ctx), run_id),
+                )
+        return {"status": "done", "run_id": run_id}
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE graph_runs SET status='running', context=%s WHERE id=%s",
+                (json.dumps(ctx), run_id),
+            )
+
+    asyncio.create_task(resume_graph_workflow(run_id, next_nodes, project))
+    return {"status": "resuming", "next_nodes": next_nodes, "run_id": run_id}
 
 
 @router.get("/{workflow_id}/runs")

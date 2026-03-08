@@ -142,6 +142,10 @@ class _Database:
             iteration INT NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_gnr_run ON graph_node_results(run_id);
+
+        -- Migrations for approval workflow (idempotent)
+        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS require_approval BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS approval_msg TEXT NOT NULL DEFAULT '';
         """
 
         _DDL_EMBEDDINGS = """

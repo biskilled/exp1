@@ -181,6 +181,8 @@ api.graphWorkflows = {
   startRun:   (wfId, body)        => _post(`/graph-workflows/${encodeURIComponent(wfId)}/runs`, body),
   getRun:     (runId)             => _get(`/graph-workflows/runs/${encodeURIComponent(runId)}`),
   listRuns:   (wfId)              => _get(`/graph-workflows/${encodeURIComponent(wfId)}/runs`),
+  makeDecision: (runId, body) => _post(`/graph-workflows/runs/${runId}/decision`, body),
+  cancel: (runId) => _del(`/graph-workflows/runs/${runId}`),
 };
 
 // ── Search API ────────────────────────────────────────────────────────────────

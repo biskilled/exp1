@@ -301,9 +301,9 @@ textarea.addEventListener('input', () => {
 
 ## Recent Work
 
-- Commit hooks integration — ensure all claude cli, aicli, cursor changes auto-commit to git
-- Billing/usage tracking UI — balance display (top-right), per-API-key balance in admin panel, refresh button
-- History tracking completeness — verify all prompts + responses captured in history.jsonl
-- Memory/context optimization — LLM reads commit_log.jsonl, project.md, history files to understand project state
-- PostgreSQL + pgvector integration — user_usage table, semantic search for project entities
-- GraphQL node graph for workflows — entity relationships, task/feature/bug metadata management
+- Fix hooks integration — commits not working from claude cli; verify history.jsonl captures responses
+- Complete billing/balance tracking — manual balance entry working but not persisting on refresh; admin sees total, users see own balance
+- PostgreSQL table creation — usage_logs table exists but entries not populating; need to ensure all providers log usage
+- Consolidate workflow management — 'flows' tab created but 'workflow' tab already exists; clarify entity vs workflow distinction
+- Memory system optimization — commit_log.jsonl not capturing all errors/logs from all sources; ensure claude cli, aicli, cursor hooks all write unified history
+- Shared memory architecture — define how LLMs read/compress history files; establish memory digest strategy for /memory command

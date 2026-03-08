@@ -260,7 +260,7 @@ async def run_graph_workflow(
 
             cur.execute(
                 """SELECT id, name, role_file, role_prompt, provider, model,
-                          output_schema, inject_context
+                          output_schema, inject_context, require_approval, approval_msg
                    FROM graph_nodes WHERE workflow_id=%s""",
                 (workflow_id,),
             )
@@ -269,6 +269,8 @@ async def run_graph_workflow(
                     "id": r[0], "name": r[1], "role_file": r[2],
                     "role_prompt": r[3], "provider": r[4], "model": r[5],
                     "output_schema": r[6], "inject_context": r[7],
+                    "require_approval": r[8] if len(r) > 8 else False,
+                    "approval_msg": r[9] if len(r) > 9 else "",
                 }
 
             cur.execute(
@@ -335,10 +337,42 @@ async def run_graph_workflow(
                 continue
 
             node_name = result["node_name"]
-            # Store structured if available, else raw output
             ctx[node_name] = result["structured"] if result["structured"] else result["output"]
             total_cost += result.get("cost_usd", 0)
             done_nodes.add(nid)
+
+            # ── User approval gate ────────────────────────────────────────────
+            if nodes[nid].get("require_approval") and result["status"] != "error":
+                # Collect successor node IDs for the decision endpoint
+                successor_ids = [e["target"] for e in successors.get(nid, [])]
+                ctx["_waiting"] = {
+                    "node_id": nid,
+                    "node_name": node_name,
+                    "output": result["output"],
+                    "successors": successor_ids,
+                    "approval_msg": nodes[nid].get("approval_msg", ""),
+                }
+                if db.is_available():
+                    try:
+                        with db.conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    """UPDATE graph_runs SET status='waiting_approval',
+                                       context=%s, total_cost_usd=%s WHERE id=%s""",
+                                    (json.dumps(ctx), total_cost, run_id),
+                                )
+                        with db.conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    """UPDATE graph_node_results SET status='waiting_approval'
+                                       WHERE run_id=%s AND node_id=%s
+                                       ORDER BY id DESC LIMIT 1""",
+                                    (run_id, nid),
+                                )
+                    except Exception as e:
+                        log.warning(f"Could not save approval pause state: {e}")
+                log.info(f"Run {run_id} paused at node '{node_name}' — waiting for user approval")
+                return ctx  # Stop execution; decision endpoint will resume
 
             # Evaluate outgoing edges
             for edge in successors.get(nid, []):
@@ -396,5 +430,184 @@ async def run_graph_workflow(
         asyncio.create_task(_refresh_memory())
     except Exception:
         pass
+
+    return ctx
+
+
+# ── Resume after user approval ────────────────────────────────────────────────
+
+async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project: str) -> dict:
+    """Resume a paused run from the given node IDs.
+
+    Called by the decision endpoint after user approves a node.
+    Reconstructs done_nodes from the existing context and continues execution.
+    """
+    if not db.is_available():
+        raise RuntimeError("PostgreSQL required for graph workflows")
+
+    # Load run state
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT workflow_id, context, total_cost_usd FROM graph_runs WHERE id=%s",
+                (run_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Run not found: {run_id}")
+            workflow_id, ctx, total_cost = row[0], row[1] or {}, float(row[2])
+
+    ctx.pop("_waiting", None)
+
+    # Load workflow, nodes, edges
+    workflow: dict = {}
+    nodes: dict[str, dict] = {}
+    edges: list[dict] = []
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, project, name, max_iterations FROM graph_workflows WHERE id=%s",
+                (workflow_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                raise ValueError(f"Workflow not found: {workflow_id}")
+            workflow = {"id": r[0], "project": r[1], "name": r[2], "max_iterations": r[3]}
+
+            cur.execute(
+                """SELECT id, name, role_file, role_prompt, provider, model,
+                          output_schema, inject_context, require_approval, approval_msg
+                   FROM graph_nodes WHERE workflow_id=%s""",
+                (workflow_id,),
+            )
+            for r in cur.fetchall():
+                nodes[r[0]] = {
+                    "id": r[0], "name": r[1], "role_file": r[2],
+                    "role_prompt": r[3], "provider": r[4], "model": r[5],
+                    "output_schema": r[6], "inject_context": r[7],
+                    "require_approval": r[8] if len(r) > 8 else False,
+                    "approval_msg": r[9] if len(r) > 9 else "",
+                }
+
+            cur.execute(
+                "SELECT id, source_node_id, target_node_id, condition, label FROM graph_edges WHERE workflow_id=%s",
+                (workflow_id,),
+            )
+            for r in cur.fetchall():
+                edges.append({"id": r[0], "source": r[1], "target": r[2], "condition": r[3], "label": r[4]})
+
+    max_iter = workflow.get("max_iterations", 5)
+    successors: dict[str, list[dict]] = {nid: [] for nid in nodes}
+    for edge in edges:
+        src, tgt = edge["source"], edge["target"]
+        if src in nodes and tgt in nodes:
+            successors[src].append(edge)
+
+    # Reconstruct done_nodes from ctx keys (node names that have outputs)
+    name_to_id = {n["name"]: nid for nid, n in nodes.items()}
+    done_nodes: set[str] = set()
+    for key in ctx:
+        if key.startswith("_"):
+            continue
+        nid = name_to_id.get(key)
+        if nid:
+            done_nodes.add(nid)
+
+    iteration_count: dict[str, int] = {nid: 0 for nid in nodes}
+
+    # Only start from valid, non-done nodes
+    ready = [nid for nid in start_node_ids if nid in nodes and nid not in done_nodes]
+    if not ready:
+        # All start nodes already done — nothing to do
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE graph_runs SET status='done', context=%s, total_cost_usd=%s, finished_at=NOW() WHERE id=%s",
+                    (json.dumps(ctx), total_cost, run_id),
+                )
+        return ctx
+
+    global_iter = 0
+    while ready and global_iter < max_iter * len(nodes) + len(nodes):
+        global_iter += 1
+
+        results = await asyncio.gather(
+            *[_execute_node(nodes[nid], run_id, ctx, iteration_count[nid], project) for nid in ready],
+            return_exceptions=True,
+        )
+
+        next_ready: list[str] = []
+
+        for nid, result in zip(ready, results):
+            if isinstance(result, Exception):
+                log.error(f"Node {nid} raised: {result}")
+                ctx[nodes[nid]["name"]] = f"error: {result}"
+                done_nodes.add(nid)
+                continue
+
+            node_name = result["node_name"]
+            ctx[node_name] = result["structured"] if result["structured"] else result["output"]
+            total_cost += result.get("cost_usd", 0)
+            done_nodes.add(nid)
+
+            if nodes[nid].get("require_approval") and result["status"] != "error":
+                successor_ids = [e["target"] for e in successors.get(nid, [])]
+                ctx["_waiting"] = {
+                    "node_id": nid, "node_name": node_name,
+                    "output": result["output"], "successors": successor_ids,
+                    "approval_msg": nodes[nid].get("approval_msg", ""),
+                }
+                if db.is_available():
+                    try:
+                        with db.conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    "UPDATE graph_runs SET status='waiting_approval', context=%s, total_cost_usd=%s WHERE id=%s",
+                                    (json.dumps(ctx), total_cost, run_id),
+                                )
+                        with db.conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    "UPDATE graph_node_results SET status='waiting_approval' WHERE run_id=%s AND node_id=%s ORDER BY id DESC LIMIT 1",
+                                    (run_id, nid),
+                                )
+                    except Exception as e:
+                        log.warning(f"Could not save approval pause: {e}")
+                return ctx
+
+            for edge in successors.get(nid, []):
+                tgt = edge["target"]
+                if tgt not in nodes:
+                    continue
+                if not _eval_condition(edge.get("condition"), ctx):
+                    continue
+                if tgt in done_nodes:
+                    if iteration_count[tgt] < max_iter:
+                        iteration_count[tgt] += 1
+                        done_nodes.discard(tgt)
+                        next_ready.append(tgt)
+                else:
+                    preds_done = all(
+                        e["source"] in done_nodes
+                        for e in edges
+                        if e["target"] == tgt and e["source"] != tgt
+                    )
+                    if preds_done and tgt not in next_ready:
+                        next_ready.append(tgt)
+
+        ready = next_ready
+
+    # Finalize
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE graph_runs SET status='done', context=%s, total_cost_usd=%s, finished_at=NOW() WHERE id=%s",
+                        (json.dumps(ctx), total_cost, run_id),
+                    )
+        except Exception as e:
+            log.error(f"Could not finalize resumed run {run_id}: {e}")
 
     return ctx
