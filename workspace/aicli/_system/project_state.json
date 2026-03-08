@@ -8,7 +8,7 @@
     "backend": "FastAPI + python-jose + bcrypt + SQLAlchemy",
     "frontend": "Vanilla JS + Electron (xterm.js + Monaco editor)",
     "storage": "JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV",
-    "database": "PostgreSQL (user_usage, usage_logs, billing_logs) + pgvector (planned)",
+    "database": "PostgreSQL (user_usage, usage_logs, billing_logs, users table) + pgvector (planned)",
     "authentication": "JWT (python-jose) + bcrypt + dev_mode toggle",
     "planned": "GraphQL, node graph UI, pgvector semantic search, unified provider logging",
     "orm": "SQLAlchemy"
@@ -47,11 +47,11 @@
   ],
   "in_progress": [
     "Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl with errors/logs",
-    "Balance persistence on UI refresh — manual balance entry saves but doesn't persist; admin sees total across all users, users see own balance",
+    "Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance",
     "PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals",
-    "Consolidate workflow/entity management — 'flows' tab created but 'workflow' tab exists; clarify distinction and build unified node graph UI instead of separate tabs",
-    "Memory system optimization for LLM understanding — define /memory command strategy to read/compress history files; establish memory digest for cross-session project comprehension",
-    "Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context"
+    "Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/entity management (flows vs workflow tabs distinction)",
+    "Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context",
+    "Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension"
   ],
   "deployment": {
     "local": "uvicorn + npx vite",

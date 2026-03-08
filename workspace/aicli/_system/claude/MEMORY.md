@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-08 05:06 UTC by aicli /memory_
+_Generated: 2026-03-08 05:12 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling multiple LLMs (Claude CLI, aicli, Cursor) to collaborate on projects by maintaining unified history files (history.jsonl, commit_log.jsonl) and PostgreSQL-backed user/billing logs. Currently stabilizing core features: hooks-based git integration, balance tracking via manual entry, and multi-user role management (admin/paid/free) with dev_mode testing support; next phase introduces node-graph workflows and pgvector semantic search for intelligent project comprehension.
+aicli is a shared AI memory platform designed to enable multiple LLMs (claude cli, aicli, cursor) to maintain and access unified project history across sessions. It features a Python CLI with FastAPI backend, Electron UI with terminal/editor, PostgreSQL for billing/usage tracking, JWT authentication with role-based access (admin/paid/free), and JSONL-based shared history. Current focus is fixing hooks integration, ensuring unified commit/error logging across all sources, implementing balance persistence, and planning node-graph workflows with pgvector semantic search.
 
 ## Tech Stack
 
@@ -13,7 +13,7 @@ aicli is a shared AI memory platform enabling multiple LLMs (Claude CLI, aicli, 
 - **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
 - **frontend**: Vanilla JS + Electron (xterm.js + Monaco editor)
 - **storage**: JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV
-- **database**: PostgreSQL (user_usage, usage_logs, billing_logs) + pgvector (planned)
+- **database**: PostgreSQL (user_usage, usage_logs, billing_logs, users table) + pgvector (planned)
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
 - **planned**: GraphQL, node graph UI, pgvector semantic search, unified provider logging
 - **orm**: SQLAlchemy
@@ -39,15 +39,19 @@ aicli is a shared AI memory platform enabling multiple LLMs (Claude CLI, aicli, 
 ## In Progress
 
 - Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl with errors/logs
-- Balance persistence on UI refresh — manual balance entry saves but doesn't persist; admin sees total across all users, users see own balance
+- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance
 - PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals
-- Consolidate workflow/entity management — 'flows' tab created but 'workflow' tab exists; clarify distinction and build unified node graph UI instead of separate tabs
-- Memory system optimization for LLM understanding — define /memory command strategy to read/compress history files; establish memory digest for cross-session project comprehension
+- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/entity management (flows vs workflow tabs distinction)
 - Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context
+- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension
 
-**[2026-03-07 13:42]** `claude_cli` — Restructured documentation: consolidated CLAUDE.md (system-copied) and README.md (system-updated) instead of maintaining separate QUICKSTART.md, reducing documentation drift.
-**[2026-03-07 14:33]** `claude_cli` — Added user role system (admin, paid, free) with dev_mode toggle for testing without login; backend address conflict and empty UI screen issues fixed.
-**[2026-03-07 18:04]** `claude_cli` — Implemented manual balance entry for API keys (avoiding rate-limited balance endpoints); admin dashboard shows total balance/usage across all users; users see personal balance only.
-**[2026-03-07 23:35]** `claude_cli` — Confirmed Claude API only works for team accounts (not personal); OpenAI usage API returns zero; decided to support manual balance updates via UI instead of auto-fetch.
-**[2026-03-08 01:18]** `claude_cli` — Identified core architectural priority: shared memory between claude cli, aicli, and cursor via unified history.jsonl + commit_log.jsonl for LLM cross-session context.
-**[2026-03-08 03:14]** `claude_cli` — Proposed GraphQL + node graph UI for workflows (algo→backtest→qa→summary across different LLM models) + pgvector semantic search with relational tagging for entity/relationship management in PostgreSQL.
+**[2026-03-08 05:10]** `claude_cli` — Completed cleanup of unused PostgreSQL tables; multiple tables created during recent changes need removal.
+**[2026-03-08 04:47]** `claude_cli` — Consolidated workflow management: clarified distinction between 'flows' and 'workflow' tabs; node-based execution with LLM engines per node (algo→backtest→qa→summary).
+**[2026-03-08 04:27]** `claude_cli` — Identified missing workflow tables in PostgreSQL; workflow/entity management tabs need unification via node graph UI instead of separate tabs.
+**[2026-03-08 04:13]** `claude_cli` — Established commit_log.jsonl as unified error/log capture from all sources (claude cli hooks, aicli commits, cursor); /memory command strategy to compress history for LLM context.
+**[2026-03-08 04:05]** `claude_cli` — Ensured all logs (errors included) written to commit_log.jsonl from all places; shared memory architecture across claude cli, aicli, cursor.
+**[2026-03-08 03:14]** `claude_cli` — Planned GraphQL + node graph for entities and relationships; pgvector semantic embedding for relational tagging; workflow example (deepseek algo → claude backtest → claude qa → openai summary).
+**[2026-03-08 02:51]** `claude_cli` — Diagnosed hooks not working (no new commits); history.jsonl captures prompts but not responses; commit_log.jsonl not populated.
+**[2026-03-08 00:40]** `claude_cli` — Questioned shared memory architecture: how LLM loads history from compressed sessions and utilizes provider_usage files.
+**[2026-03-08 00:30]** `claude_cli` — Balance saving implemented but not persisted on refresh; users tab balance totals not updating after manual entry.
+**[2026-03-07 23:54]** `claude_cli` — Manual balance entry added to usage page (replaced separate tab); fixed remove row functionality for Fetch history; marked save changes visually.

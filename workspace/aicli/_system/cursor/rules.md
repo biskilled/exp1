@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 05:06 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 05:12 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -13,7 +13,7 @@ _Last updated: 2026-03-08_
 - **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
 - **frontend**: Vanilla JS + Electron (xterm.js + Monaco editor)
 - **storage**: JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV
-- **database**: PostgreSQL (user_usage, usage_logs, billing_logs) + pgvector (planned)
+- **database**: PostgreSQL (user_usage, usage_logs, billing_logs, users table) + pgvector (planned)
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
 - **planned**: GraphQL, node graph UI, pgvector semantic search, unified provider logging
 - **orm**: SQLAlchemy
@@ -38,8 +38,8 @@ _Last updated: 2026-03-08_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-08] I do not see that error in the commit_log.jsonl , can you make sure all logs are at this files (also errros). also this 
 - [2026-03-08] I would like to understand how the new update imporve your way to understand all code project, what are you doing in ord
 - [2026-03-08] I dont see any new table created in my postgresql . also I do see that you creaed new tab - flows, but there is already 
 - [2026-03-08] I dont see any worklow. prevoiusly there was some workflow sample that can be managed by yaml config as well. worklow su
 - [2026-03-08] <task-notification> <task-id>ba21592</task-id> <tool-use-id>toolu_01X3GzA6q9L1GhyQMY72Yeqd</tool-use-id> <output-file>/p
+- [2026-03-08] I do see lot of table in my postgresql - all are required as there were some changes. can you remove table not in use?

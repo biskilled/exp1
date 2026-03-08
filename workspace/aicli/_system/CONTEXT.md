@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 05:07 UTC — do not edit manually.
+> Auto-generated 2026-03-08 05:13 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 18
-- **Last active**: 2026-03-08T05:06:24Z
+- **Sessions**: 19
+- **Last active**: 2026-03-08T05:12:40Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -18,7 +18,7 @@
 - **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
 - **frontend**: Vanilla JS + Electron (xterm.js + Monaco editor)
 - **storage**: JSONL (history.jsonl, commit_log.jsonl) / JSON / CSV
-- **database**: PostgreSQL (user_usage, usage_logs, billing_logs) + pgvector (planned)
+- **database**: PostgreSQL (user_usage, usage_logs, billing_logs, users table) + pgvector (planned)
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
 - **planned**: GraphQL, node graph UI, pgvector semantic search, unified provider logging
 - **orm**: SQLAlchemy
@@ -26,11 +26,11 @@
 ## In Progress
 
 - Fix hooks integration — commits not working from claude cli; history.jsonl captures prompts but not responses; ensure all sources write to commit_log.jsonl with errors/logs
-- Balance persistence on UI refresh — manual balance entry saves but doesn't persist; admin sees total across all users, users see own balance
+- Balance persistence on UI refresh — manual balance entry saves but doesn't persist after refresh; admin sees total across all users, users see own balance
 - PostgreSQL usage_logs table population — table created but entries not populating; ensure all providers log usage and refresh displays totals
-- Consolidate workflow/entity management — 'flows' tab created but 'workflow' tab exists; clarify distinction and build unified node graph UI instead of separate tabs
-- Memory system optimization for LLM understanding — define /memory command strategy to read/compress history files; establish memory digest for cross-session project comprehension
+- Remove unused PostgreSQL tables — cleanup tables not in use; consolidate workflow/entity management (flows vs workflow tabs distinction)
 - Unified history capture from all sources — commit_log.jsonl not capturing claude cli/aicli/cursor errors and logs; ensure all system events logged for shared context
+- Implement /memory command strategy — read/compress history files; establish memory digest for cross-session project comprehension
 
 ## Key Decisions
 
@@ -142,6 +142,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 05:10]** `claude_cli/claude`  
+→ I do see lot of table in my postgresql - all are required as there were some changes. can you remove table not in use?
+
 **[2026-03-08 05:06]** `claude_cli/claude`  
 → <task-notification> <task-id>ba21592</task-id> <tool-use-id>toolu_01X3GzA6q9L1GhyQMY72Yeqd</tool-use-id> <output-file>/p
 
@@ -183,6 +186,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 00:53]** `claude_cli/claude`  
 → Would using vectordb and enabling you reading the data from vectordb will make that more easy for you (or other llm) to 
-
-**[2026-03-08 00:44]** `claude_cli/claude`  
-→ The main goal of this project is to be able for you and other llm to share memory. I have started to do that, and I do s
