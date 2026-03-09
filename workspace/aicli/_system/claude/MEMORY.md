@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-09 01:22 UTC by aicli /memory_
+_Generated: 2026-03-09 01:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling claude cli, aicli CLI, and cursor to collaborate seamlessly across projects by maintaining unified commit logs, semantic vector embeddings, and metadata-tagged workflows in PostgreSQL with pgvector. Currently implementing mandatory metadata tagging, MCP server integration for cross-tool memory access, and multi-agent workflow execution via node-based UI to create a persistent knowledge layer that improves project comprehension and continuity across AI tools and development sessions.
+aicli is a shared AI memory platform enabling multiple LLM tools (claude cli, cursor, custom aicli) to maintain consistent project context across sessions via unified PostgreSQL + pgvector backend. It combines multi-agent workflows (node-based YAML configs), mandatory metadata tagging for lifecycle tracking, and an MCP server for semantic search across commits and embeddings.
 
 ## Tech Stack
 
@@ -43,12 +43,12 @@ aicli is a shared AI memory platform enabling claude cli, aicli CLI, and cursor 
 
 ## In Progress
 
-- PostgreSQL pgvector validation and schema finalization: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags); dropped unused graph tables; validated relational data and vector embedding capability for semantic search
-- Balance management UI completion: implemented manual balance entry in Usage tab; fixed balance display in top-right corner with refresh button; admin dashboard aggregates total balance across all users and API keys; per-user balance visibility in user dashboard
+- PostgreSQL pgvector validation and schema finalization: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags); removed unused graph tables; validated relational data and vector embedding capability
 - Unified commit_log.jsonl population verification: ensure all logs (prompts, responses, errors) from claude cli hooks, aicli commits, and cursor hooks write to shared commit_log.jsonl; verify hooks auto-commit to git; validate history.jsonl captures both prompts and responses
 - Code consolidation and cleanup: removed hardcoded cost_tracker pricing; consolidated duplicate history folder vs _system folder usage; removed unused graph/entity tables and related code; clarified dev_runtime_state.json necessity
 - Mandatory metadata tagging system implementation: enforce minimum metadata keys (project, lifecycle_stage, feature_area) for every prompt via aicli; ensure tags persist across conversation; create relational tagging table linking commit_id to lifecycle_stage/feature_area/bug
-- MCP server and smart chunking architecture: build MCP server for cross-tool memory access via vectordb semantic embeddings; implement smart chunking strategy for commits with metadata filtering (language, file, feature, project_stage) for quick retrieval by claude cli, aicli, and cursor
+- MCP server and smart chunking architecture: build MCP server for cross-tool memory access via vectordb semantic embeddings; implement smart chunking strategy for commits with metadata filtering (language, file, feature, project_stage) for quick retrieval
+- Workflow schema and node-based execution model: restore multi-agent workflow support with YAML config; each node contains prompt (agent role) + LLM engine selection + output scoring for conditional branching
 
 ## Active Features / Bugs
 
@@ -64,9 +64,14 @@ aicli is a shared AI memory platform enabling claude cli, aicli CLI, and cursor 
 - **[phase]** discovery `(0 events)`
 - **[phase]** prod `(0 events)`
 
-**[2026-03-07 18:20–19:24]** `claude_cli` — User requested balance display in top-right corner next to online status with refresh button; implemented for admin to see total across all API keys and per-user balance in dashboards.
-**[2026-03-07 21:15–23:54]** `claude_cli` — Investigated automated balance fetching from OpenAI and Claude APIs; both failed (Claude requires org account, OpenAI returned zero). Decided to implement manual balance entry in UI instead of automated fetch.
-**[2026-03-08 00:11–00:30]** `claude_cli` — Fixed Usage tab update error and Billing tab delete functionality; balance now persists on refresh and users tab shows updated total balance across all recalculations.
-**[2026-03-08 00:40–02:51]** `claude_cli` — Discussed shared memory architecture: recognized all sessions written to .aicli/provider_usage; identified need for vectordb integration to enable cross-session project comprehension for claude cli, aicli, and cursor.
-**[2026-03-08 02:09–04:27]** `claude_cli` — Optimized code by removing hardcoded cost_tracker pricing (moved to config-driven JSON), consolidated history folder duplication with _system folder, dropped unused graph tables, and clarified dev_runtime_state.json necessity for shared LLM context.
-**[2026-03-08 23:21–01:06]** `claude_cli` — Designed mandatory metadata tagging system (project, lifecycle_stage, feature_area) enforced by aicli with persistence across conversation; created PostgreSQL schema with relational_tags table; validated pgvector-enabled instance; implemented MCP server architecture for smart chunking and cross-tool semantic search.
+**[2026-03-08 00:30]** `claude_cli` — Balance refresh mechanism implemented; admin sees total balance aggregated across all users; per-user balance visible in user dashboard; all changes persist across page refresh.
+
+**[2026-03-08 02:09]** `claude_cli` — Code optimization initiative: removed hardcoded pricing from cost_tracker (now config-driven via ui/backend/data); consolidated _system vs history folder structure; eliminated unused graph tables and related code.
+
+**[2026-03-08 03:14]** `claude_cli` — Architectural pivot to PostgreSQL + pgvector: semantic embeddings for project comprehension, relational tagging for metadata (tasks, features, bugs), node graph UI for workflow/entity relationships, cross-tool memory sharing via MCP.
+
+**[2026-03-08 04:05]** `claude_cli` — Unified commit_log.jsonl enforcement: all logs (prompts, responses, errors) from claude cli hooks, aicli commits, and cursor hooks must write to single shared file; became core dependency for shared memory.
+
+**[2026-03-08 23:52]** `claude_cli` — Mandatory metadata tagging design: aicli enforces minimum tags (project, phase/lifecycle_stage, feature_area/bug); tags immutable until user changes; relational table links commit_id to metadata for lifecycle tracking (discovery→development→prod).
+
+**[2026-03-09 00:51]** `claude_cli` — Implementation review of MCP server, smart chunking strategy, and metadata/embedding architecture; confirmed PostgreSQL pgvector compatibility; ready to build cross-tool memory layer for claude cli, aicli, and cursor.

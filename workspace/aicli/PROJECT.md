@@ -301,9 +301,9 @@ textarea.addEventListener('input', () => {
 
 ## Recent Work
 
-- PostgreSQL pgvector validation and schema finalization: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags); dropped unused graph tables; validated relational data and vector embedding capability for semantic search
-- Balance management UI completion: implemented manual balance entry in Usage tab; fixed balance display in top-right corner with refresh button; admin dashboard aggregates total balance across all users and API keys; per-user balance visibility in user dashboard
+- PostgreSQL pgvector validation and schema finalization: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags); removed unused graph tables; validated relational data and vector embedding capability
 - Unified commit_log.jsonl population verification: ensure all logs (prompts, responses, errors) from claude cli hooks, aicli commits, and cursor hooks write to shared commit_log.jsonl; verify hooks auto-commit to git; validate history.jsonl captures both prompts and responses
 - Code consolidation and cleanup: removed hardcoded cost_tracker pricing; consolidated duplicate history folder vs _system folder usage; removed unused graph/entity tables and related code; clarified dev_runtime_state.json necessity
 - Mandatory metadata tagging system implementation: enforce minimum metadata keys (project, lifecycle_stage, feature_area) for every prompt via aicli; ensure tags persist across conversation; create relational tagging table linking commit_id to lifecycle_stage/feature_area/bug
-- MCP server and smart chunking architecture: build MCP server for cross-tool memory access via vectordb semantic embeddings; implement smart chunking strategy for commits with metadata filtering (language, file, feature, project_stage) for quick retrieval by claude cli, aicli, and cursor
+- MCP server and smart chunking architecture: build MCP server for cross-tool memory access via vectordb semantic embeddings; implement smart chunking strategy for commits with metadata filtering (language, file, feature, project_stage) for quick retrieval
+- Workflow schema and node-based execution model: restore multi-agent workflow support with YAML config; each node contains prompt (agent role) + LLM engine selection + output scoring for conditional branching
