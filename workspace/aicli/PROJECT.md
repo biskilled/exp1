@@ -1,6 +1,6 @@
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-03-08_
+_Last updated: 2026-03-09 | Version 2.1.0_
 
 ---
 
@@ -19,11 +19,14 @@ No more copy-pasting context. No more re-explaining your architecture.
 | # | Goal | Status |
 |---|------|--------|
 | 1 | **Shared LLM memory** — Claude CLI, aicli CLI, Cursor, UI all read the same knowledge base | ✓ Implemented |
-| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Foundation done |
-| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Architecture in place |
+| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Implemented |
+| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Implemented |
 | 4 | **Auto-deploy** — pull → commit → push after every AI session | ✓ Hooks + git.py |
 | 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
-| 6 | **Multi-LLM workflows** — YAML chains: design → review → develop → test | ✓ Runner done |
+| 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
+| 7 | **Entity/knowledge graph** — Tag every event (prompt/commit) to features, bugs, tasks | ✓ Implemented |
+| 8 | **Semantic search** — pgvector cosine similarity over chunked history + code | ✓ Implemented |
+| 9 | **Project management UI** — Feature/Task/Bug tracking tied to AI workflows | ◷ In Progress |
 
 ---
 
@@ -41,70 +44,29 @@ Layer 2 — Working Memory
 
 Layer 3 — Project Knowledge
   └── workspace/{project}/PROJECT.md          — living project doc (this file)
-  └── workspace/{project}/project_state.json  — structured metadata: tech stack, modules, APIs
+  └── workspace/{project}/_system/project_state.json  — structured metadata + next_phase_plan
   └── workspace/{project}/_system/CLAUDE.md   — synced to code_dir/CLAUDE.md for Claude Code
-      Architecture, decisions, coding standards, data models
 
 Layer 4 — Historical Knowledge
   └── workspace/{project}/_system/history.jsonl    — all interactions (UI + CLI + workflow + Cursor)
-  └── {cli_data_dir}/memory.jsonl                  — tagged/featured entries, keyword-searchable
+  └── workspace/{project}/_system/events_{p}       — PostgreSQL event log, tagged to features/bugs
       Past decisions, design discussions, feature history, bug postmortems, refactor notes
 
 Layer 5 — Global Knowledge
   └── workspace/_templates/hooks/                  — canonical hook scripts for all projects
   └── workspace/_templates/{blank,python_api,...}  — project starter templates
-  └── workspace/_templates/roles/                  — shared AI role prompts (TODO: create)
-      Company coding standards, security policies, AI role prompts, architecture templates
+  └── workspace/_templates/workflows/              — shared workflow YAML library (planned)
+  └── workspace/_templates/roles/                  — shared AI role prompts (planned)
 ```
 
-### How `/memory` syncs layers 3–5 to every LLM tool:
+### How `/memory` syncs layers 3–5 to every LLM tool
 
 ```
-_system/claude/CLAUDE.md   →  {code_dir}/CLAUDE.md          ← Claude Code reads at session start
-_system/claude/MEMORY.md   →  {code_dir}/MEMORY.md          ← referenced inside CLAUDE.md
+_system/claude/CLAUDE.md   →  {code_dir}/CLAUDE.md                    ← Claude Code reads at start
+_system/claude/MEMORY.md   →  {code_dir}/MEMORY.md                    ← referenced in CLAUDE.md
 _system/cursor/rules.md    →  {code_dir}/.cursor/rules/aicli.mdrules  ← Cursor reads on open
-_system/aicli/context.md   →  prepended to every aicli CLI prompt
-```
-
----
-
-## Prompt Management — Roles & Agents
-
-Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system prompt.
-
-| Role file | Use case | Provider preference |
-|-----------|----------|-------------------|
-| `architect.md` | System design, API contracts, tech decisions | Claude (reasoning) |
-| `developer.md` | Code implementation, refactoring | Claude / DeepSeek |
-| `reviewer.md` | Code review, quality feedback | OpenAI / Gemini |
-| `qa.md` | Test design, edge cases, regression | DeepSeek / Claude |
-| `security.md` | OWASP checks, auth review, secrets audit | Claude |
-| `devops.md` | CI/CD, AWS, Railway, Docker, nginx | GPT-4.1 |
-| `summariser.md` | Compress long sessions → summary | Gemini Flash (cheap) |
-
-**Workflow example** (multi-role YAML):
-```yaml
-name: feature_cycle
-steps:
-  - name: design
-    provider: claude
-    role_prompt: prompts/roles/architect.md
-    prompt: prompts/01_design.md
-  - name: implement
-    provider: deepseek
-    role_prompt: prompts/roles/developer.md
-    prompt: prompts/02_implement.md
-    inject_previous_output: true
-  - name: review
-    provider: openai
-    role_prompt: prompts/roles/reviewer.md
-    prompt: prompts/03_review.md
-    inject_previous_output: true
-  - name: tests
-    provider: deepseek
-    role_prompt: prompts/roles/qa.md
-    prompt: prompts/04_tests.md
-    inject_previous_output: true
+_system/aicli/context.md   →  prepended to every aicli CLI prompt      ← all providers
+_system/aicli/copilot.md   →  {code_dir}/.github/copilot-instructions.md
 ```
 
 ---
@@ -119,18 +81,21 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ├── providers/             ← LLM adapters (Claude, OpenAI, DeepSeek, Gemini, Grok)
 ├── core/                  ← Memory, session, git, hooks, analytics, cost tracking
 ├── workflows/             ← YAML workflow executor
-├── prompts/               ← Prompt loader (reads from workspace)
 └── ui/
     ├── electron/          ← Electron shell (BrowserWindow, xterm.js, Monaco)
     ├── frontend/          ← Vanilla JS UI (no framework, no bundler)
+    │   ├── views/         ← chat.js, entities.js, history.js, graph_workflow.js, admin.js …
+    │   └── api.js         ← unified fetch wrapper for all backend endpoints
     └── backend/           ← FastAPI (localhost:8000)
-        ├── routers/       ← auth, chat, projects, admin, billing, git, history, workflows
-        ├── core/          ← auth, pricing, api_keys, llm_clients, provider_costs
-        └── data/          ← ALL server data (api_keys.json, users.json, pricing.json...)
+        ├── routers/       ← auth, chat, projects, admin, billing, git, history,
+        │                     workflows, entities, search, graph_workflows
+        ├── core/          ← auth, pricing, api_keys, llm_clients, embeddings, database
+        └── data/          ← ALL server data (api_keys.json, users.json, pricing.json…)
 
 workspace/                 ← CONTENT — portable, per-project, version-controllable
 ├── _templates/
-│   ├── hooks/             ← Canonical hook scripts (log_user_prompt, auto_commit_push...)
+│   ├── hooks/             ← Canonical hook scripts (log_user_prompt, auto_commit_push…)
+│   ├── workflows/         ← Shared workflow YAML templates (planned)
 │   └── {blank,python_api,quant_notebook,ui_app}/
 └── {project}/
     ├── PROJECT.md         ← Living project doc (this file)
@@ -141,6 +106,7 @@ workspace/                 ← CONTENT — portable, per-project, version-contro
     ├── workflows/         ← YAML workflow definitions
     └── _system/
         ├── history.jsonl      ← ALL interactions (all LLMs, all tools)
+        ├── project_state.json ← Structured metadata + next_phase_plan
         ├── CONTEXT.md         ← Auto-generated project overview
         ├── claude/CLAUDE.md   ← Claude Code system prompt (synced to code_dir)
         ├── claude/MEMORY.md   ← Distilled history (synced to code_dir)
@@ -148,16 +114,16 @@ workspace/                 ← CONTENT — portable, per-project, version-contro
         └── aicli/context.md   ← Compact CLI injection block
 ```
 
-### Key Config Files
+### Database Schema
 
-| File | Purpose |
-|------|---------|
-| `aicli.yaml` | CLI config: workspace_dir, providers, hooks, cli_data_dir |
-| `workspace/{project}/project.yaml` | Per-project: code_dir, default_provider, git settings, claude_cli_support |
-| `ui/backend/config.py` | Backend: data_dir=ui/backend/data/, require_auth, dev_mode |
-| `ui/backend/data/provider_costs.json` | **Single source of truth** for LLM per-token pricing (used by CLI + backend) |
-| `ui/backend/data/pricing.json` | Free tier limits, markup %, free-tier model list |
-| `ui/backend/data/api_keys.json` | Server-managed LLM API keys (admin-set, never in client requests) |
+**Shared tables** (project column filter):
+`users`, `usage_logs`, `transactions`, `session_tags`, `entity_categories`, `entity_values`
+
+**Per-project tables** (table name = project, no project column):
+`commits_{p}`, `events_{p}`, `embeddings_{p}`, `event_tags_{p}`, `event_links_{p}`
+
+Created lazily via `db.ensure_project_schema(project)` on project create/load.
+Migrated from old shared tables via `POST /admin/migrate-project-tables`.
 
 ---
 
@@ -166,80 +132,121 @@ workspace/                 ← CONTENT — portable, per-project, version-contro
 ### Implemented ✓
 
 **Memory & Context**
-- [x] 5-layer memory architecture (immediate, working, project, historical, global)
+- [x] 5-layer memory architecture with `/memory` → LLM synthesis (Haiku) + incremental ingest
 - [x] Unified history.jsonl: all sources (UI, Claude CLI, aicli CLI, workflow) → single file
-- [x] Per-LLM output: `_system/claude/`, `_system/cursor/`, `_system/aicli/` subdirs
-- [x] `POST /projects/{name}/memory` — regenerates all LLM files + copies to code_dir
-- [x] JSONL keyword/tag/feature memory search (no ML deps, instant startup)
+- [x] Per-LLM output files: `_system/claude/CLAUDE.md`, `MEMORY.md`, `cursor/rules.md`, `aicli/context.md`, `copilot.md`
+- [x] JSONL keyword/tag/feature memory search
 - [x] Cross-provider session handoff: save/restore messages between CLI sessions
 - [x] `_system/aicli/context.md` prepended to every CLI prompt automatically
+
+**Semantic Search**
+- [x] pgvector (text-embedding-3-small, 1536-dim) — per-project `embeddings_{p}` table
+- [x] Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file-diff
+- [x] Metadata filters: language, doc_type, file_path, chunk_type
+- [x] `POST /search/semantic` + `GET /search/ingest`
+
+**Entity / Knowledge Graph**
+- [x] Entity categories (feature, bug, task, component, phase, doc_type, customer) — per project
+- [x] Entity values (named instances, status: active/done/archived)
+- [x] Events: raw event log (prompts, commits, docs) in per-project `events_{p}` table
+- [x] Event tags: many-to-many `event_tags_{p}` → links events to entity values
+- [x] Event links: directed relationships (`implements / fixes / causes / relates_to`) in `event_links_{p}`
+- [x] Auto-tag suggestions: session tags applied immediately; Haiku suggests entity values
+- [x] Bulk session tagging: `POST /entities/session-tag` — tags all session events at once
+- [x] `POST /entities/events/sync` — imports history.jsonl + commits → events (idempotent)
+- [x] LLM relationship detection: keyword (fix/close/resolve → bug link) + Haiku semantic links
+
+**Projects Tab (UI)**
+- [x] Features / Tasks / Bugs table with status toggle, archive, delete
+- [x] Inline create form (type selector + name + description)
+- [x] `↻ Sync` button → `POST /entities/events/sync` to update event_count
+- [x] Per-project event counts displayed per entity value
+
+**History Tab (UI)**
+- [x] Unified sessions tab: all sources (ui/claude_cli/workflow) with source badges
+- [x] Commits tab: red border for untagged, inline phase dropdown, editable feature/bug cells
+- [x] Tags (⬡) tab: 3-column layout (categories | values | events) with tag picker modal
+
+**Graph Workflows**
+- [x] Async DAG executor with `asyncio.gather` for parallel nodes
+- [x] Loop-back edges supported (max_iterations cap)
+- [x] Cytoscape.js UI: drag-save positions, connect mode for edges, run log polling
+- [x] CRUD REST API for workflows, nodes, edges, runs
+- [x] Fire-and-forget: embed node outputs + refresh memory after each run
 
 **Prompt Management**
 - [x] Workspace prompt folders: `prompts/roles/`, `prompts/{feature}/`
 - [x] Role-based system prompts loaded per provider
 - [x] Prompts UI: recursive folder tree + textarea editor
-- [x] `/compare <prompt.md>` — multi-LLM prompt comparison, winner logged
+- [x] `/compare <prompt.md>` — multi-LLM prompt comparison
 
 **Providers (CLI)**
-- [x] Claude: Anthropic SDK, streaming, tool use (bash/read/write/ls), MCP
+- [x] Claude: Anthropic SDK, streaming, tool use, MCP
 - [x] OpenAI: chat completions, streaming
 - [x] DeepSeek: OpenAI-compat API, streaming
 - [x] Gemini: google-generativeai SDK, streaming
 - [x] Grok: xAI OpenAI-compat API, streaming
-- [x] BaseProvider: retry (3 attempts, 1s/3s/10s backoff), provider fallback
+- [x] BaseProvider: retry (3 attempts, 1s/3s/10s), provider fallback
 
 **Auto-Deploy / Git**
 - [x] Claude Code Stop hook → auto_commit_push.sh after every response
-- [x] Git supervisor: auto-commit + push from CLI after AI responses
 - [x] Backend `POST /git/{project}/commit-push`: LLM-generated commit messages
-- [x] Git OAuth device flow + Personal Access Token setup
 - [x] Auto-pull before commit; conflict detection
-- [x] Credentials stored in `_system/.git_token` (gitignored)
-
-**Multi-LLM Workflows**
-- [x] YAML workflow executor: file injection, retry, cost tracking per step
-- [x] CostTracker reads from `ui/backend/data/provider_costs.json` (single source)
-- [x] Workflow runs logged to `workspace/{project}/runs/`
-- [x] `inject_files`, `inject_previous_output`, `stop_condition` support
-
-**UI (Electron + FastAPI)**
-- [x] Electron shell: BrowserWindow, IPC, embedded xterm.js terminal (node-pty)
-- [x] Vanilla JS frontend (no framework, no build step, no npm bundler)
-- [x] 4-step project creation wizard (Basics → Git → IDE Support → Review)
-- [x] Chat: SSE streaming, session list (UI+CLI+WF unified), source badges
-- [x] Summary: PROJECT.md viewer + edit/preview toggle
-- [x] Prompts: recursive tree + textarea editor, save-disabled-until-changed
-- [x] Workflow: YAML editor + syntax highlight + node flow diagram
-- [x] History: unified chat tabs (all sources)
-- [x] Code: folder tree + read-only file viewer
 
 **Billing & Usage**
 - [x] Multi-user roles: admin / paid / free
-- [x] Server-managed API keys (admin panel → api_keys.json; client sends no keys)
-- [x] Per-user balance: `balance_added_usd − balance_used_usd`
-- [x] Markup pricing per provider; free-tier limit + model restrictions
-- [x] Coupons (AICLI=$10 pre-seeded); apply at register or from Billing tab
-- [x] Transaction log: `{DATA_DIR}/transactions/{user_id}.jsonl`
-- [x] Provider usage fetch from Anthropic + OpenAI APIs
-- [x] Manual provider balance tracking (`provider_balances.json`)
+- [x] Server-managed API keys (admin panel → api_keys.json)
+- [x] Per-user balance, markup pricing per provider, free-tier limits
+- [x] Coupons; transaction log; provider usage fetch from Anthropic + OpenAI APIs
+- [x] Manual provider balance tracking
+
+**MCP Server**
+- [x] Standalone stdio MCP server registered in `.mcp.json` + `.cursor/mcp.json`
+- [x] 8 tools: search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push
+
+**Infrastructure**
+- [x] Per-project DB schema: `project_table()` + `ensure_project_schema()` (lazy init on load)
+- [x] `POST /admin/migrate-project-tables`: migrate old shared tables → per-project tables
+- [x] UI installer: `install.sh` (one-time setup) + `update.sh` (git pull) + `start.sh`
+- [x] `~/.aicli/config.json`: links aicli_dir + workspace_dir; read by config.py at startup
 - [x] Railway deployment: Dockerfile + railway.toml
 
-### In Progress ◷
+---
 
-- [ ] Global knowledge layer: `workspace/_templates/roles/` shared role library
-- [ ] Memory auto-compaction at token limit (compress old entries → summary)
-- [ ] `/deploy <aws|railway>` — one-command deploy from CLI
-- [ ] Remote config sync (`config_sync.py` currently stub)
-- [ ] UI prompt compare split-pane (explorer.js)
+## In Progress ◷
 
-### Planned ○
+### Project Management Page Redesign
 
-- [ ] Stripe real payment integration (placeholder returning "coming soon")
-- [ ] MCP server: expose memory query endpoint so any LLM can pull context on-demand
-- [ ] Semantic search over history.jsonl (pgvector, Phase 2)
-- [ ] Admin dashboard: revenue summary, top users by spend, model cost breakdown
-- [ ] Workflow `stop_condition` with loop-back (retry if review fails)
-- [ ] Agent-to-agent communication in workflows (output routed to specific next agent)
+**Goal**: transform the Projects tab from a simple CRUD list into a real project management view where AI workflow outputs feed directly into tracked features and tasks.
+
+Planned components:
+- **Project overview card**: active features (count + top 3 by event_count), open tasks, last commit, workflow runs, LLM cost this week
+- **Activity timeline**: unified event stream (prompts + commits + workflow runs) per project, filterable by type/date/entity
+- **Feature detail panel**: click feature → see linked events, commits, workflow runs, related bugs
+- **Kanban board** (optional): columns = backlog / in-progress / review / done, drag to move status
+- **Quick actions**: + New Feature, + New Task, + New Bug, Run Workflow, Open in Terminal
+
+### Workflow Process Improvements
+
+**Goal**: make workflow runs first-class project artifacts — linked to features, creating tasks, visible in the project timeline.
+
+Planned:
+- **Step-by-step run log**: per-node timing, token count, cost, output preview in collapsible rows
+- **Re-run from node**: click any completed node and re-run from that point with edited prompt
+- **Workflow templates library**: pre-built YAMLs (feature_cycle, code_review, bug_fix, doc_update) in `workspace/_templates/workflows/`
+- **Feature-linked workflow runs**: select which feature/task a run belongs to; auto-tag all emitted events
+- **Workflow result → task**: workflow output can create/update a task entity value, closing the loop
+
+---
+
+## Planned ○
+
+- Global role library: `workspace/_templates/roles/` with 6 default roles shipped on install
+- Memory auto-compaction at token limit (compress old entries → LLM summary)
+- `/deploy <aws|railway>` — one-command deploy from CLI
+- Stripe real payment integration (placeholder currently returns "coming soon")
+- Admin dashboard: revenue summary, top users by spend, model cost breakdown
+- Electron app packaging: ship with embedded Python 3.12 to remove system dep friction
 
 ---
 
@@ -247,63 +254,57 @@ workspace/                 ← CONTENT — portable, per-project, version-contro
 
 ### Single Pricing Source
 `ui/backend/data/provider_costs.json` is the single source of truth for all LLM pricing.
-- `core/cost_tracker.py` reads it (with fallback to defaults if backend not set up)
-- `ui/backend/core/provider_costs.py` manages it (load/save/estimate)
-- `ui/backend/core/pricing.py` reads it for markup calculation
+`core/cost_tracker.py` + `core/provider_costs.py` + `core/pricing.py` all read from it.
 
-### Configurable cli_data_dir
-All CLI core modules use `config.get("cli_data_dir", ".aicli")` — never hardcode `.aicli/`.
-Set in `aicli.yaml` as `cli_data_dir: .aicli`.
-
-### Hook Architecture
+### Per-Project DB Tables
+```python
+db.project_table("commits", "myproject")  # → "commits_myproject"
+db.ensure_project_schema("myproject")     # creates all 5 tables if not exist
 ```
-workspace/_templates/hooks/   ← canonical scripts (version-controlled)
-{code_dir}/.aicli/scripts/    ← project copy (installed by wizard or /memory)
-.claude/settings.local.json   ← registers hooks with Claude Code
-```
+Called automatically on project create (`POST /projects/`) and project load (`GET /projects/{name}`).
 
 ### Provider Contract
 ```python
 class BaseProvider:
     def send(self, prompt: str, system: str = "") -> str: ...
     def stream(self, prompt: str, system: str = "") -> Generator[str, None, None]: ...
-    def clear_history(self) -> None: ...
-    def reload_system_prompt(self) -> None: ...
-```
-
-### Save-Disabled-Until-Changed (UI editors)
-```js
-saveBtn.disabled = true;
-textarea.addEventListener('input', () => {
-  saveBtn.disabled = textarea.value === _original;
-});
 ```
 
 ### Auth Architecture
 - `REQUIRE_AUTH=false` (local dev) — no login gate
 - `REQUIRE_AUTH=true` (Railway/cloud) — JWT required on all routes
 - `DEV_MODE=true` — synthetic admin user, no balance deduction
-- JWT stored in `localStorage`; first registered user = admin
-- Role system: `admin | paid | free`
+- First registered user = admin automatically
+
+### UI Tab Structure
+```
+sidebar tabs:
+  chat      → views/chat.js      — SSE streaming chat with tag bar
+  summary   → views/summary.js   — PROJECT.md viewer/editor
+  prompts   → views/prompts.js   — role + feature prompt tree
+  code      → views/files.js     — folder tree + file viewer
+  graph     → views/graph_workflow.js — Cytoscape.js DAG editor
+  projects  → views/entities.js  — Features/Tasks/Bugs management  ← NEXT PHASE
+  history   → views/history.js   — sessions + commits + tags tabs
+  admin     → views/admin.js     — 6-tab admin panel
+```
 
 ---
 
 ## Open Questions
 
-- Should `workspace/_templates/roles/` be a built-in global roles library?
-  → Proposal: yes — ship 6 default roles with installation, user extends in project-level roles/
-- Should MCP server be a separate process or embedded in FastAPI?
-  → Leaning: separate process, so Claude Code can connect directly without backend running
-- Should workflow results feed back into historical memory automatically?
-  → Proposal: yes — WorkflowRunner appends to history.jsonl with `source: workflow`
-- Should the Electron app ship with `python3.12` bundled, or require system install?
-  → Current: requires system python3.12. Bundling adds ~50MB but removes user friction.
+- Should the Kanban board state (column positions) live in `entity_values.status` or a separate `board_state` JSONB?
+  → Proposal: use `entity_values.status` (backlog/in-progress/review/done) — already exists, no schema change
+- Should workflow runs auto-create entity events without user confirmation?
+  → Proposal: yes, but show in timeline as auto-tagged so user can dismiss
+- Should `workspace/_templates/workflows/` be versioned separately (git submodule)?
+  → Leaning: no — keep flat in the main repo, update via `bash ui/update.sh`
 
 ## Recent Work
 
-- Chat history UI fix: restore full prompt/response pairs per session with proper LLM response display and per-prompt metadata visibility; fix claude cli hooks to capture responses not just prompts (2026-03-09 02:20, 03:02)
-- Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area); implement + UI option for tag selection (feature/bug/task) with dropdown lists; persist tags across multi-turn conversations
-- Smart chunking embedding feature: implement summary-level + per-class/method chunk generation; add metadata filters (language, file, feature, project_stage) for filtered semantic retrieval; test event emission for indexing
-- MCP server deployment: build semantic embedding search endpoint for claude-cli, cursor, and aicli clients to query pgvector embeddings and commit_log.jsonl; enable cross-tool memory access
-- PostgreSQL pgvector validation: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); validated relational + vector capabilities
-- UI billing/usage integration: fixed usage_logs table population; implemented manual balance entry with refresh indicator; ensured calculations refresh on balance updates; fixed seed defaults for entity categories
+- Project management page redesign — richer dashboard with metrics (event count, active features, recent commits, workflow runs), activity timeline, quick-action buttons
+- Workflow ↔ project integration — link workflow runs to features/tasks; auto-create task events from workflow outputs; show workflow status per feature
+- Workflow process improvements — better YAML editor UX, step-by-step run log with timing per node, re-run from any node, templates library
+- Project overview dashboard — summary card per project: last activity, open tasks, active features, recent commits, LLM cost this week
+- DB schema refactoring complete — project_table() and ensure_project_schema() deployed; per-project tables (commits_{p}, events_{p}, embeddings_{p})
+- Memory synthesis pipeline — /memory endpoint generates 4 per-LLM summary files; Haiku incremental synthesis; copy to code_dir for persistence

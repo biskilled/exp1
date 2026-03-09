@@ -26,21 +26,21 @@ You are a senior Python software architect with deep expertise in:
 
 ## Key Architectural Decisions
 
-- Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL 15+ with pgvector for semantic search and entity relationships; no ChromaDB/SQLite
-- Electron UI with xterm.js terminal + Monaco editor; Vanilla JS frontend (not Tauri)
-- JWT auth via python-jose + bcrypt; dev_mode toggle for testing without login; three user roles (admin/paid/free)
-- Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state; single history.jsonl per project (no duplicate history folders)
-- All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven via ui/backend/data JSON)
-- Multi-agent workflows via node-based execution model with YAML config; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Manual balance entry in UI; admin sees aggregated total across all users; per-user balance visibility with refresh indicator
-- PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
-- Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
-- Hooks auto-commit on claude cli/cursor; aicli tracks own history; unified commit_log.jsonl with all logs (prompts, responses, errors)
-- Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON (not hardcoded)
-- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced via aicli; tags persist across conversation; relational_tags table links commit_id to metadata
-- Smart chunking strategy for commits: summary-level + per-class/method chunks with metadata filters (language, file, feature, project_stage) for semantic retrieval
-- MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and pgvector vectordb
-- project_state.json auto-maintained for shared LLM context across sessions; dev_runtime_state.json deprecated
+- Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
+- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph — no SQLite/ChromaDB
+- Per-project DB tables (commits_aicli, events_aicli, etc.) via project_table() + ensure_project_schema() — no full-table scans with project filter
+- Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step
+- JWT auth via python-jose + bcrypt (NOT passlib); dev_mode toggle for local testing without login
+- All LLM providers independent; server holds API keys (api_keys.json); client sends NO keys
+- Config-driven pricing — provider_costs.json is single source of truth; no hardcoded costs
+- Multi-agent workflows: async DAG executor via asyncio.gather; loop-back edges with max_iterations cap
+- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata filters
+- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md + project_state.json) → historical (history.jsonl) → global (templates)
+- /memory generates 4 per-LLM files + copies to code_dir; LLM synthesis via Haiku; incremental ingest
+- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
+- Entity/event model: entity_categories + entity_values (shared) + per-project events/event_tags/event_links
+- MCP server as standalone stdio process so Claude Code connects without backend running
+- UI installer: install.sh (one-time) + update.sh (git pull + deps) + start.sh — never touches workspace/
 
 ---
 
@@ -48,7 +48,7 @@ You are a senior Python software architect with deep expertise in:
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-03-08_
+_Last updated: 2026-03-09 | Version 2.1.0_
 
 ---
 
@@ -67,11 +67,14 @@ No more copy-pasting context. No more re-explaining your architecture.
 | # | Goal | Status |
 |---|------|--------|
 | 1 | **Shared LLM memory** — Claude CLI, aicli CLI, Cursor, UI all read the same knowledge base | ✓ Implemented |
-| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Foundation done |
-| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Architecture in place |
+| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Implemented |
+| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Implemented |
 | 4 | **Auto-deploy** — pull → commit → push after every AI session | ✓ Hooks + git.py |
 | 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
-| 6 | **Multi-LLM workflows** — YAML chains: design → review → develop → test | ✓ Runner done |
+| 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
+| 7 | **Entity/knowledge graph** — Tag every event (prompt/commit) to features, bugs, tasks | ✓ Implemented |
+| 8 | **Semantic search** — pgvector cosine similarity over chunked history + code | ✓ Implemented |
+| 9 | **Project management UI** — Feature/Task/Bug tracking tied to AI workflows | ◷ In Progress |
 
 ---
 
@@ -89,34 +92,31 @@ Layer 2 — Working Memory
 
 Layer 3 — Project Knowledge
   └── workspace/{project}/PROJECT.md          — living project doc (this file)
-  └── workspace/{project}/project_state.json  — structured metadata: tech stack, modules, APIs
+  └── workspace/{project}/_system/project_state.json  — structured metadata + next_phase_plan
   └── workspace/{project}/_system/CLAUDE.md   — synced to code_dir/CLAUDE.md for Claude Code
-      Architecture, decisions, coding standards, data models
 
 Layer 4 — Historical Knowledge
   └── workspace/{project}/_system/history.jsonl    — all interactions (UI + CLI + workflow + Cursor)
-  └── {cli_data_dir}/memory.jsonl                  — tagged/featured entries, keyword-searchable
+  └── workspace/{project}/_system/events_{p}       — PostgreSQL event log, tagged to features/bugs
       Past decisions, design discussions, feature history, bug postmortems, refactor notes
 
 Layer 5 — Global Knowledge
   └── workspace/_templates/hooks/                  — canonical hook scripts for all projects
   └── workspace/_templates/{blank,python_api,...}  — project starter templates
-  └── workspace/_templates/roles/                  — shared AI role prompts (TODO: create)
-      Company coding standards, security policies, AI role prompts, architecture templates
+  └── workspace/_templates/workflows/              — shared workflow YAML library (planned)
+  └── workspace/_templates/roles/                  — shared AI role prompts (planned)
 ```
 
-### How `/memory` syncs layers 3–5 to every LLM tool:
 
-
-*See PROJECT.md for full documentation (309 lines total)*
+*See PROJECT.md for full documentation (310 lines total)*
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-09] `ui`: My name is Alice and I work on feature X
-- [2026-03-09] `ui`: What is my name and what feature am I working on?
-- [2026-03-09] `ui`: My name is Alice and I work on feature X
-- [2026-03-09] `ui`: What is my name and what feature am I working on?
-- [2026-03-09] `claude_cli`: I do not see llm repsonse when I am using the claude cli hooks (only my prompts). also addding tags 
+- [2026-03-09] `claude_cli`: <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8
+- [2026-03-09] `claude_cli`: <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8
+- [2026-03-09] `claude_cli`: <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8
+- [2026-03-09] `claude_cli`: <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8
+- [2026-03-09] `claude_cli`: Assuming I will improve the project management page, workflow processes. can you update /memory - so
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

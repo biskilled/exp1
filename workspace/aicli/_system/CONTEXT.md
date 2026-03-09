@@ -1,60 +1,61 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-09 03:24 UTC — do not edit manually.
+> Auto-generated 2026-03-09 04:12 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 42
-- **Last active**: 2026-03-09T03:24:13Z
+- **Sessions**: 43
+- **Last active**: 2026-03-09T04:02:39Z
 - **Last provider**: claude
-- **Version**: 0.3.0
+- **Version**: 2.1.0
 
 ## Tech Stack
 
 - **cli**: Python 3.12 + prompt_toolkit + rich
-- **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
-- **frontend**: Vanilla JS + Electron with xterm.js + Monaco editor
-- **storage**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV
-- **database**: PostgreSQL 15+ with pgvector extension + SQLAlchemy ORM
-- **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
-- **planned**: GraphQL, node graph UI for entity relationships and workflow composition, unified provider logging
-- **orm**: SQLAlchemy
-- **tables**: users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings
-- **vector_search**: pgvector for semantic embeddings and entity relationships
-- **workflow_execution**: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
-- **vector_db**: pgvector for semantic embeddings and entity relationships
-- **integration**: MCP server for cross-tool integration with semantic search
-- **ui_framework**: Node.js with event emission for semantic indexing
+- **backend**: FastAPI + uvicorn + python-jose + bcrypt
+- **frontend**: Vanilla JS (no framework, no bundler) + Electron shell
+- **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
+- **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
+- **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+- **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — all independent adapters
+- **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
+- **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run
+- **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
+- **mcp**: Standalone stdio MCP server — 8 tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push)
+- **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 
 ## In Progress
 
-- Chat history UI fix: restore full prompt/response pairs per session with proper LLM response display and per-prompt metadata visibility; fix claude cli hooks to capture responses not just prompts (2026-03-09 02:20, 03:02)
-- Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area); implement + UI option for tag selection (feature/bug/task) with dropdown lists; persist tags across multi-turn conversations
-- Smart chunking embedding feature: implement summary-level + per-class/method chunk generation; add metadata filters (language, file, feature, project_stage) for filtered semantic retrieval; test event emission for indexing
-- MCP server deployment: build semantic embedding search endpoint for claude-cli, cursor, and aicli clients to query pgvector embeddings and commit_log.jsonl; enable cross-tool memory access
-- PostgreSQL pgvector validation: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); validated relational + vector capabilities
-- UI billing/usage integration: fixed usage_logs table population; implemented manual balance entry with refresh indicator; ensured calculations refresh on balance updates; fixed seed defaults for entity categories
+- Project management page redesign — richer dashboard with metrics (event count, active features, recent commits, workflow runs), activity timeline, quick-action buttons
+- Workflow ↔ project integration — link workflow runs to features/tasks; auto-create task events from workflow outputs; show workflow status per feature
+- Workflow process improvements — better YAML editor UX, step-by-step run log with timing per node, re-run from any node, templates library
+- Project overview dashboard — summary card per project: last activity, open tasks, active features, recent commits, LLM cost this week
+- DB schema refactoring complete — project_table() and ensure_project_schema() deployed; per-project tables (commits_{p}, events_{p}, embeddings_{p})
+- Memory synthesis pipeline — /memory endpoint generates 4 per-LLM summary files; Haiku incremental synthesis; copy to code_dir for persistence
 
 ## Key Decisions
 
-- Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL 15+ with pgvector for semantic search and entity relationships; no ChromaDB/SQLite
-- Electron UI with xterm.js terminal + Monaco editor; Vanilla JS frontend (not Tauri)
-- JWT auth via python-jose + bcrypt; dev_mode toggle for testing without login; three user roles (admin/paid/free)
-- Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state; single history.jsonl per project (no duplicate history folders)
-- All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven via ui/backend/data JSON)
-- Multi-agent workflows via node-based execution model with YAML config; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Manual balance entry in UI; admin sees aggregated total across all users; per-user balance visibility with refresh indicator
-- PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
-- Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
-- Hooks auto-commit on claude cli/cursor; aicli tracks own history; unified commit_log.jsonl with all logs (prompts, responses, errors)
-- Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON (not hardcoded)
-- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced via aicli; tags persist across conversation; relational_tags table links commit_id to metadata
-- Smart chunking strategy for commits: summary-level + per-class/method chunks with metadata filters (language, file, feature, project_stage) for semantic retrieval
-- MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and pgvector vectordb
-- project_state.json auto-maintained for shared LLM context across sessions; dev_runtime_state.json deprecated
+- Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
+- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph — no SQLite/ChromaDB
+- Per-project DB tables (commits_aicli, events_aicli, etc.) via project_table() + ensure_project_schema() — no full-table scans with project filter
+- Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step
+- JWT auth via python-jose + bcrypt (NOT passlib); dev_mode toggle for local testing without login
+- All LLM providers independent; server holds API keys (api_keys.json); client sends NO keys
+- Config-driven pricing — provider_costs.json is single source of truth; no hardcoded costs
+- Multi-agent workflows: async DAG executor via asyncio.gather; loop-back edges with max_iterations cap
+- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata filters
+- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md + project_state.json) → historical (history.jsonl) → global (templates)
+- /memory generates 4 per-LLM files + copies to code_dir; LLM synthesis via Haiku; incremental ingest
+- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
+- Entity/event model: entity_categories + entity_values (shared) + per-project events/event_tags/event_links
+- MCP server as standalone stdio process so Claude Code connects without backend running
+- UI installer: install.sh (one-time) + update.sh (git pull + deps) + start.sh — never touches workspace/
 
 ---
 
@@ -62,7 +63,7 @@
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-03-08_
+_Last updated: 2026-03-09 | Version 2.1.0_
 
 ---
 
@@ -81,11 +82,14 @@ No more copy-pasting context. No more re-explaining your architecture.
 | # | Goal | Status |
 |---|------|--------|
 | 1 | **Shared LLM memory** — Claude CLI, aicli CLI, Cursor, UI all read the same knowledge base | ✓ Implemented |
-| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Foundation done |
-| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Architecture in place |
+| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Implemented |
+| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Implemented |
 | 4 | **Auto-deploy** — pull → commit → push after every AI session | ✓ Hooks + git.py |
 | 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
-| 6 | **Multi-LLM workflows** — YAML chains: design → review → develop → test | ✓ Runner done |
+| 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
+| 7 | **Entity/knowledge graph** — Tag every event (prompt/commit) to features, bugs, tasks | ✓ Implemented |
+| 8 | **Semantic search** — pgvector cosine similarity over chunked history + code | ✓ Implemented |
+| 9 | **Project management UI** — Feature/Task/Bug tracking tied to AI workflows | ◷ In Progress |
 
 ---
 
@@ -103,100 +107,90 @@ Layer 2 — Working Memory
 
 Layer 3 — Project Knowledge
   └── workspace/{project}/PROJECT.md          — living project doc (this file)
-  └── workspace/{project}/project_state.json  — structured metadata: tech stack, modules, APIs
+  └── workspace/{project}/_system/project_state.json  — structured metadata + next_phase_plan
   └── workspace/{project}/_system/CLAUDE.md   — synced to code_dir/CLAUDE.md for Claude Code
-      Architecture, decisions, coding standards, data models
 
 Layer 4 — Historical Knowledge
   └── workspace/{project}/_system/history.jsonl    — all interactions (UI + CLI + workflow + Cursor)
-  └── {cli_data_dir}/memory.jsonl                  — tagged/featured entries, keyword-searchable
+  └── workspace/{project}/_system/events_{p}       — PostgreSQL event log, tagged to features/bugs
       Past decisions, design discussions, feature history, bug postmortems, refactor notes
 
 Layer 5 — Global Knowledge
   └── workspace/_templates/hooks/                  — canonical hook scripts for all projects
   └── workspace/_templates/{blank,python_api,...}  — project starter templates
-  └── workspace/_templates/roles/                  — shared AI role prompts (TODO: create)
-      Company coding standards, security policies, AI role prompts, architecture templates
+  └── workspace/_templates/workflows/              — shared workflow YAML library (planned)
+  └── workspace/_templates/roles/                  — shared AI role prompts (planned)
 ```
 
-### How `/memory` syncs layers 3–5 to every LLM tool:
+### How `/memory` syncs layers 3–5 to every LLM tool
 
 ```
-_system/claude/CLAUDE.md   →  {code_dir}/CLAUDE.md          ← Claude Code reads at session start
-_system/claude/MEMORY.md   →  {code_dir}/MEMORY.md          ← referenced inside CLAUDE.md
+_system/claude/CLAUDE.md   →  {code_dir}/CLAUDE.md                    ← Claude Code reads at start
+_system/claude/MEMORY.md   →  {code_dir}/MEMORY.md                    ← referenced in CLAUDE.md
 _system/cursor/rules.md    →  {code_dir}/.cursor/rules/aicli.mdrules  ← Cursor reads on open
-_system/aicli/context.md   →  prepended to every aicli CLI prompt
+_system/aicli/context.md   →  prepended to every aicli CLI prompt      ← all providers
+_system/aicli/copilot.md   →  {code_dir}/.github/copilot-instructions.md
 ```
 
 ---
 
-## Prompt Management — Roles & Agents
+## Architecture
 
-Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system prompt.
+### Engine / Workspace Separation
 
-| Role file | Use case | Provider preference |
-|-----------|----------|-------------------|
-| `architect.md` | System design, API contracts, tech decisions | Claude (reasoning) |
-| `developer.md` | Code implementation, refactoring | Claude / DeepSeek |
-| `reviewer.md` | Code review, quality feedback | OpenAI / Gemini |
-| `qa.md` | Test design, edge cases, regression | DeepSeek / Claude |
+```
+aicli/                     ← ENGINE — code only, no project-specific content
+├── cli.py                 ← Interactive REPL (prompt_toolkit + rich)
 
 
-*...229 more lines in PROJECT.md*
+*...230 more lines in PROJECT.md*
 
 ---
 
 ## Recent Development History
 
-**[2026-03-09 03:02]** `claude_cli/claude`  
-→ I do not see llm repsonse when I am using the claude cli hooks (only my prompts). also addding tags not working properly
-← _Here's a summary of everything implemented:  ---  ## Changes Made  ### Backend (`ui/backend/routers/entities.py`) - **`_seed_defaults` fix**: Now idempotent per-category — queries existing names first_
+**[2026-03-09 04:08]** `claude_cli/claude`  
+→ Assuming I will improve the project management page, workflow processes. can you update /memory - so it can be used for 
 
-**[2026-03-09 02:31]** `ui/claude`  
-→ What is my name and what feature am I working on?
-← _Your name is **Alice** and you are working on **feature X**. 😊_
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
+← _Implementation complete. Here's a summary of what was done:  ---  ## Summary  ### Part 1 — DB Schema Refactoring  **`core/database.py`** - Added `project_table(base, project)` static method — returns _
 
-**[2026-03-09 02:31]** `ui/claude`  
-→ My name is Alice and I work on feature X
-← _Got it, Alice! I'll remember that you work on feature X. How can I help you today? Whether it's questions, brainstorming, troubleshooting, or anything else related to feature X (or beyond), feel free _
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 02:31]** `ui/claude`  
-→ What is my name and what feature am I working on?
-← _I don't have any information about your name or what feature you're working on. I don't have access to personal details about you unless you share them in our conversation.  Would you like to tell me?_
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 02:31]** `ui/claude`  
-→ My name is Alice and I work on feature X
-← _Thanks for sharing that, Alice! I'll keep in mind that you work on feature X.  Is there something specific about feature X you'd like to discuss or get help with? I'm happy to assist!_
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 02:20]** `claude_cli/claude`  
-→ something went wrong in the chat tab . it used to work properly - I saw all prompts per session, but only the prompt I w
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 02:03]** `ui/claude`  
-→ brief test for event emission
-← _## Brief Event Emission Test  ```javascript const EventEmitter = require('events');  // --- Setup --- const emitter = new EventEmitter(); const results = [];  // --- Listeners --- emitter.on('data', (_
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 02:01]** `ui/claude`  
-→ Testing auto-tag suggestions on non-streaming endpoint
-← _It looks like you're testing the auto-tag suggestion feature on a non-streaming endpoint! I'm here and responding normally.  Is there anything specific you'd like to test or discuss? Feel free to send_
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 01:58]** `ui/claude`  
-→ I am working on the smart chunking embedding feature for semantic search
-← _That's a great feature to work on! Smart chunking is crucial for semantic search quality. Let me help you think through it.  ## Smart Chunking for Semantic Search  ### Key Considerations  **What makes_
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 01:47]** `claude_cli/claude`  
-→ please implemet step1 - auto-tag loop. regarding users - aicli currently hosting services. users working on same project
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 01:36]** `claude_cli/claude`  
-→ what do you think about the porject, can it help / reduce overall deployment? are there any similar tools I can use ?
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 01:32]** `claude_cli/claude`  
-→ Can you summersie all new changes and how /memory currently updte all files? hooks are still writing to local jsonl file
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 01:06]** `claude_cli/claude`  
-→ continue 
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 00:56]** `claude_cli/claude`  
-→ yes
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
-**[2026-03-09 00:51]** `claude_cli/claude`  
-→ can you review what we discussed and make sure all implemeted properly - MCP (3) - do that. Chanking - we spoke about sm
+**[2026-03-09 03:50]** `claude_cli/claude`  
+→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
