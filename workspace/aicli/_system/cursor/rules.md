@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 23:23 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 23:52 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -19,7 +19,8 @@ _Last updated: 2026-03-08_
 - **orm**: SQLAlchemy
 - **tables**: users, user_usage, usage_logs, billing_logs, workflows, runs (graph tables dropped)
 - **vector_search**: pgvector for semantic embeddings and entity relationships
-- **workflow_execution**: Node-based multi-agent model with YAML config and UI node graphs
+- **workflow_execution**: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
+- **vector_db**: pgvector for semantic embeddings and entity relationships
 
 ## Key Decisions
 
@@ -41,8 +42,8 @@ _Last updated: 2026-03-08_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-08] the second one - under _system/run
 - [2026-03-08] <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm</tool-use-id> <stat
 - [2026-03-08] I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the current solution is goo
 - [2026-03-08] I will create postgresql with pgvector. it is a new instanse (so required to create all users table as well). before you
 - [2026-03-08] dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys for each prompt ? for
+- [2026-03-08] dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name 

@@ -150,10 +150,47 @@ class _Database:
             cur.execute(ddl)
         conn.commit()
 
+        _DDL_TAGGING = """
+        -- Commit metadata + tags (populated from commit_log.jsonl via /history/commits/sync)
+        CREATE TABLE IF NOT EXISTS commits (
+            id           SERIAL         PRIMARY KEY,
+            project      VARCHAR(255)   NOT NULL,
+            commit_hash  VARCHAR(40)    NOT NULL,
+            commit_msg   TEXT           NOT NULL DEFAULT '',
+            summary      TEXT           NOT NULL DEFAULT '',
+            phase        VARCHAR(20),
+            feature      VARCHAR(255),
+            bug_ref      VARCHAR(255),
+            source       VARCHAR(50)    NOT NULL DEFAULT 'git',
+            session_id   VARCHAR(255),
+            tags         JSONB          NOT NULL DEFAULT '{}',
+            committed_at TIMESTAMPTZ,
+            created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(project, commit_hash)
+        );
+        CREATE INDEX IF NOT EXISTS idx_commits_project   ON commits(project);
+        CREATE INDEX IF NOT EXISTS idx_commits_phase     ON commits(project, phase);
+        CREATE INDEX IF NOT EXISTS idx_commits_feature   ON commits(project, feature);
+        CREATE INDEX IF NOT EXISTS idx_commits_committed ON commits(project, committed_at DESC);
+
+        -- Active session tags per project
+        CREATE TABLE IF NOT EXISTS session_tags (
+            id         SERIAL         PRIMARY KEY,
+            project    VARCHAR(255)   NOT NULL UNIQUE,
+            phase      VARCHAR(20),
+            feature    VARCHAR(255),
+            bug_ref    VARCHAR(255),
+            extra      JSONB          NOT NULL DEFAULT '{}',
+            updated_at TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_tags_project ON session_tags(project);
+        """
+
         # Each optional block uses its own cursor + commit so a failure in one
         # does NOT roll back other blocks (psycopg2 shares one transaction by default).
         for label, sql in [
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
+            ("Tagging (commits + session_tags)", _DDL_TAGGING),
         ]:
             try:
                 with conn.cursor() as cur:

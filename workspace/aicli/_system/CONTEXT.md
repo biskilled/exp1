@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-08 23:23 UTC — do not edit manually.
+> Auto-generated 2026-03-08 23:53 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 25
-- **Last active**: 2026-03-08T23:23:08Z
+- **Sessions**: 26
+- **Last active**: 2026-03-08T23:52:53Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -24,16 +24,17 @@
 - **orm**: SQLAlchemy
 - **tables**: users, user_usage, usage_logs, billing_logs, workflows, runs (graph tables dropped)
 - **vector_search**: pgvector for semantic embeddings and entity relationships
-- **workflow_execution**: Node-based multi-agent model with YAML config and UI node graphs
+- **workflow_execution**: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
+- **vector_db**: pgvector for semantic embeddings and entity relationships
 
 ## In Progress
 
-- PostgreSQL schema optimization: consolidate unused tables (drop graph tables); clarify workflow vs flows distinction; align database schema with node-graph execution model
-- Balance persistence and admin dashboard: manual balance entry saves but doesn't persist on refresh; admin dashboard must show total balance and per-user usage aggregation; refresh button on top-right corner
-- Hooks integration and history tracking: ensure commit_log.jsonl populated from all tools (claude cli, aicli, cursor); capture both prompts and responses in history.jsonl; verify hooks auto-commit on claude cli
-- Multi-agent workflow execution: transition from YAML config to UI-managed node graphs; each node with LLM engine selection and score-based branching; clarify workflow table usage vs flows tab
-- AI knowledge layer architecture redesign: implement pgvector semantic embeddings for project metadata (tasks, features, bugs); add relational tagging for quick cross-session retrieval; enforce mandatory metadata keys across all CLI prompts
-- Code consolidation and memory optimization: remove hardcoded cost_tracker pricing; clarify necessity of dev_runtime_state.json vs project_state.json; merge QUICKSTART.md and README.md; validate history folder vs _system folder usage
+- PostgreSQL schema cleanup: drop unused graph tables; consolidate workflows vs flows distinction; align database schema with node-graph execution model for multi-agent workflows
+- Balance persistence and admin dashboard: fix balance refresh on top-right corner; ensure admin sees total balance aggregated across all users; per-user balance visibility in user dashboard
+- Hooks integration and history tracking: populate commit_log.jsonl from all tools (claude cli, aicli, cursor); capture both prompts and responses in history.jsonl; verify auto-commit on claude cli works
+- Mandatory metadata tagging system: force claude-cli and cursor to attach minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across conversation
+- PostgreSQL pgvector implementation: create semantic embedding schema for project metadata (tasks, features, bugs); add relational tagging table linking commit_id to lifecycle_stage/feature_area; validate approach improves cross-tool project comprehension
+- Code consolidation: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; consolidate history folder vs _system folder usage; merge QUICKSTART.md and README.md
 
 ## Key Decisions
 
@@ -145,6 +146,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-08 23:52]** `claude_cli/claude`  
+→ dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name 
+
 **[2026-03-08 23:21]** `claude_cli/claude`  
 → dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys for each prompt ? for
 
@@ -186,6 +190,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 03:14]** `claude_cli/claude`  
 → I am thinking to add graphql supprt (node graph ) that user can manaege entities and relatioships. add project meta data
-
-**[2026-03-08 03:07]** `claude_cli/claude`  
-→ do I need the dev_runtime_state.json ? also - now (assuming all history wokrs properly) - how can you use that to improv

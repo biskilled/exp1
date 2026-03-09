@@ -100,6 +100,17 @@ export const api = {
 
   // Unified project history (all sources: ui, claude_cli, workflow)
   historyChat: (project, limit = 200) => _get(`/history/chat?project=${encodeURIComponent(project || '')}&limit=${limit}`),
+  historyCommits: (project, limit = 100) => _get(`/history/commits?project=${encodeURIComponent(project || '')}&limit=${limit}`),
+  patchCommit: (id, body) => fetch(_base() + `/history/commits/${encodeURIComponent(id)}`, {
+    method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  syncCommits: (project) => fetch(_base() + `/history/commits/sync?project=${encodeURIComponent(project || '')}`, {
+    method: 'POST', headers: _headers(),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  getSessionTags: (project) => _get(`/history/session-tags?project=${encodeURIComponent(project || '')}`),
+  putSessionTags: (project, body) => fetch(_base() + `/history/session-tags?project=${encodeURIComponent(project || '')}`, {
+    method: 'PUT', headers: _headers(), body: JSON.stringify(body),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
 
   // Git
   gitStatus:      (project)        => _get(`/git/${encodeURIComponent(project)}/status`),

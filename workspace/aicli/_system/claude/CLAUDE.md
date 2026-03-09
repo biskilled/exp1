@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-08] `claude_cli`: the second one - under _system/run 
 - [2026-03-08] `claude_cli`: <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm
 - [2026-03-08] `claude_cli`: I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the cur
 - [2026-03-08] `claude_cli`: I will create postgresql with pgvector. it is a new instanse (so required to create all users table 
 - [2026-03-08] `claude_cli`: dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys f
+- [2026-03-08] `claude_cli`: dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
