@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 01:24 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 01:33 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -17,34 +17,34 @@ _Last updated: 2026-03-08_
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
 - **planned**: GraphQL, node graph UI for entity relationships and workflow composition, unified provider logging
 - **orm**: SQLAlchemy
-- **tables**: users, user_usage, usage_logs, billing_logs, workflows, relational_tags
+- **tables**: users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings
 - **vector_search**: pgvector for semantic embeddings and entity relationships
 - **workflow_execution**: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
 - **vector_db**: pgvector for semantic embeddings and entity relationships
-- **integration**: MCP server for cross-tool integration
+- **integration**: MCP server for cross-tool integration with semantic search
 
 ## Key Decisions
 
 - Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL 15+ with pgvector for semantic search and entity relationships; no ChromaDB/SQLite
 - Electron UI with xterm.js terminal + Monaco editor; Vanilla JS frontend (not Tauri)
 - JWT auth via python-jose + bcrypt; dev_mode toggle for testing without login; three user roles (admin/paid/free)
-- Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state
-- All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven)
+- Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state; single history.jsonl per project (no duplicate history folders)
+- All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven via ui/backend/data JSON)
 - Multi-agent workflows via node-based execution model with YAML config transitioning to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility in dashboards
+- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility in dashboards with refresh indicator
 - PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
-- dev_runtime_state.json + project_state.json auto-maintained for shared LLM context across sessions
+- dev_runtime_state.json necessity deprecated; project_state.json auto-maintained for shared LLM context across sessions
 - Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl with all logs (prompts, responses, errors)
 - Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
-- Shared memory architecture: claude cli, aicli, cursor all read/write unified history files and vectordb for cross-session project comprehension
-- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced across all CLI tools; tags persist across conversation; relational tagging table links commit_id to metadata
-- MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and vectordb
+- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced via aicli; tags persist across conversation; relational_tags table links commit_id to metadata
+- Smart chunking strategy for commits: summary-level + per-class/method chunks with metadata filters (language, file, feature, project_stage) for semantic retrieval
+- MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and pgvector vectordb
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-09] can you check if the new postgreurl is working and good for pgvector and for relational data ?
 - [2026-03-09] is all conigured as we discussed? metadata/enetity relationsheep table, embedding table, chanking architecure and mcp se
 - [2026-03-09] can you review what we discussed and make sure all implemeted properly - MCP (3) - do that. Chanking - we spoke about sm
 - [2026-03-09] yes
 - [2026-03-09] continue
+- [2026-03-09] Can you summersie all new changes and how /memory currently updte all files? hooks are still writing to local jsonl file

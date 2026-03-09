@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-09 01:25 UTC — do not edit manually.
+> Auto-generated 2026-03-09 01:33 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 31
-- **Last active**: 2026-03-09T01:24:42Z
+- **Sessions**: 32
+- **Last active**: 2026-03-09T01:33:26Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -22,38 +22,38 @@
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
 - **planned**: GraphQL, node graph UI for entity relationships and workflow composition, unified provider logging
 - **orm**: SQLAlchemy
-- **tables**: users, user_usage, usage_logs, billing_logs, workflows, relational_tags
+- **tables**: users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings
 - **vector_search**: pgvector for semantic embeddings and entity relationships
 - **workflow_execution**: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
 - **vector_db**: pgvector for semantic embeddings and entity relationships
-- **integration**: MCP server for cross-tool integration
+- **integration**: MCP server for cross-tool integration with semantic search
 
 ## In Progress
 
-- PostgreSQL pgvector validation and schema finalization: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags); removed unused graph tables; validated relational data and vector embedding capability
+- PostgreSQL pgvector validation and schema finalization: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags); removed unused graph/entity tables; validated relational data and vector embedding capability
 - Unified commit_log.jsonl population verification: ensure all logs (prompts, responses, errors) from claude cli hooks, aicli commits, and cursor hooks write to shared commit_log.jsonl; verify hooks auto-commit to git; validate history.jsonl captures both prompts and responses
-- Code consolidation and cleanup: removed hardcoded cost_tracker pricing; consolidated duplicate history folder vs _system folder usage; removed unused graph/entity tables and related code; clarified dev_runtime_state.json necessity
-- Mandatory metadata tagging system implementation: enforce minimum metadata keys (project, lifecycle_stage, feature_area) for every prompt via aicli; ensure tags persist across conversation; create relational tagging table linking commit_id to lifecycle_stage/feature_area/bug
-- MCP server and smart chunking architecture: build MCP server for cross-tool memory access via vectordb semantic embeddings; implement smart chunking strategy for commits with metadata filtering (language, file, feature, project_stage) for quick retrieval
-- Workflow schema and node-based execution model: restore multi-agent workflow support with YAML config; each node contains prompt (agent role) + LLM engine selection + output scoring for conditional branching
+- Code consolidation and cleanup: removed hardcoded cost_tracker pricing; consolidated duplicate history folder vs _system folder usage; removed unused graph/entity tables and related code; clarified dev_runtime_state.json is deprecated
+- Mandatory metadata tagging system implementation: enforce minimum metadata keys (project, lifecycle_stage, feature_area) for every prompt via aicli; ensure tags persist across conversation; create relational_tags table linking commit_id to lifecycle_stage/feature_area/bug
+- MCP server and smart chunking architecture: build MCP server for cross-tool memory access via pgvector semantic embeddings; implement smart chunking strategy (summary + per-class/method) with metadata filtering for quick retrieval by claude-cli, aicli, cursor
+- Workflow schema and node-based execution model: restore multi-agent workflow support with YAML config; each node contains prompt (agent role) + LLM engine selection + output scoring for conditional branching; validate schema against postgres workflows table
 
 ## Key Decisions
 
 - Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL 15+ with pgvector for semantic search and entity relationships; no ChromaDB/SQLite
 - Electron UI with xterm.js terminal + Monaco editor; Vanilla JS frontend (not Tauri)
 - JWT auth via python-jose + bcrypt; dev_mode toggle for testing without login; three user roles (admin/paid/free)
-- Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state
-- All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven)
+- Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state; single history.jsonl per project (no duplicate history folders)
+- All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven via ui/backend/data JSON)
 - Multi-agent workflows via node-based execution model with YAML config transitioning to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility in dashboards
+- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility in dashboards with refresh indicator
 - PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
-- dev_runtime_state.json + project_state.json auto-maintained for shared LLM context across sessions
+- dev_runtime_state.json necessity deprecated; project_state.json auto-maintained for shared LLM context across sessions
 - Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl with all logs (prompts, responses, errors)
 - Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
-- Shared memory architecture: claude cli, aicli, cursor all read/write unified history files and vectordb for cross-session project comprehension
-- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced across all CLI tools; tags persist across conversation; relational tagging table links commit_id to metadata
-- MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and vectordb
+- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced via aicli; tags persist across conversation; relational_tags table links commit_id to metadata
+- Smart chunking strategy for commits: summary-level + per-class/method chunks with metadata filters (language, file, feature, project_stage) for semantic retrieval
+- MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and pgvector vectordb
 
 ---
 
@@ -147,6 +147,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-09 01:32]** `claude_cli/claude`  
+→ Can you summersie all new changes and how /memory currently updte all files? hooks are still writing to local jsonl file
+
 **[2026-03-09 01:06]** `claude_cli/claude`  
 → continue 
 
@@ -188,6 +191,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 05:06]** `claude_cli/claude`  
 → <task-notification> <task-id>ba21592</task-id> <tool-use-id>toolu_01X3GzA6q9L1GhyQMY72Yeqd</tool-use-id> <output-file>/p
-
-**[2026-03-08 04:47]** `claude_cli/claude`  
-→ I dont see any worklow. prevoiusly there was some workflow sample that can be managed by yaml config as well. worklow su
