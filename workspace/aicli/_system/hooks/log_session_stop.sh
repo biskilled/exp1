@@ -58,9 +58,11 @@ claude_dir = Path.home() / '.claude' / 'projects'
 if not claude_dir.exists():
     sys.exit(0)
 
-# Find the session file
+# Find the session file (search all project dirs)
 session_file = None
 for proj_dir in claude_dir.iterdir():
+    if not proj_dir.is_dir():
+        continue
     candidate = proj_dir / f'{session_id}.jsonl'
     if candidate.exists():
         session_file = candidate
@@ -78,25 +80,34 @@ for line in reversed(lines):
         continue
     if entry.get('type') != 'assistant':
         continue
-    # 'message' is stored as a Python repr string (single-quoted dict)
-    raw = entry.get('message', '')
+    # 'message' can be a dict (new Claude Code format) OR a Python repr string (old format)
+    raw = entry.get('message', {})
     if not raw:
         continue
-    try:
-        msg = ast.literal_eval(raw)
-    except Exception:
+    # Normalise to dict
+    if isinstance(raw, str):
+        try:
+            msg = json.loads(raw)
+        except Exception:
+            try:
+                msg = ast.literal_eval(raw)
+            except Exception:
+                continue
+    elif isinstance(raw, dict):
+        msg = raw
+    else:
         continue
     content = msg.get('content', '')
     if isinstance(content, list):
-        # Extract text blocks
+        # Extract text blocks only (skip tool_use, tool_result, etc.)
         texts = [b.get('text', '') for b in content if isinstance(b, dict) and b.get('type') == 'text']
         result = '\n'.join(t for t in texts if t).strip()
         if result:
-            # Truncate to 1000 chars for history storage
-            print(result[:1000])
+            # Truncate to 2000 chars for history storage
+            print(result[:2000])
             sys.exit(0)
     elif isinstance(content, str) and content.strip():
-        print(content[:1000])
+        print(content[:2000])
         sys.exit(0)
 " "$SESSION" "$WORK_DIR" 2>/dev/null || echo "")
 

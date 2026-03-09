@@ -17,9 +17,21 @@ let _roleOptions = [];       // { path, name } — loaded when project is open
 let _workflowOptions = [];   // workflow names — loaded when project is open
 let _sessionCache = [];      // merged session list (ui + cli + workflow)
 
-// Session tags — mandatory: phase; optional: feature, bug_ref
-// Changing any tag resets _sessionId → forces new session on next send
-let _sessionTags = { phase: '', feature: '', bug_ref: '' };
+// Session tags — mandatory: phase
+// Changing phase resets _sessionId → forces new session on next send
+let _sessionTags = { phase: '' };
+
+// Entity tags applied to current session via the + Tag picker
+let _appliedEntities = []; // [{value_id, category_name, name, color, icon}]
+let _pickerOpen      = false;
+let _pickerType      = 'feature';
+let _pickerValues    = []; // loaded for current picker type
+
+const _ENTITY_TYPES = [
+  { id: 'feature', icon: '⬡', color: '#27ae60' },
+  { id: 'bug',     icon: '⚠', color: '#e74c3c' },
+  { id: 'task',    icon: '✓', color: '#4a90e2' },
+];
 
 const PHASE_OPTIONS = [
   { value: '', label: '⚠ Phase (required)' },
@@ -90,41 +102,83 @@ export function renderChat(container) {
             </span>` : ''}
         </div>
 
-        <!-- Session tag bar (mandatory: phase; optional: feature, bug_ref) -->
+        <!-- Session tag bar: phase (mandatory) + entity chips (optional) -->
         <div id="chat-tag-bar"
-          style="display:flex;align-items:center;gap:0.55rem;padding:0.3rem 1rem;
+          style="display:flex;align-items:center;gap:0.45rem;padding:0.3rem 0.75rem;
                  border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;
-                 flex-wrap:wrap;min-height:2rem">
-          <span style="font-size:0.58rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;white-space:nowrap">Session:</span>
+                 flex-wrap:nowrap;min-height:2rem;overflow:hidden">
+          <span style="font-size:0.55rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex-shrink:0">Session:</span>
 
           <!-- Phase (mandatory) -->
           <select id="chat-phase-sel"
             style="background:var(--bg);border:1px solid var(--red,#e74c3c);color:var(--text);
-                   font-family:var(--font);font-size:0.66rem;padding:0.15rem 0.4rem;
-                   border-radius:var(--radius);cursor:pointer;outline:none;max-width:130px"
+                   font-family:var(--font);font-size:0.64rem;padding:0.15rem 0.35rem;
+                   border-radius:var(--radius);cursor:pointer;outline:none;max-width:118px;flex-shrink:0"
             title="Mandatory: set a phase for this session">
             ${PHASE_OPTIONS.map(o => `<option value="${_esc(o.value)}">${_esc(o.label)}</option>`).join('')}
           </select>
 
-          <!-- Feature (optional) -->
-          <input id="chat-feature-inp" type="text" placeholder="Feature / task"
-            value="${_esc(_sessionTags.feature || '')}"
-            style="background:var(--bg);border:1px solid var(--border);color:var(--text);
-                   font-family:var(--font);font-size:0.66rem;padding:0.15rem 0.4rem;
-                   border-radius:var(--radius);outline:none;width:110px"
-            title="Optional: feature or task name">
+          <!-- Applied entity chips (feature/bug/task) -->
+          <div id="chat-entity-chips"
+               style="display:flex;gap:0.25rem;flex-wrap:wrap;align-items:center;flex:1;min-width:0;overflow:hidden"></div>
 
-          <!-- Bug ref (optional) -->
-          <input id="chat-bugref-inp" type="text" placeholder="Bug ref"
-            value="${_esc(_sessionTags.bug_ref || '')}"
-            style="background:var(--bg);border:1px solid var(--border);color:var(--text);
-                   font-family:var(--font);font-size:0.66rem;padding:0.15rem 0.4rem;
-                   border-radius:var(--radius);outline:none;width:80px"
-            title="Optional: bug reference">
+          <!-- Add tag button -->
+          <button id="chat-add-tag-btn"
+            onclick="window._toggleEntityPicker()"
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text2);
+                   font-family:var(--font);font-size:0.58rem;padding:0.12rem 0.4rem;
+                   border-radius:var(--radius);cursor:pointer;white-space:nowrap;flex-shrink:0;outline:none"
+            title="Tag this session with a feature, bug, or task">+ Tag</button>
 
-          <span id="chat-tag-status" style="font-size:0.6rem;color:var(--red,#e74c3c)">⚠ set phase</span>
-          <span style="margin-left:auto;font-size:0.6rem;color:var(--muted);cursor:pointer;white-space:nowrap"
-            onclick="window._chatNew()" title="Start new session with current tags">+ new session</span>
+          <span id="chat-tag-status"
+                style="font-size:0.58rem;color:var(--red,#e74c3c);white-space:nowrap;flex-shrink:0">⚠ phase</span>
+          <span style="font-size:0.58rem;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0"
+            onclick="window._chatNew()" title="Start new session">+ new</span>
+        </div>
+
+        <!-- Entity picker panel (shown when + Tag is clicked) -->
+        <div id="chat-entity-picker"
+          style="display:none;flex-direction:column;gap:0.4rem;padding:0.5rem 0.75rem;
+                 border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
+          <!-- Type tabs -->
+          <div style="display:flex;gap:0.3rem;align-items:center">
+            <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">Type:</span>
+            ${_ENTITY_TYPES.map(t => `
+              <button id="picker-tab-${t.id}" onclick="window._pickerSetType('${t.id}')"
+                style="background:transparent;border:1px solid var(--border);color:var(--muted);
+                       font-size:0.6rem;padding:0.1rem 0.4rem;border-radius:var(--radius);
+                       cursor:pointer;font-family:var(--font);outline:none;transition:all 0.1s">
+                ${t.icon} ${t.id}
+              </button>`).join('')}
+            <button onclick="window._closeEntityPicker()"
+              style="margin-left:auto;background:none;border:none;color:var(--muted);
+                     cursor:pointer;font-size:0.8rem;padding:0 0.25rem">✕</button>
+          </div>
+          <!-- Existing dropdown + New input + Save -->
+          <div style="display:flex;gap:0.5rem;align-items:flex-end;flex-wrap:wrap">
+            <div style="flex:1;min-width:140px">
+              <div style="font-size:0.55rem;color:var(--muted);margin-bottom:0.12rem">Existing (open):</div>
+              <select id="picker-existing-sel"
+                style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+                       font-family:var(--font);font-size:0.64rem;padding:0.18rem 0.4rem;
+                       border-radius:var(--radius);outline:none">
+                <option value="">Loading…</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:140px">
+              <div style="font-size:0.55rem;color:var(--muted);margin-bottom:0.12rem">Or create new:</div>
+              <input id="picker-new-inp" type="text" placeholder="New name…"
+                onkeydown="if(event.key==='Enter')window._saveEntityTag()"
+                style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+                       font-family:var(--font);font-size:0.64rem;padding:0.18rem 0.4rem;
+                       border-radius:var(--radius);outline:none;box-sizing:border-box">
+            </div>
+            <button onclick="window._saveEntityTag()"
+              style="background:var(--accent);border:none;color:#fff;font-family:var(--font);
+                     font-size:0.64rem;padding:0.22rem 0.65rem;border-radius:var(--radius);
+                     cursor:pointer;white-space:nowrap;outline:none;flex-shrink:0">Save</button>
+          </div>
+          <div id="picker-msg" style="font-size:0.6rem;color:var(--muted);min-height:0.8rem"></div>
         </div>
 
         <!-- Messages -->
@@ -197,38 +251,30 @@ export function renderChat(container) {
 }
 
 function _setupTagBar() {
-  const phaseSel   = document.getElementById('chat-phase-sel');
-  const featureInp = document.getElementById('chat-feature-inp');
-  const bugrefInp  = document.getElementById('chat-bugref-inp');
+  const phaseSel = document.getElementById('chat-phase-sel');
   if (!phaseSel) return;
 
-  // Set initial values from _sessionTags state
   phaseSel.value = _sessionTags.phase || '';
-  featureInp.value = _sessionTags.feature || '';
-  bugrefInp.value = _sessionTags.bug_ref || '';
   _updateTagBarStatus();
+  _renderEntityChips();
 
   phaseSel.addEventListener('change', () => {
     const newPhase = phaseSel.value;
     if (newPhase !== (_sessionTags.phase || '')) {
-      _sessionTags = { ..._sessionTags, phase: newPhase };
-      _sessionId = null;  // force new session
+      _sessionTags = { phase: newPhase };
+      _sessionId = null;      // force new session
+      _appliedEntities = [];  // clear chips for new session
+      _renderEntityChips();
     }
     _updateTagBarStatus();
-    _loadSessions();  // refresh sidebar indicators
+    _loadSessions();
   });
 
-  const _onTagInput = (field, el) => {
-    el.addEventListener('change', () => {
-      const newVal = el.value.trim();
-      if (newVal !== (_sessionTags[field] || '')) {
-        _sessionTags = { ..._sessionTags, [field]: newVal || '' };
-        _sessionId = null;  // force new session on change
-      }
-    });
-  };
-  _onTagInput('feature', featureInp);
-  _onTagInput('bug_ref', bugrefInp);
+  // Expose picker functions globally
+  window._toggleEntityPicker = _toggleEntityPicker;
+  window._closeEntityPicker  = _closeEntityPicker;
+  window._pickerSetType      = _pickerSetType;
+  window._saveEntityTag      = _saveEntityTag;
 }
 
 function _updateTagBarStatus() {
@@ -242,31 +288,133 @@ function _updateTagBarStatus() {
   // Update status text
   if (hasPhase) {
     const label = PHASE_OPTIONS.find(o => o.value === _sessionTags.phase)?.label || _sessionTags.phase;
-    const feature = _sessionTags.feature ? ` · ${_sessionTags.feature}` : '';
-    const bug = _sessionTags.bug_ref ? ` · #${_sessionTags.bug_ref}` : '';
     status.style.color = 'var(--green,#27ae60)';
-    status.textContent = `✓ ${label}${feature}${bug}`;
+    status.textContent = `✓ ${label}`;
   } else {
     status.style.color = 'var(--red,#e74c3c)';
-    status.textContent = '⚠ set phase';
+    status.textContent = '⚠ phase';
   }
 }
 
 // Restore tag bar to reflect a loaded session's tags
 function _restoreTagBar(tags) {
-  if (!tags) return;
-  _sessionTags = {
-    phase:   tags.phase   || '',
-    feature: tags.feature || '',
-    bug_ref: tags.bug_ref || tags.bug_ref || '',
-  };
-  const phaseSel   = document.getElementById('chat-phase-sel');
-  const featureInp = document.getElementById('chat-feature-inp');
-  const bugrefInp  = document.getElementById('chat-bugref-inp');
-  if (phaseSel)   phaseSel.value   = _sessionTags.phase;
-  if (featureInp) featureInp.value = _sessionTags.feature;
-  if (bugrefInp)  bugrefInp.value  = _sessionTags.bug_ref;
+  _sessionTags = { phase: (tags?.phase) || '' };
+  _appliedEntities = [];  // chips not persisted — clear on session load
+  const phaseSel = document.getElementById('chat-phase-sel');
+  if (phaseSel) phaseSel.value = _sessionTags.phase;
   _updateTagBarStatus();
+  _renderEntityChips();
+}
+
+// ── Entity picker ─────────────────────────────────────────────────────────────
+
+function _toggleEntityPicker() {
+  if (_pickerOpen) { _closeEntityPicker(); return; }
+  const panel = document.getElementById('chat-entity-picker');
+  if (!panel) return;
+  _pickerOpen = true;
+  panel.style.display = 'flex';
+  _pickerSetType('feature');
+}
+
+function _closeEntityPicker() {
+  const panel = document.getElementById('chat-entity-picker');
+  if (panel) panel.style.display = 'none';
+  _pickerOpen = false;
+}
+
+async function _pickerSetType(type) {
+  _pickerType = type;
+  // Update tab button styles
+  _ENTITY_TYPES.forEach(t => {
+    const btn = document.getElementById(`picker-tab-${t.id}`);
+    if (!btn) return;
+    btn.style.background   = t.id === type ? 'var(--accent)22' : 'transparent';
+    btn.style.color        = t.id === type ? 'var(--accent)'   : 'var(--muted)';
+    btn.style.borderColor  = t.id === type ? 'var(--accent)'   : 'var(--border)';
+  });
+
+  const sel = document.getElementById('picker-existing-sel');
+  const msg = document.getElementById('picker-msg');
+  if (sel) sel.innerHTML = '<option value="">Loading…</option>';
+  if (msg) msg.textContent = '';
+
+  const project = state.currentProject?.name;
+  if (!project) { if (msg) msg.textContent = 'No project open'; return; }
+
+  try {
+    const data = await api.entities.listValues(project, null, { category_name: type, status: 'active' });
+    _pickerValues = data.values || [];
+    if (sel) {
+      sel.innerHTML = '<option value="">-- select existing --</option>' +
+        _pickerValues.map(v =>
+          `<option value="${v.id}">${_esc(v.name)}${v.event_count ? ` (${v.event_count})` : ''}</option>`
+        ).join('');
+    }
+    if (msg && !_pickerValues.length) msg.textContent = `No active ${type}s yet — create one below.`;
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function _saveEntityTag() {
+  const msg     = document.getElementById('picker-msg');
+  const sel     = document.getElementById('picker-existing-sel');
+  const inp     = document.getElementById('picker-new-inp');
+  const selVal  = sel?.value;
+  const newName = inp?.value?.trim();
+  const project = state.currentProject?.name;
+
+  if (msg) msg.textContent = '';
+  if (!project) { if (msg) msg.textContent = 'No project open'; return; }
+  if (!selVal && !newName) { if (msg) msg.textContent = 'Select existing or type a new name'; return; }
+
+  if (!_sessionId) {
+    if (msg) msg.textContent = 'Send a message first to start a session — then tag it';
+    return;
+  }
+
+  if (msg) msg.textContent = 'Saving…';
+
+  try {
+    let body, entityInfo;
+    const typeInfo = _ENTITY_TYPES.find(t => t.id === _pickerType) || _ENTITY_TYPES[0];
+
+    if (selVal) {
+      const found = _pickerValues.find(v => String(v.id) === selVal);
+      body       = { session_id: _sessionId, project, value_id: parseInt(selVal, 10) };
+      entityInfo = { value_id: parseInt(selVal, 10), category_name: _pickerType,
+                     name: found?.name || selVal, color: typeInfo.color, icon: typeInfo.icon };
+    } else {
+      body       = { session_id: _sessionId, project, category_name: _pickerType, value_name: newName };
+      entityInfo = { value_id: null, category_name: _pickerType,
+                     name: newName, color: typeInfo.color, icon: typeInfo.icon };
+    }
+
+    const result = await api.entities.sessionTag(body);
+    entityInfo.value_id = entityInfo.value_id || result.value_id;
+    _appliedEntities.push(entityInfo);
+    _renderEntityChips();
+    _closeEntityPicker();
+    if (inp) inp.value = '';
+    if (msg) msg.textContent = '';
+    toast(`Tagged: ${_pickerType}/${entityInfo.name} (${result.events_tagged || 0} events)`, 'success');
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+function _renderEntityChips() {
+  const container = document.getElementById('chat-entity-chips');
+  if (!container) return;
+  if (!_appliedEntities.length) { container.innerHTML = ''; return; }
+  container.innerHTML = _appliedEntities.map(e => `
+    <span style="display:inline-flex;align-items:center;gap:0.18rem;
+                 background:${e.color}22;border:1px solid ${e.color}55;color:${e.color};
+                 border-radius:10px;padding:0.08rem 0.38rem;font-size:0.56rem;white-space:nowrap"
+          title="${_esc(e.category_name)}/${_esc(e.name)}">
+      ${_esc(e.icon)} ${_esc(e.name)}
+    </span>`).join('');
 }
 
 // ── Commands autocomplete ─────────────────────────────────────────────────────
@@ -606,9 +754,12 @@ async function _loadRolesAndWorkflows() {
 
 window._chatNew = () => {
   _sessionId = null;
+  _appliedEntities = [];
+  _closeEntityPicker();
   const msgs = document.getElementById('chat-messages');
   if (msgs) msgs.innerHTML = '';
   _showWelcome();  // roles already loaded — show immediately
+  _renderEntityChips();
   _loadSessions();
 };
 

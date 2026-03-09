@@ -16,7 +16,8 @@
     "vector_search": "pgvector for semantic embeddings and entity relationships",
     "workflow_execution": "Node-based multi-agent model with YAML config transitioning to UI-managed node graphs",
     "vector_db": "pgvector for semantic embeddings and entity relationships",
-    "integration": "MCP server for cross-tool integration with semantic search"
+    "integration": "MCP server for cross-tool integration with semantic search",
+    "ui_framework": "Node.js with event emission for semantic indexing"
   },
   "key_decisions": [
     "Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL 15+ with pgvector for semantic search and entity relationships; no ChromaDB/SQLite",
@@ -25,11 +26,11 @@
     "Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state; single history.jsonl per project (no duplicate history folders)",
     "All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven via ui/backend/data JSON)",
     "Multi-agent workflows via node-based execution model with YAML config; each node runs prompt with specified LLM engine and outputs score for conditional branching",
-    "Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility with refresh indicator",
+    "Manual balance entry in UI; admin sees aggregated total across all users; per-user balance visibility with refresh indicator",
     "PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search",
     "Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context",
-    "Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl with all logs (prompts, responses, errors)",
-    "Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)",
+    "Hooks auto-commit on claude cli/cursor; aicli tracks own history; unified commit_log.jsonl with all logs (prompts, responses, errors)",
+    "Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON (not hardcoded)",
     "Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced via aicli; tags persist across conversation; relational_tags table links commit_id to metadata",
     "Smart chunking strategy for commits: summary-level + per-class/method chunks with metadata filters (language, file, feature, project_stage) for semantic retrieval",
     "MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and pgvector vectordb",
@@ -51,17 +52,17 @@
     "Claude Code UserPromptSubmit hook \u2192 prompt_log.jsonl"
   ],
   "in_progress": [
-    "Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across multi-turn conversations; validate relational_tags table stores commit_id\u2192metadata links",
-    "MCP server deployment: build semantic embedding search endpoint for claude-cli, cursor, and aicli clients to query pgvector embeddings and commit_log.jsonl; enable cross-tool memory access via /memory command",
-    "Smart chunking architecture: implement summary-level + per-class/method chunk generation for commits; add metadata filters (language, file, feature, project_stage) to support filtered semantic retrieval",
-    "PostgreSQL pgvector validation and table cleanup: confirmed PostgreSQL 15+ instance; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); removed unused tables; validated relational + vector capability",
-    "UI billing/usage integration: fixed usage_logs table population from UI; implemented manual balance entry; added refresh indicator; ensured all calculations refresh correctly on balance updates",
-    "Smart chunking embedding feature: testing auto-tag suggestions on non-streaming endpoint; event emission for semantic search indexing"
+    "Chat history UI fix: restore full prompt/response pairs per session with proper LLM response display and per-prompt metadata visibility (2026-03-09 02:20)",
+    "Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area); persist tags across multi-turn conversations; validate relational_tags table storage",
+    "Smart chunking embedding feature: implement summary-level + per-class/method chunk generation; add metadata filters (language, file, feature, project_stage) for filtered semantic retrieval; test event emission for indexing",
+    "MCP server deployment: build semantic embedding search endpoint for claude-cli, cursor, and aicli clients to query pgvector embeddings and commit_log.jsonl; enable cross-tool memory access",
+    "PostgreSQL pgvector validation: confirmed PostgreSQL 15+ instance; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); validated relational + vector capabilities",
+    "UI billing/usage integration: fixed usage_logs table population; implemented manual balance entry with refresh indicator; ensured calculations refresh on balance updates"
   ],
   "deployment": {
     "local": "uvicorn + npx vite",
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-09T02:04:09Z"
+  "last_memory_run": "2026-03-09T02:34:52Z"
 }

@@ -205,7 +205,13 @@ api.entities = {
   deleteCategory: (id)                => _del(`/entities/categories/${id}`),
 
   // Values
-  listValues:     (project, catId)    => _get(`/entities/values?${_pq(project)}${catId ? `&category_id=${catId}` : ''}`),
+  listValues:     (project, catId, opts = {}) => {
+    const q = new URLSearchParams({ project: project || '' });
+    if (catId) q.set('category_id', catId);
+    if (opts.category_name) q.set('category_name', opts.category_name);
+    if (opts.status) q.set('status', opts.status);
+    return _get(`/entities/values?${q}`);
+  },
   createValue:    (body)              => _post('/entities/values', body),
   patchValue:     (id, body)          => fetch(_base() + `/entities/values/${id}`, { method:'PATCH', headers:_headers(), body:JSON.stringify(body) }).then(r=>r.ok?r.json():r.json().then(e=>Promise.reject(new Error(e.detail)))),
   deleteValue:    (id)                => _del(`/entities/values/${id}`),
@@ -227,6 +233,9 @@ api.entities = {
   addLink:        (eventId, body)     => _post(`/entities/events/${eventId}/link`, body),
   removeLink:     (fromId, toId, lt)  => _del(`/entities/events/${fromId}/link/${toId}/${lt}`),
   getLinks:       (eventId)           => _get(`/entities/events/${eventId}/links`),
+
+  // Session bulk-tag — tags ALL events in a session with one entity value
+  sessionTag:     (body)              => _post('/entities/session-tag', body),
 
   // Tag suggestions (auto-tag loop)
   getSuggestions:     (project, sourceId) => _get(

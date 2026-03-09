@@ -64,6 +64,7 @@ def _workspace(project: str) -> Path:
 _DEFAULT_CATEGORIES = [
     ("feature",   "#27ae60", "⬡"),
     ("bug",       "#e74c3c", "⚠"),
+    ("task",      "#4a90e2", "✓"),
     ("component", "#8e44ad", "◈"),
     ("doc_type",  "#2980b9", "📄"),
     ("customer",  "#f39c12", "👤"),
@@ -71,11 +72,14 @@ _DEFAULT_CATEGORIES = [
 ]
 
 def _seed_defaults(project: str) -> None:
+    """Idempotent: ensures every default category exists for the project."""
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM entity_categories WHERE project=%s", (project,))
-            if cur.fetchone()[0] == 0:
-                for name, color, icon in _DEFAULT_CATEGORIES:
+            # Get existing names so we only insert truly missing ones
+            cur.execute("SELECT name FROM entity_categories WHERE project=%s", (project,))
+            existing = {r[0] for r in cur.fetchall()}
+            for name, color, icon in _DEFAULT_CATEGORIES:
+                if name not in existing:
                     cur.execute(
                         "INSERT INTO entity_categories (project,name,color,icon) "
                         "VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING",
@@ -179,33 +183,45 @@ class ValuePatch(BaseModel):
 
 @router.get("/values")
 async def list_values(
-    project:     str | None = Query(None),
-    category_id: int | None = Query(None),
+    project:       str | None = Query(None),
+    category_id:   int | None = Query(None),
+    category_name: str | None = Query(None),   # e.g. "feature", "bug", "task"
+    status:        str | None = Query(None),   # e.g. "active", "done", "archived"
 ):
     _require_db()
     p = _project(project)
+    _seed_defaults(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
+            # Resolve category_name → category_id if provided
+            if category_name and not category_id:
+                cur.execute(
+                    "SELECT id FROM entity_categories WHERE project=%s AND name=%s",
+                    (p, category_name),
+                )
+                row = cur.fetchone()
+                if row:
+                    category_id = row[0]
+
+            where = ["v.project=%s"]
+            params: list = [p]
             if category_id:
-                cur.execute(
-                    """SELECT v.id, v.category_id, v.name, v.description, v.status,
-                              v.created_at, COUNT(et.event_id) AS event_count
-                       FROM entity_values v
-                       LEFT JOIN event_tags et ON et.entity_value_id = v.id
-                       WHERE v.project=%s AND v.category_id=%s
-                       GROUP BY v.id ORDER BY v.name""",
-                    (p, category_id),
-                )
-            else:
-                cur.execute(
-                    """SELECT v.id, v.category_id, v.name, v.description, v.status,
-                              v.created_at, COUNT(et.event_id) AS event_count
-                       FROM entity_values v
-                       LEFT JOIN event_tags et ON et.entity_value_id = v.id
-                       WHERE v.project=%s
-                       GROUP BY v.id ORDER BY v.category_id, v.name""",
-                    (p,),
-                )
+                where.append("v.category_id=%s"); params.append(category_id)
+            if status:
+                where.append("v.status=%s"); params.append(status)
+
+            cur.execute(
+                f"""SELECT v.id, v.category_id, v.name, v.description, v.status,
+                          v.created_at, COUNT(et.event_id) AS event_count,
+                          c.name AS category_name, c.color, c.icon
+                   FROM entity_values v
+                   JOIN entity_categories c ON c.id = v.category_id
+                   LEFT JOIN event_tags et ON et.entity_value_id = v.id
+                   WHERE {' AND '.join(where)}
+                   GROUP BY v.id, c.name, c.color, c.icon
+                   ORDER BY v.status, v.name""",
+                params,
+            )
             cols = [d[0] for d in cur.description]
             rows = []
             for r in cur.fetchall():
@@ -686,3 +702,92 @@ async def get_event_links(event_id: int):
                 for r in cur.fetchall()
             ]
     return {"outgoing": outgoing, "incoming": incoming, "event_id": event_id}
+
+
+# ── Session bulk-tag ─────────────────────────────────────────────────────────────
+
+class SessionTagBody(BaseModel):
+    session_id:    str
+    project:       Optional[str] = None
+    value_id:      Optional[int] = None           # tag with existing value
+    category_name: Optional[str] = None           # create new value in this category
+    value_name:    Optional[str] = None           # new value name (used with category_name)
+    description:   str = ""
+
+
+@router.post("/session-tag")
+async def session_bulk_tag(body: SessionTagBody):
+    """Tag ALL events belonging to a session with a given entity value.
+
+    - If value_id is provided → use it directly.
+    - If category_name + value_name → find or create the entity_value first.
+    - Finds events by matching metadata->>'session_id' = session_id.
+    - Also sync-imports the session from history.jsonl if not yet in events table.
+    Returns count of events tagged.
+    """
+    _require_db()
+    p = _project(body.project)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            # Resolve or create the target value
+            value_id = body.value_id
+            if value_id is None:
+                if not body.category_name or not body.value_name:
+                    raise HTTPException(400, "Provide value_id OR category_name+value_name")
+                # Get category id
+                cur.execute(
+                    "SELECT id FROM entity_categories WHERE project=%s AND name=%s",
+                    (p, body.category_name),
+                )
+                cat_row = cur.fetchone()
+                if not cat_row:
+                    raise HTTPException(404, f"Category '{body.category_name}' not found")
+                cat_id = cat_row[0]
+                # Find or create value
+                cur.execute(
+                    "SELECT id FROM entity_values WHERE project=%s AND category_id=%s AND name=%s",
+                    (p, cat_id, body.value_name),
+                )
+                val_row = cur.fetchone()
+                if val_row:
+                    value_id = val_row[0]
+                else:
+                    cur.execute(
+                        "INSERT INTO entity_values (project, category_id, name, description) "
+                        "VALUES (%s,%s,%s,%s) RETURNING id",
+                        (p, cat_id, body.value_name, body.description),
+                    )
+                    value_id = cur.fetchone()[0]
+
+            # Find all events for this session
+            # Events created by the UI have metadata->>'session_id' = session_id
+            # Events from CLI have session_id in history.jsonl metadata
+            cur.execute(
+                """SELECT id FROM events
+                   WHERE project=%s
+                     AND (
+                       metadata->>'session_id' = %s
+                       OR source_id = %s
+                     )""",
+                (p, body.session_id, body.session_id),
+            )
+            event_ids = [r[0] for r in cur.fetchall()]
+
+            # Tag them all (idempotent)
+            tagged = 0
+            for eid in event_ids:
+                cur.execute(
+                    "INSERT INTO event_tags (event_id, entity_value_id, auto_tagged) "
+                    "VALUES (%s,%s,false) ON CONFLICT DO NOTHING",
+                    (eid, value_id),
+                )
+                tagged += cur.rowcount
+
+    return {
+        "ok": True,
+        "value_id": value_id,
+        "session_id": body.session_id,
+        "events_tagged": tagged,
+        "project": p,
+    }

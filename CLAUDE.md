@@ -32,11 +32,11 @@ You are a senior Python software architect with deep expertise in:
 - Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state; single history.jsonl per project (no duplicate history folders)
 - All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven via ui/backend/data JSON)
 - Multi-agent workflows via node-based execution model with YAML config; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility with refresh indicator
+- Manual balance entry in UI; admin sees aggregated total across all users; per-user balance visibility with refresh indicator
 - PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
-- Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl with all logs (prompts, responses, errors)
-- Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
+- Hooks auto-commit on claude cli/cursor; aicli tracks own history; unified commit_log.jsonl with all logs (prompts, responses, errors)
+- Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON (not hardcoded)
 - Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced via aicli; tags persist across conversation; relational_tags table links commit_id to metadata
 - Smart chunking strategy for commits: summary-level + per-class/method chunks with metadata filters (language, file, feature, project_stage) for semantic retrieval
 - MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and pgvector vectordb
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-09] `claude_cli`: what do you think about the porject, can it help / reduce overall deployment? are there any similar 
-- [2026-03-09] `claude_cli`: please implemet step1 - auto-tag loop. regarding users - aicli currently hosting services. users wor
-- [2026-03-09] `ui`: I am working on the smart chunking embedding feature for semantic search
-- [2026-03-09] `ui`: Testing auto-tag suggestions on non-streaming endpoint
-- [2026-03-09] `ui`: brief test for event emission
+- [2026-03-09] `claude_cli`: something went wrong in the chat tab . it used to work properly - I saw all prompts per session, but
+- [2026-03-09] `ui`: My name is Alice and I work on feature X
+- [2026-03-09] `ui`: What is my name and what feature am I working on?
+- [2026-03-09] `ui`: My name is Alice and I work on feature X
+- [2026-03-09] `ui`: What is my name and what feature am I working on?
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

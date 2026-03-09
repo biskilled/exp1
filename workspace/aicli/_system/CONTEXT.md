@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-09 02:11 UTC — do not edit manually.
+> Auto-generated 2026-03-09 02:35 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 37
-- **Last active**: 2026-03-09T02:03:44Z
+- **Sessions**: 41
+- **Last active**: 2026-03-09T02:34:30Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -27,15 +27,16 @@
 - **workflow_execution**: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
 - **vector_db**: pgvector for semantic embeddings and entity relationships
 - **integration**: MCP server for cross-tool integration with semantic search
+- **ui_framework**: Node.js with event emission for semantic indexing
 
 ## In Progress
 
-- Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across multi-turn conversations; validate relational_tags table stores commit_id→metadata links
-- MCP server deployment: build semantic embedding search endpoint for claude-cli, cursor, and aicli clients to query pgvector embeddings and commit_log.jsonl; enable cross-tool memory access via /memory command
-- Smart chunking architecture: implement summary-level + per-class/method chunk generation for commits; add metadata filters (language, file, feature, project_stage) to support filtered semantic retrieval
-- PostgreSQL pgvector validation and table cleanup: confirmed PostgreSQL 15+ instance; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); removed unused tables; validated relational + vector capability
-- UI billing/usage integration: fixed usage_logs table population from UI; implemented manual balance entry; added refresh indicator; ensured all calculations refresh correctly on balance updates
-- Smart chunking embedding feature: testing auto-tag suggestions on non-streaming endpoint; event emission for semantic search indexing
+- Chat history UI fix: restore full prompt/response pairs per session with proper LLM response display and per-prompt metadata visibility (2026-03-09 02:20)
+- Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area); persist tags across multi-turn conversations; validate relational_tags table storage
+- Smart chunking embedding feature: implement summary-level + per-class/method chunk generation; add metadata filters (language, file, feature, project_stage) for filtered semantic retrieval; test event emission for indexing
+- MCP server deployment: build semantic embedding search endpoint for claude-cli, cursor, and aicli clients to query pgvector embeddings and commit_log.jsonl; enable cross-tool memory access
+- PostgreSQL pgvector validation: confirmed PostgreSQL 15+ instance; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); validated relational + vector capabilities
+- UI billing/usage integration: fixed usage_logs table population; implemented manual balance entry with refresh indicator; ensured calculations refresh on balance updates
 
 ## Key Decisions
 
@@ -45,11 +46,11 @@
 - Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state; single history.jsonl per project (no duplicate history folders)
 - All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven via ui/backend/data JSON)
 - Multi-agent workflows via node-based execution model with YAML config; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility with refresh indicator
+- Manual balance entry in UI; admin sees aggregated total across all users; per-user balance visibility with refresh indicator
 - PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
-- Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl with all logs (prompts, responses, errors)
-- Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
+- Hooks auto-commit on claude cli/cursor; aicli tracks own history; unified commit_log.jsonl with all logs (prompts, responses, errors)
+- Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON (not hardcoded)
 - Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced via aicli; tags persist across conversation; relational_tags table links commit_id to metadata
 - Smart chunking strategy for commits: summary-level + per-class/method chunks with metadata filters (language, file, feature, project_stage) for semantic retrieval
 - MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and pgvector vectordb
@@ -147,6 +148,25 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-09 02:31]** `ui/claude`  
+→ What is my name and what feature am I working on?
+← _Your name is **Alice** and you are working on **feature X**. 😊_
+
+**[2026-03-09 02:31]** `ui/claude`  
+→ My name is Alice and I work on feature X
+← _Got it, Alice! I'll remember that you work on feature X. How can I help you today? Whether it's questions, brainstorming, troubleshooting, or anything else related to feature X (or beyond), feel free _
+
+**[2026-03-09 02:31]** `ui/claude`  
+→ What is my name and what feature am I working on?
+← _I don't have any information about your name or what feature you're working on. I don't have access to personal details about you unless you share them in our conversation.  Would you like to tell me?_
+
+**[2026-03-09 02:31]** `ui/claude`  
+→ My name is Alice and I work on feature X
+← _Thanks for sharing that, Alice! I'll keep in mind that you work on feature X.  Is there something specific about feature X you'd like to discuss or get help with? I'm happy to assist!_
+
+**[2026-03-09 02:20]** `claude_cli/claude`  
+→ something went wrong in the chat tab . it used to work properly - I saw all prompts per session, but only the prompt I w
+
 **[2026-03-09 02:03]** `ui/claude`  
 → brief test for event emission
 ← _## Brief Event Emission Test  ```javascript const EventEmitter = require('events');  // --- Setup --- const emitter = new EventEmitter(); const results = [];  // --- Listeners --- emitter.on('data', (_
@@ -179,18 +199,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-09 00:35]** `claude_cli/claude`  
 → is all conigured as we discussed? metadata/enetity relationsheep table, embedding table, chanking architecure and mcp se
-
-**[2026-03-09 00:14]** `claude_cli/claude`  
-→ can you check if the new postgreurl is working and good for pgvector and for relational data ? 
-
-**[2026-03-08 23:52]** `claude_cli/claude`  
-→ dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name 
-
-**[2026-03-08 23:21]** `claude_cli/claude`  
-→ dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys for each prompt ? for
-
-**[2026-03-08 23:08]** `claude_cli/claude`  
-→ I will create postgresql with pgvector. it is a new instanse (so required to create all users table as well). before you
-
-**[2026-03-08 22:32]** `claude_cli/claude`  
-→ I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the current solution is goo
