@@ -691,15 +691,22 @@ async def generate_memory(project_name: str):
                 pass
         recent = recent[-40:]
 
-    # Load project_state.json
+    # Load project_state.json (also reads last_memory_run for incremental processing)
     state_data: dict = {}
+    state_path: Path | None = None
     for p in [sys_dir / "project_state.json", proj_dir / "project_state.json"]:
         if p.exists():
             try:
                 state_data = json.loads(p.read_text())
+                state_path = p
                 break
             except Exception:
                 pass
+    if state_path is None:
+        state_path = sys_dir / "project_state.json"
+
+    # last_memory_run: ISO ts of the previous /memory call — used for incremental ingest
+    last_memory_run: str | None = state_data.get("last_memory_run")
 
     # Load PROJECT.md
     project_md = ""
@@ -957,13 +964,22 @@ async def generate_memory(project_name: str):
                 except Exception:
                     pass
 
-    # ── Fire-and-forget background tasks ─────────────────────────────────────
+    # ── Update last_memory_run BEFORE background tasks start ─────────────────
+    run_ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    state_data["last_memory_run"] = run_ts
+    try:
+        state_path.write_text(json.dumps(state_data, indent=2))
+    except Exception:
+        pass
+
+    # ── Fire-and-forget background tasks (incremental — only process new data) ─
     try:
         from core.embeddings import ingest_history as _ih, ingest_roles as _ir, ingest_commit as _ic
-        asyncio.create_task(_ih(project_name))
-        asyncio.create_task(_ir(project_name))
+        # Pass since=last_memory_run so only new history entries are embedded
+        asyncio.create_task(_ih(project_name, since=last_memory_run))
+        asyncio.create_task(_ir(project_name))  # roles: always re-embed (files may change)
 
-        # Ingest new commits that haven't been embedded yet
+        # Ingest new commits (already filtered by "not in embeddings table")
         code_dir_for_git = cfg.get("code_dir", "")
         if code_dir_for_git and db.is_available():
             asyncio.create_task(_ingest_new_commits(project_name, code_dir_for_git, _ic))
@@ -971,10 +987,11 @@ async def generate_memory(project_name: str):
     except Exception:
         pass
 
-    # Entity sync + auto-tag (fire-and-forget, requires PostgreSQL)
+    # Entity sync + auto-tag + relationship detection (fire-and-forget)
     if db.is_available():
         try:
-            asyncio.create_task(_sync_and_autotag(project_name))
+            asyncio.create_task(_sync_and_autotag(project_name, since=last_memory_run))
+            asyncio.create_task(_detect_relationships(project_name, since=last_memory_run))
         except Exception:
             pass
 
@@ -983,6 +1000,8 @@ async def generate_memory(project_name: str):
         "copied_to": copied_to,
         "skipped_copy": skipped_copy,
         "synthesized": synthesis is not None,
+        "incremental_since": last_memory_run,
+        "run_ts": run_ts,
     }
 
 
@@ -1012,18 +1031,19 @@ async def _ingest_new_commits(project: str, code_dir: str, ingest_commit_fn) -> 
         logging.getLogger(__name__).debug(f"_ingest_new_commits failed: {e}")
 
 
-async def _sync_and_autotag(project: str) -> None:
-    """Sync events then LLM-auto-tag untagged events. Silent on error."""
-    import logging as _log
-    log = _log.getLogger(__name__)
+async def _sync_and_autotag(project: str, since: str | None = None) -> None:
+    """Sync events then LLM-auto-tag untagged events. Silent on error.
+
+    since: ISO timestamp — only auto-tag events created after this time.
+    """
+    _log = logging.getLogger(__name__)
     try:
         from routers.entities import _do_sync_events
         _do_sync_events(project)
     except Exception as e:
-        log.debug(f"_sync_and_autotag sync failed: {e}")
+        _log.debug(f"_sync_and_autotag sync failed: {e}")
         return
 
-    # LLM auto-tag: get untagged events + all entity values, ask Haiku to suggest tags
     try:
         from core.api_keys import get_key
         key = get_key("anthropic")
@@ -1032,7 +1052,6 @@ async def _sync_and_autotag(project: str) -> None:
 
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # Get entity values (id, category, name) for this project
                 cur.execute(
                     """SELECT v.id, c.name AS category, v.name
                        FROM entity_values v
@@ -1041,39 +1060,38 @@ async def _sync_and_autotag(project: str) -> None:
                        ORDER BY c.name, v.name""",
                     (project,),
                 )
-                all_values = cur.fetchall()  # (id, category, name)
+                all_values = cur.fetchall()
                 if not all_values:
                     return
 
-                # Get untagged events (no entry in event_tags)
+                # Only tag events that are new (after since) and have no tags yet
+                since_filter = "AND e.created_at > %s::timestamptz" if since else ""
+                params: list = [project]
+                if since:
+                    params.append(since)
                 cur.execute(
-                    """SELECT e.id, e.event_type, e.title
-                       FROM events e
-                       WHERE e.project=%s
-                         AND NOT EXISTS (
-                             SELECT 1 FROM event_tags et WHERE et.event_id=e.id
-                         )
-                       ORDER BY e.created_at DESC LIMIT 30""",
-                    (project,),
+                    f"""SELECT e.id, e.event_type, e.title
+                        FROM events e
+                        WHERE e.project=%s
+                          AND NOT EXISTS (SELECT 1 FROM event_tags et WHERE et.event_id=e.id)
+                          {since_filter}
+                        ORDER BY e.created_at DESC LIMIT 30""",
+                    params,
                 )
-                untagged = cur.fetchall()  # (id, event_type, title)
+                untagged = cur.fetchall()
 
         if not untagged:
             return
 
-        values_list = "\n".join(
-            f"  {vid}: {cat}/{name}" for vid, cat, name in all_values
-        )
-        events_list = "\n".join(
-            f"  {eid}: [{etype}] {title[:80]}" for eid, etype, title in untagged
-        )
+        values_list = "\n".join(f"  {vid}: {cat}/{name}" for vid, cat, name in all_values)
+        events_list = "\n".join(f"  {eid}: [{etype}] {title[:80]}" for eid, etype, title in untagged)
 
         prompt = (
             "You are tagging project events with entity values.\n\n"
             f"Entity values (id: category/name):\n{values_list}\n\n"
             f"Events to tag (id: [type] title):\n{events_list}\n\n"
-            "Return ONLY a JSON object mapping event_id (string) to an array of matching value_ids (integers). "
-            "Only include events where you are confident. Prefer concrete, specific matches.\n"
+            "Return ONLY a JSON object mapping event_id (string) to an array of matching "
+            "value_ids (integers). Only include confident, specific matches.\n"
             "Example: {\"123\": [2, 5], \"124\": [5]}"
         )
 
@@ -1081,7 +1099,7 @@ async def _sync_and_autotag(project: str) -> None:
         client = anthropic.AsyncAnthropic(api_key=key)
         response = await client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=500,
+            max_tokens=600,
             messages=[{"role": "user", "content": prompt}],
         )
         content = (response.content[0].text if response.content else "").strip()
@@ -1095,8 +1113,6 @@ async def _sync_and_autotag(project: str) -> None:
                     break
 
         suggestions: dict = json.loads(content)
-
-        # Write tags with auto_tagged=True
         with db.conn() as conn:
             with conn.cursor() as cur:
                 for event_id_str, value_ids in suggestions.items():
@@ -1115,7 +1131,127 @@ async def _sync_and_autotag(project: str) -> None:
                             pass
 
     except Exception as e:
-        log.debug(f"_sync_and_autotag auto-tag failed: {e}")
+        logging.getLogger(__name__).debug(f"_sync_and_autotag auto-tag failed: {e}")
+
+
+async def _detect_relationships(project: str, since: str | None = None) -> None:
+    """Detect and create relationships between new events. Silent on error.
+
+    Two strategies:
+    1. Keyword: commit messages containing fix/close/resolve → links to bug events
+    2. LLM: Haiku analyzes batches of new events and suggests semantic relationships
+    """
+    _log = logging.getLogger(__name__)
+    if not db.is_available():
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Get new events (after since)
+                since_filter = "AND created_at > %s::timestamptz" if since else ""
+                params: list = [project]
+                if since:
+                    params.append(since)
+                cur.execute(
+                    f"""SELECT id, event_type, source_id, title, content, metadata
+                        FROM events WHERE project=%s {since_filter}
+                        ORDER BY created_at DESC LIMIT 50""",
+                    params,
+                )
+                new_events = cur.fetchall()  # (id, type, source_id, title, content, meta)
+
+                if not new_events:
+                    return
+
+                # Strategy 1: keyword detection for commit → bug relationships
+                commit_events = [(eid, title, content) for eid, etype, *rest, title, content, meta in
+                                 [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in new_events]
+                                 if etype == "commit"]
+                # Actually let me restructure this properly:
+                rows_by_type: dict[str, list] = {}
+                for r in new_events:
+                    eid, etype, src_id, title, content, meta = r
+                    rows_by_type.setdefault(etype, []).append((eid, src_id, title, content, meta))
+
+                # Keyword: commits with fix/close/resolve → link to bug events
+                import re as _re
+                bug_events = {
+                    r[2].lower(): r[0]  # title.lower() → id
+                    for r in new_events if r[1] == "prompt"  # look for bug-tagged prompts
+                }
+                for eid, src_id, title, content, meta in rows_by_type.get("commit", []):
+                    msg = (title or content or "").lower()
+                    link_type = None
+                    if _re.search(r'\b(fix|fixe[sd]|close[sd]?|resolve[sd]?)\b', msg):
+                        link_type = "fixes"
+                    elif _re.search(r'\bimplements?\b', msg):
+                        link_type = "implements"
+                    if not link_type:
+                        continue
+                    # Try to link to a feature/bug event by keyword match
+                    for bug_title, bug_id in bug_events.items():
+                        if eid != bug_id and any(
+                            word in msg for word in bug_title.split()[:3] if len(word) > 4
+                        ):
+                            try:
+                                cur.execute(
+                                    "INSERT INTO event_links (from_event_id, to_event_id, link_type) "
+                                    "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                                    (eid, bug_id, link_type),
+                                )
+                            except Exception:
+                                pass
+
+        # Strategy 2: LLM-based relationship suggestion (only if Anthropic key available)
+        from core.api_keys import get_key
+        key = get_key("anthropic")
+        if not key or len(new_events) < 2:
+            return
+
+        events_summary = "\n".join(
+            f"  {r[0]}: [{r[1]}] {r[3][:80]}" for r in new_events[:20]
+        )
+        prompt = (
+            "Analyze these project events and identify meaningful relationships between them.\n\n"
+            f"Events (id: [type] title):\n{events_summary}\n\n"
+            "Return ONLY a JSON array of relationships. Each item: "
+            "{\"from\": id, \"to\": id, \"type\": link_type}\n"
+            f"link_type must be one of: implements, fixes, causes, relates_to, references, closes\n"
+            "Only include high-confidence relationships. Return [] if none are clear.\n"
+            "Example: [{\"from\": 10, \"to\": 5, \"type\": \"fixes\"}]"
+        )
+
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=key)
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = (response.content[0].text if response.content else "").strip()
+        import re as _re2
+        match = _re2.search(r'\[.*?\]', text, _re2.DOTALL)
+        if not match:
+            return
+        relationships: list = json.loads(match.group())
+
+        if not relationships:
+            return
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for rel in relationships:
+                    try:
+                        cur.execute(
+                            "INSERT INTO event_links (from_event_id, to_event_id, link_type) "
+                            "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                            (int(rel["from"]), int(rel["to"]), rel["type"]),
+                        )
+                    except Exception:
+                        pass
+
+    except Exception as e:
+        _log.debug(f"_detect_relationships failed: {e}")
 
 
 @router.get("/{project_name}")

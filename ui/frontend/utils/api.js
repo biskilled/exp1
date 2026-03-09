@@ -227,6 +227,12 @@ api.entities = {
   addLink:        (eventId, body)     => _post(`/entities/events/${eventId}/link`, body),
   removeLink:     (fromId, toId, lt)  => _del(`/entities/events/${fromId}/link/${toId}/${lt}`),
   getLinks:       (eventId)           => _get(`/entities/events/${eventId}/links`),
+
+  // Tag suggestions (auto-tag loop)
+  getSuggestions:     (project, sourceId) => _get(
+    `/entities/suggestions?${_pq(project)}${sourceId ? `&source_id=${encodeURIComponent(sourceId)}` : ''}`
+  ),
+  dismissSuggestions: (eventId) => _post(`/entities/suggestions/${eventId}/dismiss`, {}),
 };
 
 

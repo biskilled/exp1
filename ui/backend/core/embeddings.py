@@ -435,8 +435,11 @@ async def semantic_search(
 # ── Bulk ingest ──────────────────────────────────────────────────────────────
 
 
-async def ingest_history(project: str) -> int:
-    """Embed history.jsonl entries that haven't been embedded yet. Returns count."""
+async def ingest_history(project: str, since: str | None = None) -> int:
+    """Embed history.jsonl entries. If since (ISO ts) is given, only embed newer entries.
+
+    Returns count of newly embedded entries.
+    """
     history_path = Path(settings.workspace_dir) / project / "_system" / "history.jsonl"
     if not history_path.exists():
         return 0
@@ -451,6 +454,9 @@ async def ingest_history(project: str) -> int:
             except json.JSONDecodeError:
                 continue
             ts = entry.get("ts", "")
+            # Skip entries at or before the since threshold
+            if since and ts and ts <= since:
+                continue
             user_input = entry.get("user_input", "")
             output = entry.get("output", "")
             source_id = ts or f"hist_{embedded}"
@@ -458,14 +464,9 @@ async def ingest_history(project: str) -> int:
             if content.strip() == "Q: \nA: ":
                 continue
             meta: dict = {}
-            if entry.get("provider"):
-                meta["provider"] = entry["provider"]
-            if entry.get("source"):
-                meta["source"] = entry["source"]
-            if entry.get("phase"):
-                meta["phase"] = entry["phase"]
-            if entry.get("feature"):
-                meta["feature"] = entry["feature"]
+            for k in ("provider", "source", "phase", "feature"):
+                if entry.get(k):
+                    meta[k] = entry[k]
             await embed_and_store(
                 project, "history", source_id, content,
                 chunk_index=0, chunk_type="full", metadata=meta,

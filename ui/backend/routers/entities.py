@@ -34,6 +34,8 @@ Endpoints:
 from __future__ import annotations
 
 import json
+import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -42,6 +44,8 @@ from pydantic import BaseModel
 
 from config import settings
 from core.database import db
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -440,6 +444,183 @@ async def remove_event_tag(event_id: int, value_id: int):
 @router.get("/values/{val_id}/events")
 async def value_events(val_id: int, project: str | None = Query(None), limit: int = Query(50)):
     return await list_events(project=project, value_id=val_id, limit=limit)
+
+
+# ── Auto-tag suggestions ────────────────────────────────────────────────────────
+
+async def _auto_suggest_tags(event_id: int, project: str, content: str) -> None:
+    """Use Haiku to suggest entity values for an event. Stores in metadata.tag_suggestions.
+
+    Also immediately applies the active session tags (no LLM needed for those).
+    Silent on any error — this is always fire-and-forget.
+    """
+    if not db.is_available():
+        return
+    try:
+        from core.api_keys import get_key
+        key = get_key("anthropic")
+
+        # Get all active entity values for this project
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT v.id, c.name, v.name
+                       FROM entity_values v
+                       JOIN entity_categories c ON c.id = v.category_id
+                       WHERE v.project=%s AND v.status='active'
+                       ORDER BY c.name, v.name""",
+                    (project,),
+                )
+                all_values = cur.fetchall()  # (id, category, name)
+
+                # Get active session tags — apply immediately without LLM
+                cur.execute(
+                    "SELECT phase, feature, bug_ref, extra FROM session_tags WHERE project=%s",
+                    (project,),
+                )
+                st_row = cur.fetchone()
+
+        if not all_values:
+            return
+
+        id_to_val = {vid: (cat, name) for vid, cat, name in all_values}
+        suggestions: list[dict] = []
+        auto_applied: list[int] = []
+
+        # Immediately apply active session tags
+        if st_row:
+            phase, feature, bug_ref, extra = st_row
+            for vid, cat, name in all_values:
+                if (cat == "phase"   and phase   and name == phase) or \
+                   (cat == "feature" and feature and name == feature) or \
+                   (cat == "bug"     and bug_ref  and name == bug_ref):
+                    auto_applied.append(vid)
+
+        for vid in auto_applied:
+            cat, name = id_to_val[vid]
+            suggestions.append({
+                "value_id": vid, "category": cat, "name": name,
+                "from_session": True, "confidence": 1.0,
+            })
+            # Apply immediately
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO event_tags (event_id, entity_value_id, auto_tagged) "
+                            "VALUES (%s,%s,TRUE) ON CONFLICT DO NOTHING",
+                            (event_id, vid),
+                        )
+            except Exception:
+                pass
+
+        # LLM suggestions for non-session tags (only if Anthropic key available)
+        if key:
+            values_list = "\n".join(
+                f"  {vid}: {cat}/{name}" for vid, cat, name in all_values
+                if vid not in auto_applied
+            )
+            prompt = (
+                f"Tag this developer prompt with relevant entity values.\n\n"
+                f"Prompt: {content[:600]}\n\n"
+                f"Entity values (id: category/name):\n{values_list}\n\n"
+                "Return a JSON array of matching value_ids (integers, up to 4 most relevant). "
+                "Only include confident, specific matches. Return [] if none clearly apply.\n"
+                "Example: [2, 5]"
+            )
+            import anthropic
+            client = anthropic.AsyncAnthropic(api_key=key)
+            resp = await client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=80,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = (resp.content[0].text if resp.content else "").strip()
+            match = re.search(r'\[[\d,\s]*\]', text)
+            if match:
+                for vid in json.loads(match.group()):
+                    try:
+                        vid = int(vid)
+                    except (ValueError, TypeError):
+                        continue
+                    if vid in id_to_val and vid not in auto_applied:
+                        cat, name = id_to_val[vid]
+                        suggestions.append({
+                            "value_id": vid, "category": cat, "name": name,
+                            "from_session": False, "confidence": 0.8,
+                        })
+
+        if not suggestions:
+            return
+
+        # Store all suggestions in event metadata (including already-applied session ones)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE events SET metadata = jsonb_set(metadata, '{tag_suggestions}', %s::jsonb, true) "
+                    "WHERE id=%s",
+                    (json.dumps(suggestions), event_id),
+                )
+
+    except Exception as e:
+        log.debug(f"_auto_suggest_tags failed (event {event_id}): {e}")
+
+
+@router.get("/suggestions")
+async def get_suggestions(
+    project:   str | None = Query(None),
+    source_id: str | None = Query(None),
+):
+    """Return events with pending tag suggestions not yet dismissed.
+
+    Pass source_id (the event ts) to get suggestions for a specific prompt event.
+    """
+    _require_db()
+    p = _project(project)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            if source_id:
+                cur.execute(
+                    """SELECT id, event_type, source_id, title, metadata, created_at
+                       FROM events
+                       WHERE project=%s AND source_id=%s
+                         AND metadata ? 'tag_suggestions'
+                         AND (metadata->>'suggestions_handled') IS DISTINCT FROM 'true'
+                       LIMIT 1""",
+                    (p, source_id),
+                )
+            else:
+                cur.execute(
+                    """SELECT id, event_type, source_id, title, metadata, created_at
+                       FROM events
+                       WHERE project=%s
+                         AND metadata ? 'tag_suggestions'
+                         AND (metadata->>'suggestions_handled') IS DISTINCT FROM 'true'
+                       ORDER BY created_at DESC LIMIT 10""",
+                    (p,),
+                )
+            cols = [d[0] for d in cur.description]
+            rows = []
+            for r in cur.fetchall():
+                row = dict(zip(cols, r))
+                if row.get("created_at"):
+                    row["created_at"] = row["created_at"].isoformat()
+                rows.append(row)
+    return {"events": rows, "project": p}
+
+
+@router.post("/suggestions/{event_id}/dismiss")
+async def dismiss_suggestions(event_id: int):
+    """Mark tag suggestions as handled (dismissed without applying)."""
+    _require_db()
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE events SET metadata = jsonb_set(metadata, '{suggestions_handled}', 'true'::jsonb, true) "
+                "WHERE id=%s",
+                (event_id,),
+            )
+    return {"ok": True}
 
 
 # ── Event links ────────────────────────────────────────────────────────────────

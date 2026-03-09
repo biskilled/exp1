@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-09 01:33 UTC — do not edit manually.
+> Auto-generated 2026-03-09 01:56 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 32
-- **Last active**: 2026-03-09T01:33:26Z
+- **Sessions**: 33
+- **Last active**: 2026-03-09T01:37:33Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -30,12 +30,12 @@
 
 ## In Progress
 
-- PostgreSQL pgvector validation and schema finalization: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags); removed unused graph/entity tables; validated relational data and vector embedding capability
-- Unified commit_log.jsonl population verification: ensure all logs (prompts, responses, errors) from claude cli hooks, aicli commits, and cursor hooks write to shared commit_log.jsonl; verify hooks auto-commit to git; validate history.jsonl captures both prompts and responses
-- Code consolidation and cleanup: removed hardcoded cost_tracker pricing; consolidated duplicate history folder vs _system folder usage; removed unused graph/entity tables and related code; clarified dev_runtime_state.json is deprecated
-- Mandatory metadata tagging system implementation: enforce minimum metadata keys (project, lifecycle_stage, feature_area) for every prompt via aicli; ensure tags persist across conversation; create relational_tags table linking commit_id to lifecycle_stage/feature_area/bug
-- MCP server and smart chunking architecture: build MCP server for cross-tool memory access via pgvector semantic embeddings; implement smart chunking strategy (summary + per-class/method) with metadata filtering for quick retrieval by claude-cli, aicli, cursor
-- Workflow schema and node-based execution model: restore multi-agent workflow support with YAML config; each node contains prompt (agent role) + LLM engine selection + output scoring for conditional branching; validate schema against postgres workflows table
+- Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across multi-turn conversations; validate relational_tags table stores commit_id→metadata links
+- MCP server deployment: build semantic embedding search endpoint for claude-cli, cursor, and aicli clients to query pgvector embeddings and commit_log.jsonl; enable cross-tool memory access via /memory command
+- Smart chunking architecture: implement summary-level + per-class/method chunk generation for commits; add metadata filters (language, file, feature, project_stage) to support filtered semantic retrieval
+- Multi-agent workflow schema restoration: restore YAML-based workflow definitions with node-based execution; each node contains agent role prompt + LLM engine selection + output scoring for conditional branching
+- PostgreSQL pgvector validation and table cleanup: confirmed PostgreSQL 15+ instance; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); removed unused tables; validated relational + vector capability
+- UI billing/usage integration: fixed usage_logs table population from UI; implemented manual balance entry; added refresh indicator; ensured all calculations refresh correctly on balance updates
 
 ## Key Decisions
 
@@ -45,15 +45,15 @@
 - Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state; single history.jsonl per project (no duplicate history folders)
 - All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven via ui/backend/data JSON)
 - Multi-agent workflows via node-based execution model with YAML config transitioning to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility in dashboards with refresh indicator
+- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility with refresh indicator
 - PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
-- dev_runtime_state.json necessity deprecated; project_state.json auto-maintained for shared LLM context across sessions
 - Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl with all logs (prompts, responses, errors)
 - Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
 - Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced via aicli; tags persist across conversation; relational_tags table links commit_id to metadata
 - Smart chunking strategy for commits: summary-level + per-class/method chunks with metadata filters (language, file, feature, project_stage) for semantic retrieval
 - MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and pgvector vectordb
+- project_state.json auto-maintained for shared LLM context across sessions; dev_runtime_state.json deprecated
 
 ---
 
@@ -147,6 +147,12 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-09 01:47]** `claude_cli/claude`  
+→ please implemet step1 - auto-tag loop. regarding users - aicli currently hosting services. users working on same project
+
+**[2026-03-09 01:36]** `claude_cli/claude`  
+→ what do you think about the porject, can it help / reduce overall deployment? are there any similar tools I can use ?
+
 **[2026-03-09 01:32]** `claude_cli/claude`  
 → Can you summersie all new changes and how /memory currently updte all files? hooks are still writing to local jsonl file
 
@@ -185,9 +191,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 05:15]** `claude_cli/claude`  
 → let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do that using yaml . and
-
-**[2026-03-08 05:10]** `claude_cli/claude`  
-→ I do see lot of table in my postgresql - all are required as there were some changes. can you remove table not in use?
-
-**[2026-03-08 05:06]** `claude_cli/claude`  
-→ <task-notification> <task-id>ba21592</task-id> <tool-use-id>toolu_01X3GzA6q9L1GhyQMY72Yeqd</tool-use-id> <output-file>/p

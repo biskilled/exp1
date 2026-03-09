@@ -673,8 +673,9 @@ window._chatSend = async () => {
 
     const reader  = response.body.getReader();
     const decoder = new TextDecoder();
-    let buffer   = '';
-    let fullText = '';
+    let buffer    = '';
+    let fullText  = '';
+    let eventTs   = null;   // captured from [EVENT:ts] SSE event
 
     outer: while (true) {
       const { done, value } = await reader.read();
@@ -693,6 +694,8 @@ window._chatSend = async () => {
         const data = part.slice(6);
         if (data === '[DONE]') break outer;
         if (data.startsWith('[ERROR]')) throw new Error(data.slice(8).trim() || 'Stream error');
+        // Capture event timestamp for tag suggestion polling
+        if (data.startsWith('[EVENT:')) { eventTs = data.slice(7); continue; }
         fullText += data;
         // Render markdown incrementally while streaming
         bubble.innerHTML = _renderMarkdown(fullText) + '<span style="opacity:0.3;animation:cursorBlink 1s infinite">▌</span>';
@@ -704,6 +707,12 @@ window._chatSend = async () => {
     bubble.innerHTML = _renderMarkdown(fullText);
     scrollInto();
     _loadSessions();
+
+    // Poll for tag suggestions (backend needs ~2s to run Haiku)
+    if (eventTs) {
+      const capturedTs = eventTs;
+      setTimeout(() => _pollTagSuggestions(capturedTs), 2500);
+    }
 
     // Auto commit & push if enabled for this project
     const proj = state.currentProject;
@@ -738,6 +747,115 @@ async function _autoCommitPush(projectName, userMsg) {
     // Show error in chat (not just a toast) — common causes: code_dir not set, not a git repo
     _appendSystemMsg(`⚠ Auto-commit failed: ${e.message}\n\nCheck **Settings → Project** — make sure *Code directory* and *Git credentials* are configured.`);
   }
+}
+
+// ── Tag suggestion chips ──────────────────────────────────────────────────────
+
+async function _pollTagSuggestions(sourceId) {
+  try {
+    const project = state.currentProject?.name || '';
+    const d = await api.entities.getSuggestions(project, sourceId);
+    const evt = d?.events?.[0];
+    if (evt?.metadata?.tag_suggestions?.length) {
+      _showTagSuggestions(evt);
+    }
+  } catch (_) {}
+}
+
+function _showTagSuggestions(evt) {
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+
+  const suggs = (evt.metadata?.tag_suggestions || []);
+  if (!suggs.length) return;
+
+  const row = document.createElement('div');
+  row.dataset.suggestionEventId = evt.id;
+  row.style.cssText = [
+    'display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap',
+    'padding:0.35rem 0.75rem;margin:0.15rem 0',
+    'animation:msgIn 0.2s ease-out',
+  ].join(';');
+
+  // Label
+  const label = document.createElement('span');
+  label.style.cssText = 'font-size:0.6rem;color:var(--muted);white-space:nowrap';
+  label.textContent = '📎 Tag:';
+  row.appendChild(label);
+
+  // One chip per suggestion
+  suggs.forEach(s => {
+    const chip = document.createElement('span');
+    const isApplied = s.from_session === true;
+    chip.style.cssText = [
+      `background:${isApplied ? 'var(--accent)' : 'var(--surface2)'}`,
+      `color:${isApplied ? '#fff' : 'var(--text)'}`,
+      'border:1px solid var(--border)',
+      'border-radius:12px',
+      'padding:0.15rem 0.55rem',
+      'font-size:0.62rem',
+      'cursor:pointer',
+      'transition:background 0.15s,opacity 0.15s',
+      'user-select:none',
+    ].join(';');
+    chip.title = isApplied ? 'Applied from session tags' : 'Click to apply tag';
+    chip.dataset.valueId = s.value_id;
+    chip.dataset.applied = isApplied ? 'true' : 'false';
+    chip.innerHTML = `${_esc(s.category)}/<strong>${_esc(s.name)}</strong>${isApplied ? ' ✓' : ' +'}`;
+
+    if (!isApplied) {
+      chip.addEventListener('click', async () => {
+        if (chip.dataset.applied === 'true') return;
+        try {
+          await api.entities.addTag(evt.id, { entity_value_id: s.value_id, auto_tagged: false });
+          chip.dataset.applied = 'true';
+          chip.style.background = 'var(--accent)';
+          chip.style.color = '#fff';
+          chip.innerHTML = `${_esc(s.category)}/<strong>${_esc(s.name)}</strong> ✓`;
+        } catch (e) {
+          toast(e.message, 'error');
+        }
+      });
+    }
+    row.appendChild(chip);
+  });
+
+  // Apply-all button (only if there are non-session suggestions)
+  const nonSession = suggs.filter(s => !s.from_session);
+  if (nonSession.length > 1) {
+    const applyAll = document.createElement('span');
+    applyAll.style.cssText = 'font-size:0.6rem;color:var(--accent);cursor:pointer;white-space:nowrap;text-decoration:underline';
+    applyAll.textContent = 'apply all';
+    applyAll.addEventListener('click', async () => {
+      for (const s of nonSession) {
+        try {
+          await api.entities.addTag(evt.id, { entity_value_id: s.value_id, auto_tagged: false });
+        } catch (_) {}
+      }
+      // Refresh chips state
+      row.querySelectorAll('span[data-value-id]').forEach(c => {
+        c.dataset.applied = 'true';
+        c.style.background = 'var(--accent)';
+        c.style.color = '#fff';
+      });
+      applyAll.remove();
+    });
+    row.appendChild(applyAll);
+  }
+
+  // Dismiss button
+  const dismiss = document.createElement('span');
+  dismiss.style.cssText = 'font-size:0.7rem;color:var(--muted);cursor:pointer;margin-left:auto;padding:0 0.25rem';
+  dismiss.title = 'Dismiss suggestions';
+  dismiss.textContent = '✕';
+  dismiss.addEventListener('click', async () => {
+    row.remove();
+    try { await api.entities.dismissSuggestions(evt.id); } catch (_) {}
+  });
+  row.appendChild(dismiss);
+
+  container.appendChild(row);
+  container.scrollTop = container.scrollHeight;
 }
 
 function _setStreaming(active) {

@@ -44,14 +44,24 @@ def _get_store() -> SessionStore:
     )
 
 
-def _append_history(project: str, provider: str, user_msg: str, response: str, session_id: str, user_id: Optional[str] = None, user_email: Optional[str] = None) -> None:
-    """Append a completed exchange to workspace/{project}/_system/history.jsonl."""
+def _append_history(
+    project: str, provider: str, user_msg: str, response: str,
+    session_id: str, user_id: Optional[str] = None,
+    user_email: Optional[str] = None, ts: Optional[str] = None,
+) -> str:
+    """Append a completed exchange to workspace/{project}/_system/history.jsonl.
+
+    Also upserts the event into the PostgreSQL events table (when available).
+    Returns the ts string so callers can correlate the event.
+    """
+    if ts is None:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         sys_dir = Path(settings.workspace_dir) / project / "_system"
         sys_dir.mkdir(parents=True, exist_ok=True)
         path = sys_dir / "history.jsonl"
         entry = {
-            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "ts": ts,
             "source": "ui",
             "session_id": session_id,
             "provider": provider,
@@ -65,6 +75,30 @@ def _append_history(project: str, provider: str, user_msg: str, response: str, s
             f.write(json.dumps(entry) + "\n")
     except Exception:
         pass  # never break chat because of logging
+
+    # Upsert event in PostgreSQL so tag suggestions work immediately
+    if db.is_available():
+        try:
+            meta = json.dumps({
+                "provider": provider,
+                "source": "ui",
+                "user": user_email or user_id,
+                "session_id": session_id,
+            })
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """INSERT INTO events
+                               (project, event_type, source_id, title, content, metadata, created_at)
+                           VALUES (%s,'prompt',%s,%s,%s,%s::jsonb,%s::timestamptz)
+                           ON CONFLICT (project, event_type, source_id) DO NOTHING""",
+                        (project, ts, (user_msg or "")[:120],
+                         (user_msg or "")[:2000], meta, ts),
+                    )
+        except Exception:
+            pass
+
+    return ts
 
 
 def _update_runtime_state(project: str, provider: str, prompt_preview: str, session_id: str, user_id: Optional[str] = None) -> None:
@@ -192,32 +226,44 @@ async def _stream_response(
         content = result.get("content", "")
         actual_model = result.get("model", provider)
 
+        # Pre-compute ts so we can emit it before [DONE] for client-side polling
+        _ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         # Stream in chunks
         chunk_size = 50
         for i in range(0, len(content), chunk_size):
             yield f"data: {content[i:i + chunk_size]}\n\n"
             await asyncio.sleep(0.01)
+
+        # Emit event ts BEFORE [DONE] so frontend can poll for tag suggestions
+        yield f"data: [EVENT:{_ts}]\n\n"
         yield "data: [DONE]\n\n"
 
         # Persist assistant reply
         store.append_message(session_id, "assistant", content)
 
-        # Append to shared project history
+        # Append to shared project history + create event row in DB
         project = settings.active_project or "default"
         user_email = user.get("email") if user else None
-        _append_history(project, provider, message, content, session_id, user_id, user_email)
+        _append_history(project, provider, message, content, session_id, user_id, user_email, ts=_ts)
         _update_runtime_state(project, provider, message, session_id, user_id)
 
-        # Embed exchange for semantic search (fire-and-forget)
+        # Fire-and-forget: embed + auto-tag suggestions
         try:
-            from datetime import datetime as _dt, timezone as _tz
             from core.embeddings import embed_and_store as _embed
-            _ts = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            asyncio.create_task(_embed(project, "history", _ts, f"Q: {message}\nA: {content}"))
+            asyncio.create_task(_embed(
+                project, "history", _ts, f"Q: {message}\nA: {content}",
+                chunk_index=0, chunk_type="full",
+                metadata={"provider": provider, "source": "ui"},
+            ))
+            # Auto-tag suggestions for the event we just created
+            if db.is_available():
+                from routers.entities import _auto_suggest_tags
+                asyncio.create_task(_auto_suggest_tags_for_event(_ts, project, message))
         except Exception:
             pass
 
-        # Log usage + debit balance (log_usage is called inside _debit_user)
+        # Log usage + debit balance
         input_t = result.get("input_tokens", 0)
         output_t = result.get("output_tokens", 0)
         if user_id and user_id != "dev-admin":
@@ -225,6 +271,23 @@ async def _stream_response(
 
     except Exception as e:
         yield f"data: [ERROR] {e}\n\n"
+
+
+async def _auto_suggest_tags_for_event(ts: str, project: str, user_msg: str) -> None:
+    """Look up the event_id by ts then fire auto-tag suggestions. Silent on error."""
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM events WHERE project=%s AND event_type='prompt' AND source_id=%s",
+                    (project, ts),
+                )
+                row = cur.fetchone()
+        if row:
+            from routers.entities import _auto_suggest_tags
+            await _auto_suggest_tags(row[0], project, user_msg)
+    except Exception:
+        pass
 
 
 @router.post("/stream")
@@ -299,10 +362,13 @@ async def chat(
         user_id = current_user.get("sub") or current_user.get("id") if current_user else None
 
         # Append to shared project history
+        _ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         project = settings.active_project or "default"
         user_email = full_user.get("email") if full_user else None
-        _append_history(project, req.provider, req.message, content, session_id, user_id, user_email)
+        _append_history(project, req.provider, req.message, content, session_id, user_id, user_email, ts=_ts)
         _update_runtime_state(project, req.provider, req.message, session_id, user_id)
+        if db.is_available():
+            asyncio.create_task(_auto_suggest_tags_for_event(_ts, project, req.message))
 
         # Log usage + debit balance
         input_t = result.get("input_tokens", 0)
