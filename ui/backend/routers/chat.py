@@ -35,6 +35,7 @@ class ChatRequest(BaseModel):
     provider: str = "claude"
     system: str = ""
     stream: bool = True
+    tags: dict = {}  # {"phase": "discovery", "feature": "...", "bug_ref": "..."}
 
 
 def _get_store() -> SessionStore:
@@ -48,6 +49,7 @@ def _append_history(
     project: str, provider: str, user_msg: str, response: str,
     session_id: str, user_id: Optional[str] = None,
     user_email: Optional[str] = None, ts: Optional[str] = None,
+    tags: Optional[dict] = None,
 ) -> str:
     """Append a completed exchange to workspace/{project}/_system/history.jsonl.
 
@@ -68,7 +70,9 @@ def _append_history(
             "user_input": user_msg,
             "output": response,
             "user": user_email or user_id or None,
-            "feature": None,
+            "phase": (tags or {}).get("phase") or None,
+            "feature": (tags or {}).get("feature") or None,
+            "bug_ref": (tags or {}).get("bug_ref") or None,
             "tags": [],
         }
         with open(path, "a") as f:
@@ -170,17 +174,23 @@ def _append_transaction(
         pass
 
 
-async def _call_provider(provider: str, message: str, system: str) -> dict:
-    """Dispatch to the right LLM client using server-side keys."""
+async def _call_provider(provider: str, messages: list[dict], system: str) -> dict:
+    """Dispatch to the right LLM client using server-side keys. Passes full conversation history."""
     api_key = get_key(provider)
     if provider == "claude":
-        return await call_claude([{"role": "user", "content": message}], system=system, api_key=api_key or None)
+        return await call_claude(messages, system=system, api_key=api_key or None)
     elif provider == "deepseek":
-        return await call_deepseek([{"role": "user", "content": message}], system=system, api_key=api_key or None)
+        return await call_deepseek(messages, system=system, api_key=api_key or None)
     elif provider == "gemini":
-        return await call_gemini(message, system=system, api_key=api_key or None)
+        # Gemini takes a single prompt — flatten history into context prefix
+        if len(messages) > 1:
+            history_txt = "\n".join(f"[{m['role']}]: {m['content']}" for m in messages[:-1])
+            prompt = f"Previous conversation:\n{history_txt}\n\n[user]: {messages[-1]['content']}"
+        else:
+            prompt = messages[-1]["content"] if messages else ""
+        return await call_gemini(prompt, system=system, api_key=api_key or None)
     elif provider == "grok":
-        return await call_grok([{"role": "user", "content": message}], system=system, api_key=api_key or None)
+        return await call_grok(messages, system=system, api_key=api_key or None)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
@@ -218,11 +228,18 @@ def _debit_user(user_id: str, provider: str, model: str, input_tokens: int, outp
 async def _stream_response(
     message: str, provider: str, system: str,
     user_id: Optional[str], user: Optional[dict], model_used: Optional[str],
-    store: SessionStore, session_id: str,
+    store: SessionStore, session_id: str, tags: Optional[dict] = None,
 ):
     """Generate SSE events from LLM response, save assistant reply, log usage."""
     try:
-        result = await _call_provider(provider, message, system)
+        # Build full conversation history so LLM has context from prior turns.
+        # store.append_message(session_id, "user", ...) was already called before this generator.
+        sess = store.get(session_id)
+        messages = [{"role": m["role"], "content": m["content"]}
+                    for m in (sess.get("messages", []) if sess else [])]
+        if not messages:
+            messages = [{"role": "user", "content": message}]
+        result = await _call_provider(provider, messages, system)
         content = result.get("content", "")
         actual_model = result.get("model", provider)
 
@@ -245,7 +262,7 @@ async def _stream_response(
         # Append to shared project history + create event row in DB
         project = settings.active_project or "default"
         user_email = user.get("email") if user else None
-        _append_history(project, provider, message, content, session_id, user_id, user_email, ts=_ts)
+        _append_history(project, provider, message, content, session_id, user_id, user_email, ts=_ts, tags=tags)
         _update_runtime_state(project, provider, message, session_id, user_id)
 
         # Fire-and-forget: embed + auto-tag suggestions
@@ -312,7 +329,8 @@ async def chat_stream(
 
     session = store.get(session_id)
     if session is None:
-        session = store.create()
+        metadata = {"tags": req.tags} if req.tags else {}
+        session = store.create(metadata=metadata)
         session_id = session["id"]
 
     store.append_message(session_id, "user", req.message)
@@ -320,7 +338,7 @@ async def chat_stream(
     user_id = current_user.get("sub") or current_user.get("id") if current_user else None
 
     return StreamingResponse(
-        _stream_response(req.message, req.provider, req.system, user_id, full_user, None, store, session_id),
+        _stream_response(req.message, req.provider, req.system, user_id, full_user, None, store, session_id, tags=req.tags or {}),
         media_type="text/event-stream",
         headers={"X-Session-Id": session_id},
     )
@@ -348,13 +366,21 @@ async def chat(
 
     session = store.get(session_id)
     if session is None:
-        session = store.create()
+        metadata = {"tags": req.tags} if req.tags else {}
+        session = store.create(metadata=metadata)
         session_id = session["id"]
 
     store.append_message(session_id, "user", req.message)
 
     try:
-        result = await _call_provider(req.provider, req.message, req.system)
+        # Build full conversation history for multi-turn context
+        sess = store.get(session_id)
+        messages_hist = [{"role": m["role"], "content": m["content"]}
+                         for m in (sess.get("messages", []) if sess else [])]
+        if not messages_hist:
+            messages_hist = [{"role": "user", "content": req.message}]
+
+        result = await _call_provider(req.provider, messages_hist, req.system)
         content = result.get("content", "")
         actual_model = result.get("model", req.provider)
         store.append_message(session_id, "assistant", content)
@@ -365,7 +391,7 @@ async def chat(
         _ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         project = settings.active_project or "default"
         user_email = full_user.get("email") if full_user else None
-        _append_history(project, req.provider, req.message, content, session_id, user_id, user_email, ts=_ts)
+        _append_history(project, req.provider, req.message, content, session_id, user_id, user_email, ts=_ts, tags=req.tags or {})
         _update_runtime_state(project, req.provider, req.message, session_id, user_id)
         if db.is_available():
             asyncio.create_task(_auto_suggest_tags_for_event(_ts, project, req.message))

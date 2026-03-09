@@ -304,6 +304,6 @@ textarea.addEventListener('input', () => {
 - Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across multi-turn conversations; validate relational_tags table stores commit_id→metadata links
 - MCP server deployment: build semantic embedding search endpoint for claude-cli, cursor, and aicli clients to query pgvector embeddings and commit_log.jsonl; enable cross-tool memory access via /memory command
 - Smart chunking architecture: implement summary-level + per-class/method chunk generation for commits; add metadata filters (language, file, feature, project_stage) to support filtered semantic retrieval
-- Multi-agent workflow schema restoration: restore YAML-based workflow definitions with node-based execution; each node contains agent role prompt + LLM engine selection + output scoring for conditional branching
 - PostgreSQL pgvector validation and table cleanup: confirmed PostgreSQL 15+ instance; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); removed unused tables; validated relational + vector capability
 - UI billing/usage integration: fixed usage_logs table population from UI; implemented manual balance entry; added refresh indicator; ensured all calculations refresh correctly on balance updates
+- Smart chunking embedding feature: testing auto-tag suggestions on non-streaming endpoint; event emission for semantic search indexing

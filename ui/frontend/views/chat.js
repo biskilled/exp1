@@ -10,12 +10,27 @@ const PROVIDERS = [
   { id: 'grok',     label: 'Grok'     },
 ];
 
-let _sessionId = null;
-let _provider  = 'claude';
-let _streaming = false;
+let _sessionId   = null;
+let _provider    = 'claude';
+let _streaming   = false;
 let _roleOptions = [];       // { path, name } — loaded when project is open
 let _workflowOptions = [];   // workflow names — loaded when project is open
 let _sessionCache = [];      // merged session list (ui + cli + workflow)
+
+// Session tags — mandatory: phase; optional: feature, bug_ref
+// Changing any tag resets _sessionId → forces new session on next send
+let _sessionTags = { phase: '', feature: '', bug_ref: '' };
+
+const PHASE_OPTIONS = [
+  { value: '', label: '⚠ Phase (required)' },
+  { value: 'discovery',    label: 'Discovery'    },
+  { value: 'development',  label: 'Development'  },
+  { value: 'testing',      label: 'Testing'      },
+  { value: 'review',       label: 'Review'       },
+  { value: 'production',   label: 'Production'   },
+  { value: 'maintenance',  label: 'Maintenance'  },
+  { value: 'bugfix',       label: 'Bug Fix'      },
+];
 
 export function renderChat(container) {
   _provider = state.currentProject?.default_provider || 'claude';
@@ -73,6 +88,43 @@ export function renderChat(container) {
             <span style="margin-left:auto;font-size:0.62rem;color:var(--muted)">
               <span style="color:var(--accent)">${state.currentProject.name}</span>
             </span>` : ''}
+        </div>
+
+        <!-- Session tag bar (mandatory: phase; optional: feature, bug_ref) -->
+        <div id="chat-tag-bar"
+          style="display:flex;align-items:center;gap:0.55rem;padding:0.3rem 1rem;
+                 border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;
+                 flex-wrap:wrap;min-height:2rem">
+          <span style="font-size:0.58rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;white-space:nowrap">Session:</span>
+
+          <!-- Phase (mandatory) -->
+          <select id="chat-phase-sel"
+            style="background:var(--bg);border:1px solid var(--red,#e74c3c);color:var(--text);
+                   font-family:var(--font);font-size:0.66rem;padding:0.15rem 0.4rem;
+                   border-radius:var(--radius);cursor:pointer;outline:none;max-width:130px"
+            title="Mandatory: set a phase for this session">
+            ${PHASE_OPTIONS.map(o => `<option value="${_esc(o.value)}">${_esc(o.label)}</option>`).join('')}
+          </select>
+
+          <!-- Feature (optional) -->
+          <input id="chat-feature-inp" type="text" placeholder="Feature / task"
+            value="${_esc(_sessionTags.feature || '')}"
+            style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+                   font-family:var(--font);font-size:0.66rem;padding:0.15rem 0.4rem;
+                   border-radius:var(--radius);outline:none;width:110px"
+            title="Optional: feature or task name">
+
+          <!-- Bug ref (optional) -->
+          <input id="chat-bugref-inp" type="text" placeholder="Bug ref"
+            value="${_esc(_sessionTags.bug_ref || '')}"
+            style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+                   font-family:var(--font);font-size:0.66rem;padding:0.15rem 0.4rem;
+                   border-radius:var(--radius);outline:none;width:80px"
+            title="Optional: bug reference">
+
+          <span id="chat-tag-status" style="font-size:0.6rem;color:var(--red,#e74c3c)">⚠ set phase</span>
+          <span style="margin-left:auto;font-size:0.6rem;color:var(--muted);cursor:pointer;white-space:nowrap"
+            onclick="window._chatNew()" title="Start new session with current tags">+ new session</span>
         </div>
 
         <!-- Messages -->
@@ -134,11 +186,87 @@ export function renderChat(container) {
     }
   });
 
+  // ── Session tag bar listeners ────────────────────────────────────────────
+  _setupTagBar();
+
   _setupInput();
   _initChatResize();
   _loadSessions();
   // Load roles+workflows first, then render welcome screen so buttons are populated
   _loadRolesAndWorkflows().then(() => _showWelcome());
+}
+
+function _setupTagBar() {
+  const phaseSel   = document.getElementById('chat-phase-sel');
+  const featureInp = document.getElementById('chat-feature-inp');
+  const bugrefInp  = document.getElementById('chat-bugref-inp');
+  if (!phaseSel) return;
+
+  // Set initial values from _sessionTags state
+  phaseSel.value = _sessionTags.phase || '';
+  featureInp.value = _sessionTags.feature || '';
+  bugrefInp.value = _sessionTags.bug_ref || '';
+  _updateTagBarStatus();
+
+  phaseSel.addEventListener('change', () => {
+    const newPhase = phaseSel.value;
+    if (newPhase !== (_sessionTags.phase || '')) {
+      _sessionTags = { ..._sessionTags, phase: newPhase };
+      _sessionId = null;  // force new session
+    }
+    _updateTagBarStatus();
+    _loadSessions();  // refresh sidebar indicators
+  });
+
+  const _onTagInput = (field, el) => {
+    el.addEventListener('change', () => {
+      const newVal = el.value.trim();
+      if (newVal !== (_sessionTags[field] || '')) {
+        _sessionTags = { ..._sessionTags, [field]: newVal || '' };
+        _sessionId = null;  // force new session on change
+      }
+    });
+  };
+  _onTagInput('feature', featureInp);
+  _onTagInput('bug_ref', bugrefInp);
+}
+
+function _updateTagBarStatus() {
+  const phaseSel = document.getElementById('chat-phase-sel');
+  const status   = document.getElementById('chat-tag-status');
+  if (!phaseSel || !status) return;
+
+  const hasPhase = !!(_sessionTags.phase);
+  // Update phase dropdown border color
+  phaseSel.style.borderColor = hasPhase ? 'var(--border)' : 'var(--red,#e74c3c)';
+  // Update status text
+  if (hasPhase) {
+    const label = PHASE_OPTIONS.find(o => o.value === _sessionTags.phase)?.label || _sessionTags.phase;
+    const feature = _sessionTags.feature ? ` · ${_sessionTags.feature}` : '';
+    const bug = _sessionTags.bug_ref ? ` · #${_sessionTags.bug_ref}` : '';
+    status.style.color = 'var(--green,#27ae60)';
+    status.textContent = `✓ ${label}${feature}${bug}`;
+  } else {
+    status.style.color = 'var(--red,#e74c3c)';
+    status.textContent = '⚠ set phase';
+  }
+}
+
+// Restore tag bar to reflect a loaded session's tags
+function _restoreTagBar(tags) {
+  if (!tags) return;
+  _sessionTags = {
+    phase:   tags.phase   || '',
+    feature: tags.feature || '',
+    bug_ref: tags.bug_ref || tags.bug_ref || '',
+  };
+  const phaseSel   = document.getElementById('chat-phase-sel');
+  const featureInp = document.getElementById('chat-feature-inp');
+  const bugrefInp  = document.getElementById('chat-bugref-inp');
+  if (phaseSel)   phaseSel.value   = _sessionTags.phase;
+  if (featureInp) featureInp.value = _sessionTags.feature;
+  if (bugrefInp)  bugrefInp.value  = _sessionTags.bug_ref;
+  _updateTagBarStatus();
 }
 
 // ── Commands autocomplete ─────────────────────────────────────────────────────
@@ -336,8 +464,12 @@ async function _loadSessions() {
       id: s.id,
       title: s.title || s.id.slice(0, 14),
       source: 'ui',
-      ts: s.created_at || s.id,
+      ts: s.updated_at || s.created_at || s.id,
       message_count: s.message_count || 0,
+      phase: s.phase || null,
+      feature: s.feature || null,
+      bug_ref: s.bug_ref || null,
+      tags: s.tags || {},
       entries: null,  // load on demand
     }));
   } catch { /* backend offline */ }
@@ -378,13 +510,24 @@ async function _loadSessions() {
     return;
   }
 
-  container.innerHTML = merged.slice(0, 50).map((s, idx) => {
-    const isActive = s.id === _sessionId;
-    const srcColor = s.source === 'ui' ? 'var(--accent)' : s.source === 'claude_cli' ? 'var(--blue)' : 'var(--green)';
-    const srcLabel = s.source === 'ui' ? 'UI' : s.source === 'claude_cli' ? 'CLI' : 'WF';
+  container.innerHTML = merged.slice(0, 60).map((s, idx) => {
+    const isActive  = s.id === _sessionId;
+    const srcColor  = s.source === 'ui' ? 'var(--accent)' : s.source === 'claude_cli' ? 'var(--blue)' : 'var(--green)';
+    const srcLabel  = s.source === 'ui' ? 'UI' : s.source === 'claude_cli' ? 'CLI' : 'WF';
+    // Tag status — UI sessions show phase; missing phase = red
+    const hasPhase  = !!(s.phase);
+    const phaseTxt  = s.phase || null;
+    const tagDot    = s.source === 'ui'
+      ? (hasPhase
+          ? `<span style="font-size:0.5rem;background:var(--accent)22;color:var(--accent);padding:0 0.22rem;border-radius:2px;flex-shrink:0">${_esc(phaseTxt)}</span>`
+          : `<span style="font-size:0.5rem;color:#e74c3c;flex-shrink:0" title="Missing mandatory phase tag">⚠</span>`)
+      : '';
+    const featureTxt = s.feature ? `<span style="font-size:0.5rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px">#${_esc(s.feature)}</span>` : '';
+    const borderL   = (s.source === 'ui' && !hasPhase) ? '2px solid #e74c3c' : (isActive ? '2px solid var(--accent)' : '2px solid transparent');
     return `
       <div onclick="window._chatLoadAny('${_esc(s.id)}')"
-        style="padding:0.35rem 0.45rem;border-radius:var(--radius);cursor:pointer;
+        style="padding:0.32rem 0.45rem;border-radius:var(--radius);cursor:pointer;
+               border-left:${borderL};
                font-size:0.63rem;color:${isActive ? 'var(--text)' : 'var(--text2)'};
                background:${isActive ? 'var(--surface2)' : ''};
                transition:background 0.1s;margin-bottom:1px"
@@ -395,6 +538,8 @@ async function _loadSessions() {
           <span style="font-size:0.52rem;color:var(--muted);flex-shrink:0">${idx + 1}.</span>
           <span style="font-size:0.5rem;color:${srcColor};background:${srcColor}1a;
                        padding:0 0.22rem;border-radius:2px;flex-shrink:0;letter-spacing:0.5px">${srcLabel}</span>
+          ${tagDot}
+          ${featureTxt}
         </div>
         <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(s.title)}</div>
       </div>`;
@@ -505,10 +650,18 @@ window._chatLoad = async (id) => {
     const msgs = document.getElementById('chat-messages');
     if (!msgs) return;
     msgs.innerHTML = '';
+    // Restore tags from session metadata so tag bar reflects this session
+    const storedTags = session.metadata?.tags || {};
+    _restoreTagBar(storedTags);
     for (const m of session.messages || []) {
       if (m.role === 'user')      _appendUserMsg(m.content);
       if (m.role === 'assistant') _appendAssistantMsg(m.content);
     }
+    // Highlight active session in sidebar
+    document.querySelectorAll('#chat-sessions > div').forEach((el, i) => {
+      const active = _sessionCache[i]?.id === id;
+      el.style.background = active ? 'var(--surface2)' : '';
+    });
   } catch (e) {
     toast('Could not load session', 'error');
   }
@@ -663,9 +816,13 @@ window._chatSend = async () => {
   _setStreaming(true);
 
   const system = state.currentProject?.system_prompt || '';
+  // Warn if mandatory phase tag is not set
+  if (!_sessionTags.phase) {
+    _appendSystemMsg('⚠ **No phase tag set.** Select a phase above to categorize this session.');
+  }
 
   try {
-    const response = await api.chatStream(message, _provider, _sessionId, system);
+    const response = await api.chatStream(message, _provider, _sessionId, system, _sessionTags);
 
     // Session ID is in response header
     const sid = response.headers.get('X-Session-Id');

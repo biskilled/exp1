@@ -117,23 +117,40 @@ export class HistoryView {
     }
 
     container.innerHTML = tagsBar + entries
-      .map((e) => {
+      .map((e, idx) => {
         const isUntagged = !e.phase && !e.feature;
         const borderColor = isUntagged ? '#e74c3c' : 'var(--border)';
+        const entryId = `hist-entry-${idx}`;
+        // Show full output with toggle
+        const outputHtml = e.output
+          ? `<div style="margin-top:6px">
+              <div id="${entryId}-resp"
+                style="color:var(--muted);font-size:12px;border-left:2px solid var(--border);
+                       padding-left:8px;white-space:pre-wrap;word-break:break-word;
+                       max-height:120px;overflow:hidden;transition:max-height 0.2s">
+                ${this._escapeHtml(e.output)}
+              </div>
+              ${e.output.length > 200
+                ? `<span style="font-size:11px;color:var(--accent);cursor:pointer;user-select:none"
+                    onclick="const el=document.getElementById('${entryId}-resp');
+                             el.style.maxHeight=el.style.maxHeight==='none'?'120px':'none';
+                             this.textContent=el.style.maxHeight==='none'?'▲ collapse':'▼ expand'">▼ expand</span>`
+                : ''}
+            </div>`
+          : '';
         return `
         <div class="history-entry" style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};border-radius:6px;padding:12px;margin-bottom:8px">
           <div style="display:flex;gap:8px;margin-bottom:6px;font-size:11px;color:var(--muted);flex-wrap:wrap;align-items:center">
             <span>${e.ts?.slice(0, 16) || ""}</span>
             <span style="color:var(--accent)">${e.provider || ""}</span>
-            ${e.source === "claude_code" ? `<span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">claude-code</span>` : ""}
-            ${e.source === "ui" ? `<span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">ui</span>` : ""}
+            <span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">${e.source || "ui"}</span>
             ${e.phase ? `<span style="background:rgba(74,144,226,.15);color:#4a90e2;padding:1px 5px;border-radius:3px">${e.phase}</span>` : ''}
             ${e.feature ? `<span style="background:rgba(39,174,96,.15);color:#27ae60;padding:1px 5px;border-radius:3px">#${e.feature}</span>` : ''}
-            ${e.tag ? `<span style="color:orange">#${e.tag}</span>` : ""}
+            ${e.bug_ref ? `<span style="background:rgba(231,76,60,.12);color:#e74c3c;padding:1px 5px;border-radius:3px">🐛${e.bug_ref}</span>` : ''}
             ${isUntagged ? `<span style="color:#e74c3c;font-size:10px">⚠ untagged</span>` : ''}
           </div>
-          <div style="font-weight:500;margin-bottom:4px">${this._escapeHtml(e.user_input?.slice(0, 150) || "")}</div>
-          ${e.output ? `<div style="color:var(--muted);font-size:12px;margin-top:4px;border-left:2px solid var(--border);padding-left:8px">${this._escapeHtml(e.output.slice(0, 200))}${e.output.length > 200 ? "…" : ""}</div>` : ""}
+          <div style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word">${this._escapeHtml(e.user_input || "")}</div>
+          ${outputHtml}
         </div>`;
       })
       .join("");

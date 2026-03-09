@@ -84,11 +84,11 @@ export const api = {
   readFile: (path) => _get(`/files/read?path=${encodeURIComponent(path)}&root=code`),
 
   // Chat streaming — returns a ReadableStream, caller reads chunks
-  async chatStream(message, provider, sessionId, system = '') {
+  async chatStream(message, provider, sessionId, system = '', tags = {}) {
     const r = await fetch(_base() + '/chat/stream', {
       method: 'POST',
       headers: _headers(),
-      body: JSON.stringify({ message, provider, session_id: sessionId, system, stream: true }),
+      body: JSON.stringify({ message, provider, session_id: sessionId, system, stream: true, tags }),
     });
     if (!r.ok) throw new Error(`Chat error: ${r.statusText}`);
     return r;  // caller reads r.body (ReadableStream)

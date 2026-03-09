@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 01:56 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 02:03 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -30,7 +30,7 @@ _Last updated: 2026-03-08_
 - JWT auth via python-jose + bcrypt; dev_mode toggle for testing without login; three user roles (admin/paid/free)
 - Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state; single history.jsonl per project (no duplicate history folders)
 - All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven via ui/backend/data JSON)
-- Multi-agent workflows via node-based execution model with YAML config transitioning to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
+- Multi-agent workflows via node-based execution model with YAML config; each node runs prompt with specified LLM engine and outputs score for conditional branching
 - Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility with refresh indicator
 - PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
@@ -43,8 +43,8 @@ _Last updated: 2026-03-08_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-09] yes
-- [2026-03-09] continue
-- [2026-03-09] Can you summersie all new changes and how /memory currently updte all files? hooks are still writing to local jsonl file
 - [2026-03-09] what do you think about the porject, can it help / reduce overall deployment? are there any similar tools I can use ?
 - [2026-03-09] please implemet step1 - auto-tag loop. regarding users - aicli currently hosting services. users working on same project
+- [2026-03-09] I am working on the smart chunking embedding feature for semantic search
+- [2026-03-09] Testing auto-tag suggestions on non-streaming endpoint
+- [2026-03-09] brief test for event emission

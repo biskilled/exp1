@@ -57,11 +57,17 @@ class SessionStore:
                     title = first_user[:60] + ("…" if len(first_user) > 60 else "")
                 else:
                     title = s["id"][:12]
+                tags = s.get("metadata", {}).get("tags", {})
                 sessions.append({
                     "id": s["id"],
                     "created_at": s["created_at"],
+                    "updated_at": s.get("updated_at", s["created_at"]),
                     "message_count": len(msgs),
                     "title": title,
+                    "phase": tags.get("phase") or None,
+                    "feature": tags.get("feature") or None,
+                    "bug_ref": tags.get("bug_ref") or None,
+                    "tags": tags,
                 })
             except Exception:
                 pass
