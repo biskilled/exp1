@@ -34,7 +34,7 @@ You are a senior Python software architect with deep expertise in:
 - Multi-agent workflows via node-based execution model with YAML config transitioning to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
 - Unified history.jsonl + commit_log.jsonl shared across claude cli, aicli, cursor via hooks and commits
 - Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users
-- PostgreSQL with SQLAlchemy ORM; pgvector for semantic embeddings and entity relationship search
+- PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
 - dev_runtime_state.json + project_state.json auto-maintained for shared LLM context across sessions
 - Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-08] `claude_cli`: I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the cur
 - [2026-03-08] `claude_cli`: I will create postgresql with pgvector. it is a new instanse (so required to create all users table 
 - [2026-03-08] `claude_cli`: dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys f
 - [2026-03-08] `claude_cli`: dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as
 - [2026-03-09] `claude_cli`: can you check if the new postgreurl is working and good for pgvector and for relational data ? 
+- [2026-03-09] `claude_cli`: is all conigured as we discussed? metadata/enetity relationsheep table, embedding table, chanking ar
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

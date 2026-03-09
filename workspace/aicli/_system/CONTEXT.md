@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-09 00:31 UTC — do not edit manually.
+> Auto-generated 2026-03-09 00:37 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 27
-- **Last active**: 2026-03-09T00:30:59Z
+- **Sessions**: 28
+- **Last active**: 2026-03-09T00:37:33Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -20,7 +20,7 @@
 - **storage**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV
 - **database**: PostgreSQL 15+ with pgvector extension + SQLAlchemy ORM
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
-- **planned**: GraphQL, node graph UI, pgvector semantic embeddings, unified provider logging
+- **planned**: GraphQL, node graph UI for entity relationships and workflow composition, MCP server for cross-tool integration, unified provider logging
 - **orm**: SQLAlchemy
 - **tables**: users, user_usage, usage_logs, billing_logs, workflows, relational_tags
 - **vector_search**: pgvector for semantic embeddings and entity relationships
@@ -29,12 +29,12 @@
 
 ## In Progress
 
-- PostgreSQL pgvector schema creation and validation: set up new PostgreSQL instance with pgvector extension; create users, usage_logs, billing_logs, workflows tables; drop unused graph tables; validate relational data and vector embedding capability
-- Mandatory metadata tagging system: force claude-cli and cursor to attach minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across conversation; create relational tagging table linking commit_id to lifecycle_stage/feature_area/bug
+- PostgreSQL pgvector schema validation: confirmed new PostgreSQL instance with pgvector extension ready; created users, user_usage, usage_logs, billing_logs, workflows tables; dropped unused graph tables; validated relational data and vector embedding capability
+- Mandatory metadata tagging system: implement force claude-cli and cursor to attach minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across conversation; create relational tagging table linking commit_id to lifecycle_stage/feature_area/bug
+- Balance refresh logic and UI display: fixed top-right corner balance display with refresh button; admin dashboard aggregates total balance across all users and API keys; per-user balance visibility in user dashboard and API key management screen
 - Unified commit_log.jsonl population: ensure all logs (prompts, responses, errors) from claude cli hooks, aicli commits, and cursor hooks write to shared commit_log.jsonl; verify history.jsonl captures both prompts and responses
-- Balance persistence and refresh logic: fix top-right corner balance refresh; ensure admin dashboard aggregates total balance across all users and all API keys; per-user balance visibility in user dashboard and API key management screen
-- Hook integration debugging: verify claude cli hooks are auto-committing to git; ensure aicli tracks history properly; consolidate history folder vs _system folder usage to eliminate duplication
-- Code consolidation and cleanup: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; merge QUICKSTART.md and README.md documentation
+- Code consolidation and cleanup: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; consolidate history folder vs _system folder usage to eliminate duplication
+- Hook integration and memory layer: verify claude cli hooks are auto-committing to git; ensure aicli tracks history properly; establish MCP server for cross-tool memory access via vectordb semantic embeddings
 
 ## Key Decisions
 
@@ -46,7 +46,7 @@
 - Multi-agent workflows via node-based execution model with YAML config transitioning to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
 - Unified history.jsonl + commit_log.jsonl shared across claude cli, aicli, cursor via hooks and commits
 - Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users
-- PostgreSQL with SQLAlchemy ORM; pgvector for semantic embeddings and entity relationship search
+- PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
 - dev_runtime_state.json + project_state.json auto-maintained for shared LLM context across sessions
 - Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl
@@ -146,6 +146,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-09 00:35]** `claude_cli/claude`  
+→ is all conigured as we discussed? metadata/enetity relationsheep table, embedding table, chanking architecure and mcp se
+
 **[2026-03-09 00:14]** `claude_cli/claude`  
 → can you check if the new postgreurl is working and good for pgvector and for relational data ? 
 
@@ -187,6 +190,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 04:05]** `claude_cli/claude`  
 → I do not see that error in the commit_log.jsonl , can you make sure all logs are at this files (also errros). also this 
-
-**[2026-03-08 03:27]** `claude_cli/claude`  
-→ I am using postgresql already and can extend that to use pgvector for semantic embedding. node grapg will be used to bui

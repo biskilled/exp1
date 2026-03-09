@@ -3,16 +3,18 @@ aicli MCP Server — exposes the 5-layer project memory as LLM tools.
 
 Run: python3.12 ui/mcp_server.py [--project aicli] [--backend http://localhost:8000]
 
-Claude CLI, Cursor (MCP-enabled), and aicli CLI register this via aicli.yaml mcp.servers.
-All tools call the FastAPI backend via HTTP — no direct DB access here.
+Claude CLI and Cursor register this server via their settings files.
+All tools call the FastAPI backend via HTTP — no direct DB access.
 
 Tools:
-    search_memory        — semantic search across history + roles + node_outputs
-    get_project_state    — live PROJECT.md + recent history + in_progress items
-    get_roles            — list available role files with descriptions
-    get_workflow_state   — current run status + node outputs for a graph run
-    create_task          — create a task (for LLM to track its own work)
-    get_tasks            — list open tasks
+    search_memory        — semantic search across history, roles, commits, docs
+    get_project_state    — PROJECT.md + in_progress items + tech stack
+    get_recent_history   — last N prompt/response entries for the project
+    get_roles            — list available AI role prompt files
+    get_commits          — list commits with phase/feature tags (untagged = red flag)
+    get_session_tags     — active session tags (phase, feature, bug_ref)
+    set_session_tags     — update active session tags
+    commit_push          — commit + push from Cursor; logs to commit_log.jsonl
 """
 from __future__ import annotations
 
@@ -29,13 +31,11 @@ try:
     from mcp.server import Server
     from mcp.server.stdio import stdio_server
     from mcp import types as mcp_types
-    _MCP_AVAILABLE = True
 except ImportError:
-    _MCP_AVAILABLE = False
     print("ERROR: mcp package not installed. Run: pip install mcp>=1.0.0", file=sys.stderr)
     sys.exit(1)
 
-# ── Config from env / CLI args ────────────────────────────────────────────────
+# ── Config ─────────────────────────────────────────────────────────────────────
 
 parser = argparse.ArgumentParser(description="aicli MCP Server")
 parser.add_argument("--project", default=os.environ.get("ACTIVE_PROJECT", "aicli"))
@@ -45,7 +45,7 @@ args, _ = parser.parse_known_args()
 BACKEND = args.backend.rstrip("/")
 PROJECT = args.project
 
-# ── HTTP helpers ──────────────────────────────────────────────────────────────
+# ── HTTP helpers ───────────────────────────────────────────────────────────────
 
 async def _get(path: str, params: dict | None = None) -> Any:
     async with httpx.AsyncClient(timeout=30) as client:
@@ -61,7 +61,14 @@ async def _post(path: str, body: dict) -> Any:
         return r.json()
 
 
-# ── MCP Server ────────────────────────────────────────────────────────────────
+async def _put(path: str, body: dict) -> Any:
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.put(BACKEND + path, json=body)
+        r.raise_for_status()
+        return r.json()
+
+
+# ── MCP Server ─────────────────────────────────────────────────────────────────
 
 server = Server("aicli-memory")
 
@@ -71,90 +78,130 @@ async def list_tools() -> list[mcp_types.Tool]:
     return [
         mcp_types.Tool(
             name="search_memory",
-            description="Semantic search across project history, role files, node outputs, and decisions.",
+            description=(
+                "Semantic search across the project's full knowledge base: "
+                "chat history, role prompts, commit summaries, code chunks, and design docs. "
+                "Use this when you need to recall past decisions, understand a feature history, "
+                "or find relevant context before starting work."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Natural language search query"},
-                    "limit": {"type": "integer", "default": 10, "description": "Max results to return"},
+                    "limit": {"type": "integer", "default": 10},
                     "source_types": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Filter by source: history, role, node_output, project_md, decision",
+                        "description": (
+                            "Optional filter — one or more of: "
+                            "history, role, commit_summary, commit_code, "
+                            "doc_section, meeting_note, project_md"
+                        ),
                     },
+                    "project": {"type": "string"},
                 },
                 "required": ["query"],
             },
         ),
         mcp_types.Tool(
             name="get_project_state",
-            description="Get the current project state: PROJECT.md content, recent history, in-progress items.",
+            description=(
+                "Get the live project state: PROJECT.md, tech stack, in-progress items, "
+                "and current session tags. Call this at the start of a session to orient yourself."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "project": {"type": "string", "description": "Project name (uses active project if omitted)"},
+                    "project": {"type": "string"},
+                },
+            },
+        ),
+        mcp_types.Tool(
+            name="get_recent_history",
+            description=(
+                "Return the last N prompt/response entries from the project's unified history. "
+                "Includes entries from Claude CLI, aicli UI, and workflow runs."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "default": 20, "description": "Max entries"},
+                    "provider": {"type": "string", "description": "Filter by provider (claude, openai, …)"},
+                    "project": {"type": "string"},
                 },
             },
         ),
         mcp_types.Tool(
             name="get_roles",
-            description="List available AI role files (agent prompts) for the project.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "project": {"type": "string", "description": "Project name"},
-                },
-            },
-        ),
-        mcp_types.Tool(
-            name="get_workflow_state",
-            description="Get the current status and node outputs of a graph workflow run.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "run_id": {"type": "string", "description": "Graph run ID returned by startRun"},
-                },
-                "required": ["run_id"],
-            },
-        ),
-        mcp_types.Tool(
-            name="create_task",
-            description="Create a task in the project entity tracker.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "Task title"},
-                    "description": {"type": "string", "default": "", "description": "Task details"},
-                    "priority": {"type": "string", "default": "medium", "enum": ["low", "medium", "high"]},
-                    "project": {"type": "string", "description": "Project name"},
-                },
-                "required": ["title"],
-            },
-        ),
-        mcp_types.Tool(
-            name="get_tasks",
-            description="List open tasks for the project.",
+            description="List available AI role prompt files for the project (architect, developer, QA, etc.).",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "project": {"type": "string"},
-                    "status": {"type": "string", "default": "open"},
-                    "limit": {"type": "integer", "default": 20},
+                },
+            },
+        ),
+        mcp_types.Tool(
+            name="get_commits",
+            description=(
+                "List recent commits with metadata: phase (discovery/development/prod), "
+                "feature, bug_ref. Untagged commits (no phase) are marked as such. "
+                "Use to understand what changed and when for a given feature."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "default": 30},
+                    "project": {"type": "string"},
+                },
+            },
+        ),
+        mcp_types.Tool(
+            name="get_session_tags",
+            description=(
+                "Get the currently active session tags: phase, feature, bug_ref. "
+                "These are injected into every prompt as context. "
+                "Use to understand what the user is currently working on."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project": {"type": "string"},
+                },
+            },
+        ),
+        mcp_types.Tool(
+            name="set_session_tags",
+            description=(
+                "Update the active session tags (phase, feature, bug_ref). "
+                "Call this when you understand the current task to ensure proper tracking."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "phase": {
+                        "type": "string",
+                        "enum": ["discovery", "development", "prod", ""],
+                        "description": "Project phase",
+                    },
+                    "feature": {"type": "string", "description": "Feature name being worked on"},
+                    "bug_ref": {"type": "string", "description": "Bug reference if fixing a bug"},
+                    "project": {"type": "string"},
                 },
             },
         ),
         mcp_types.Tool(
             name="commit_push",
             description=(
-                "Commit all changed files in the project's code directory and push to the remote. "
-                "Call this at the end of every Cursor session to persist your work. "
-                "Generates an AI commit message automatically. Logs to commit_log.jsonl with source='cursor_mcp'."
+                "Commit all changed files and push to remote. "
+                "Call at the end of a Cursor session to persist work. "
+                "Auto-generates commit message. Logs to commit_log.jsonl with source='cursor_mcp'."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "project": {"type": "string", "description": "Project name (uses active project if omitted)"},
-                    "message_hint": {"type": "string", "default": "", "description": "Optional hint for the commit message"},
+                    "message_hint": {"type": "string", "default": ""},
+                    "project": {"type": "string"},
                 },
             },
         ),
@@ -165,9 +212,9 @@ async def list_tools() -> list[mcp_types.Tool]:
 async def call_tool(name: str, arguments: dict) -> list[mcp_types.TextContent]:
     try:
         result = await _dispatch(name, arguments)
-        return [mcp_types.TextContent(type="text", text=json.dumps(result, indent=2))]
+        return [mcp_types.TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
     except httpx.HTTPStatusError as e:
-        error = {"error": f"Backend returned {e.response.status_code}", "detail": e.response.text}
+        error = {"error": f"Backend {e.response.status_code}", "detail": e.response.text[:500]}
         return [mcp_types.TextContent(type="text", text=json.dumps(error))]
     except Exception as e:
         return [mcp_types.TextContent(type="text", text=json.dumps({"error": str(e)}))]
@@ -185,40 +232,72 @@ async def _dispatch(name: str, args: dict) -> Any:
         })
 
     elif name == "get_project_state":
-        data = await _get(f"/projects/{project}")
-        # Return a compact summary
+        proj = await _get(f"/projects/{project}")
+        tags = await _get("/history/session-tags", {"project": project})
         return {
             "project": project,
-            "project_md": (data.get("project_md") or "")[:3000],
-            "description": data.get("description", ""),
-            "default_provider": data.get("default_provider", "claude"),
+            "project_md": (proj.get("project_md") or "")[:3000],
+            "description": proj.get("description", ""),
+            "default_provider": proj.get("default_provider", "claude"),
+            "active_tags": {
+                "phase": tags.get("phase"),
+                "feature": tags.get("feature"),
+                "bug_ref": tags.get("bug_ref"),
+            },
+        }
+
+    elif name == "get_recent_history":
+        params: dict = {"project": project, "limit": str(args.get("limit", 20))}
+        if args.get("provider"):
+            params["provider"] = args["provider"]
+        data = await _get("/history/chat", params)
+        entries = data.get("entries", [])
+        # Return compact view
+        return {
+            "entries": [
+                {
+                    "ts": e.get("ts", "")[:16],
+                    "source": e.get("source", ""),
+                    "provider": e.get("provider", ""),
+                    "phase": e.get("phase"),
+                    "feature": e.get("feature"),
+                    "prompt": (e.get("user_input") or "")[:300],
+                    "response_preview": (e.get("output") or "")[:200],
+                }
+                for e in entries
+            ],
+            "total": data.get("total", 0),
         }
 
     elif name == "get_roles":
         data = await _get("/prompts/", params={"project": project})
         prompts = data.get("prompts", [])
-        roles = [p for p in prompts if p["path"].startswith("roles/")]
+        roles = [p for p in prompts if "roles/" in p.get("path", "")]
         return {"roles": roles, "project": project}
 
-    elif name == "get_workflow_state":
-        run_id = args["run_id"]
-        return await _get(f"/graph-workflows/runs/{run_id}")
-
-    elif name == "create_task":
-        return await _post("/entities/tasks", {
-            "title": args["title"],
-            "description": args.get("description", ""),
-            "priority": args.get("priority", "medium"),
+    elif name == "get_commits":
+        data = await _get("/history/commits", {
             "project": project,
+            "limit": str(args.get("limit", 30)),
         })
+        commits = data.get("commits", [])
+        untagged = [c for c in commits if not c.get("phase")]
+        return {
+            "commits": commits,
+            "untagged_count": len(untagged),
+            "source": data.get("source", "file"),
+        }
 
-    elif name == "get_tasks":
-        params = {"project": project}
-        if args.get("status"):
-            params["status"] = args["status"]
-        if args.get("limit"):
-            params["limit"] = str(args["limit"])
-        return await _get("/entities/tasks", params=params)
+    elif name == "get_session_tags":
+        return await _get("/history/session-tags", {"project": project})
+
+    elif name == "set_session_tags":
+        body = {
+            "phase": args.get("phase") or None,
+            "feature": args.get("feature") or None,
+            "bug_ref": args.get("bug_ref") or None,
+        }
+        return await _put(f"/history/session-tags?project={project}", body)
 
     elif name == "commit_push":
         return await _post(f"/git/{project}/commit-push", {
@@ -232,9 +311,9 @@ async def _dispatch(name: str, args: dict) -> Any:
         raise ValueError(f"Unknown tool: {name}")
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ── Entry point ────────────────────────────────────────────────────────────────
 
-async def main():
+async def main() -> None:
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
