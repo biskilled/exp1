@@ -73,6 +73,7 @@ _DEFAULT_CATEGORIES = [
 
 def _seed_defaults(project: str) -> None:
     """Idempotent: ensures every default category exists for the project."""
+    db.ensure_project_schema(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
             # Get existing names so we only insert truly missing ones
@@ -210,15 +211,16 @@ async def list_values(
             if status:
                 where.append("v.status=%s"); params.append(status)
 
+            et_table = db.project_table("event_tags", p)
             cur.execute(
                 f"""SELECT v.id, v.category_id, v.name, v.description, v.status,
-                          v.created_at, COUNT(et.event_id) AS event_count,
+                          v.created_at,
+                          (SELECT COUNT(*) FROM {et_table} et
+                           WHERE et.entity_value_id = v.id) AS event_count,
                           c.name AS category_name, c.color, c.icon
                    FROM entity_values v
                    JOIN entity_categories c ON c.id = v.category_id
-                   LEFT JOIN event_tags et ON et.entity_value_id = v.id
                    WHERE {' AND '.join(where)}
-                   GROUP BY v.id, c.name, c.color, c.icon
                    ORDER BY v.status, v.name""",
                 params,
             )
@@ -295,31 +297,33 @@ async def list_events(
 ):
     _require_db()
     p = _project(project)
+    ev_table = db.project_table("events", p)
+    et_table = db.project_table("event_tags", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             if value_id:
                 cur.execute(
-                    """SELECT e.id, e.event_type, e.source_id, e.title,
+                    f"""SELECT e.id, e.event_type, e.source_id, e.title,
                               e.metadata, e.created_at
-                       FROM events e
-                       JOIN event_tags et ON et.event_id = e.id
-                       WHERE e.project=%s AND et.entity_value_id=%s
+                       FROM {ev_table} e
+                       JOIN {et_table} et ON et.event_id = e.id
+                       WHERE et.entity_value_id=%s
                        ORDER BY e.created_at DESC LIMIT %s""",
-                    (p, value_id, limit),
+                    (value_id, limit),
                 )
             elif event_type:
                 cur.execute(
-                    """SELECT id, event_type, source_id, title, metadata, created_at
-                       FROM events WHERE project=%s AND event_type=%s
+                    f"""SELECT id, event_type, source_id, title, metadata, created_at
+                       FROM {ev_table} WHERE event_type=%s
                        ORDER BY created_at DESC LIMIT %s""",
-                    (p, event_type, limit),
+                    (event_type, limit),
                 )
             else:
                 cur.execute(
-                    """SELECT id, event_type, source_id, title, metadata, created_at
-                       FROM events WHERE project=%s
+                    f"""SELECT id, event_type, source_id, title, metadata, created_at
+                       FROM {ev_table}
                        ORDER BY created_at DESC LIMIT %s""",
-                    (p, limit),
+                    (limit,),
                 )
             cols = [d[0] for d in cur.description]
             rows = []
@@ -336,7 +340,7 @@ async def list_events(
                 cur.execute(
                     f"""SELECT et.event_id, v.id, v.name, c.name AS category,
                                c.color, c.icon, et.auto_tagged
-                        FROM event_tags et
+                        FROM {et_table} et
                         JOIN entity_values v     ON v.id  = et.entity_value_id
                         JOIN entity_categories c ON c.id  = v.category_id
                         WHERE et.event_id IN ({ph})""",
@@ -364,6 +368,8 @@ def _do_sync_events(p: str) -> dict[str, int]:
     """
     ws = _workspace(p)
     imported = {"prompt": 0, "commit": 0}
+    ev_table = db.project_table("events", p)
+    c_table  = db.project_table("commits", p)
 
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -388,27 +394,27 @@ def _do_sync_events(p: str) -> dict[str, int]:
                         "feature":  e.get("feature"),
                     })
                     cur.execute(
-                        """INSERT INTO events
-                               (project, event_type, source_id, title, content, metadata, created_at)
-                           VALUES (%s,'prompt',%s,%s,%s,%s,%s::timestamptz)
-                           ON CONFLICT (project, event_type, source_id) DO NOTHING""",
-                        (p, sid, title, (e.get("user_input") or "")[:2000], meta, sid),
+                        f"""INSERT INTO {ev_table}
+                               (event_type, source_id, title, content, metadata, created_at)
+                           VALUES ('prompt',%s,%s,%s,%s,%s::timestamptz)
+                           ON CONFLICT (event_type, source_id) DO NOTHING""",
+                        (sid, title, (e.get("user_input") or "")[:2000], meta, sid),
                     )
                     imported["prompt"] += cur.rowcount
 
-            # 2. commits table → event_type="commit"
+            # 2. commits_{p} table → event_type="commit"
             cur.execute(
-                "SELECT commit_hash, commit_msg, phase, feature, source, committed_at "
-                "FROM commits WHERE project=%s", (p,)
+                f"SELECT commit_hash, commit_msg, phase, feature, source, committed_at "
+                f"FROM {c_table}"
             )
             for commit_hash, msg, phase, feature, src, committed_at in cur.fetchall():
                 meta = json.dumps({"phase": phase, "feature": feature, "source": src})
                 cur.execute(
-                    """INSERT INTO events
-                           (project, event_type, source_id, title, content, metadata, created_at)
-                       VALUES (%s,'commit',%s,%s,%s,%s,%s)
-                       ON CONFLICT (project, event_type, source_id) DO NOTHING""",
-                    (p, commit_hash, (msg or "")[:120], msg or "",
+                    f"""INSERT INTO {ev_table}
+                           (event_type, source_id, title, content, metadata, created_at)
+                       VALUES ('commit',%s,%s,%s,%s,%s)
+                       ON CONFLICT (event_type, source_id) DO NOTHING""",
+                    (commit_hash, (msg or "")[:120], msg or "",
                      meta, committed_at or "2026-01-01T00:00:00+00:00"),
                 )
                 imported["commit"] += cur.rowcount
@@ -433,12 +439,14 @@ class TagAdd(BaseModel):
 
 
 @router.post("/events/{event_id}/tag")
-async def add_event_tag(event_id: int, body: TagAdd):
+async def add_event_tag(event_id: int, body: TagAdd, project: str | None = Query(None)):
     _require_db()
+    p = _project(project)
+    et_table = db.project_table("event_tags", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO event_tags (event_id, entity_value_id, auto_tagged) "
+                f"INSERT INTO {et_table} (event_id, entity_value_id, auto_tagged) "
                 "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
                 (event_id, body.entity_value_id, body.auto_tagged),
             )
@@ -446,12 +454,14 @@ async def add_event_tag(event_id: int, body: TagAdd):
 
 
 @router.delete("/events/{event_id}/tag/{value_id}")
-async def remove_event_tag(event_id: int, value_id: int):
+async def remove_event_tag(event_id: int, value_id: int, project: str | None = Query(None)):
     _require_db()
+    p = _project(project)
+    et_table = db.project_table("event_tags", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM event_tags WHERE event_id=%s AND entity_value_id=%s",
+                f"DELETE FROM {et_table} WHERE event_id=%s AND entity_value_id=%s",
                 (event_id, value_id),
             )
     return {"ok": True}
@@ -503,6 +513,8 @@ async def _auto_suggest_tags(event_id: int, project: str, content: str) -> None:
         suggestions: list[dict] = []
         auto_applied: list[int] = []
 
+        et_table = db.project_table("event_tags", project)
+
         # Immediately apply active session tags
         if st_row:
             phase, feature, bug_ref, extra = st_row
@@ -523,7 +535,7 @@ async def _auto_suggest_tags(event_id: int, project: str, content: str) -> None:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "INSERT INTO event_tags (event_id, entity_value_id, auto_tagged) "
+                            f"INSERT INTO {et_table} (event_id, entity_value_id, auto_tagged) "
                             "VALUES (%s,%s,TRUE) ON CONFLICT DO NOTHING",
                             (event_id, vid),
                         )
@@ -570,10 +582,11 @@ async def _auto_suggest_tags(event_id: int, project: str, content: str) -> None:
             return
 
         # Store all suggestions in event metadata (including already-applied session ones)
+        ev_table = db.project_table("events", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE events SET metadata = jsonb_set(metadata, '{tag_suggestions}', %s::jsonb, true) "
+                    f"UPDATE {ev_table} SET metadata = jsonb_set(metadata, '{{tag_suggestions}}', %s::jsonb, true) "
                     "WHERE id=%s",
                     (json.dumps(suggestions), event_id),
                 )
@@ -593,27 +606,26 @@ async def get_suggestions(
     """
     _require_db()
     p = _project(project)
+    ev_table = db.project_table("events", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             if source_id:
                 cur.execute(
-                    """SELECT id, event_type, source_id, title, metadata, created_at
-                       FROM events
-                       WHERE project=%s AND source_id=%s
+                    f"""SELECT id, event_type, source_id, title, metadata, created_at
+                       FROM {ev_table}
+                       WHERE source_id=%s
                          AND metadata ? 'tag_suggestions'
                          AND (metadata->>'suggestions_handled') IS DISTINCT FROM 'true'
                        LIMIT 1""",
-                    (p, source_id),
+                    (source_id,),
                 )
             else:
                 cur.execute(
-                    """SELECT id, event_type, source_id, title, metadata, created_at
-                       FROM events
-                       WHERE project=%s
-                         AND metadata ? 'tag_suggestions'
+                    f"""SELECT id, event_type, source_id, title, metadata, created_at
+                       FROM {ev_table}
+                       WHERE metadata ? 'tag_suggestions'
                          AND (metadata->>'suggestions_handled') IS DISTINCT FROM 'true'
                        ORDER BY created_at DESC LIMIT 10""",
-                    (p,),
                 )
             cols = [d[0] for d in cur.description]
             rows = []
@@ -626,13 +638,15 @@ async def get_suggestions(
 
 
 @router.post("/suggestions/{event_id}/dismiss")
-async def dismiss_suggestions(event_id: int):
+async def dismiss_suggestions(event_id: int, project: str | None = Query(None)):
     """Mark tag suggestions as handled (dismissed without applying)."""
     _require_db()
+    p = _project(project)
+    ev_table = db.project_table("events", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE events SET metadata = jsonb_set(metadata, '{suggestions_handled}', 'true'::jsonb, true) "
+                f"UPDATE {ev_table} SET metadata = jsonb_set(metadata, '{{suggestions_handled}}', 'true'::jsonb, true) "
                 "WHERE id=%s",
                 (event_id,),
             )
@@ -649,14 +663,16 @@ class LinkCreate(BaseModel):
 
 
 @router.post("/events/{event_id}/link")
-async def add_event_link(event_id: int, body: LinkCreate):
+async def add_event_link(event_id: int, body: LinkCreate, project: str | None = Query(None)):
     _require_db()
     if body.link_type not in _LINK_TYPES:
         raise HTTPException(400, f"link_type must be one of: {sorted(_LINK_TYPES)}")
+    p = _project(project)
+    el_table = db.project_table("event_links", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO event_links (from_event_id, to_event_id, link_type) "
+                f"INSERT INTO {el_table} (from_event_id, to_event_id, link_type) "
                 "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
                 (event_id, body.to_event_id, body.link_type),
             )
@@ -664,12 +680,14 @@ async def add_event_link(event_id: int, body: LinkCreate):
 
 
 @router.delete("/events/{event_id}/link/{to_id}/{link_type}")
-async def remove_event_link(event_id: int, to_id: int, link_type: str):
+async def remove_event_link(event_id: int, to_id: int, link_type: str, project: str | None = Query(None)):
     _require_db()
+    p = _project(project)
+    el_table = db.project_table("event_links", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM event_links "
+                f"DELETE FROM {el_table} "
                 "WHERE from_event_id=%s AND to_event_id=%s AND link_type=%s",
                 (event_id, to_id, link_type),
             )
@@ -677,13 +695,16 @@ async def remove_event_link(event_id: int, to_id: int, link_type: str):
 
 
 @router.get("/events/{event_id}/links")
-async def get_event_links(event_id: int):
+async def get_event_links(event_id: int, project: str | None = Query(None)):
     _require_db()
+    p = _project(project)
+    ev_table = db.project_table("events", p)
+    el_table = db.project_table("event_links", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT el.to_event_id, el.link_type, e.event_type, e.title
-                   FROM event_links el JOIN events e ON e.id = el.to_event_id
+                f"""SELECT el.to_event_id, el.link_type, e.event_type, e.title
+                   FROM {el_table} el JOIN {ev_table} e ON e.id = el.to_event_id
                    WHERE el.from_event_id=%s""",
                 (event_id,),
             )
@@ -692,8 +713,8 @@ async def get_event_links(event_id: int):
                 for r in cur.fetchall()
             ]
             cur.execute(
-                """SELECT el.from_event_id, el.link_type, e.event_type, e.title
-                   FROM event_links el JOIN events e ON e.id = el.from_event_id
+                f"""SELECT el.from_event_id, el.link_type, e.event_type, e.title
+                   FROM {el_table} el JOIN {ev_table} e ON e.id = el.from_event_id
                    WHERE el.to_event_id=%s""",
                 (event_id,),
             )
@@ -760,17 +781,19 @@ async def session_bulk_tag(body: SessionTagBody):
                     )
                     value_id = cur.fetchone()[0]
 
+            ev_table = db.project_table("events", p)
+            et_table = db.project_table("event_tags", p)
+
             # Find all events for this session
             # Events created by the UI have metadata->>'session_id' = session_id
             # Events from CLI have session_id in history.jsonl metadata
             cur.execute(
-                """SELECT id FROM events
-                   WHERE project=%s
-                     AND (
+                f"""SELECT id FROM {ev_table}
+                   WHERE (
                        metadata->>'session_id' = %s
                        OR source_id = %s
                      )""",
-                (p, body.session_id, body.session_id),
+                (body.session_id, body.session_id),
             )
             event_ids = [r[0] for r in cur.fetchall()]
 
@@ -778,7 +801,7 @@ async def session_bulk_tag(body: SessionTagBody):
             tagged = 0
             for eid in event_ids:
                 cur.execute(
-                    "INSERT INTO event_tags (event_id, entity_value_id, auto_tagged) "
+                    f"INSERT INTO {et_table} (event_id, entity_value_id, auto_tagged) "
                     "VALUES (%s,%s,false) ON CONFLICT DO NOTHING",
                     (eid, value_id),
                 )

@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import contextmanager
 from typing import Generator
 
@@ -54,6 +55,97 @@ class _Database:
     def is_available(self) -> bool:
         return self._available
 
+    @staticmethod
+    def project_table(base: str, project: str) -> str:
+        """Return per-project table name, e.g. commits_myproject."""
+        safe = re.sub(r'[^a-z0-9]', '_', project.lower())[:40].strip('_')
+        return f"{base}_{safe}"
+
+    def ensure_project_schema(self, project: str) -> None:
+        """Create per-project tables if they don't exist. Safe to call repeatedly."""
+        if not self._available:
+            return
+        tbl = self.project_table
+        c   = tbl("commits",    project)
+        e   = tbl("events",     project)
+        emb = tbl("embeddings", project)
+        et  = tbl("event_tags", project)
+        el  = tbl("event_links", project)
+        ddl = f"""
+        CREATE TABLE IF NOT EXISTS {c} (
+            id           SERIAL         PRIMARY KEY,
+            commit_hash  VARCHAR(40)    NOT NULL,
+            commit_msg   TEXT           NOT NULL DEFAULT '',
+            summary      TEXT           NOT NULL DEFAULT '',
+            phase        VARCHAR(20),
+            feature      VARCHAR(255),
+            bug_ref      VARCHAR(255),
+            source       VARCHAR(50)    NOT NULL DEFAULT 'git',
+            session_id   VARCHAR(255),
+            tags         JSONB          NOT NULL DEFAULT '{{}}',
+            committed_at TIMESTAMPTZ,
+            created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(commit_hash)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{c}_committed ON {c}(committed_at DESC);
+
+        CREATE TABLE IF NOT EXISTS {e} (
+            id         SERIAL         PRIMARY KEY,
+            event_type VARCHAR(50)    NOT NULL,
+            source_id  VARCHAR(255)   NOT NULL,
+            title      TEXT           NOT NULL DEFAULT '',
+            content    TEXT           NOT NULL DEFAULT '',
+            metadata   JSONB          NOT NULL DEFAULT '{{}}',
+            created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(event_type, source_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{e}_type    ON {e}(event_type);
+        CREATE INDEX IF NOT EXISTS idx_{e}_created ON {e}(created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS {emb} (
+            id          SERIAL         PRIMARY KEY,
+            source_type VARCHAR(50)    NOT NULL,
+            source_id   VARCHAR(255)   NOT NULL,
+            chunk_index INT            NOT NULL DEFAULT 0,
+            content     TEXT           NOT NULL,
+            embedding   vector(1536),
+            chunk_type  VARCHAR(50)    NOT NULL DEFAULT 'full',
+            doc_type    VARCHAR(50),
+            language    VARCHAR(30),
+            file_path   VARCHAR(500),
+            metadata    JSONB          NOT NULL DEFAULT '{{}}',
+            created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(source_type, source_id, chunk_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{emb}_lang ON {emb}(language) WHERE language IS NOT NULL;
+
+        CREATE TABLE IF NOT EXISTS {et} (
+            event_id        INT         NOT NULL,
+            entity_value_id INT         NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+            auto_tagged     BOOLEAN     NOT NULL DEFAULT FALSE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY(event_id, entity_value_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{et}_event ON {et}(event_id);
+        CREATE INDEX IF NOT EXISTS idx_{et}_value ON {et}(entity_value_id);
+
+        CREATE TABLE IF NOT EXISTS {el} (
+            from_event_id INT         NOT NULL,
+            to_event_id   INT         NOT NULL,
+            link_type     VARCHAR(50) NOT NULL,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY(from_event_id, to_event_id, link_type)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{el}_from ON {el}(from_event_id);
+        """
+        try:
+            with self.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(ddl)
+            log.info(f"✅ Per-project schema ready for '{project}'")
+        except Exception as exc:
+            log.warning(f"ensure_project_schema({project}) failed: {exc}")
+
     @contextmanager
     def conn(self) -> Generator:
         if not self._pool:
@@ -73,39 +165,8 @@ class _Database:
         """Create tables and migrate missing columns — safe to run repeatedly."""
 
         _DDL_EMBEDDINGS = """
-        -- pgvector semantic embeddings (Layer 4 memory upgrade)
-        -- chunk_type: full | summary | function | class | section | file_diff
+        -- pgvector extension (per-project embedding tables created by ensure_project_schema)
         CREATE EXTENSION IF NOT EXISTS vector;
-        CREATE TABLE IF NOT EXISTS embeddings (
-            id          SERIAL         PRIMARY KEY,
-            project     VARCHAR(255)   NOT NULL,
-            source_type VARCHAR(50)    NOT NULL,
-            source_id   VARCHAR(255)   NOT NULL,
-            chunk_index INT            NOT NULL DEFAULT 0,
-            content     TEXT           NOT NULL,
-            embedding   vector(1536),
-            chunk_type  VARCHAR(50)    NOT NULL DEFAULT 'full',
-            doc_type    VARCHAR(50),
-            language    VARCHAR(30),
-            file_path   VARCHAR(500),
-            metadata    JSONB          NOT NULL DEFAULT '{}',
-            created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_emb_project ON embeddings(project, source_type);
-        -- Migrate: add chunking columns to existing installs (must come before indexes on new cols)
-        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chunk_index INT NOT NULL DEFAULT 0;
-        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chunk_type  VARCHAR(50) NOT NULL DEFAULT 'full';
-        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS doc_type    VARCHAR(50);
-        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS language    VARCHAR(30);
-        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS file_path   VARCHAR(500);
-        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS metadata    JSONB NOT NULL DEFAULT '{}';
-        -- Language index and unique index created AFTER columns are guaranteed to exist
-        CREATE INDEX IF NOT EXISTS idx_emb_language ON embeddings(project, language)
-            WHERE language IS NOT NULL;
-        -- Replace 3-col unique constraint with chunk-aware 4-col index
-        ALTER TABLE embeddings DROP CONSTRAINT IF EXISTS embeddings_project_source_type_source_id_key;
-        CREATE UNIQUE INDEX IF NOT EXISTS embeddings_uq_chunk
-            ON embeddings(project, source_type, source_id, chunk_index);
         """
 
 
@@ -171,29 +232,7 @@ class _Database:
         conn.commit()
 
         _DDL_TAGGING = """
-        -- Commit metadata + tags (populated from commit_log.jsonl via /history/commits/sync)
-        CREATE TABLE IF NOT EXISTS commits (
-            id           SERIAL         PRIMARY KEY,
-            project      VARCHAR(255)   NOT NULL,
-            commit_hash  VARCHAR(40)    NOT NULL,
-            commit_msg   TEXT           NOT NULL DEFAULT '',
-            summary      TEXT           NOT NULL DEFAULT '',
-            phase        VARCHAR(20),
-            feature      VARCHAR(255),
-            bug_ref      VARCHAR(255),
-            source       VARCHAR(50)    NOT NULL DEFAULT 'git',
-            session_id   VARCHAR(255),
-            tags         JSONB          NOT NULL DEFAULT '{}',
-            committed_at TIMESTAMPTZ,
-            created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-            UNIQUE(project, commit_hash)
-        );
-        CREATE INDEX IF NOT EXISTS idx_commits_project   ON commits(project);
-        CREATE INDEX IF NOT EXISTS idx_commits_phase     ON commits(project, phase);
-        CREATE INDEX IF NOT EXISTS idx_commits_feature   ON commits(project, feature);
-        CREATE INDEX IF NOT EXISTS idx_commits_committed ON commits(project, committed_at DESC);
-
-        -- Active session tags per project
+        -- Active session tags per project (shared; commits are now per-project tables)
         CREATE TABLE IF NOT EXISTS session_tags (
             id         SERIAL         PRIMARY KEY,
             project    VARCHAR(255)   NOT NULL UNIQUE,
@@ -234,43 +273,7 @@ class _Database:
         );
         CREATE INDEX IF NOT EXISTS idx_ev_category ON entity_values(category_id);
         CREATE INDEX IF NOT EXISTS idx_ev_project  ON entity_values(project);
-
-        -- Raw event log (prompts, commits, docs, meetings, file_changes, …)
-        CREATE TABLE IF NOT EXISTS events (
-            id         SERIAL         PRIMARY KEY,
-            project    VARCHAR(255)   NOT NULL,
-            event_type VARCHAR(50)    NOT NULL,
-            source_id  VARCHAR(255)   NOT NULL,
-            title      TEXT           NOT NULL DEFAULT '',
-            content    TEXT           NOT NULL DEFAULT '',
-            metadata   JSONB          NOT NULL DEFAULT '{}',
-            created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-            UNIQUE(project, event_type, source_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_events_project_type ON events(project, event_type);
-        CREATE INDEX IF NOT EXISTS idx_events_created      ON events(project, created_at DESC);
-
-        -- Events ↔ values (many-to-many)
-        CREATE TABLE IF NOT EXISTS event_tags (
-            event_id        INT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-            entity_value_id INT         NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
-            auto_tagged     BOOLEAN     NOT NULL DEFAULT FALSE,
-            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            PRIMARY KEY(event_id, entity_value_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_etag_event ON event_tags(event_id);
-        CREATE INDEX IF NOT EXISTS idx_etag_value ON event_tags(entity_value_id);
-
-        -- Directed event relationships
-        CREATE TABLE IF NOT EXISTS event_links (
-            from_event_id INT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-            to_event_id   INT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-            link_type     VARCHAR(50) NOT NULL,
-            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            PRIMARY KEY(from_event_id, to_event_id, link_type)
-        );
-        CREATE INDEX IF NOT EXISTS idx_elink_from ON event_links(from_event_id);
-        CREATE INDEX IF NOT EXISTS idx_elink_to   ON event_links(to_event_id);
+        -- events, event_tags, event_links are now per-project tables (see ensure_project_schema)
         """
 
         for label, sql in [
@@ -287,16 +290,7 @@ class _Database:
                 conn.rollback()
                 log.warning(f"{label} DDL skipped: {e}")
 
-        # ivfflat index requires rows to exist first — best-effort, ignore if fails
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_emb_vec ON embeddings "
-                    "USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);"
-                )
-            conn.commit()
-        except Exception:
-            conn.rollback()
+        # ivfflat indexes on per-project embeddings tables are added manually after rows exist
 
 
 # Singleton used everywhere

@@ -133,16 +133,16 @@ async def commits_history(
     p = project or settings.active_project or "default"
 
     if db.is_available():
+        c_table = db.project_table("commits", p)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(f"""
                     SELECT id, commit_hash, commit_msg, summary, phase,
                            feature, bug_ref, source, session_id, tags, committed_at
-                    FROM commits
-                    WHERE project = %s
+                    FROM {c_table}
                     ORDER BY committed_at DESC NULLS LAST, id DESC
                     LIMIT %s
-                """, (p, limit))
+                """, (limit,))
                 cols = [d[0] for d in cur.description]
                 rows = [dict(zip(cols, r)) for r in cur.fetchall()]
                 # Normalise types for JSON
@@ -185,10 +185,11 @@ async def commits_history(
 
 
 @router.patch("/commits/{commit_id}")
-async def patch_commit(commit_id: int, body: CommitPatch):
+async def patch_commit(commit_id: int, body: CommitPatch, project: str | None = Query(None)):
     """Update metadata (phase, feature, bug_ref, summary, tags) for a commit row."""
     if not db.is_available():
         raise HTTPException(status_code=503, detail="PostgreSQL not available")
+    p = project or settings.active_project or "default"
 
     updates: list[str] = []
     params: list = []
@@ -213,11 +214,12 @@ async def patch_commit(commit_id: int, body: CommitPatch):
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    c_table = db.project_table("commits", p)
     params.append(commit_id)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE commits SET {', '.join(updates)} WHERE id = %s RETURNING id",
+                f"UPDATE {c_table} SET {', '.join(updates)} WHERE id = %s RETURNING id",
                 params,
             )
             if not cur.fetchone():
@@ -237,6 +239,8 @@ async def sync_commits(project: str | None = Query(None)):
     if not log_path.exists():
         return {"imported": 0, "project": p}
 
+    c_table = db.project_table("commits", p)
+    db.ensure_project_schema(p)
     inserted = 0
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -254,13 +258,12 @@ async def sync_commits(project: str | None = Query(None)):
                     if not commit_hash:
                         continue
 
-                    cur.execute("""
-                        INSERT INTO commits
-                            (project, commit_hash, commit_msg, source, session_id, committed_at)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (project, commit_hash) DO NOTHING
+                    cur.execute(f"""
+                        INSERT INTO {c_table}
+                            (commit_hash, commit_msg, source, session_id, committed_at)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (commit_hash) DO NOTHING
                     """, (
-                        p,
                         commit_hash,
                         raw.get("message", raw.get("msg", "")),
                         raw.get("source", "git"),

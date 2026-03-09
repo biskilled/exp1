@@ -7,6 +7,7 @@ Key env vars:
   CODE_DIR        default code directory for file browsing
 """
 
+import json
 import os
 from pathlib import Path
 from pydantic_settings import BaseSettings
@@ -14,6 +15,17 @@ from pydantic_settings import BaseSettings
 _BACKEND_DIR = Path(__file__).parent.resolve()
 _UI_DIR = _BACKEND_DIR.parent
 _ENGINE_ROOT = _UI_DIR.parent
+
+# Bootstrap WORKSPACE_DIR from ~/.aicli/config.json when not already set via env
+_aicli_config_path = Path.home() / ".aicli" / "config.json"
+if _aicli_config_path.exists() and not os.environ.get("WORKSPACE_DIR"):
+    try:
+        _c = json.loads(_aicli_config_path.read_text())
+        _aicli_dir = _c.get("aicli_dir", "")
+        if _aicli_dir:
+            os.environ.setdefault("WORKSPACE_DIR", str(Path(_aicli_dir) / "workspace"))
+    except Exception:
+        pass
 
 
 class Settings(BaseSettings):

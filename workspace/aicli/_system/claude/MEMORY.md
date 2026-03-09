@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-09 02:34 UTC by aicli /memory_
+_Generated: 2026-03-09 03:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling multiple LLM tools (claude-cli, cursor, aicli) to maintain unified project context through PostgreSQL with pgvector semantic embeddings, mandatory metadata tagging, and MCP server integration. Currently implementing auto-tag enforcement, smart chunking for semantic retrieval, and fixing chat history display to support full conversation recovery and cross-session memory sharing across discovery/development/production lifecycle phases.
+aicli is a shared AI memory platform enabling seamless context preservation across claude-cli, cursor, and aicli clients through PostgreSQL pgvector embeddings, relational tagging, and unified commit logging. Currently stabilizing chat history UI, auto-tagging enforcement, and MCP server integration to unlock full cross-tool semantic search and multi-agent workflow capabilities.
 
 ## Tech Stack
 
@@ -44,35 +44,26 @@ aicli is a shared AI memory platform enabling multiple LLM tools (claude-cli, cu
 
 ## In Progress
 
-- Chat history UI fix: restore full prompt/response pairs per session with proper LLM response display and per-prompt metadata visibility (2026-03-09 02:20)
-- Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area); persist tags across multi-turn conversations; validate relational_tags table storage
+- Chat history UI fix: restore full prompt/response pairs per session with proper LLM response display and per-prompt metadata visibility; fix claude cli hooks to capture responses not just prompts (2026-03-09 02:20, 03:02)
+- Auto-tag loop implementation: enforce aicli to assign minimum metadata keys (project, lifecycle_stage, feature_area); implement + UI option for tag selection (feature/bug/task) with dropdown lists; persist tags across multi-turn conversations
 - Smart chunking embedding feature: implement summary-level + per-class/method chunk generation; add metadata filters (language, file, feature, project_stage) for filtered semantic retrieval; test event emission for indexing
 - MCP server deployment: build semantic embedding search endpoint for claude-cli, cursor, and aicli clients to query pgvector embeddings and commit_log.jsonl; enable cross-tool memory access
-- PostgreSQL pgvector validation: confirmed PostgreSQL 15+ instance; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); validated relational + vector capabilities
-- UI billing/usage integration: fixed usage_logs table population; implemented manual balance entry with refresh indicator; ensured calculations refresh on balance updates
+- PostgreSQL pgvector validation: confirmed PostgreSQL 15+ instance with pgvector extension; created core tables (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); validated relational + vector capabilities
+- UI billing/usage integration: fixed usage_logs table population; implemented manual balance entry with refresh indicator; ensured calculations refresh on balance updates; fixed seed defaults for entity categories
 
 ## Active Features / Bugs
 
 - **[feature]** tagging `(6 events)`
 - **[feature]** shared-memory `(1 events)`
 - **[feature]** workflow-runner `(0 events)`
-- **[feature]** embeddings `(0 events)`
+- **[feature]** test-picker-feature `(0 events)`
+- **[feature]** mcp `(0 events)`
 - **[feature]** graph-workflow `(0 events)`
 - **[feature]** billing `(0 events)`
 - **[feature]** auth `(0 events)`
-- **[feature]** mcp `(0 events)`
+- **[feature]** embeddings `(0 events)`
 - **[phase]** development `(6 events)`
 - **[phase]** prod `(0 events)`
 - **[phase]** discovery `(0 events)`
 
-**2026-03-09 01:47** `claude_cli` — Auto-tag loop implementation initiated to enforce minimum metadata keys (project, lifecycle_stage, feature_area) on all aicli prompts, persisting across multi-turn conversations via relational_tags table linking commit_id to metadata.
-
-**2026-03-09 00:56** `claude_cli` — Confirmed PostgreSQL 15+ instance with pgvector extension fully operational; all core tables created (users, user_usage, usage_logs, billing_logs, workflows, relational_tags, embeddings); relational and vector capabilities validated.
-
-**2026-03-09 00:51** `claude_cli` — Reviewed implementation of smart chunking architecture (summary-level + per-class/method chunks with language/file/feature/project_stage metadata filters), MCP server semantic embedding search, and /memory command integration for cross-tool access.
-
-**2026-03-09 01:58 – 02:03** `ui` — Smart chunking embedding feature tested on non-streaming endpoint with auto-tag suggestions; event emission for semantic indexing validated in brief testing.
-
-**2026-03-09 02:20** `claude_cli` — Identified chat history UI regression: chat tab displaying only single prompt with incorrect LLM response instead of full session history with prompt/response pairs and per-prompt metadata.
-
-**2026-03-08 23:52** `claude_cli` — Proposed relational tagging architecture: aicli enforces commit tagging with known keys (repo, project name, phase: discovery/development/prod, feature, bug); PostgreSQL relational_tags table stores commit_id-to-metadata mappings for lifecycle tracking.
+**2026-03-09 03:02** `claude_cli` — Chat history UI broken: prompts show without LLM responses from claude cli hooks; tag addition UI needs dropdown UI (feature/bug/task selector with existing value lists). **2026-03-09 02:20** `claude_cli` — Identified chat history regression: full prompt/response pairs not displaying; per-prompt metadata visibility required. **2026-03-09 01:47** `claude_cli` — Auto-tag loop implementation prioritized: aicli to enforce metadata keys (project, lifecycle_stage, feature_area) with per-project server-side storage model. **2026-03-09 01:32** `claude_cli` — Summarized new PostgreSQL pgvector architecture: hooks still write local JSONL files; /memory command aggregates and injects into vectordb via relational tagging. **2026-03-09 00:51** `claude_cli` — Validated PostgreSQL 15+ pgvector setup: MCP server, smart chunking (summary + per-class/method with language/file/feature/stage filters), and relational_tags linking commit_id to metadata all confirmed for implementation.

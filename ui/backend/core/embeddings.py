@@ -299,14 +299,15 @@ async def embed_and_store(
         vector = response.data[0].embedding
         meta_json = json.dumps(metadata or {})
 
+        emb_table = db.project_table("embeddings", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO embeddings
-                           (project, source_type, source_id, chunk_index, content,
+                    f"""INSERT INTO {emb_table}
+                           (source_type, source_id, chunk_index, content,
                             embedding, chunk_type, doc_type, language, file_path, metadata)
-                       VALUES (%s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
-                       ON CONFLICT (project, source_type, source_id, chunk_index)
+                       VALUES (%s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
+                       ON CONFLICT (source_type, source_id, chunk_index)
                        DO UPDATE SET
                            content=EXCLUDED.content,
                            embedding=EXCLUDED.embedding,
@@ -317,7 +318,7 @@ async def embed_and_store(
                            metadata=EXCLUDED.metadata,
                            created_at=NOW()""",
                     (
-                        project, source_type, source_id, chunk_index,
+                        source_type, source_id, chunk_index,
                         content[:4000], str(vector), chunk_type,
                         doc_type, language, file_path, meta_json,
                     ),
@@ -380,8 +381,9 @@ async def semantic_search(
         response = await client.embeddings.create(model=_EMBEDDING_MODEL, input=query[:2000])
         query_vec = response.data[0].embedding
 
-        filters: list[str] = ["project=%s", "embedding IS NOT NULL"]
-        params: list = [str(query_vec), project]
+        emb_table = db.project_table("embeddings", project)
+        filters: list[str] = ["embedding IS NOT NULL"]
+        params: list = [str(query_vec)]
 
         if source_types:
             filters.append("source_type = ANY(%s)")
@@ -408,7 +410,7 @@ async def semantic_search(
                     f"""SELECT source_type, source_id, chunk_index, chunk_type,
                                content, language, file_path, doc_type, metadata,
                                1 - (embedding <=> %s::vector) AS score
-                        FROM embeddings
+                        FROM {emb_table}
                         WHERE {where}
                         ORDER BY embedding <=> %s::vector
                         LIMIT %s""",
@@ -528,12 +530,13 @@ async def ingest_commit(project: str, commit_hash: str, code_dir: str) -> int:
         meta: dict = {"commit_msg": commit_msg}
         if db.is_available():
             try:
+                c_table = db.project_table("commits", project)
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "SELECT phase, feature, bug_ref "
-                            "FROM commits WHERE project=%s AND commit_hash=%s",
-                            (project, commit_hash),
+                            f"SELECT phase, feature, bug_ref "
+                            f"FROM {c_table} WHERE commit_hash=%s",
+                            (commit_hash,),
                         )
                         row = cur.fetchone()
                         if row:

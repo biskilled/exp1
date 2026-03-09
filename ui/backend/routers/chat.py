@@ -80,9 +80,10 @@ def _append_history(
     except Exception:
         pass  # never break chat because of logging
 
-    # Upsert event in PostgreSQL so tag suggestions work immediately
+    # Upsert event in per-project PostgreSQL table so tag suggestions work immediately
     if db.is_available():
         try:
+            ev_table = db.project_table("events", project)
             meta = json.dumps({
                 "provider": provider,
                 "source": "ui",
@@ -92,11 +93,11 @@ def _append_history(
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO events
-                               (project, event_type, source_id, title, content, metadata, created_at)
-                           VALUES (%s,'prompt',%s,%s,%s,%s::jsonb,%s::timestamptz)
-                           ON CONFLICT (project, event_type, source_id) DO NOTHING""",
-                        (project, ts, (user_msg or "")[:120],
+                        f"""INSERT INTO {ev_table}
+                               (event_type, source_id, title, content, metadata, created_at)
+                           VALUES ('prompt',%s,%s,%s,%s::jsonb,%s::timestamptz)
+                           ON CONFLICT (event_type, source_id) DO NOTHING""",
+                        (ts, (user_msg or "")[:120],
                          (user_msg or "")[:2000], meta, ts),
                     )
         except Exception:
@@ -293,11 +294,12 @@ async def _stream_response(
 async def _auto_suggest_tags_for_event(ts: str, project: str, user_msg: str) -> None:
     """Look up the event_id by ts then fire auto-tag suggestions. Silent on error."""
     try:
+        ev_table = db.project_table("events", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id FROM events WHERE project=%s AND event_type='prompt' AND source_id=%s",
-                    (project, ts),
+                    f"SELECT id FROM {ev_table} WHERE event_type='prompt' AND source_id=%s",
+                    (ts,),
                 )
                 row = cur.fetchone()
         if row:

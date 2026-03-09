@@ -205,6 +205,10 @@ async def create_project(body: NewProject):
             (cursor_rules_dir / "aicli.mdrules").write_text(rules_content)
             setup_results["cursor"] = str(cursor_rules_dir)
 
+    # Ensure per-project DB tables exist (idempotent)
+    if db.is_available():
+        db.ensure_project_schema(body.name)
+
     return {
         "created": body.name,
         "template": body.template,
@@ -766,14 +770,15 @@ async def generate_memory(project_name: str):
     # ── Active Features from entity layer ─────────────────────────────────────
     if db.is_available():
         try:
+            et_table = db.project_table("event_tags", project_name)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT c.name AS category, v.name, v.description, v.status,
+                        f"""SELECT c.name AS category, v.name, v.description, v.status,
                                   COUNT(et.event_id) AS event_count
                            FROM entity_values v
                            JOIN entity_categories c ON c.id = v.category_id
-                           LEFT JOIN event_tags et ON et.entity_value_id = v.id
+                           LEFT JOIN {et_table} et ON et.entity_value_id = v.id
                            WHERE v.project=%s AND v.status='active'
                              AND c.name IN ('feature','bug','phase')
                            GROUP BY c.name, v.id, v.name, v.description, v.status
@@ -1010,19 +1015,18 @@ async def _ingest_new_commits(project: str, code_dir: str, ingest_commit_fn) -> 
     if not db.is_available():
         return
     try:
+        c_table   = db.project_table("commits",    project)
+        emb_table = db.project_table("embeddings", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Find commit hashes not yet in embeddings
                 cur.execute(
-                    """SELECT c.commit_hash FROM commits c
-                       WHERE c.project=%s
-                         AND NOT EXISTS (
-                             SELECT 1 FROM embeddings e
-                             WHERE e.project=%s AND e.source_type='commit'
-                               AND e.source_id=c.commit_hash
-                         )
+                    f"""SELECT c.commit_hash FROM {c_table} c
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM {emb_table} e
+                           WHERE e.source_type='commit' AND e.source_id=c.commit_hash
+                       )
                        ORDER BY c.committed_at DESC LIMIT 30""",
-                    (project, project),
                 )
                 hashes = [r[0] for r in cur.fetchall()]
         for h in hashes:
@@ -1050,6 +1054,8 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
         if not key:
             return
 
+        ev_table = db.project_table("events",     project)
+        et_table = db.project_table("event_tags", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -1066,14 +1072,13 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
 
                 # Only tag events that are new (after since) and have no tags yet
                 since_filter = "AND e.created_at > %s::timestamptz" if since else ""
-                params: list = [project]
+                params: list = []
                 if since:
                     params.append(since)
                 cur.execute(
                     f"""SELECT e.id, e.event_type, e.title
-                        FROM events e
-                        WHERE e.project=%s
-                          AND NOT EXISTS (SELECT 1 FROM event_tags et WHERE et.event_id=e.id)
+                        FROM {ev_table} e
+                        WHERE NOT EXISTS (SELECT 1 FROM {et_table} et WHERE et.event_id=e.id)
                           {since_filter}
                         ORDER BY e.created_at DESC LIMIT 30""",
                     params,
@@ -1123,7 +1128,7 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
                     for vid in (value_ids or []):
                         try:
                             cur.execute(
-                                "INSERT INTO event_tags (event_id, entity_value_id, auto_tagged) "
+                                f"INSERT INTO {et_table} (event_id, entity_value_id, auto_tagged) "
                                 "VALUES (%s,%s,TRUE) ON CONFLICT DO NOTHING",
                                 (eid, int(vid)),
                             )
@@ -1145,16 +1150,20 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
     if not db.is_available():
         return
     try:
+        ev_table = db.project_table("events",      project)
+        el_table = db.project_table("event_links", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Get new events (after since)
-                since_filter = "AND created_at > %s::timestamptz" if since else ""
-                params: list = [project]
                 if since:
-                    params.append(since)
+                    where_clause = "WHERE created_at > %s::timestamptz"
+                    params: list = [since]
+                else:
+                    where_clause = ""
+                    params = []
                 cur.execute(
                     f"""SELECT id, event_type, source_id, title, content, metadata
-                        FROM events WHERE project=%s {since_filter}
+                        FROM {ev_table} {where_clause}
                         ORDER BY created_at DESC LIMIT 50""",
                     params,
                 )
@@ -1163,11 +1172,6 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
                 if not new_events:
                     return
 
-                # Strategy 1: keyword detection for commit → bug relationships
-                commit_events = [(eid, title, content) for eid, etype, *rest, title, content, meta in
-                                 [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in new_events]
-                                 if etype == "commit"]
-                # Actually let me restructure this properly:
                 rows_by_type: dict[str, list] = {}
                 for r in new_events:
                     eid, etype, src_id, title, content, meta = r
@@ -1195,7 +1199,7 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
                         ):
                             try:
                                 cur.execute(
-                                    "INSERT INTO event_links (from_event_id, to_event_id, link_type) "
+                                    f"INSERT INTO {el_table} (from_event_id, to_event_id, link_type) "
                                     "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
                                     (eid, bug_id, link_type),
                                 )
@@ -1243,7 +1247,7 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
                 for rel in relationships:
                     try:
                         cur.execute(
-                            "INSERT INTO event_links (from_event_id, to_event_id, link_type) "
+                            f"INSERT INTO {el_table} (from_event_id, to_event_id, link_type) "
                             "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
                             (int(rel["from"]), int(rel["to"]), rel["type"]),
                         )
@@ -1260,6 +1264,10 @@ async def get_project(project_name: str):
     proj_dir = _workspace() / project_name
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    # Lazy-ensure per-project DB tables on load
+    if db.is_available():
+        db.ensure_project_schema(project_name)
 
     proj_yaml = proj_dir / "project.yaml"
     data: dict = {"name": project_name}

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 02:34 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 03:24 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -44,8 +44,8 @@ _Last updated: 2026-03-08_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-09] something went wrong in the chat tab . it used to work properly - I saw all prompts per session, but only the prompt I w
 - [2026-03-09] My name is Alice and I work on feature X
 - [2026-03-09] What is my name and what feature am I working on?
 - [2026-03-09] My name is Alice and I work on feature X
 - [2026-03-09] What is my name and what feature am I working on?
+- [2026-03-09] I do not see llm repsonse when I am using the claude cli hooks (only my prompts). also addding tags not working properly

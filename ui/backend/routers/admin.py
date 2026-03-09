@@ -607,3 +607,160 @@ async def put_provider_balances(body: dict, admin: dict = Depends(_require_admin
     admin_email = admin.get("email", "admin")
     data = save_balances(body, updated_by=admin_email)
     return {"ok": True, "balances": data}
+
+
+# ── DB Schema Migration ──────────────────────────────────────────────────────────
+
+@router.post("/migrate-project-tables")
+async def migrate_project_tables(_: dict = Depends(_require_admin)):
+    """Migrate data from old shared tables to per-project tables.
+
+    Reads from legacy shared tables (commits, events, embeddings, event_tags, event_links)
+    and copies rows into the new per-project tables. Idempotent — safe to run multiple times.
+    Returns migrated row counts per project.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+
+    migrated: dict[str, dict[str, int]] = {}
+
+    def _table_exists(cur, table: str) -> bool:
+        cur.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema='public' AND table_name=%s",
+            (table,),
+        )
+        return cur.fetchone() is not None
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            # Collect distinct projects from each old shared table
+            projects: set[str] = set()
+            for old_table in ("commits", "events", "embeddings"):
+                if _table_exists(cur, old_table):
+                    cur.execute(f"SELECT DISTINCT project FROM {old_table}")
+                    for row in cur.fetchall():
+                        if row[0]:
+                            projects.add(row[0])
+
+            for project in sorted(projects):
+                counts: dict[str, int] = {}
+
+                # Ensure per-project schema exists
+                db.ensure_project_schema(project)
+
+                # Migrate commits
+                if _table_exists(cur, "commits"):
+                    c_new = db.project_table("commits", project)
+                    cur.execute(
+                        f"""INSERT INTO {c_new}
+                               (commit_hash, commit_msg, summary, phase, feature,
+                                bug_ref, source, session_id, tags, committed_at, created_at)
+                            SELECT commit_hash, commit_msg, summary, phase, feature,
+                                   bug_ref, source, session_id, tags, committed_at, created_at
+                            FROM commits WHERE project=%s
+                            ON CONFLICT (commit_hash) DO NOTHING""",
+                        (project,),
+                    )
+                    counts["commits"] = cur.rowcount
+
+                # Migrate events (build a mapping old_id → new_id for FK resolution)
+                old_to_new_event: dict[int, int] = {}
+                if _table_exists(cur, "events"):
+                    e_new = db.project_table("events", project)
+                    cur.execute(
+                        "SELECT id, event_type, source_id, title, content, metadata, created_at "
+                        "FROM events WHERE project=%s",
+                        (project,),
+                    )
+                    event_rows = cur.fetchall()
+                    inserted_events = 0
+                    for old_id, et, sid, title, content, meta, created_at in event_rows:
+                        cur.execute(
+                            f"""INSERT INTO {e_new}
+                                   (event_type, source_id, title, content, metadata, created_at)
+                                VALUES (%s,%s,%s,%s,%s,%s)
+                                ON CONFLICT (event_type, source_id) DO NOTHING
+                                RETURNING id""",
+                            (et, sid, title, content, meta, created_at),
+                        )
+                        row = cur.fetchone()
+                        if row:
+                            old_to_new_event[old_id] = row[0]
+                            inserted_events += 1
+                        else:
+                            # Already existed — look up new id
+                            cur.execute(
+                                f"SELECT id FROM {e_new} WHERE event_type=%s AND source_id=%s",
+                                (et, sid),
+                            )
+                            r2 = cur.fetchone()
+                            if r2:
+                                old_to_new_event[old_id] = r2[0]
+                    counts["events"] = inserted_events
+
+                # Migrate event_tags
+                if _table_exists(cur, "event_tags") and old_to_new_event:
+                    et_new = db.project_table("event_tags", project)
+                    cur.execute(
+                        "SELECT et.event_id, et.entity_value_id, et.auto_tagged "
+                        "FROM event_tags et "
+                        "JOIN events e ON e.id = et.event_id "
+                        "WHERE e.project=%s",
+                        (project,),
+                    )
+                    et_rows = cur.fetchall()
+                    inserted_tags = 0
+                    for old_eid, val_id, auto in et_rows:
+                        new_eid = old_to_new_event.get(old_eid)
+                        if new_eid:
+                            cur.execute(
+                                f"INSERT INTO {et_new} (event_id, entity_value_id, auto_tagged) "
+                                "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                                (new_eid, val_id, auto),
+                            )
+                            inserted_tags += cur.rowcount
+                    counts["event_tags"] = inserted_tags
+
+                # Migrate event_links
+                if _table_exists(cur, "event_links") and old_to_new_event:
+                    el_new = db.project_table("event_links", project)
+                    cur.execute(
+                        "SELECT el.from_event_id, el.to_event_id, el.link_type "
+                        "FROM event_links el "
+                        "JOIN events e ON e.id = el.from_event_id "
+                        "WHERE e.project=%s",
+                        (project,),
+                    )
+                    el_rows = cur.fetchall()
+                    inserted_links = 0
+                    for old_from, old_to, ltype in el_rows:
+                        new_from = old_to_new_event.get(old_from)
+                        new_to   = old_to_new_event.get(old_to)
+                        if new_from and new_to:
+                            cur.execute(
+                                f"INSERT INTO {el_new} (from_event_id, to_event_id, link_type) "
+                                "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                                (new_from, new_to, ltype),
+                            )
+                            inserted_links += cur.rowcount
+                    counts["event_links"] = inserted_links
+
+                # Migrate embeddings
+                if _table_exists(cur, "embeddings"):
+                    emb_new = db.project_table("embeddings", project)
+                    cur.execute(
+                        f"""INSERT INTO {emb_new}
+                               (source_type, source_id, chunk_index, content, embedding,
+                                chunk_type, doc_type, language, file_path, metadata, created_at)
+                            SELECT source_type, source_id, chunk_index, content, embedding,
+                                   chunk_type, doc_type, language, file_path, metadata, created_at
+                            FROM embeddings WHERE project=%s
+                            ON CONFLICT (source_type, source_id, chunk_index) DO NOTHING""",
+                        (project,),
+                    )
+                    counts["embeddings"] = cur.rowcount
+
+                migrated[project] = counts
+
+    return {"migrated": migrated, "projects": list(migrated.keys())}
