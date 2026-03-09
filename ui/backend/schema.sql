@@ -62,19 +62,38 @@ CREATE INDEX IF NOT EXISTS idx_tx_created_at ON transactions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tx_type       ON transactions(type);
 
 -- ── Semantic Embeddings (pgvector) ────────────────────────────────────────────
--- source_type: "history" | "node_output" | "role" | "project_md" | "commit"
+-- source_type: "history" | "node_output" | "role" | "project_md" | "commit" | "doc"
+-- chunk_type:  "full" | "summary" | "function" | "class" | "section" | "file_diff"
 
 CREATE TABLE IF NOT EXISTS embeddings (
     id          SERIAL         PRIMARY KEY,
     project     VARCHAR(255)   NOT NULL,
     source_type VARCHAR(50)    NOT NULL,
     source_id   VARCHAR(255)   NOT NULL,
+    chunk_index INT            NOT NULL DEFAULT 0,
     content     TEXT           NOT NULL,
     embedding   vector(1536),
-    created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-    UNIQUE(project, source_type, source_id)
+    chunk_type  VARCHAR(50)    NOT NULL DEFAULT 'full',
+    doc_type    VARCHAR(50),
+    language    VARCHAR(30),
+    file_path   VARCHAR(500),
+    metadata    JSONB          NOT NULL DEFAULT '{}',
+    created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_emb_project ON embeddings(project, source_type);
+CREATE INDEX IF NOT EXISTS idx_emb_project  ON embeddings(project, source_type);
+CREATE INDEX IF NOT EXISTS idx_emb_language ON embeddings(project, language)
+    WHERE language IS NOT NULL;
+-- Unique index includes chunk_index to support multiple chunks per source
+CREATE UNIQUE INDEX IF NOT EXISTS embeddings_uq_chunk
+    ON embeddings(project, source_type, source_id, chunk_index);
+-- Migration: add chunking columns if upgrading from earlier schema
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chunk_index INT NOT NULL DEFAULT 0;
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chunk_type  VARCHAR(50) NOT NULL DEFAULT 'full';
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS doc_type    VARCHAR(50);
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS language    VARCHAR(30);
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS file_path   VARCHAR(500);
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS metadata    JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE embeddings DROP CONSTRAINT IF EXISTS embeddings_project_source_type_source_id_key;
 -- ivfflat requires rows to exist before creation — created at runtime in database.py
 
 -- ── Commit Metadata + Tagging ─────────────────────────────────────────────────

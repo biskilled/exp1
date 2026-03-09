@@ -4,6 +4,7 @@ Projects router — list/create/switch projects from templates.
 
 import asyncio
 import json
+import logging
 import re
 import shutil
 import yaml
@@ -13,6 +14,7 @@ from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
 from config import settings
+from core.database import db
 
 router = APIRouter()
 
@@ -754,6 +756,37 @@ async def generate_memory(project_name: str):
             memory_lines.append(f"- {item}")
         memory_lines.append("")
 
+    # ── Active Features from entity layer ─────────────────────────────────────
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT c.name AS category, v.name, v.description, v.status,
+                                  COUNT(et.event_id) AS event_count
+                           FROM entity_values v
+                           JOIN entity_categories c ON c.id = v.category_id
+                           LEFT JOIN event_tags et ON et.entity_value_id = v.id
+                           WHERE v.project=%s AND v.status='active'
+                             AND c.name IN ('feature','bug','phase')
+                           GROUP BY c.name, v.id, v.name, v.description, v.status
+                           ORDER BY c.name, event_count DESC
+                           LIMIT 20""",
+                        (project_name,),
+                    )
+                    ev_rows = cur.fetchall()
+            if ev_rows:
+                memory_lines.append("## Active Features / Bugs\n")
+                for cat, name, desc, status, ec in ev_rows:
+                    label = f"- **[{cat}]** {name}"
+                    if desc:
+                        label += f" — {desc[:80]}"
+                    label += f" `({ec} events)`"
+                    memory_lines.append(label)
+                memory_lines.append("")
+        except Exception:
+            pass
+
     if synthesis and synthesis.get("memory_digest"):
         # LLM-synthesized meaningful digest of recent work
         memory_lines.append(synthesis["memory_digest"])
@@ -839,6 +872,10 @@ async def generate_memory(project_name: str):
     (sys_dir / "cursor" / "rules.md").write_text(cursor_md)
     generated.append("_system/cursor/rules.md")
 
+    # .ai/rules.md — Windsurf / Cursor AI rules (newer .ai/ directory format)
+    # Stored under _system/aicli/ai_rules.md; copied to code_dir/.ai/rules.md below
+    ai_rules_md = cursor_md  # same content as cursor rules
+
     # ── 4. aicli/context.md — injected into ALL providers by aicli CLI ────────
     # This is what OpenAI, DeepSeek, Grok, Gemini, etc. receive before every prompt.
     # Keep it under ~600 chars — compact but informative.
@@ -907,6 +944,7 @@ async def generate_memory(project_name: str):
                 (memory_md, "MEMORY.md", False),
                 (cursor_md, ".cursor/rules/aicli.mdrules", True),
                 (copilot_md, ".github/copilot-instructions.md", True),
+                (ai_rules_md, ".ai/rules.md", True),
             ]:
                 if not src_content:
                     continue
@@ -919,13 +957,26 @@ async def generate_memory(project_name: str):
                 except Exception:
                     pass
 
-    # Embed history + roles for semantic search (fire-and-forget)
+    # ── Fire-and-forget background tasks ─────────────────────────────────────
     try:
-        from core.embeddings import ingest_history as _ih, ingest_roles as _ir
+        from core.embeddings import ingest_history as _ih, ingest_roles as _ir, ingest_commit as _ic
         asyncio.create_task(_ih(project_name))
         asyncio.create_task(_ir(project_name))
+
+        # Ingest new commits that haven't been embedded yet
+        code_dir_for_git = cfg.get("code_dir", "")
+        if code_dir_for_git and db.is_available():
+            asyncio.create_task(_ingest_new_commits(project_name, code_dir_for_git, _ic))
+
     except Exception:
         pass
+
+    # Entity sync + auto-tag (fire-and-forget, requires PostgreSQL)
+    if db.is_available():
+        try:
+            asyncio.create_task(_sync_and_autotag(project_name))
+        except Exception:
+            pass
 
     return {
         "generated": generated,
@@ -933,6 +984,138 @@ async def generate_memory(project_name: str):
         "skipped_copy": skipped_copy,
         "synthesized": synthesis is not None,
     }
+
+
+async def _ingest_new_commits(project: str, code_dir: str, ingest_commit_fn) -> None:
+    """Embed any commits in the DB that have no embeddings yet."""
+    if not db.is_available():
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Find commit hashes not yet in embeddings
+                cur.execute(
+                    """SELECT c.commit_hash FROM commits c
+                       WHERE c.project=%s
+                         AND NOT EXISTS (
+                             SELECT 1 FROM embeddings e
+                             WHERE e.project=%s AND e.source_type='commit'
+                               AND e.source_id=c.commit_hash
+                         )
+                       ORDER BY c.committed_at DESC LIMIT 30""",
+                    (project, project),
+                )
+                hashes = [r[0] for r in cur.fetchall()]
+        for h in hashes:
+            await ingest_commit_fn(project, h, code_dir)
+    except Exception as e:
+        logging.getLogger(__name__).debug(f"_ingest_new_commits failed: {e}")
+
+
+async def _sync_and_autotag(project: str) -> None:
+    """Sync events then LLM-auto-tag untagged events. Silent on error."""
+    import logging as _log
+    log = _log.getLogger(__name__)
+    try:
+        from routers.entities import _do_sync_events
+        _do_sync_events(project)
+    except Exception as e:
+        log.debug(f"_sync_and_autotag sync failed: {e}")
+        return
+
+    # LLM auto-tag: get untagged events + all entity values, ask Haiku to suggest tags
+    try:
+        from core.api_keys import get_key
+        key = get_key("anthropic")
+        if not key:
+            return
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Get entity values (id, category, name) for this project
+                cur.execute(
+                    """SELECT v.id, c.name AS category, v.name
+                       FROM entity_values v
+                       JOIN entity_categories c ON c.id = v.category_id
+                       WHERE v.project=%s AND v.status='active'
+                       ORDER BY c.name, v.name""",
+                    (project,),
+                )
+                all_values = cur.fetchall()  # (id, category, name)
+                if not all_values:
+                    return
+
+                # Get untagged events (no entry in event_tags)
+                cur.execute(
+                    """SELECT e.id, e.event_type, e.title
+                       FROM events e
+                       WHERE e.project=%s
+                         AND NOT EXISTS (
+                             SELECT 1 FROM event_tags et WHERE et.event_id=e.id
+                         )
+                       ORDER BY e.created_at DESC LIMIT 30""",
+                    (project,),
+                )
+                untagged = cur.fetchall()  # (id, event_type, title)
+
+        if not untagged:
+            return
+
+        values_list = "\n".join(
+            f"  {vid}: {cat}/{name}" for vid, cat, name in all_values
+        )
+        events_list = "\n".join(
+            f"  {eid}: [{etype}] {title[:80]}" for eid, etype, title in untagged
+        )
+
+        prompt = (
+            "You are tagging project events with entity values.\n\n"
+            f"Entity values (id: category/name):\n{values_list}\n\n"
+            f"Events to tag (id: [type] title):\n{events_list}\n\n"
+            "Return ONLY a JSON object mapping event_id (string) to an array of matching value_ids (integers). "
+            "Only include events where you are confident. Prefer concrete, specific matches.\n"
+            "Example: {\"123\": [2, 5], \"124\": [5]}"
+        )
+
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=key)
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        content = (response.content[0].text if response.content else "").strip()
+        if "```" in content:
+            for part in content.split("```"):
+                s = part.strip()
+                if s.startswith("json"):
+                    s = s[4:].strip()
+                if s.startswith("{"):
+                    content = s
+                    break
+
+        suggestions: dict = json.loads(content)
+
+        # Write tags with auto_tagged=True
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for event_id_str, value_ids in suggestions.items():
+                    try:
+                        eid = int(event_id_str)
+                    except (ValueError, TypeError):
+                        continue
+                    for vid in (value_ids or []):
+                        try:
+                            cur.execute(
+                                "INSERT INTO event_tags (event_id, entity_value_id, auto_tagged) "
+                                "VALUES (%s,%s,TRUE) ON CONFLICT DO NOTHING",
+                                (eid, int(vid)),
+                            )
+                        except Exception:
+                            pass
+
+    except Exception as e:
+        log.debug(f"_sync_and_autotag auto-tag failed: {e}")
 
 
 @router.get("/{project_name}")

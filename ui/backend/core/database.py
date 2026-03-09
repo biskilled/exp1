@@ -74,18 +74,38 @@ class _Database:
 
         _DDL_EMBEDDINGS = """
         -- pgvector semantic embeddings (Layer 4 memory upgrade)
+        -- chunk_type: full | summary | function | class | section | file_diff
         CREATE EXTENSION IF NOT EXISTS vector;
         CREATE TABLE IF NOT EXISTS embeddings (
-            id SERIAL PRIMARY KEY,
-            project VARCHAR(255) NOT NULL,
-            source_type VARCHAR(50) NOT NULL,
-            source_id VARCHAR(255) NOT NULL,
-            content TEXT NOT NULL,
-            embedding vector(1536),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (project, source_type, source_id)
+            id          SERIAL         PRIMARY KEY,
+            project     VARCHAR(255)   NOT NULL,
+            source_type VARCHAR(50)    NOT NULL,
+            source_id   VARCHAR(255)   NOT NULL,
+            chunk_index INT            NOT NULL DEFAULT 0,
+            content     TEXT           NOT NULL,
+            embedding   vector(1536),
+            chunk_type  VARCHAR(50)    NOT NULL DEFAULT 'full',
+            doc_type    VARCHAR(50),
+            language    VARCHAR(30),
+            file_path   VARCHAR(500),
+            metadata    JSONB          NOT NULL DEFAULT '{}',
+            created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_emb_project ON embeddings(project, source_type);
+        -- Migrate: add chunking columns to existing installs (must come before indexes on new cols)
+        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chunk_index INT NOT NULL DEFAULT 0;
+        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chunk_type  VARCHAR(50) NOT NULL DEFAULT 'full';
+        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS doc_type    VARCHAR(50);
+        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS language    VARCHAR(30);
+        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS file_path   VARCHAR(500);
+        ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS metadata    JSONB NOT NULL DEFAULT '{}';
+        -- Language index and unique index created AFTER columns are guaranteed to exist
+        CREATE INDEX IF NOT EXISTS idx_emb_language ON embeddings(project, language)
+            WHERE language IS NOT NULL;
+        -- Replace 3-col unique constraint with chunk-aware 4-col index
+        ALTER TABLE embeddings DROP CONSTRAINT IF EXISTS embeddings_project_source_type_source_id_key;
+        CREATE UNIQUE INDEX IF NOT EXISTS embeddings_uq_chunk
+            ON embeddings(project, source_type, source_id, chunk_index);
         """
 
 

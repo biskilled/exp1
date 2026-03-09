@@ -335,17 +335,18 @@ async def list_events(
             return {"events": rows, "project": p, "total": len(rows)}
 
 
-@router.post("/events/sync")
-async def sync_events(project: str | None = Query(None)):
-    """Import history.jsonl + commits → events table. Idempotent."""
-    _require_db()
-    p = _project(project)
+def _do_sync_events(p: str) -> dict[str, int]:
+    """Core sync logic — importable by other modules (e.g. projects.py /memory).
+
+    Imports history.jsonl + commits table into the events table. Idempotent.
+    Returns {"prompt": N, "commit": N} counts of newly inserted rows.
+    Requires db.is_available() to already be True; caller is responsible.
+    """
     ws = _workspace(p)
     imported = {"prompt": 0, "commit": 0}
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-
             # 1. history.jsonl → event_type="prompt"
             hist = ws / "_system" / "history.jsonl"
             if hist.exists():
@@ -360,7 +361,7 @@ async def sync_events(project: str | None = Query(None)):
                     if not sid:
                         continue
                     title = (e.get("user_input") or "")[:120] or "(no input)"
-                    meta  = json.dumps({
+                    meta = json.dumps({
                         "provider": e.get("provider"),
                         "source":   e.get("source"),
                         "phase":    e.get("phase"),
@@ -392,6 +393,15 @@ async def sync_events(project: str | None = Query(None)):
                 )
                 imported["commit"] += cur.rowcount
 
+    return imported
+
+
+@router.post("/events/sync")
+async def sync_events(project: str | None = Query(None)):
+    """Import history.jsonl + commits → events table. Idempotent."""
+    _require_db()
+    p = _project(project)
+    imported = _do_sync_events(p)
     return {"imported": imported, "project": p}
 
 

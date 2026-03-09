@@ -24,6 +24,11 @@ class SearchRequest(BaseModel):
     project: Optional[str] = None
     limit: int = 10
     source_types: Optional[list[str]] = None
+    # Metadata filters for smart-chunk retrieval
+    language: Optional[str] = None
+    doc_type: Optional[str] = None
+    file_path: Optional[str] = None
+    chunk_types: Optional[list[str]] = None
 
 
 @router.post("/semantic")
@@ -38,6 +43,10 @@ async def semantic_search(body: SearchRequest, user=Depends(get_optional_user)):
         query=body.query,
         limit=max(1, min(body.limit, 50)),
         source_types=body.source_types or None,
+        language=body.language,
+        doc_type=body.doc_type,
+        file_path=body.file_path,
+        chunk_types=body.chunk_types or None,
     )
     return {"results": results, "query": body.query, "total": len(results)}
 

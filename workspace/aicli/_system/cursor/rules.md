@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 00:55 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 01:22 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -15,35 +15,36 @@ _Last updated: 2026-03-08_
 - **storage**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV
 - **database**: PostgreSQL 15+ with pgvector extension + SQLAlchemy ORM
 - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
-- **planned**: GraphQL, node graph UI for entity relationships and workflow composition, MCP server for cross-tool integration, unified provider logging
+- **planned**: GraphQL, node graph UI for entity relationships and workflow composition, unified provider logging
 - **orm**: SQLAlchemy
 - **tables**: users, user_usage, usage_logs, billing_logs, workflows, relational_tags
 - **vector_search**: pgvector for semantic embeddings and entity relationships
 - **workflow_execution**: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
 - **vector_db**: pgvector for semantic embeddings and entity relationships
+- **integration**: MCP server for cross-tool integration
 
 ## Key Decisions
 
-- Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL with pgvector for semantic search and entity relationships; no ChromaDB/SQLite
+- Flat file storage (JSONL/JSON/CSV) for history tracking + PostgreSQL 15+ with pgvector for semantic search and entity relationships; no ChromaDB/SQLite
 - Electron UI with xterm.js terminal + Monaco editor; Vanilla JS frontend (not Tauri)
 - JWT auth via python-jose + bcrypt; dev_mode toggle for testing without login; three user roles (admin/paid/free)
 - Engine/workspace separation: aicli/ = code, workspace/ = per-project content, _system/ = project state
 - All LLM providers independent; clients send own API keys in headers; no hardcoded pricing (config-driven)
 - Multi-agent workflows via node-based execution model with YAML config transitioning to UI-managed node graphs; each node runs prompt with specified LLM engine and outputs score for conditional branching
-- Unified history.jsonl + commit_log.jsonl shared across claude cli, aicli, cursor via hooks and commits
-- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users
+- Manual balance entry in UI (provider APIs don't support automated fetching for personal accounts); admin sees aggregated total across all users; per-user balance visibility in dashboards
 - PostgreSQL 15+ with SQLAlchemy ORM and pgvector extension for semantic embeddings and entity relationship search
 - Memory auto-summarization at token limit; /memory command uploads relevant files for cross-session LLM context
 - dev_runtime_state.json + project_state.json auto-maintained for shared LLM context across sessions
-- Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl
+- Hooks auto-commit on claude cli/cursor; aicli tracks own history; all tools share unified commit_log.jsonl with all logs (prompts, responses, errors)
 - Cost tracking per provider/user/date in PostgreSQL; pricing managed by config/JSON under ui/backend/data (not hardcoded)
 - Shared memory architecture: claude cli, aicli, cursor all read/write unified history files and vectordb for cross-session project comprehension
-- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced across all CLI tools to enable semantic search and memory continuity
+- Mandatory metadata tagging for prompts (project, lifecycle_stage, feature_area) enforced across all CLI tools; tags persist across conversation; relational tagging table links commit_id to metadata
+- MCP server for cross-tool integration providing semantic embedding search across unified commit_log.jsonl and vectordb
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-08] dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys for each prompt ? for
-- [2026-03-08] dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name 
 - [2026-03-09] can you check if the new postgreurl is working and good for pgvector and for relational data ?
 - [2026-03-09] is all conigured as we discussed? metadata/enetity relationsheep table, embedding table, chanking architecure and mcp se
 - [2026-03-09] can you review what we discussed and make sure all implemeted properly - MCP (3) - do that. Chanking - we spoke about sm
+- [2026-03-09] yes
+- [2026-03-09] continue

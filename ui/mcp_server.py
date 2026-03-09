@@ -92,11 +92,24 @@ async def list_tools() -> list[mcp_types.Tool]:
                     "source_types": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": (
-                            "Optional filter — one or more of: "
-                            "history, role, commit_summary, commit_code, "
-                            "doc_section, meeting_note, project_md"
-                        ),
+                        "description": "Filter by source: history, role, commit, doc, node_output",
+                    },
+                    "language": {
+                        "type": "string",
+                        "description": "Filter by language: python, javascript, typescript, sql, …",
+                    },
+                    "doc_type": {
+                        "type": "string",
+                        "description": "Filter by doc type: role, commit, high-level-design, meeting, …",
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "Filter results to a specific file path (substring match)",
+                    },
+                    "chunk_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Filter by chunk type: summary, function, class, section, file_diff, full",
                     },
                     "project": {"type": "string"},
                 },
@@ -229,6 +242,10 @@ async def _dispatch(name: str, args: dict) -> Any:
             "project": project,
             "limit": args.get("limit", 10),
             "source_types": args.get("source_types"),
+            "language": args.get("language"),
+            "doc_type": args.get("doc_type"),
+            "file_path": args.get("file_path"),
+            "chunk_types": args.get("chunk_types"),
         })
 
     elif name == "get_project_state":
