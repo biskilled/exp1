@@ -22,8 +22,9 @@ let _sessionCache = [];      // merged session list (ui + cli + workflow)
 let _sessionTags = { phase: '' };
 
 // Entity tags applied to current session via the + Tag picker
-let _appliedEntities = []; // [{value_id, category_name, name, color, icon}]
-let _pickerOpen      = false;
+let _appliedEntities  = []; // [{value_id, category_name, name, color, icon}]
+let _suggestedTags    = []; // [{name, category, is_new}] — LLM suggestions from /memory
+let _pickerOpen       = false;
 let _pickerType      = 'feature';
 let _pickerValues    = []; // loaded for current picker type
 
@@ -262,8 +263,9 @@ function _setupTagBar() {
     const newPhase = phaseSel.value;
     if (newPhase !== (_sessionTags.phase || '')) {
       _sessionTags = { phase: newPhase };
-      _sessionId = null;      // force new session
-      _appliedEntities = [];  // clear chips for new session
+      _sessionId = null;       // force new session
+      _appliedEntities = [];   // clear chips for new session
+      _suggestedTags = [];     // clear suggestions on session reset
       _renderEntityChips();
     }
     _updateTagBarStatus();
@@ -407,15 +409,72 @@ async function _saveEntityTag() {
 function _renderEntityChips() {
   const container = document.getElementById('chat-entity-chips');
   if (!container) return;
-  if (!_appliedEntities.length) { container.innerHTML = ''; return; }
-  container.innerHTML = _appliedEntities.map(e => `
-    <span style="display:inline-flex;align-items:center;gap:0.18rem;
+
+  // Applied (user-confirmed) chips — blue style
+  const appliedHtml = _appliedEntities.map(e => `
+    <span class="entity-chip user-tag"
+          style="display:inline-flex;align-items:center;gap:0.18rem;
                  background:${e.color}22;border:1px solid ${e.color}55;color:${e.color};
                  border-radius:10px;padding:0.08rem 0.38rem;font-size:0.56rem;white-space:nowrap"
           title="${_esc(e.category_name)}/${_esc(e.name)}">
       ${_esc(e.icon)} ${_esc(e.name)}
     </span>`).join('');
+
+  // Suggested chips — amber dashed style, with Accept / Dismiss buttons
+  const suggestedHtml = _suggestedTags.map((s, idx) => `
+    <span class="entity-chip suggested-tag"
+          style="display:inline-flex;align-items:center;gap:0.18rem;
+                 background:#fffbe6;border:1px dashed #d4a017;color:#8a6500;
+                 border-radius:10px;padding:0.08rem 0.38rem;font-size:0.56rem;white-space:nowrap;font-style:italic"
+          title="LLM suggestion: ${_esc(s.category)}/${_esc(s.name)} — click ✓ to accept">
+      ✦ ${_esc(s.name)}
+      <button onclick="window._acceptSuggestedTag(${idx})"
+        style="border:none;background:none;cursor:pointer;color:#27ae60;font-size:0.6rem;padding:0 1px;line-height:1"
+        title="Accept tag">✓</button>
+      <button onclick="window._dismissSuggestedTag(${idx})"
+        style="border:none;background:none;cursor:pointer;color:#888;font-size:0.6rem;padding:0 1px;line-height:1"
+        title="Dismiss">✕</button>
+    </span>`).join('');
+
+  container.innerHTML = appliedHtml + suggestedHtml;
 }
+
+window._acceptSuggestedTag = async (idx) => {
+  const s = _suggestedTags[idx];
+  if (!s) return;
+  const project = state.currentProject?.name;
+  if (!project || !_sessionId) {
+    toast('Send a message first to start a session', 'error');
+    return;
+  }
+  try {
+    const result = await api.entities.sessionTag({
+      session_id: _sessionId,
+      project,
+      category_name: s.category,
+      value_name: s.name,
+    });
+    // Move from suggested → applied
+    const typeInfo = _ENTITY_TYPES.find(t => t.id === s.category) || { color: '#9b7fcc', icon: '⬡' };
+    _appliedEntities.push({
+      value_id: result.value_id,
+      category_name: s.category,
+      name: s.name,
+      color: typeInfo.color,
+      icon: typeInfo.icon,
+    });
+    _suggestedTags = _suggestedTags.filter((_, i) => i !== idx);
+    _renderEntityChips();
+    toast(`Accepted tag: ${s.category}/${s.name}`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+};
+
+window._dismissSuggestedTag = (idx) => {
+  _suggestedTags = _suggestedTags.filter((_, i) => i !== idx);
+  _renderEntityChips();
+};
 
 // ── Commands autocomplete ─────────────────────────────────────────────────────
 
@@ -755,6 +814,7 @@ async function _loadRolesAndWorkflows() {
 window._chatNew = () => {
   _sessionId = null;
   _appliedEntities = [];
+  _suggestedTags = [];
   _closeEntityPicker();
   const msgs = document.getElementById('chat-messages');
   if (msgs) msgs.innerHTML = '';
@@ -877,19 +937,33 @@ window._chatSend = async () => {
     return;
   }
 
-  // Handle /memory — refresh CLAUDE.md + CONTEXT.md and copy to code dir
+  // Handle /memory — generate all memory files + get LLM tag suggestions
   if (message === '/memory') {
     input.value = '';
     input.style.height = 'auto';
     const proj = state.currentProject?.name;
     if (!proj) { toast('No project open', 'error'); return; }
-    _appendSystemMsg('Refreshing CLAUDE.md + CONTEXT.md…');
+    _appendSystemMsg('Generating memory files…');
     try {
-      const data = await api.getProjectContext(proj, true);
-      // Update system prompt to freshest context
-      const freshPrompt = data.context || data.claude_md || '';
-      if (freshPrompt) setState({ currentProject: { ...state.currentProject, system_prompt: freshPrompt } });
-      _appendSystemMsg('✓ **CLAUDE.md** + **CONTEXT.md** refreshed — copied to code directory');
+      const result = await api.generateMemory(proj);
+      // Load LLM-suggested tags into the tag bar
+      if (result.suggested_tags?.length) {
+        _suggestedTags = result.suggested_tags;
+        _renderEntityChips();
+      }
+      // Refresh system prompt from freshly-written CONTEXT.md
+      try {
+        const ctxData = await api.getProjectContext(proj, false);
+        const freshPrompt = ctxData.context || ctxData.claude_md || '';
+        if (freshPrompt) setState({ currentProject: { ...state.currentProject, system_prompt: freshPrompt } });
+      } catch { /* silent — don't fail if context fetch fails */ }
+
+      const fileList = (result.generated || []).slice(0, 4).join(', ');
+      const synthNote = result.synthesized ? ' *(LLM-synthesized)*' : '';
+      _appendSystemMsg(`✓ **Memory files refreshed**${synthNote} → \`${fileList}\``);
+      if (result.suggested_tags?.length) {
+        _appendSystemMsg(`📎 **${result.suggested_tags.length}** tag suggestion${result.suggested_tags.length > 1 ? 's' : ''} shown in the tag bar above — accept or dismiss.`);
+      }
     } catch (e) {
       _appendSystemMsg(`Error: ${e.message}`);
     }

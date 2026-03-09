@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-09 04:12 UTC — do not edit manually.
+> Auto-generated 2026-03-09 18:13 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 43
-- **Last active**: 2026-03-09T04:02:39Z
+- **Sessions**: 44
+- **Last active**: 2026-03-09T04:12:46Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -149,15 +149,16 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-09 17:56]** `claude_cli/claude`  
+→ The last prompts was asking for a new feature (clinet install/ support multiple projects) - it was made by this console.
+
 **[2026-03-09 04:08]** `claude_cli/claude`  
 → Assuming I will improve the project management page, workflow processes. can you update /memory - so it can be used for 
+← _`/memory` ran with LLM synthesis and all files copied to `code_dir`. Let me verify the MEMORY.md output:_
 
 **[2026-03-09 03:50]** `claude_cli/claude`  
 → <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 ← _Implementation complete. Here's a summary of what was done:  ---  ## Summary  ### Part 1 — DB Schema Refactoring  **`core/database.py`** - Added `project_table(base, project)` static method — returns _
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
 
 **[2026-03-09 03:50]** `claude_cli/claude`  
 → <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat

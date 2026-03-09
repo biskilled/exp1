@@ -18,6 +18,15 @@ from core.database import db
 
 router = APIRouter()
 
+# ── Noise filtering ───────────────────────────────────────────────────────────
+
+_NOISE_PATTERNS = ["<task-notification>", "<tool-use-id>", "<task-id>", "<parameter>"]
+
+def _is_noisy(entry: dict) -> bool:
+    """Return True if the entry's user_input contains internal XML noise."""
+    txt = entry.get("user_input") or ""
+    return any(p in txt for p in _NOISE_PATTERNS)
+
 
 def _workspace() -> Path:
     return Path(settings.workspace_dir)
@@ -339,16 +348,16 @@ async def get_project_context(project_name: str, save: bool = False):
             except Exception:
                 pass
 
-    # 4. Recent history — last 15 exchanges (in _system/)
+    # 4. Recent history — last 15 exchanges (in _system/), excluding noisy entries
     recent: list[dict] = []
     for hist_file in [sys_dir / "history.jsonl", proj_dir / "history" / "history.jsonl"]:
         if hist_file.exists():
             with open(hist_file) as f:
                 lines = [l.strip() for l in f if l.strip()]
-            for line in lines[-30:]:
+            for line in lines[-60:]:
                 try:
                     e = json.loads(line)
-                    if e.get("user_input"):
+                    if e.get("user_input") and not _is_noisy(e):
                         recent.append(e)
                 except Exception:
                     pass
@@ -645,6 +654,56 @@ async def _synthesize_with_llm(
         return None  # Caller falls back to mechanical approach
 
 
+async def _suggest_tags(
+    project: str, entries: list[dict], existing_values: list[dict]
+) -> list[dict]:
+    """Ask Haiku to suggest 2-3 relevant entity tags for recent prompts.
+
+    Returns a list of dicts: [{name, category, is_new}].
+    Silent on error — returns [] when API key missing or call fails.
+    """
+    try:
+        from core.api_keys import get_key
+        import anthropic
+
+        key = get_key("claude") or get_key("anthropic")
+        if not key:
+            return []
+
+        recent_text = "\n".join(
+            (e.get("user_input") or "")[:200].replace("\n", " ")
+            for e in entries[-10:]
+            if e.get("user_input")
+        )
+        if not recent_text.strip():
+            return []
+
+        existing_names = [v["name"] for v in existing_values[:30] if v.get("name")]
+        prompt = (
+            f"Recent developer prompts:\n{recent_text}\n\n"
+            f"Existing tags: {', '.join(existing_names) if existing_names else '(none yet)'}\n\n"
+            "Suggest 2-3 relevant tags for these prompts. Prefer existing tags where applicable; "
+            "propose new ones only if clearly needed.\n"
+            'Respond ONLY as valid JSON array: [{"name":"tag","category":"feature|bug|task","is_new":true}]'
+        )
+        client = anthropic.AsyncAnthropic(api_key=key)
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=150,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = (response.content[0].text if response.content else "").strip()
+        # Extract JSON array from response
+        import re as _re
+        match = _re.search(r'\[.*?\]', text, _re.DOTALL)
+        if match:
+            suggestions = json.loads(match.group())
+            return [s for s in suggestions if isinstance(s, dict) and s.get("name")][:3]
+        return []
+    except Exception:
+        return []
+
+
 @router.post("/{project_name}/memory")
 async def generate_memory(project_name: str):
     """Generate per-LLM memory files and copy to code_dir.
@@ -680,16 +739,16 @@ async def generate_memory(project_name: str):
 
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    # Load recent history (last 40 entries with user_input)
+    # Load recent history (last 40 entries with user_input, excluding noisy entries)
     recent: list[dict] = []
     hist_file = sys_dir / "history.jsonl"
     if hist_file.exists():
         with open(hist_file) as f:
             raw_lines = [l.strip() for l in f if l.strip()]
-        for line in raw_lines[-80:]:
+        for line in raw_lines[-120:]:
             try:
                 e = json.loads(line)
-                if e.get("user_input"):
+                if e.get("user_input") and not _is_noisy(e):
                     recent.append(e)
             except Exception:
                 pass
@@ -1000,6 +1059,24 @@ async def generate_memory(project_name: str):
         except Exception:
             pass
 
+    # ── Tag suggestions — fetch entity values then ask Haiku ─────────────────
+    suggested_tags: list[dict] = []
+    if db.is_available() and recent:
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT id, name, status FROM entity_values
+                           WHERE project=%s AND status='active'
+                           ORDER BY name LIMIT 50""",
+                        (project_name,),
+                    )
+                    ev_rows = cur.fetchall()
+            existing_values = [{"id": r[0], "name": r[1]} for r in ev_rows]
+            suggested_tags = await _suggest_tags(project_name, recent, existing_values)
+        except Exception:
+            pass
+
     return {
         "generated": generated,
         "copied_to": copied_to,
@@ -1007,6 +1084,7 @@ async def generate_memory(project_name: str):
         "synthesized": synthesis is not None,
         "incremental_since": last_memory_run,
         "run_ts": run_ts,
+        "suggested_tags": suggested_tags,
     }
 
 
