@@ -301,9 +301,9 @@ textarea.addEventListener('input', () => {
 
 ## Recent Work
 
-- PostgreSQL schema cleanup: drop unused graph tables; consolidate workflows vs flows distinction; align database schema with node-graph execution model for multi-agent workflows
-- Balance persistence and admin dashboard: fix balance refresh on top-right corner; ensure admin sees total balance aggregated across all users; per-user balance visibility in user dashboard
-- Hooks integration and history tracking: populate commit_log.jsonl from all tools (claude cli, aicli, cursor); capture both prompts and responses in history.jsonl; verify auto-commit on claude cli works
-- Mandatory metadata tagging system: force claude-cli and cursor to attach minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across conversation
-- PostgreSQL pgvector implementation: create semantic embedding schema for project metadata (tasks, features, bugs); add relational tagging table linking commit_id to lifecycle_stage/feature_area; validate approach improves cross-tool project comprehension
-- Code consolidation: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; consolidate history folder vs _system folder usage; merge QUICKSTART.md and README.md
+- PostgreSQL pgvector schema creation and validation: set up new PostgreSQL instance with pgvector extension; create users, usage_logs, billing_logs, workflows tables; drop unused graph tables; validate relational data and vector embedding capability
+- Mandatory metadata tagging system: force claude-cli and cursor to attach minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across conversation; create relational tagging table linking commit_id to lifecycle_stage/feature_area/bug
+- Unified commit_log.jsonl population: ensure all logs (prompts, responses, errors) from claude cli hooks, aicli commits, and cursor hooks write to shared commit_log.jsonl; verify history.jsonl captures both prompts and responses
+- Balance persistence and refresh logic: fix top-right corner balance refresh; ensure admin dashboard aggregates total balance across all users and all API keys; per-user balance visibility in user dashboard and API key management screen
+- Hook integration debugging: verify claude cli hooks are auto-committing to git; ensure aicli tracks history properly; consolidate history folder vs _system folder usage to eliminate duplication
+- Code consolidation and cleanup: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; merge QUICKSTART.md and README.md documentation
