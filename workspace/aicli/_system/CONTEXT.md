@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-09 00:37 UTC — do not edit manually.
+> Auto-generated 2026-03-09 00:56 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 28
-- **Last active**: 2026-03-09T00:37:33Z
+- **Sessions**: 29
+- **Last active**: 2026-03-09T00:55:39Z
 - **Last provider**: claude
 - **Version**: 0.3.0
 
@@ -146,6 +146,9 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 ## Recent Development History
 
+**[2026-03-09 00:51]** `claude_cli/claude`  
+→ can you review what we discussed and make sure all implemeted properly - MCP (3) - do that. Chanking - we spoke about sm
+
 **[2026-03-09 00:35]** `claude_cli/claude`  
 → is all conigured as we discussed? metadata/enetity relationsheep table, embedding table, chanking architecure and mcp se
 
@@ -187,6 +190,3 @@ Roles live in `workspace/{project}/prompts/roles/`. Each is a Markdown system pr
 
 **[2026-03-08 04:13]** `claude_cli/claude`  
 → I would like to understand how the new update imporve your way to understand all code project, what are you doing in ord
-
-**[2026-03-08 04:05]** `claude_cli/claude`  
-→ I do not see that error in the commit_log.jsonl , can you make sure all logs are at this files (also errros). also this 

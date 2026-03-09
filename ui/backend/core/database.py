@@ -188,9 +188,75 @@ class _Database:
 
         # Each optional block uses its own cursor + commit so a failure in one
         # does NOT roll back other blocks (psycopg2 shares one transaction by default).
+        _DDL_ENTITIES = """
+        -- Tag categories per project (feature, bug, component, doc_type, …)
+        CREATE TABLE IF NOT EXISTS entity_categories (
+            id         SERIAL         PRIMARY KEY,
+            project    VARCHAR(255)   NOT NULL,
+            name       VARCHAR(100)   NOT NULL,
+            color      VARCHAR(20)    NOT NULL DEFAULT '#4a90e2',
+            icon       VARCHAR(10)    NOT NULL DEFAULT '⬡',
+            created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(project, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ec_project ON entity_categories(project);
+
+        -- Tag values (specific instances per category)
+        CREATE TABLE IF NOT EXISTS entity_values (
+            id          SERIAL         PRIMARY KEY,
+            category_id INT            NOT NULL REFERENCES entity_categories(id) ON DELETE CASCADE,
+            project     VARCHAR(255)   NOT NULL,
+            name        VARCHAR(255)   NOT NULL,
+            description TEXT           NOT NULL DEFAULT '',
+            status      VARCHAR(20)    NOT NULL DEFAULT 'active',
+            created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(project, category_id, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ev_category ON entity_values(category_id);
+        CREATE INDEX IF NOT EXISTS idx_ev_project  ON entity_values(project);
+
+        -- Raw event log (prompts, commits, docs, meetings, file_changes, …)
+        CREATE TABLE IF NOT EXISTS events (
+            id         SERIAL         PRIMARY KEY,
+            project    VARCHAR(255)   NOT NULL,
+            event_type VARCHAR(50)    NOT NULL,
+            source_id  VARCHAR(255)   NOT NULL,
+            title      TEXT           NOT NULL DEFAULT '',
+            content    TEXT           NOT NULL DEFAULT '',
+            metadata   JSONB          NOT NULL DEFAULT '{}',
+            created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(project, event_type, source_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_events_project_type ON events(project, event_type);
+        CREATE INDEX IF NOT EXISTS idx_events_created      ON events(project, created_at DESC);
+
+        -- Events ↔ values (many-to-many)
+        CREATE TABLE IF NOT EXISTS event_tags (
+            event_id        INT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            entity_value_id INT         NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+            auto_tagged     BOOLEAN     NOT NULL DEFAULT FALSE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY(event_id, entity_value_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_etag_event ON event_tags(event_id);
+        CREATE INDEX IF NOT EXISTS idx_etag_value ON event_tags(entity_value_id);
+
+        -- Directed event relationships
+        CREATE TABLE IF NOT EXISTS event_links (
+            from_event_id INT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            to_event_id   INT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            link_type     VARCHAR(50) NOT NULL,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY(from_event_id, to_event_id, link_type)
+        );
+        CREATE INDEX IF NOT EXISTS idx_elink_from ON event_links(from_event_id);
+        CREATE INDEX IF NOT EXISTS idx_elink_to   ON event_links(to_event_id);
+        """
+
         for label, sql in [
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
             ("Tagging (commits + session_tags)", _DDL_TAGGING),
+            ("Entities (categories + values + events + links)", _DDL_ENTITIES),
         ]:
             try:
                 with conn.cursor() as cur:

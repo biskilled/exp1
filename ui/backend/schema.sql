@@ -102,6 +102,74 @@ CREATE INDEX IF NOT EXISTS idx_commits_phase       ON commits(project, phase);
 CREATE INDEX IF NOT EXISTS idx_commits_feature     ON commits(project, feature);
 CREATE INDEX IF NOT EXISTS idx_commits_committed   ON commits(project, committed_at DESC);
 
+-- ── Entity / Relationship Model ───────────────────────────────────────────────
+-- User-defined tag taxonomy. Extensible: add Slack/CRM/Notion event_types later.
+
+-- Tag categories: "feature", "bug", "component", "doc_type", "customer", …
+CREATE TABLE IF NOT EXISTS entity_categories (
+    id         SERIAL         PRIMARY KEY,
+    project    VARCHAR(255)   NOT NULL,
+    name       VARCHAR(100)   NOT NULL,
+    color      VARCHAR(20)    NOT NULL DEFAULT '#4a90e2',
+    icon       VARCHAR(10)    NOT NULL DEFAULT '⬡',
+    created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    UNIQUE(project, name)
+);
+CREATE INDEX IF NOT EXISTS idx_ec_project ON entity_categories(project);
+
+-- Tag values: "shared-memory", "auth-loop", "trading-algo", "high-level-design", …
+CREATE TABLE IF NOT EXISTS entity_values (
+    id          SERIAL         PRIMARY KEY,
+    category_id INT            NOT NULL REFERENCES entity_categories(id) ON DELETE CASCADE,
+    project     VARCHAR(255)   NOT NULL,
+    name        VARCHAR(255)   NOT NULL,
+    description TEXT           NOT NULL DEFAULT '',
+    status      VARCHAR(20)    NOT NULL DEFAULT 'active',  -- active | done | archived
+    created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    UNIQUE(project, category_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_ev_category ON entity_values(category_id);
+CREATE INDEX IF NOT EXISTS idx_ev_project  ON entity_values(project);
+
+-- Raw events: every tracked item — prompt, commit, file_change, doc, meeting
+-- event_type: prompt | commit | file_change | doc | meeting | slack | crm | notion
+CREATE TABLE IF NOT EXISTS events (
+    id         SERIAL         PRIMARY KEY,
+    project    VARCHAR(255)   NOT NULL,
+    event_type VARCHAR(50)    NOT NULL,
+    source_id  VARCHAR(255)   NOT NULL,   -- ts, commit_hash, file_path, etc.
+    title      TEXT           NOT NULL DEFAULT '',
+    content    TEXT           NOT NULL DEFAULT '',
+    metadata   JSONB          NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    UNIQUE(project, event_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ev_project_type ON events(project, event_type);
+CREATE INDEX IF NOT EXISTS idx_ev_created      ON events(project, created_at DESC);
+
+-- Many-to-many: events ↔ entity_values
+CREATE TABLE IF NOT EXISTS event_tags (
+    event_id        INT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    entity_value_id INT         NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+    auto_tagged     BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(event_id, entity_value_id)
+);
+CREATE INDEX IF NOT EXISTS idx_etag_event ON event_tags(event_id);
+CREATE INDEX IF NOT EXISTS idx_etag_value ON event_tags(entity_value_id);
+
+-- Directed relationships between events
+-- link_type: implements | fixes | causes | relates_to | references | closes
+CREATE TABLE IF NOT EXISTS event_links (
+    from_event_id INT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    to_event_id   INT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    link_type     VARCHAR(50) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(from_event_id, to_event_id, link_type)
+);
+CREATE INDEX IF NOT EXISTS idx_elink_from ON event_links(from_event_id);
+CREATE INDEX IF NOT EXISTS idx_elink_to   ON event_links(to_event_id);
+
 -- ── Session Tags ──────────────────────────────────────────────────────────────
 -- One row per project. Stores the currently active tags for the session.
 -- Updated by the UI tag chips; injected by aicli CLI into every prompt.

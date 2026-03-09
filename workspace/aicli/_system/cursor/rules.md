@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 00:37 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 00:55 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -42,8 +42,8 @@ _Last updated: 2026-03-08_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-08] I will create postgresql with pgvector. it is a new instanse (so required to create all users table as well). before you
 - [2026-03-08] dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys for each prompt ? for
 - [2026-03-08] dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name 
 - [2026-03-09] can you check if the new postgreurl is working and good for pgvector and for relational data ?
 - [2026-03-09] is all conigured as we discussed? metadata/enetity relationsheep table, embedding table, chanking architecure and mcp se
+- [2026-03-09] can you review what we discussed and make sure all implemeted properly - MCP (3) - do that. Chanking - we spoke about sm

@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-09 00:37 UTC by aicli /memory_
+_Generated: 2026-03-09 00:55 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform enabling claude-cli, aicli, and cursor to maintain unified project context across multiple LLM tools. It uses PostgreSQL with pgvector for semantic embeddings, JSONL-based history tracking, multi-agent workflows via node graphs, and mandatory metadata tagging to enable cross-tool memory continuity and entity relationship search across project lifecycle phases.
 
 ## Tech Stack
 
@@ -49,9 +45,34 @@ aicli is a shared AI memory platform enabling claude-cli, aicli, and cursor to m
 - Code consolidation and cleanup: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; consolidate history folder vs _system folder usage to eliminate duplication
 - Hook integration and memory layer: verify claude cli hooks are auto-committing to git; ensure aicli tracks history properly; establish MCP server for cross-tool memory access via vectordb semantic embeddings
 
-**2026-03-08 23:52** `claude_cli` — PostgreSQL pgvector instance validated and ready for semantic embeddings; confirmed schema supports users, usage_logs, billing_logs, workflows, relational_tags tables for entity relationship management.
-**2026-03-08 23:21** `claude_cli` — Established mandatory metadata tagging requirement: claude-cli and cursor must attach project/lifecycle_stage/feature_area keys to every prompt; tags persist until user changes; commit_id linked to tags in relational table.
-**2026-03-08 22:32** `claude_cli` — Rethinking AI knowledge layer architecture: moving from scattered JSONL files to unified vector-backed semantic memory; pgvector enables relational tagging and entity search across project lifecycle (discovery→planning→tracking→creation).
-**2026-03-08 05:29** `claude_cli` — Dropped all unused graph tables from PostgreSQL; verified workflow architecture uses YAML-based node execution with prompt agents and conditional scoring per node, not entity graph UI.
-**2026-03-08 00:40** `claude_cli` — Clarified shared memory goal: claude-cli, aicli, and cursor must all read/write unified history.jsonl and commit_log.jsonl; vectordb semantic embeddings enable cross-session project comprehension without manual sync.
-**2026-03-08 00:30** `claude_cli` — Fixed balance persistence: admin refresh now shows aggregated total balance across all users and API keys; per-user balance updates propagate correctly on dashboard refresh.
+## Recent Work (last 10 exchanges)
+
+**[2026-03-09 00:51]** `claude_cli/claude`
+Q: can you review what we discussed and make sure all implemeted properly - MCP (3) - do that. Chanking - we spoke about smart chanking for each commit - summery, chank per class/method.. add proper meta
+
+**[2026-03-09 00:35]** `claude_cli/claude`
+Q: is all conigured as we discussed? metadata/enetity relationsheep table, embedding table, chanking architecure and mcp server that can be used by you or cursor ?
+
+**[2026-03-09 00:14]** `claude_cli/claude`
+Q: can you check if the new postgreurl is working and good for pgvector and for relational data ?
+
+**[2026-03-08 23:52]** `claude_cli/claude`
+Q: dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name will be attched. phase - can be discovery, developemet, prod... feature, bug .. 
+
+**[2026-03-08 23:21]** `claude_cli/claude`
+Q: dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys for each prompt ? for example this converstion is tagged as aicli (project), discovery (mandatory) an
+
+**[2026-03-08 23:08]** `claude_cli/claude`
+Q: I will create postgresql with pgvector. it is a new instanse (so required to create all users table as well). before you continue - I would like to make sure that this approach will help you (claude c
+
+**[2026-03-08 22:32]** `claude_cli/claude`
+Q: I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the current solution is good enoguh to share memory / manage project properly over time. below is an archit
+
+**[2026-03-08 05:29]** `claude_cli/claude`
+Q: <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm</tool-use-id> <status>completed</status> <summary>Agent "Drop graph tables and remove graph code" c
+
+**[2026-03-08 05:18]** `claude_cli/claude`
+Q: the second one - under _system/run
+
+**[2026-03-08 05:15]** `claude_cli/claude`
+Q: let me try to explain workflow again - the goal is to build mutl agent flows. I have managed to do that using yaml . and add simole node (each node have promt as an agent role and which llm is running

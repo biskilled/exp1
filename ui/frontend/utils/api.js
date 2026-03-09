@@ -193,6 +193,42 @@ api.search = {
   ingest:   (project) => _get(`/search/ingest?project=${encodeURIComponent(project || '')}`),
 };
 
+// ── Entities API ──────────────────────────────────────────────────────────────
+
+function _pq(project) { return `project=${encodeURIComponent(project || '')}`; }
+
+api.entities = {
+  // Categories
+  listCategories: (project)           => _get(`/entities/categories?${_pq(project)}`),
+  createCategory: (body)              => _post('/entities/categories', body),
+  patchCategory:  (id, body)          => fetch(_base() + `/entities/categories/${id}`, { method:'PATCH', headers:_headers(), body:JSON.stringify(body) }).then(r=>r.ok?r.json():r.json().then(e=>Promise.reject(new Error(e.detail)))),
+  deleteCategory: (id)                => _del(`/entities/categories/${id}`),
+
+  // Values
+  listValues:     (project, catId)    => _get(`/entities/values?${_pq(project)}${catId ? `&category_id=${catId}` : ''}`),
+  createValue:    (body)              => _post('/entities/values', body),
+  patchValue:     (id, body)          => fetch(_base() + `/entities/values/${id}`, { method:'PATCH', headers:_headers(), body:JSON.stringify(body) }).then(r=>r.ok?r.json():r.json().then(e=>Promise.reject(new Error(e.detail)))),
+  deleteValue:    (id)                => _del(`/entities/values/${id}`),
+
+  // Events
+  listEvents:     (project, opts={}) => {
+    const q = new URLSearchParams({ project: project||'' });
+    if (opts.event_type) q.set('event_type', opts.event_type);
+    if (opts.value_id)   q.set('value_id',   opts.value_id);
+    if (opts.limit)      q.set('limit',       opts.limit);
+    return _get(`/entities/events?${q}`);
+  },
+  syncEvents:     (project)           => _post(`/entities/events/sync?${_pq(project)}`, {}),
+  addTag:         (eventId, valueId)  => _post(`/entities/events/${eventId}/tag`, { entity_value_id: valueId }),
+  removeTag:      (eventId, valueId)  => _del(`/entities/events/${eventId}/tag/${valueId}`),
+  valueEvents:    (valId, project)    => _get(`/entities/values/${valId}/events?${_pq(project)}`),
+
+  // Links
+  addLink:        (eventId, body)     => _post(`/entities/events/${eventId}/link`, body),
+  removeLink:     (fromId, toId, lt)  => _del(`/entities/events/${fromId}/link/${toId}/${lt}`),
+  getLinks:       (eventId)           => _get(`/entities/events/${eventId}/links`),
+};
+
 
 // ── Recent projects (localStorage) ───────────────────────────────────────────
 
