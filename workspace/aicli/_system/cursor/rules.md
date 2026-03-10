@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 00:07 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 00:15 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -15,7 +15,7 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values
+- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values; events table includes due_date column
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — all independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -36,15 +36,16 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 - Config-driven pricing via provider_costs.json as single source of truth
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
-- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
-- /memory generates 4 per-LLM files + copies to code_dir; Haiku incremental synthesis
+- 5-layer memory: immediate → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
+- /memory generates per-LLM files + copies to code_dir; Haiku incremental synthesis
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
 - MCP server as standalone stdio process for Claude Code integration without backend dependency
-- Unified tag-based planner: single category→tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, properties
+- Unified tag-based planner: single category→tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, custom properties, due_date
 
 ## Recent Context (last 5 changes)
 
 - [2026-03-09] Assuming I will improve the project management page, workflow processes. can you update /memory - so it can be used for 
 - [2026-03-09] The last prompts was asking for a new feature (clinet install/ support multiple projects) - it was made by this console.
 - [2026-03-09] I dont think your update works. lets start from Planer - there is not need to have 4 tabs - Feture, tag, Bugs and Tags. 
+- [2026-03-10] I think there is an issue with ui as it is not loading properly (and I do see error whie bind address 127.0.0.1, 8000)

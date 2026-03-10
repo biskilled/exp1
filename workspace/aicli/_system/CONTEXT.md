@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-10 00:07 UTC — do not edit manually.
+> Auto-generated 2026-03-10 00:23 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 46
-- **Last active**: 2026-03-10T00:07:06Z
+- **Sessions**: 47
+- **Last active**: 2026-03-10T00:15:40Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,7 +20,7 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values
+- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values; events table includes due_date column
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — all independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -32,12 +32,12 @@
 
 ## In Progress
 
-- Planner UI redesign — consolidate Feature/Bug/Tag/Status tabs into unified tag-based system with categories, status management, and custom properties per tag
-- Session memory capture — ensure user prompts and LLM responses are logged to session context alongside /memory synthesis; validate history.jsonl persistence
-- Memory synthesis validation — verify /memory endpoint generates per-LLM summaries with incremental Haiku synthesis and copies to code_dir
-- Project management dashboard — richer summary cards with event count, recent commits, active features, workflow runs, activity timeline
-- Workflow ↔ project integration — link workflow runs to features/tasks; auto-create task events from workflow outputs; show workflow status per feature
-- Client install / multi-project support — session-based project switching with persistent history per project in unified history.jsonl
+- Planner UI redesign — consolidate Feature/Bug/Tag tabs into unified tag-based system with category hierarchy, status management, custom properties (due_date, user-created fields), and full CRUD via API
+- Session memory capture validation — ensure user prompts and LLM responses are logged to session context; verify /memory synthesis increments correctly from last_memory_run; validate history.jsonl persistence across sources
+- Backend API integration for planner — added due_date column to database schema and API endpoint; frontend tags.js now calls updated /entities endpoints
+- Frontend reload issue resolution — identified bind address conflict (uvicorn PID 86671 already running); confirmed backend healthy and schema live; frontend requires Cmd+R reload in Electron
+- Project management dashboard enhancement — plan richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline
+- Client install / multi-project support — design session-based project switching with persistent unified history.jsonl per project
 
 ## Key Decisions
 
@@ -50,12 +50,12 @@
 - Config-driven pricing via provider_costs.json as single source of truth
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
-- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
-- /memory generates 4 per-LLM files + copies to code_dir; Haiku incremental synthesis
+- 5-layer memory: immediate → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
+- /memory generates per-LLM files + copies to code_dir; Haiku incremental synthesis
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
 - MCP server as standalone stdio process for Claude Code integration without backend dependency
-- Unified tag-based planner: single category→tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, properties
+- Unified tag-based planner: single category→tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, custom properties, due_date
 
 ---
 
@@ -148,6 +148,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ---
 
 ## Recent Development History
+
+**[2026-03-10 00:19]** `claude_cli/claude`  
+→ I am shutting down elecrotn and run fresh - but cannot see anythin. also when when I click on project name - i do not se
+
+**[2026-03-10 00:11]** `claude_cli/claude`  
+→ I think there is an issue with ui as it is not loading properly (and I do see error whie bind address 127.0.0.1, 8000) 
+← _Everything is working on the backend side. To summarise:  - **Bind error**: Caused by trying to start a second uvicorn instance — the old one (PID 86671) was already running and is still running fine _
 
 **[2026-03-09 23:51]** `claude_cli/claude`  
 → I dont think your update works. lets start from Planer - there is not need to have 4 tabs - Feture, tag, Bugs and Tags. 

@@ -302,9 +302,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Planner UI redesign — consolidate Feature/Bug/Tag/Status tabs into unified tag-based system with categories, status management, and custom properties per tag
-- Session memory capture — ensure user prompts and LLM responses are logged to session context alongside /memory synthesis; validate history.jsonl persistence
-- Memory synthesis validation — verify /memory endpoint generates per-LLM summaries with incremental Haiku synthesis and copies to code_dir
-- Project management dashboard — richer summary cards with event count, recent commits, active features, workflow runs, activity timeline
-- Workflow ↔ project integration — link workflow runs to features/tasks; auto-create task events from workflow outputs; show workflow status per feature
-- Client install / multi-project support — session-based project switching with persistent history per project in unified history.jsonl
+- Planner UI redesign — consolidate Feature/Bug/Tag tabs into unified tag-based system with category hierarchy, status management, custom properties (due_date, user-created fields), and full CRUD via API
+- Session memory capture validation — ensure user prompts and LLM responses are logged to session context; verify /memory synthesis increments correctly from last_memory_run; validate history.jsonl persistence across sources
+- Backend API integration for planner — added due_date column to database schema and API endpoint; frontend tags.js now calls updated /entities endpoints
+- Frontend reload issue resolution — identified bind address conflict (uvicorn PID 86671 already running); confirmed backend healthy and schema live; frontend requires Cmd+R reload in Electron
+- Project management dashboard enhancement — plan richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline
+- Client install / multi-project support — design session-based project switching with persistent unified history.jsonl per project
