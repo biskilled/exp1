@@ -15,7 +15,8 @@ app.commandLine.appendSwitch("disable-features", "Autofill,AutofillServerCommuni
 // Suppress renderer console noise from protocol errors
 app.commandLine.appendSwitch("log-level", "3");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
+const net = require("net");
 const fs = require("fs");
 
 const ENGINE_ROOT = path.resolve(__dirname, "../..");
@@ -31,31 +32,86 @@ const BACKEND_PORT = 8000;
 // Backend lifecycle
 // ------------------------------------------------------------------
 
+/**
+ * Check if a TCP port is already in use on localhost.
+ * Returns true if busy (something is listening), false if free.
+ */
+function isPortBusy(port) {
+  return new Promise((resolve) => {
+    const tester = net.createServer();
+    tester.once("error", () => resolve(true));   // EADDRINUSE → busy
+    tester.once("listening", () => { tester.close(); resolve(false); });
+    tester.listen(port, "127.0.0.1");
+  });
+}
+
+/**
+ * Kill whatever process is holding the port, then wait for the OS to release it.
+ * Safe to call even if nothing is listening.
+ */
+async function freePort(port) {
+  if (!(await isPortBusy(port))) return;  // already free
+
+  console.log(`[backend] Port ${port} busy — killing stale process…`);
+  try {
+    if (process.platform === "win32") {
+      // Windows: find PID via netstat, then taskkill
+      execSync(
+        `for /f "tokens=5" %a in ('netstat -aon ^| findstr :${port}') do taskkill /F /PID %a`,
+        { shell: true, stdio: "ignore" }
+      );
+    } else {
+      // macOS / Linux: lsof → kill -9
+      execSync(`lsof -ti tcp:${port} | xargs kill -9 2>/dev/null || true`, {
+        shell: true,
+        stdio: "ignore",
+      });
+    }
+  } catch { /* ignore — process may have already exited */ }
+
+  // Wait up to 2 s for the OS to release the port
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    if (!(await isPortBusy(port))) return;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  console.warn(`[backend] Port ${port} still busy after kill attempt`);
+}
+
 function startBackend() {
   const python = process.platform === "win32" ? "python" : "python3.12";
-  const env = Object.assign({}, process.env, {
-    PYTHONPATH: ENGINE_ROOT,
-  });
+  const env = Object.assign({}, process.env, { PYTHONPATH: ENGINE_ROOT });
 
   backendProcess = spawn(
     python,
     ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", String(BACKEND_PORT)],
-    {
-      cwd: BACKEND_DIR,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    }
+    { cwd: BACKEND_DIR, env, stdio: ["ignore", "pipe", "pipe"] }
   );
 
   backendProcess.stdout.on("data", (d) => console.log("[backend]", d.toString().trim()));
   backendProcess.stderr.on("data", (d) => console.error("[backend]", d.toString().trim()));
-  backendProcess.on("exit", (code) => console.log(`[backend] exited (${code})`));
+  backendProcess.on("exit", (code) => {
+    console.log(`[backend] exited (${code})`);
+    if (backendProcess) backendProcess = null;
+  });
 }
 
+let _stopCalled = false;
+
 function stopBackend() {
+  // Guard against double-call (window-all-closed + before-quit both fire on macOS quit)
+  if (_stopCalled) return;
+  _stopCalled = true;
+
   if (backendProcess) {
-    backendProcess.kill("SIGTERM");
+    const proc = backendProcess;
     backendProcess = null;
+    proc.kill("SIGTERM");
+
+    // Force-kill after 2 s if SIGTERM wasn't enough (e.g. uvicorn hung)
+    setTimeout(() => {
+      try { proc.kill("SIGKILL"); } catch { /* already dead */ }
+    }, 2000);
   }
 }
 
@@ -221,12 +277,15 @@ ipcMain.handle("app:getEnginePath", () => ENGINE_ROOT);
 // App lifecycle
 // ------------------------------------------------------------------
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   buildAppMenu();
+  _stopCalled = false;         // reset guard for this app lifetime
+  await freePort(BACKEND_PORT); // kill any stale backend before spawning
   startBackend();
   createWindow();
 
   app.on("activate", () => {
+    // macOS: re-open window when clicking dock icon with no windows open
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
@@ -236,4 +295,5 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+// before-quit fires on Cmd+Q / app.quit() — stopBackend guard prevents double-kill
 app.on("before-quit", stopBackend);

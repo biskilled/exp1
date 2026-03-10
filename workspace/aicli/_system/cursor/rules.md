@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 01:23 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 01:53 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -15,9 +15,9 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting); events table includes due_date column
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — all independent adapters
+- **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run
@@ -41,13 +41,13 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
-- Frontend tag/category caching on project load: zero DB calls during chat/planner interaction; batch updates only on explicit save
+- Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Picker flow creates root-level tags; nested sub-tags created via Planner tree UI with child button
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-10] I am shutting down elecrotn and run fresh - but cannot see anythin. also when when I click on project name - i do not se
 - [2026-03-10] It looks like there are multiple database calls that make the system realy slow. try to avoid many sql calls and upload 
 - [2026-03-10] Can you make sure that sql queries are optimized (loading one time when project is loading, save in any update). also ca
 - [2026-03-10] yes. just to clarify when I add login - it will be first level only ?
 - [2026-03-10] yes
+- [2026-03-10] planner UI - it is almost imposible to see the action option as they are small, is there is a way to improve the visibil

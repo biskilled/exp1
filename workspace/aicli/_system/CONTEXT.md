@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-10 01:31 UTC — do not edit manually.
+> Auto-generated 2026-03-10 01:53 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 53
-- **Last active**: 2026-03-10T01:23:51Z
+- **Sessions**: 54
+- **Last active**: 2026-03-10T01:53:29Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,9 +20,9 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting); events table includes due_date column
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — all independent adapters
+- **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run
@@ -33,12 +33,12 @@
 
 ## In Progress
 
-- Nested tags implementation — added parent_id column to entity_values, implemented tree rendering in Planner with child-add buttons, validated idempotent migration
-- Frontend caching strategy — load all project tags/categories once on project access via single batch query, cache in memory, update DB only on explicit save to eliminate repeated SQL calls
-- Chat picker optimization — refactored tag picker to read from cached categories/values instead of DB queries, real-time filter with floating dropdown, zero database calls during selection
-- Database query optimization — implemented batch updates and single-load patterns across chat.js and planner.js, eliminated per-action DB hits
-- Backend connectivity and schema verification — resolved port 8000 bind conflict (stale uvicorn process), confirmed due_date column live in API, Electron frontend reloading correctly with npm run dev
-- Planner tab consolidation — unified Feature/Bug/Tag/Tags tabs into single tag-based system with category hierarchy, status management, due_date, and custom properties
+- Nested tags UI — Planner tree rendering with parent_id hierarchy, child-add buttons per row, archive/restore toggles via 3-dot menu for improved discoverability
+- Database query optimization — single batch load of all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls, batch updates only on explicit save
+- Chat picker refactor — zero DB calls during selection, reads from cached categories/values, real-time filter with floating dropdown, root-level tag creation only
+- Backend connectivity & schema — resolved port 8000 bind conflicts, verified due_date column live in API, confirmed Electron frontend reload working with npm run dev
+- Planner tab consolidation — unified Feature/Bug/Tag/Tags into single tag-based system with category hierarchy, status management, due_date, custom properties, archive state
+- Action visibility & archive recovery — implement 3-dot menu UI for edit/archive/restore on each tag row, toggle archive state to re-enable items, improve button discoverability
 
 ## Key Decisions
 
@@ -55,7 +55,7 @@
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
-- Frontend tag/category caching on project load: zero DB calls during chat/planner interaction; batch updates only on explicit save
+- Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Picker flow creates root-level tags; nested sub-tags created via Planner tree UI with child button
 
 ---
@@ -149,6 +149,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ---
 
 ## Recent Development History
+
+**[2026-03-10 01:42]** `claude_cli/claude`  
+→ planner UI - it is almost imposible to see the action option as they are small, is there is a way to improve the visibil
+← _Only import resolution errors — no syntax errors. Let me do a final check that there are no stale references:_
 
 **[2026-03-10 01:19]** `claude_cli/claude`  
 → yes

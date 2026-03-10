@@ -302,9 +302,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Nested tags implementation — added parent_id column to entity_values, implemented tree rendering in Planner with child-add buttons, validated idempotent migration
-- Frontend caching strategy — load all project tags/categories once on project access via single batch query, cache in memory, update DB only on explicit save to eliminate repeated SQL calls
-- Chat picker optimization — refactored tag picker to read from cached categories/values instead of DB queries, real-time filter with floating dropdown, zero database calls during selection
-- Database query optimization — implemented batch updates and single-load patterns across chat.js and planner.js, eliminated per-action DB hits
-- Backend connectivity and schema verification — resolved port 8000 bind conflict (stale uvicorn process), confirmed due_date column live in API, Electron frontend reloading correctly with npm run dev
-- Planner tab consolidation — unified Feature/Bug/Tag/Tags tabs into single tag-based system with category hierarchy, status management, due_date, and custom properties
+- Nested tags UI — Planner tree rendering with parent_id hierarchy, child-add buttons per row, archive/restore toggles via 3-dot menu for improved discoverability
+- Database query optimization — single batch load of all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls, batch updates only on explicit save
+- Chat picker refactor — zero DB calls during selection, reads from cached categories/values, real-time filter with floating dropdown, root-level tag creation only
+- Backend connectivity & schema — resolved port 8000 bind conflicts, verified due_date column live in API, confirmed Electron frontend reload working with npm run dev
+- Planner tab consolidation — unified Feature/Bug/Tag/Tags into single tag-based system with category hierarchy, status management, due_date, custom properties, archive state
+- Action visibility & archive recovery — implement 3-dot menu UI for edit/archive/restore on each tag row, toggle archive state to re-enable items, improve button discoverability
