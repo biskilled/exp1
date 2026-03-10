@@ -411,32 +411,32 @@ async def session_commits(
     session_id: str,
     project: str | None = Query(None),
 ):
-    """Return commits that occurred during a chat session's time window.
+    """Return commits associated with a session (UI or Claude CLI).
 
-    Matches commits by:
-      1. committed_at BETWEEN session.created_at AND session.updated_at  (primary)
-      2. session_id column in commits table matching the session UUID     (secondary)
+    For UI chat sessions (sessions/{id}.json exists):
+      Matches commits by time window (created_at … updated_at) OR session_id column.
 
-    Also returns `github_repo` from project.yaml so the frontend can build
-    direct links to GitHub commit pages.
+    For Claude CLI sessions (hooks write session_id to commit_log.jsonl):
+      Matches commits by session_id column / JSONL field only.
+
+    No hook changes needed — auto_commit_push.sh already stores session_id.
     """
     import yaml as _yaml
 
     p = project or settings.active_project or "default"
 
-    # ── Resolve session timestamps ──────────────────────────────────────────────
+    # ── Try to resolve timestamps from a UI session file ─────────────────────
     sessions_dir = Path(settings.workspace_dir) / p / "_system" / "sessions"
     session_file = sessions_dir / f"{session_id}.json"
-    if not session_file.exists():
-        return {"commits": [], "session_id": session_id, "github_repo": ""}
-
-    try:
-        sess = json.loads(session_file.read_text())
-    except Exception:
-        return {"commits": [], "session_id": session_id, "github_repo": ""}
-
-    created_at  = sess.get("created_at", "")
-    updated_at  = sess.get("updated_at", created_at)
+    created_at = updated_at = ""
+    if session_file.exists():
+        try:
+            sess = json.loads(session_file.read_text())
+            created_at = sess.get("created_at", "")
+            updated_at = sess.get("updated_at", created_at)
+        except Exception:
+            pass
+    # If no session file (Claude CLI session) — session_id match still works below
 
     # ── Get github_repo from project.yaml ──────────────────────────────────────
     github_repo = ""
@@ -462,14 +462,24 @@ async def session_commits(
         c_table = db.project_table("commits", p)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    f"""SELECT commit_hash, commit_msg, phase, feature, source, committed_at
-                          FROM {c_table}
-                         WHERE (committed_at BETWEEN %s::timestamptz AND %s::timestamptz)
-                            OR session_id = %s
-                         ORDER BY committed_at""",
-                    (created_at, updated_at, session_id),
-                )
+                # Build query: always match by session_id; add time window if available
+                if created_at and updated_at:
+                    cur.execute(
+                        f"""SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+                              FROM {c_table}
+                             WHERE session_id = %s
+                                OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz)
+                             ORDER BY committed_at""",
+                        (session_id, created_at, updated_at),
+                    )
+                else:
+                    cur.execute(
+                        f"""SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+                              FROM {c_table}
+                             WHERE session_id = %s
+                             ORDER BY committed_at""",
+                        (session_id,),
+                    )
                 cols = [d[0] for d in cur.description]
                 for row in cur.fetchall():
                     r = dict(zip(cols, row))

@@ -81,13 +81,32 @@ export class HistoryView {
 
   async _renderChat(container) {
     const project = state.currentProject?.name || '';
-    const res = await fetch(_histUrl('/history/chat?limit=100'));
-    const data = await res.json();
-    const entries = data.entries || [];
 
-    // Load session tags to show active context
-    let sessionTags = { phase: null, feature: null, bug_ref: null };
-    try { sessionTags = await api.getSessionTags(project); } catch {}
+    // Load history + commits + session tags in parallel
+    const [histRes, commitsData, sessionTags] = await Promise.all([
+      fetch(_histUrl('/history/chat?limit=100')).then(r => r.json()),
+      api.historyCommits(project, 1000).catch(() => ({ commits: [] })),
+      api.getSessionTags(project).catch(() => ({ phase: null, feature: null, bug_ref: null })),
+    ]);
+    const entries = histRes.entries || [];
+    const allCommits = commitsData.commits || [];
+
+    // Build github_repo base URL (from project config if available)
+    let ghBase = '';
+    try {
+      const cfg = await api.getProjectConfig(project).catch(() => ({}));
+      ghBase = (cfg.github_repo || '').replace(/\.git$/, '').replace(/\/$/, '');
+      if (ghBase.startsWith('git@')) ghBase = ghBase.replace(/^git@([^:]+):/, 'https://$1/');
+    } catch {}
+
+    // Build session_id → commits map (only commits with a session_id)
+    const commitsBySession = {};
+    for (const c of allCommits) {
+      if (c.session_id) {
+        if (!commitsBySession[c.session_id]) commitsBySession[c.session_id] = [];
+        commitsBySession[c.session_id].push(c);
+      }
+    }
 
     const untaggedCount = entries.filter(e => !e.phase && !e.feature).length;
 
@@ -108,12 +127,43 @@ export class HistoryView {
       return;
     }
 
-    container.innerHTML = tagsBar + entries
-      .map((e, idx) => {
+    // Group consecutive entries with the same session_id so commits show once per session
+    const groups = [];
+    for (const e of entries) {
+      const last = groups[groups.length - 1];
+      if (last && last.session_id === e.session_id) {
+        last.entries.push(e);
+      } else {
+        groups.push({ session_id: e.session_id, entries: [e] });
+      }
+    }
+
+    container.innerHTML = tagsBar + groups.map(group => {
+      const sid = group.session_id || '';
+      const commits = sid ? (commitsBySession[sid] || []) : [];
+
+      // Commit badge strip (shown once per session group)
+      const commitStrip = commits.length ? `
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+                    padding:5px 8px;background:var(--surface2);border-radius:4px;margin-bottom:6px;font-size:11px">
+          <span style="color:var(--muted);font-weight:600;white-space:nowrap">⑂ ${commits.length} commit${commits.length > 1 ? 's' : ''}:</span>
+          ${commits.map(c => {
+            const hash = (c.commit_hash || '').slice(0, 8);
+            const msg  = (c.commit_msg  || '').slice(0, 60);
+            const date = (c.committed_at || '').slice(0, 10);
+            return ghBase && c.commit_hash
+              ? `<a href="${ghBase}/commit/${this._escapeHtml(c.commit_hash)}" target="_blank"
+                    style="font-family:monospace;color:var(--accent);text-decoration:none;white-space:nowrap"
+                    title="${this._escapeHtml(msg)} · ${date}">${hash} ↗</a>`
+              : `<span style="font-family:monospace;color:var(--accent);white-space:nowrap"
+                       title="${this._escapeHtml(msg)} · ${date}">${hash}</span>`;
+          }).join('')}
+        </div>` : '';
+
+      const entriesHtml = group.entries.map((e, idx) => {
         const isUntagged = !e.phase && !e.feature;
         const borderColor = isUntagged ? '#e74c3c' : 'var(--border)';
-        const entryId = `hist-entry-${idx}`;
-        // Show full output with toggle
+        const entryId = `hist-entry-${sid.slice(0,8)}-${idx}`;
         const outputHtml = e.output
           ? `<div style="margin-top:6px">
               <div id="${entryId}-resp"
@@ -131,7 +181,8 @@ export class HistoryView {
             </div>`
           : '';
         return `
-        <div class="history-entry" style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};border-radius:6px;padding:12px;margin-bottom:8px">
+        <div class="history-entry" style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
+                    border-radius:6px;padding:10px 12px;margin-bottom:6px">
           <div style="display:flex;gap:8px;margin-bottom:6px;font-size:11px;color:var(--muted);flex-wrap:wrap;align-items:center">
             <span>${e.ts?.slice(0, 16) || ""}</span>
             <span style="color:var(--accent)">${e.provider || ""}</span>
@@ -144,8 +195,19 @@ export class HistoryView {
           <div style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word">${this._escapeHtml(e.user_input || "")}</div>
           ${outputHtml}
         </div>`;
-      })
-      .join("");
+      }).join('');
+
+      return `
+      <div style="margin-bottom:14px">
+        ${sid ? `<div style="font-size:10px;color:var(--muted);margin-bottom:4px;padding-left:2px">
+          session <code style="font-size:10px">${sid.slice(0,8)}</code>
+          ${group.entries[0]?.source ? `· ${group.entries[0].source}` : ''}
+          · ${group.entries.length} prompt${group.entries.length > 1 ? 's' : ''}
+        </div>` : ''}
+        ${commitStrip}
+        ${entriesHtml}
+      </div>`;
+    }).join('');
   }
 
   _tagChip(field, value, options) {

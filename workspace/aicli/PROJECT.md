@@ -302,9 +302,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- AI suggestions workflow — added amber banner between tag bar and messages showing LLM-synthesized tags from /memory; banner only appears when suggestions exist with clear accept/save approval flow
-- Session tag persistence — fixed GET /entities/session-tags endpoint to correctly query event_tags_{p} joined to events/values/categories; tags now persist across session switches
-- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row; menu displays edit/archive/restore/delete actions in discoverable format
-- Database query optimization — implemented frontend tag/category caching on project load to eliminate per-action SQL calls during chat/planner interactions; batch updates only on explicit save
-- Port binding and startup stability — implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts on app restart
-- Session phase labeling — renamed 'Session:' label to 'Phase:' in tag bar for clarity; fixed tag bar overflow clipping to ensure all tags are visible
+- AI suggestions workflow — amber banner with synthesized tags from /memory; fixed to always run (DB best-effort), appears between tag bar and messages with approve/reject UI
+- Session tag persistence — GET /entities/session-tags endpoint queries event_tags_{p} joined to events/values/categories; tags now persist across session switches
+- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions in discoverable format
+- Database query optimization — frontend tag/category caching on project load eliminates per-action SQL calls during chat/planner; batch updates only on explicit save
+- Port binding and startup stability — freePort() kills stale uvicorn via lsof, Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts
+- Session phase labeling and tag bar overflow — renamed 'Session:' to 'Phase:' label for clarity; fixed tag bar overflow clipping to ensure all suggestion chips are visible

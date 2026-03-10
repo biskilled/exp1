@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-10 03:07 UTC — do not edit manually.
+> Auto-generated 2026-03-10 03:19 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 59
-- **Last active**: 2026-03-10T03:04:57Z
+- **Sessions**: 61
+- **Last active**: 2026-03-10T03:19:20Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -25,7 +25,7 @@
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
-- **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run
+- **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; always-on (DB best-effort)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server — 8 tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
@@ -33,12 +33,12 @@
 
 ## In Progress
 
-- AI suggestions workflow — added amber banner between tag bar and messages showing LLM-synthesized tags from /memory; banner only appears when suggestions exist with clear accept/save approval flow
-- Session tag persistence — fixed GET /entities/session-tags endpoint to correctly query event_tags_{p} joined to events/values/categories; tags now persist across session switches
-- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row; menu displays edit/archive/restore/delete actions in discoverable format
-- Database query optimization — implemented frontend tag/category caching on project load to eliminate per-action SQL calls during chat/planner interactions; batch updates only on explicit save
-- Port binding and startup stability — implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts on app restart
-- Session phase labeling — renamed 'Session:' label to 'Phase:' in tag bar for clarity; fixed tag bar overflow clipping to ensure all tags are visible
+- AI suggestions workflow — amber banner with synthesized tags from /memory; fixed to always run (DB best-effort), appears between tag bar and messages with approve/reject UI
+- Session tag persistence — GET /entities/session-tags endpoint queries event_tags_{p} joined to events/values/categories; tags now persist across session switches
+- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions in discoverable format
+- Database query optimization — frontend tag/category caching on project load eliminates per-action SQL calls during chat/planner; batch updates only on explicit save
+- Port binding and startup stability — freePort() kills stale uvicorn via lsof, Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts
+- Session phase labeling and tag bar overflow — renamed 'Session:' to 'Phase:' label for clarity; fixed tag bar overflow clipping to ensure all suggestion chips are visible
 
 ## Key Decisions
 
@@ -150,6 +150,14 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-10 03:16]** `ui/claude`  
+→ hellow, how are you ?
+← _Hello! I'm doing well, thanks for asking. Ready to help with the **aicli** project.  Looking at the context, it seems you've been making good progress — recent work includes AI suggestion banners, ses_
+
+**[2026-03-10 03:14]** `claude_cli/claude`  
+→ Are you using the mcp server in order to reciave all project information ? Also, I do not see any sujjestion in any sess
+← _---  Now let me answer your three questions clearly:  ---  **1. Am I (Claude Code) using the aicli MCP server?**  No. I'm reading your files directly using the Read/Grep/Bash tools. The MCP server (`u_
+
 **[2026-03-10 02:57]** `claude_cli/claude`  
 → can you run /memory and run some tests? I do not see any sujjestion on all the existing session there are. also I do not
 ← _All clean (only the expected module resolution errors from Node's ES module checker, no syntax errors).  ---  Here's everything that was done:  ### 1. `/memory` suggestions — fixed to work without Pos_
@@ -200,10 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-09 23:51]** `claude_cli/claude`  
 → I dont think your update works. lets start from Planer - there is not need to have 4 tabs - Feture, tag, Bugs and Tags. 
-
-**[2026-03-09 17:56]** `claude_cli/claude`  
-→ The last prompts was asking for a new feature (clinet install/ support multiple projects) - it was made by this console.
-
-**[2026-03-09 04:08]** `claude_cli/claude`  
-→ Assuming I will improve the project management page, workflow processes. can you update /memory - so it can be used for 
-← _`/memory` ran with LLM synthesis and all files copied to `code_dir`. Let me verify the MEMORY.md output:_

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 03:05 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 03:19 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -20,7 +20,7 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
-- **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run
+- **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; always-on (DB best-effort)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server — 8 tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
@@ -46,8 +46,8 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-10] why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is attemp to bind address
-- [2026-03-10] I do see the save button - and when I save I do see the tag, when I am checking another session and come back (at the ui
 - [2026-03-10] Where do I click accept , is it in the Chat at the top ? I dont see that
 - [2026-03-10] can you run /memory, and make the UI more clear. add your sujjestion in a clear place where user can understand it is ai
 - [2026-03-10] can you run /memory and run some tests? I do not see any sujjestion on all the existing session there are. also I do not
+- [2026-03-10] Are you using the mcp server in order to reciave all project information ? Also, I do not see any sujjestion in any sess
+- [2026-03-10] hellow, how are you ?
