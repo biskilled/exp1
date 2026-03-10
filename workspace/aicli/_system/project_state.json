@@ -18,7 +18,8 @@
     "memory_synthesis": "Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run",
     "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
     "mcp": "Standalone stdio MCP server \u2014 8 tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push)",
-    "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder"
+    "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
+    "database_schema": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nested tags), events (with due_date)"
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state",
@@ -31,11 +32,11 @@
     "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap",
     "Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata",
     "5-layer memory: immediate \u2192 working (session JSON) \u2192 project (PROJECT.md) \u2192 historical (history.jsonl) \u2192 global (templates)",
-    "/memory generates per-LLM files + copies to code_dir; Haiku incremental synthesis",
     "Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) \u2192 single file per project",
     "Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links",
-    "Unified tag-based planner: single category\u2192tags hierarchy with unlimited nesting via parent_id FK",
-    "Frontend caching strategy: load all project tags/categories once on project access, update DB only on explicit save"
+    "Nested tags via parent_id FK: unlimited depth (category \u2192 tag \u2192 subtag) with tree UI in Planner",
+    "Frontend tag/category caching on project load: zero DB calls during chat/planner interaction; batch updates only on explicit save",
+    "Picker flow creates root-level tags; nested sub-tags created via Planner tree UI with child button"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -64,12 +65,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Nested tags architecture \u2014 added parent_id column to entity_values for unlimited tag depth (category \u2192 tag \u2192 subtag); validating database migration and planner UI tree rendering",
-    "SQL query optimization \u2014 implemented frontend tag/category caching on project load to eliminate repeated DB calls; batch updates on save instead of per-action queries",
-    "Planner UI consolidation \u2014 merged Feature/Bug/Tag/Tags tabs into unified tag-based system with category hierarchy, status management, due_date, and custom properties",
-    "Session memory validation \u2014 ensuring user prompts and LLM responses logged to history.jsonl; verifying /memory incremental synthesis from last_memory_run timestamp",
-    "Frontend reload and backend connectivity \u2014 resolved port 8000 bind conflict (stale uvicorn process); confirmed schema live with due_date column; Electron frontend now loads correctly with npm run dev",
-    "Project dashboard enhancement \u2014 planning richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline"
+    "Nested tags implementation \u2014 added parent_id column to entity_values, implemented tree rendering in Planner with child-add buttons, validated idempotent migration",
+    "Frontend caching strategy \u2014 load all project tags/categories once on project access via single batch query, cache in memory, update DB only on explicit save to eliminate repeated SQL calls",
+    "Chat picker optimization \u2014 refactored tag picker to read from cached categories/values instead of DB queries, real-time filter with floating dropdown, zero database calls during selection",
+    "Database query optimization \u2014 implemented batch updates and single-load patterns across chat.js and planner.js, eliminated per-action DB hits",
+    "Backend connectivity and schema verification \u2014 resolved port 8000 bind conflict (stale uvicorn process), confirmed due_date column live in API, Electron frontend reloading correctly with npm run dev",
+    "Planner tab consolidation \u2014 unified Feature/Bug/Tag/Tags tabs into single tag-based system with category hierarchy, status management, due_date, and custom properties"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -101,5 +102,5 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-10T01:12:32Z"
+  "last_memory_run": "2026-03-10T01:24:24Z"
 }

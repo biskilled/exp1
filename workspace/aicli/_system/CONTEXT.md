@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-10 01:12 UTC — do not edit manually.
+> Auto-generated 2026-03-10 01:31 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 51
-- **Last active**: 2026-03-10T01:12:07Z
+- **Sessions**: 53
+- **Last active**: 2026-03-10T01:23:51Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -29,15 +29,16 @@
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server — 8 tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
+- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nested tags), events (with due_date)
 
 ## In Progress
 
-- Nested tags architecture — added parent_id column to entity_values for unlimited tag depth (category → tag → subtag); validating database migration and planner UI tree rendering
-- SQL query optimization — implemented frontend tag/category caching on project load to eliminate repeated DB calls; batch updates on save instead of per-action queries
-- Planner UI consolidation — merged Feature/Bug/Tag/Tags tabs into unified tag-based system with category hierarchy, status management, due_date, and custom properties
-- Session memory validation — ensuring user prompts and LLM responses logged to history.jsonl; verifying /memory incremental synthesis from last_memory_run timestamp
-- Frontend reload and backend connectivity — resolved port 8000 bind conflict (stale uvicorn process); confirmed schema live with due_date column; Electron frontend now loads correctly with npm run dev
-- Project dashboard enhancement — planning richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline
+- Nested tags implementation — added parent_id column to entity_values, implemented tree rendering in Planner with child-add buttons, validated idempotent migration
+- Frontend caching strategy — load all project tags/categories once on project access via single batch query, cache in memory, update DB only on explicit save to eliminate repeated SQL calls
+- Chat picker optimization — refactored tag picker to read from cached categories/values instead of DB queries, real-time filter with floating dropdown, zero database calls during selection
+- Database query optimization — implemented batch updates and single-load patterns across chat.js and planner.js, eliminated per-action DB hits
+- Backend connectivity and schema verification — resolved port 8000 bind conflict (stale uvicorn process), confirmed due_date column live in API, Electron frontend reloading correctly with npm run dev
+- Planner tab consolidation — unified Feature/Bug/Tag/Tags tabs into single tag-based system with category hierarchy, status management, due_date, and custom properties
 
 ## Key Decisions
 
@@ -51,11 +52,11 @@
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
 - 5-layer memory: immediate → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
-- /memory generates per-LLM files + copies to code_dir; Haiku incremental synthesis
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
-- Unified tag-based planner: single category→tags hierarchy with unlimited nesting via parent_id FK
-- Frontend caching strategy: load all project tags/categories once on project access, update DB only on explicit save
+- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
+- Frontend tag/category caching on project load: zero DB calls during chat/planner interaction; batch updates only on explicit save
+- Picker flow creates root-level tags; nested sub-tags created via Planner tree UI with child button
 
 ---
 
@@ -148,6 +149,14 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ---
 
 ## Recent Development History
+
+**[2026-03-10 01:19]** `claude_cli/claude`  
+→ yes
+← _All done. Here's a summary of what was implemented:  ---  ### What changed  **Backend** - `database.py`: Added `parent_id INTEGER REFERENCES entity_values(id) ON DELETE SET NULL` + index (idempotent `_
+
+**[2026-03-10 01:14]** `claude_cli/claude`  
+→ yes. just to clarify when I add login - it will be first level only ? 
+← _Yes — from the chat picker, **adding a new tag always creates it at the root level** (first level under the selected category). To create a nested sub-tag, you use the Planner where you have the full _
 
 **[2026-03-10 01:11]** `claude_cli/claude`  
 → Can you make sure that sql queries are optimized (loading one time when project is loading, save in any update). also ca

@@ -23,7 +23,8 @@ let _sessionCache = [];      // merged session list (ui + cli + workflow)
 let _sessionTags = { phase: '' };
 
 // Entity tags applied to current session via the + Tag picker
-let _appliedEntities  = []; // [{value_id, category_name, name, color, icon}]
+let _appliedEntities  = []; // [{value_id, category_name, name, color, icon}] — confirmed (saved to session)
+let _pendingEntities  = []; // same shape — selected but not yet saved
 let _suggestedTags    = []; // [{name, category, is_new}] — LLM suggestions from /memory
 let _pickerOpen        = false;
 let _selectedPickerCat = null;  // catId currently selected in the picker
@@ -131,6 +132,16 @@ export function renderChat(container) {
                    font-family:var(--font);font-size:0.58rem;padding:0.12rem 0.4rem;
                    border-radius:var(--radius);cursor:pointer;white-space:nowrap;flex-shrink:0;outline:none"
             title="Tag this session with a feature, bug, or task">+ Tag</button>
+
+          <!-- Save tags button — always visible, disabled when nothing pending -->
+          <button id="chat-save-tags-btn"
+            onclick="window._saveEntitiesToSession()"
+            disabled
+            style="font-family:var(--font);font-size:0.58rem;padding:0.12rem 0.5rem;
+                   border-radius:var(--radius);cursor:not-allowed;white-space:nowrap;flex-shrink:0;
+                   outline:none;background:var(--surface);border:1px solid var(--border);
+                   color:var(--muted);transition:all 0.15s"
+            title="Save selected tags to this session">💾 Save</button>
 
           <span id="chat-tag-status"
                 style="font-size:0.58rem;color:var(--red,#e74c3c);white-space:nowrap;flex-shrink:0">⚠ phase</span>
@@ -260,22 +271,48 @@ function _setupTagBar() {
       _sessionTags = { phase: newPhase };
       _sessionId = null;       // force new session
       _appliedEntities = [];   // clear chips for new session
+      _pendingEntities = [];   // clear pending too
       _suggestedTags = [];     // clear suggestions on session reset
       _renderEntityChips();
+      _updateSaveButton();
     }
     _updateTagBarStatus();
     _loadSessions();
   });
 
   // Expose picker functions globally
-  window._toggleEntityPicker = _toggleEntityPicker;
-  window._closeEntityPicker  = _closeEntityPicker;
-  window._pickerCatChange    = _pickerCatChange;
-  window._pickerValFilter    = _pickerValFilter;
-  window._pickerValOpen      = _pickerValOpen;
-  window._pickerValClose     = _pickerValClose;
-  window._pickerSelectVal    = _pickerSelectVal;
-  window._pickerAddNew       = _pickerAddNew;
+  window._toggleEntityPicker    = _toggleEntityPicker;
+  window._closeEntityPicker     = _closeEntityPicker;
+  window._pickerCatChange       = _pickerCatChange;
+  window._pickerValFilter       = _pickerValFilter;
+  window._pickerValOpen         = _pickerValOpen;
+  window._pickerValClose        = _pickerValClose;
+  window._pickerSelectVal       = _pickerSelectVal;
+  window._pickerAddNew          = _pickerAddNew;
+  window._saveEntitiesToSession = _saveEntitiesToSession;
+  window._removePendingTag      = _removePendingTag;
+}
+
+function _updateSaveButton() {
+  const btn = document.getElementById('chat-save-tags-btn');
+  if (!btn) return;
+  const hasPending = _pendingEntities.length > 0;
+  btn.disabled = !hasPending;
+  if (hasPending) {
+    btn.style.cursor  = 'pointer';
+    btn.style.background = 'var(--accent)';
+    btn.style.color   = '#fff';
+    btn.style.border  = '1px solid var(--accent)';
+    btn.title = `Save ${_pendingEntities.length} pending tag(s) to session`;
+    btn.textContent = `💾 Save (${_pendingEntities.length})`;
+  } else {
+    btn.style.cursor  = 'not-allowed';
+    btn.style.background = 'var(--surface)';
+    btn.style.color   = 'var(--muted)';
+    btn.style.border  = '1px solid var(--border)';
+    btn.title = 'No pending tags';
+    btn.textContent = '💾 Save';
+  }
 }
 
 function _updateTagBarStatus() {
@@ -301,9 +338,11 @@ function _updateTagBarStatus() {
 function _restoreTagBar(tags) {
   _sessionTags = { phase: (tags?.phase) || '' };
   _appliedEntities = [];  // chips not persisted — clear on session load
+  _pendingEntities = [];
   const phaseSel = document.getElementById('chat-phase-sel');
   if (phaseSel) phaseSel.value = _sessionTags.phase;
   _updateTagBarStatus();
+  _updateSaveButton();
   _renderEntityChips();
 }
 
@@ -433,92 +472,143 @@ function _pickerValClose() {
   if (dd) dd.style.display = 'none';
 }
 
-/** User clicked an existing value — auto-tag immediately, no Save button. */
-async function _pickerSelectVal(valueId, valueName) {
+/** User clicked an existing value — queue as pending (not saved until 💾 Save is clicked). */
+function _pickerSelectVal(valueId, valueName) {
   const project = state.currentProject?.name;
   if (!project) { toast('No project open', 'error'); return; }
-  if (!_sessionId) { toast('Send a message first to start a session — then tag it', 'error'); return; }
 
-  const cat  = getCacheCategories().find(c => String(c.id) === String(_selectedPickerCat)) || {};
-  const icon  = cat.icon  || '⬡';
-  const color = cat.color || '#4a90e2';
-  const catName = cat.name || '';
+  const cat     = getCacheCategories().find(c => String(c.id) === String(_selectedPickerCat)) || {};
+  const icon    = cat.icon  || '⬡';
+  const color   = cat.color || '#4a90e2';
+  const catName = cat.name  || '';
 
-  try {
-    const result = await api.entities.sessionTag({ session_id: _sessionId, project, value_id: valueId });
-    _appliedEntities.push({ value_id: valueId, category_name: catName, name: valueName, color, icon });
-    _renderEntityChips();
-    _closeEntityPicker();
-    toast(`Tagged: ${catName}/${valueName} (${result.events_tagged || 0} events)`, 'success');
-  } catch (e) { toast(e.message, 'error'); }
+  // Avoid duplicates
+  const exists = _pendingEntities.some(e => e.value_id === valueId) ||
+                 _appliedEntities.some(e => e.value_id === valueId);
+  if (exists) { _closeEntityPicker(); return; }
+
+  _pendingEntities.push({ value_id: valueId, category_name: catName, name: valueName, color, icon });
+  _renderEntityChips();
+  _updateSaveButton();
+  _closeEntityPicker();
 }
 
-/** User typed a new tag name and pressed Enter or clicked "+ Add". */
-async function _pickerAddNew(name) {
+/** User typed a new tag name — queue as pending with a temporary marker (no value_id yet). */
+function _pickerAddNew(name) {
   const project = state.currentProject?.name;
   const msg     = document.getElementById('picker-msg');
   if (!project) { if (msg) msg.textContent = 'No project open'; return; }
-  if (!_sessionId) { if (msg) msg.textContent = 'Send a message first to start a session'; return; }
   if (!_selectedPickerCat) { if (msg) msg.textContent = 'Select a category first'; return; }
 
   const valName = (name || '').trim();
   if (!valName) { if (msg) msg.textContent = 'Enter a tag name'; return; }
 
-  const cat    = getCacheCategories().find(c => String(c.id) === String(_selectedPickerCat)) || {};
+  const cat     = getCacheCategories().find(c => String(c.id) === String(_selectedPickerCat)) || {};
   const catName = cat.name  || '';
   const icon    = cat.icon  || '⬡';
   const color   = cat.color || '#4a90e2';
 
-  if (msg) msg.textContent = 'Saving…';
-  try {
-    const result = await api.entities.sessionTag({
-      session_id: _sessionId, project, category_name: catName, value_name: valName,
-    });
-    // Add to cache so it's visible immediately in picker next time
-    addCachedValue(_selectedPickerCat, {
-      id: result.value_id, name: valName, status: 'active', event_count: result.events_tagged || 0,
-    });
-    _appliedEntities.push({
-      value_id: result.value_id, category_name: catName, name: valName, color, icon,
-    });
-    _renderEntityChips();
-    if (msg) msg.textContent = '';
-    _closeEntityPicker();
-    toast(`Tagged: ${catName}/${valName} (${result.events_tagged || 0} events)`, 'success');
-  } catch (e) {
-    if (msg) msg.textContent = e.message;
-  }
+  // Avoid duplicates
+  const exists = _pendingEntities.some(e => e.name === valName && e.category_name === catName) ||
+                 _appliedEntities.some(e => e.name === valName && e.category_name === catName);
+  if (exists) { _closeEntityPicker(); return; }
+
+  // value_id is null for new tags — resolved on save
+  _pendingEntities.push({ value_id: null, category_name: catName, name: valName, color, icon, is_new: true });
+  _renderEntityChips();
+  _updateSaveButton();
+  _closeEntityPicker();
 }
 
-async function _applyTagDirect(valueId, valueName, catId, catName, icon, color) {
+// Legacy helper — routes through pending flow
+function _applyTagDirect(valueId, valueName, catId, catName, icon, color) {
+  const exists = _pendingEntities.some(e => e.value_id === valueId) ||
+                 _appliedEntities.some(e => e.value_id === valueId);
+  if (!exists) {
+    _pendingEntities.push({ value_id: valueId, category_name: catName, name: valueName, color, icon });
+    _renderEntityChips();
+    _updateSaveButton();
+  }
+  _closeEntityPicker();
+}
+
+
+/** Remove a pending tag by index. */
+function _removePendingTag(idx) {
+  _pendingEntities.splice(idx, 1);
+  _renderEntityChips();
+  _updateSaveButton();
+}
+
+/** Save all pending tags to the current session (or queue them for auto-apply on first send). */
+async function _saveEntitiesToSession() {
+  if (!_pendingEntities.length) return;
   const project = state.currentProject?.name;
   if (!project) { toast('No project open', 'error'); return; }
+
   if (!_sessionId) {
-    toast('Send a message first to start a session — then tag it', 'error');
+    // No session yet — toast to inform user, tags will auto-apply on first send
+    toast(`${_pendingEntities.length} tag(s) queued — will be saved when you send your first message`, 'info');
     return;
   }
-  try {
-    const result = await api.entities.sessionTag({ session_id: _sessionId, project, value_id: valueId });
-    _appliedEntities.push({ value_id: valueId, category_name: catName, name: valueName, color, icon });
-    _renderEntityChips();
-    _closeEntityPicker();
-    toast(`Tagged: ${catName}/${valueName} (${result.events_tagged || 0} events)`, 'success');
-  } catch (e) { toast(e.message, 'error'); }
-}
 
+  const btn = document.getElementById('chat-save-tags-btn');
+  if (btn) btn.textContent = '💾 Saving…';
+
+  const toApply = [..._pendingEntities];
+  let saved = 0;
+  for (const e of toApply) {
+    try {
+      const body = e.value_id
+        ? { session_id: _sessionId, project, value_id: e.value_id }
+        : { session_id: _sessionId, project, category_name: e.category_name, value_name: e.name };
+      const result = await api.entities.sessionTag(body);
+      const resolvedId = result.value_id || e.value_id;
+      // Add to cache if brand new
+      if (e.is_new && resolvedId) {
+        addCachedValue(
+          getCacheCategories().find(c => c.name === e.category_name)?.id,
+          { id: resolvedId, name: e.name, status: 'active', event_count: result.events_tagged || 0 },
+        );
+      }
+      _appliedEntities.push({ ...e, value_id: resolvedId });
+      saved++;
+    } catch (err) {
+      toast(`Tag "${e.name}" error: ${err.message}`, 'error');
+    }
+  }
+  _pendingEntities = [];
+  _renderEntityChips();
+  _updateSaveButton();
+  if (saved) toast(`${saved} tag(s) saved to session`, 'success');
+}
 
 function _renderEntityChips() {
   const container = document.getElementById('chat-entity-chips');
   if (!container) return;
 
-  // Applied (user-confirmed) chips — blue style
+  // Confirmed chips — solid colored style
   const appliedHtml = _appliedEntities.map(e => `
     <span class="entity-chip user-tag"
           style="display:inline-flex;align-items:center;gap:0.18rem;
                  background:${e.color}22;border:1px solid ${e.color}55;color:${e.color};
                  border-radius:10px;padding:0.08rem 0.38rem;font-size:0.56rem;white-space:nowrap"
-          title="${_esc(e.category_name)}/${_esc(e.name)}">
+          title="Saved · ${_esc(e.category_name)}/${_esc(e.name)}">
       ${_esc(e.icon)} ${_esc(e.name)}
+    </span>`).join('');
+
+  // Pending chips — lighter border, ✕ to remove
+  const pendingHtml = _pendingEntities.map((e, idx) => `
+    <span class="entity-chip pending-tag"
+          style="display:inline-flex;align-items:center;gap:0.18rem;
+                 background:${e.color}11;border:1px dashed ${e.color}88;color:${e.color};
+                 border-radius:10px;padding:0.08rem 0.38rem;font-size:0.56rem;white-space:nowrap;
+                 opacity:0.82"
+          title="Pending · ${_esc(e.category_name)}/${_esc(e.name)} — click 💾 Save to apply">
+      ${_esc(e.icon)} ${_esc(e.name)}
+      <button onclick="window._removePendingTag(${idx})"
+        style="border:none;background:none;cursor:pointer;color:${e.color};font-size:0.6rem;padding:0 1px;line-height:1"
+        title="Remove">✕</button>
     </span>`).join('');
 
   // Suggested chips — amber dashed style, with Accept / Dismiss buttons
@@ -527,49 +617,32 @@ function _renderEntityChips() {
           style="display:inline-flex;align-items:center;gap:0.18rem;
                  background:#fffbe6;border:1px dashed #d4a017;color:#8a6500;
                  border-radius:10px;padding:0.08rem 0.38rem;font-size:0.56rem;white-space:nowrap;font-style:italic"
-          title="LLM suggestion: ${_esc(s.category)}/${_esc(s.name)} — click ✓ to accept">
+          title="LLM suggestion: ${_esc(s.category)}/${_esc(s.name)} — click ✓ to queue">
       ✦ ${_esc(s.name)}
       <button onclick="window._acceptSuggestedTag(${idx})"
         style="border:none;background:none;cursor:pointer;color:#27ae60;font-size:0.6rem;padding:0 1px;line-height:1"
-        title="Accept tag">✓</button>
+        title="Add to pending">✓</button>
       <button onclick="window._dismissSuggestedTag(${idx})"
         style="border:none;background:none;cursor:pointer;color:#888;font-size:0.6rem;padding:0 1px;line-height:1"
         title="Dismiss">✕</button>
     </span>`).join('');
 
-  container.innerHTML = appliedHtml + suggestedHtml;
+  container.innerHTML = appliedHtml + pendingHtml + suggestedHtml;
 }
 
-window._acceptSuggestedTag = async (idx) => {
+window._acceptSuggestedTag = (idx) => {
   const s = _suggestedTags[idx];
   if (!s) return;
-  const project = state.currentProject?.name;
-  if (!project || !_sessionId) {
-    toast('Send a message first to start a session', 'error');
-    return;
-  }
-  try {
-    const result = await api.entities.sessionTag({
-      session_id: _sessionId,
-      project,
-      category_name: s.category,
-      value_name: s.name,
-    });
-    // Move from suggested → applied
-    const typeInfo = _ENTITY_TYPES.find(t => t.id === s.category) || { color: '#9b7fcc', icon: '⬡' };
-    _appliedEntities.push({
-      value_id: result.value_id,
-      category_name: s.category,
-      name: s.name,
-      color: typeInfo.color,
-      icon: typeInfo.icon,
-    });
-    _suggestedTags = _suggestedTags.filter((_, i) => i !== idx);
-    _renderEntityChips();
-    toast(`Accepted tag: ${s.category}/${s.name}`, 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
+  // Resolve color/icon from cache categories or fallback
+  const cat      = getCacheCategories().find(c => c.name === s.category);
+  const typeInfo = cat || _ENTITY_TYPES.find(t => t.id === s.category) || { color: '#9b7fcc', icon: '⬡' };
+  _pendingEntities.push({
+    value_id: null, category_name: s.category, name: s.name,
+    color: typeInfo.color, icon: typeInfo.icon, is_new: !cat,
+  });
+  _suggestedTags = _suggestedTags.filter((_, i) => i !== idx);
+  _renderEntityChips();
+  _updateSaveButton();
 };
 
 window._dismissSuggestedTag = (idx) => {
@@ -1152,7 +1225,11 @@ window._chatSend = async () => {
 
     // Session ID is in response header
     const sid = response.headers.get('X-Session-Id');
-    if (sid) _sessionId = sid;
+    if (sid) {
+      _sessionId = sid;
+      // Auto-apply any tags that were queued before the session existed
+      if (_pendingEntities.length) _saveEntitiesToSession();
+    }
 
     const reader  = response.body.getReader();
     const decoder = new TextDecoder();

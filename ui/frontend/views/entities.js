@@ -64,11 +64,25 @@ export function renderEntities(container) {
           </div>
         </div>
 
-        <!-- Right pane: tag table -->
-        <div id="planner-tags-pane" style="flex:1;overflow-y:auto;padding:0.75rem 1rem">
-          <div style="color:var(--muted);font-size:0.7rem;padding:3rem;text-align:center">
-            ← Select a category
+        <!-- Right area: table + detail drawer -->
+        <div style="flex:1;display:flex;min-height:0;overflow:hidden">
+
+          <!-- Tag table -->
+          <div id="planner-tags-pane" style="flex:1;overflow-y:auto;padding:0.75rem 1rem">
+            <div style="color:var(--muted);font-size:0.7rem;padding:3rem;text-align:center">
+              ← Select a category
+            </div>
           </div>
+
+          <!-- Detail drawer (closed by default) -->
+          <div id="planner-drawer"
+               style="width:0;overflow:hidden;border-left:0 solid var(--border);
+                      flex-shrink:0;transition:width 0.22s ease,border-width 0.22s;
+                      background:var(--surface);display:flex">
+            <div id="planner-drawer-inner"
+                 style="width:290px;overflow-y:auto;flex-shrink:0;box-sizing:border-box"></div>
+          </div>
+
         </div>
 
       </div>
@@ -76,18 +90,20 @@ export function renderEntities(container) {
   `;
 
   // Wire window globals
-  window._plannerSelectCat     = _plannerSelectCat;
-  window._plannerCycleStatus   = _plannerCycleStatus;
-  window._plannerSaveDesc      = _plannerSaveDesc;
-  window._plannerSaveDue       = _plannerSaveDue;
-  window._plannerDeleteVal     = _plannerDeleteVal;
-  window._plannerArchiveVal    = _plannerArchiveVal;
-  window._plannerSaveNewTag    = _plannerSaveNewTag;
-  window._plannerCancelNewTag  = _plannerCancelNewTag;
-  window._plannerSync          = _plannerSync;
-  window._plannerNewCat        = _plannerNewCat;
-  window._plannerAddChild      = _plannerAddChild;
-  window._plannerToggleExpand  = _plannerToggleExpand;
+  window._plannerSelectCat        = _plannerSelectCat;
+  window._plannerDeleteVal        = _plannerDeleteVal;
+  window._plannerSaveNewTag       = _plannerSaveNewTag;
+  window._plannerCancelNewTag     = _plannerCancelNewTag;
+  window._plannerSync             = _plannerSync;
+  window._plannerNewCat           = _plannerNewCat;
+  window._plannerAddChild         = _plannerAddChild;
+  window._plannerToggleExpand     = _plannerToggleExpand;
+  window._plannerOpenDrawer       = _plannerOpenDrawer;
+  window._plannerCloseDrawer      = _plannerCloseDrawer;
+  window._plannerDrawerSetStatus  = _plannerDrawerSetStatus;
+  window._plannerDrawerSaveRemarks = _plannerDrawerSaveRemarks;
+  window._plannerDrawerSaveDue    = _plannerDrawerSaveDue;
+  window._plannerDrawerAddChild   = _plannerDrawerAddChild;
 
   if (!project) {
     document.getElementById('planner-tags-pane').innerHTML =
@@ -162,87 +178,57 @@ function _renderTagTableFromCache() {
 }
 
 function _renderTagTable(pane, catId, catName, catColor, catIcon) {
-  const STATUS_CYCLE  = { active: 'done', done: 'archived', archived: 'active' };
-  const STATUS_COLORS = { active: '#27ae60', done: '#888', archived: '#666' };
+  const STATUS_COLORS = { active: '#27ae60', done: '#4a90e2', archived: '#888' };
   const roots = getCacheRoots(catId);
 
   // Recursively build table rows for a node and its visible children
   function _rowsForNode(v, depth) {
-    const sc      = STATUS_COLORS[v.status] || '#888';
-    const next    = STATUS_CYCLE[v.status]  || 'active';
-    const desc    = v.description || '';
-    const due     = v.due_date    || '';
-    const created = (v.created_at || '').slice(0, 10);
-    const kids    = getCacheChildren(v.id);
-    const hasKids = kids.length > 0;
+    const sc       = STATUS_COLORS[v.status] || '#888';
+    const archived = v.status === 'archived';
+    const kids     = getCacheChildren(v.id);
+    const hasKids  = kids.length > 0;
     const expanded = !_collapsed.has(v.id);
-    const indent  = depth * 18;
+    const indent   = depth * 20;
 
     const toggleBtn = hasKids
       ? `<span onclick="window._plannerToggleExpand(${v.id})"
-               style="cursor:pointer;color:var(--muted);margin-right:4px;display:inline-block;
-                      width:12px;text-align:center;font-size:0.7rem;user-select:none"
+               style="cursor:pointer;color:var(--muted);margin-right:3px;display:inline-block;
+                      width:14px;text-align:center;font-size:0.72rem;user-select:none;flex-shrink:0"
                title="${expanded ? 'Collapse' : 'Expand'}">${expanded ? '▾' : '▸'}</span>`
-      : `<span style="display:inline-block;width:16px"></span>`;
+      : `<span style="display:inline-block;width:14px;margin-right:3px;flex-shrink:0"></span>`;
 
     let html = `
-      <tr style="border-bottom:1px solid var(--border);transition:background 0.1s"
+      <tr style="border-bottom:1px solid var(--border);opacity:${archived ? '0.45' : '1'};
+                 transition:background 0.1s;cursor:pointer"
           data-val-id="${v.id}"
+          onclick="window._plannerOpenDrawer(${catId},${v.id})"
           onmouseenter="this.style.background='var(--surface2)'"
           onmouseleave="this.style.background=''">
-        <td style="padding:0.45rem 0.5rem;color:var(--text);font-weight:${depth===0?'500':'400'}">
-          <div style="display:flex;align-items:center;padding-left:${indent}px">
+        <td style="padding:0.5rem 0.5rem 0.5rem ${0.5 + indent/16}rem;
+                   color:var(--text);font-weight:${depth===0?'500':'400'}">
+          <div style="display:flex;align-items:center">
             ${toggleBtn}
-            <span>${_esc(v.name)}</span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(v.name)}</span>
           </div>
         </td>
-        <td style="padding:0.45rem 0.5rem">
-          <span onclick="window._plannerCycleStatus(${v.id},'${next}')"
-            style="font-size:0.6rem;color:${sc};background:${sc}22;
-                   padding:0.1rem 0.38rem;border-radius:10px;white-space:nowrap;
-                   cursor:pointer;user-select:none"
-            title="Click to cycle: active→done→archived">${_esc(v.status || 'active')}</span>
+        <td style="padding:0.5rem 0.5rem;white-space:nowrap" onclick="event.stopPropagation()">
+          <span style="font-size:0.6rem;color:${sc};background:${sc}22;
+                       padding:0.12rem 0.4rem;border-radius:10px;white-space:nowrap;user-select:none">
+            ${_esc(v.status || 'active')}
+          </span>
         </td>
-        <td style="padding:0.45rem 0.5rem;max-width:180px">
-          <span contenteditable="true"
-            onblur="window._plannerSaveDesc(${v.id},this.textContent)"
-            onfocus="this.style.borderBottomColor='var(--accent)'"
-            style="display:inline-block;color:var(--text2);font-size:0.65rem;outline:none;
-                   cursor:text;min-width:20px;border-bottom:1px dashed transparent;
-                   transition:border-color 0.15s"
-            title="Click to edit description">${_esc(desc || '—')}</span>
-        </td>
-        <td style="padding:0.45rem 0.5rem">
-          <input type="date" value="${_esc(due)}"
-            onchange="window._plannerSaveDue(${v.id},this.value)"
-            style="background:var(--bg);border:1px solid var(--border);color:var(--text);
-                   font-family:var(--font);font-size:0.62rem;padding:0.1rem 0.25rem;
-                   border-radius:var(--radius);outline:none;max-width:115px" />
-        </td>
-        <td style="padding:0.45rem 0.5rem;color:var(--muted);font-size:0.62rem;white-space:nowrap">${created}</td>
-        <td style="padding:0.45rem 0.5rem;text-align:right;color:var(--muted)">${v.event_count || 0}</td>
-        <td style="padding:0.45rem 0.5rem;text-align:center">
-          <div style="display:flex;gap:0.2rem;justify-content:center;flex-wrap:nowrap">
-            <button onclick="window._plannerAddChild(${catId},${v.id})"
-              style="font-size:0.55rem;padding:0.1rem 0.28rem;background:var(--surface);
-                     border:1px solid var(--border);border-radius:var(--radius);
-                     cursor:pointer;color:var(--accent);font-family:var(--font);outline:none"
-              title="Add child tag">+</button>
-            <button onclick="window._plannerArchiveVal(${v.id})"
-              style="font-size:0.58rem;padding:0.1rem 0.3rem;background:var(--surface);
-                     border:1px solid var(--border);border-radius:var(--radius);
-                     cursor:pointer;color:var(--muted);font-family:var(--font);outline:none"
-              title="Archive">⊘</button>
-            <button onclick="window._plannerDeleteVal(${v.id})"
-              style="font-size:0.58rem;padding:0.1rem 0.3rem;background:var(--surface);
-                     border:1px solid var(--border);border-radius:var(--radius);
-                     cursor:pointer;color:var(--red,#e74c3c);font-family:var(--font);outline:none"
-              title="Delete">✕</button>
-          </div>
+        <td style="padding:0.5rem 0.4rem;text-align:center" onclick="event.stopPropagation()">
+          <button onclick="window._plannerOpenDrawer(${catId},${v.id})"
+            style="font-size:0.85rem;padding:0.15rem 0.45rem;background:var(--surface2);
+                   border:1px solid var(--border);border-radius:var(--radius);
+                   cursor:pointer;color:var(--text2);font-family:var(--font);outline:none;
+                   transition:background 0.12s,color 0.12s;line-height:1"
+            onmouseenter="this.style.background='var(--accent)';this.style.color='#fff'"
+            onmouseleave="this.style.background='var(--surface2)';this.style.color='var(--text2)'"
+            title="Open details">⋯</button>
         </td>
       </tr>`;
 
-    // Recurse into children if expanded
     if (hasKids && expanded) {
       html += kids.map(child => _rowsForNode(child, depth + 1)).join('');
     }
@@ -264,7 +250,7 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
          style="display:none;gap:0.4rem;align-items:center;margin-bottom:0.5rem;
                 padding:0.4rem 0.5rem;background:var(--surface2);
                 border:1px solid var(--border);border-radius:var(--radius)">
-      <span id="planner-new-tag-label" style="font-size:0.6rem;color:var(--muted);white-space:nowrap"></span>
+      <span id="planner-new-tag-label" style="font-size:0.6rem;color:var(--muted);white-space:nowrap;flex-shrink:0"></span>
       <input id="planner-new-tag-inp" placeholder="Tag name…" type="text"
         onkeydown="if(event.key==='Enter')window._plannerSaveNewTag();if(event.key==='Escape')window._plannerCancelNewTag()"
         style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
@@ -283,18 +269,14 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
     ${roots.length === 0 ? `
       <div style="text-align:center;padding:3rem 1rem;color:var(--muted);font-size:0.72rem">
         <div style="font-size:2rem;margin-bottom:0.75rem">${catIcon}</div>
-        No tags in <strong>${_esc(catName)}</strong> yet
+        No tags in <strong>${_esc(catName)}</strong> yet — click <strong>+ New Tag</strong>
       </div>` : `
-    <table style="width:100%;border-collapse:collapse;font-size:0.7rem">
+    <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
       <thead>
         <tr style="border-bottom:2px solid var(--border)">
-          <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
-          <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:80px">Status</th>
-          <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500">Description</th>
-          <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:125px">Due Date</th>
-          <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:80px">Created</th>
-          <th style="text-align:right;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:52px">Events</th>
-          <th style="text-align:center;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:80px">Actions</th>
+          <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
+          <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500;width:75px">Status</th>
+          <th style="width:44px"></th>
         </tr>
       </thead>
       <tbody>
@@ -307,53 +289,222 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
     const row   = document.getElementById('planner-new-tag-row');
     const label = document.getElementById('planner-new-tag-label');
     if (row) {
-      row.style.display = 'flex';
+      row.style.display   = 'flex';
       row.dataset.catId    = catId;
       row.dataset.parentId = parentId ?? '';
     }
-    if (label) {
-      label.textContent = parentId ? 'Child of …:' : 'New root tag:';
-    }
+    if (label) label.textContent = parentId ? 'Child tag:' : 'New root tag:';
     setTimeout(() => document.getElementById('planner-new-tag-inp')?.focus(), 0);
   };
 }
 
 // ── Mutations — update cache sync, fire DB in background ─────────────────────
 
-function _plannerCycleStatus(valId, nextStatus) {
-  updateCachedValue(valId, { status: nextStatus });
+// Track which val is open in the drawer
+let _drawerValId  = null;
+let _drawerCatId  = null;
+
+function _plannerOpenDrawer(catId, valId) {
+  _drawerValId = valId;
+  _drawerCatId = catId;
+
+  const drawer = document.getElementById('planner-drawer');
+  if (drawer) {
+    drawer.style.width = '300px';
+    drawer.style.borderLeftWidth = '1px';
+  }
+  _renderDrawer();
+}
+
+function _plannerCloseDrawer() {
+  const drawer = document.getElementById('planner-drawer');
+  if (drawer) { drawer.style.width = '0'; drawer.style.borderLeftWidth = '0'; }
+  _drawerValId = null;
+  _drawerCatId = null;
+}
+
+function _renderDrawer() {
+  const inner = document.getElementById('planner-drawer-inner');
+  if (!inner || !_drawerValId) return;
+
+  const catId = _drawerCatId;
+  const all   = getCacheValues(catId);
+  const v     = all.find(x => x.id === _drawerValId);
+  if (!v) { _plannerCloseDrawer(); return; }
+
+  const STATUS_COLORS = { active: '#27ae60', done: '#4a90e2', archived: '#888' };
+  const STATUS_LABELS = { active: '● Active', done: '✓ Done', archived: '⊘ Archived' };
+
+  // Build parent path string
+  const byId  = Object.fromEntries(all.map(x => [String(x.id), x]));
+  const parts = [];
+  let cur = v;
+  while (cur) { parts.unshift(cur.name); cur = cur.parent_id ? byId[String(cur.parent_id)] : null; }
+  const fullPath = parts.join(' / ');
+
+  const due     = v.due_date    || '';
+  const created = (v.created_at || '').slice(0, 10);
+  const desc    = v.description || '';
+
+  const btnStyle = (s) => {
+    const active = v.status === s;
+    const col    = STATUS_COLORS[s] || '#888';
+    return `background:${active ? col : 'var(--surface2)'};color:${active ? '#fff' : 'var(--text2)'};
+            border:1px solid ${active ? col : 'var(--border)'};font-size:0.62rem;
+            padding:0.22rem 0.55rem;border-radius:var(--radius);cursor:pointer;
+            font-family:var(--font);outline:none;transition:all 0.12s;white-space:nowrap`;
+  };
+
+  inner.innerHTML = `
+    <div style="padding:0.9rem 1rem;border-bottom:1px solid var(--border);
+                display:flex;align-items:flex-start;gap:0.5rem">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.62rem;color:var(--muted);margin-bottom:0.15rem;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+             title="${_esc(fullPath)}">${_esc(fullPath)}</div>
+      </div>
+      <button onclick="window._plannerCloseDrawer()"
+        style="background:none;border:none;color:var(--muted);cursor:pointer;
+               font-size:1rem;padding:0;line-height:1;flex-shrink:0">✕</button>
+    </div>
+
+    <div style="padding:0.85rem 1rem;display:flex;flex-direction:column;gap:0.9rem">
+
+      <!-- Status -->
+      <div>
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">Status</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${['active','done','archived'].map(s => `
+            <button style="${btnStyle(s)}"
+              onclick="window._plannerDrawerSetStatus(${v.id},'${s}')">
+              ${STATUS_LABELS[s]}
+            </button>`).join('')}
+        </div>
+      </div>
+
+      <!-- Remarks -->
+      <div>
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">Remarks / Description</div>
+        <textarea id="drawer-desc-ta" rows="3"
+          onblur="window._plannerDrawerSaveRemarks(${v.id},this.value)"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);
+                 color:var(--text);font-family:var(--font);font-size:0.68rem;
+                 padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
+                 resize:vertical;box-sizing:border-box;line-height:1.5">${_esc(desc)}</textarea>
+      </div>
+
+      <!-- Due date -->
+      <div>
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">Due Date</div>
+        <input type="date" value="${_esc(due)}"
+          onchange="window._plannerDrawerSaveDue(${v.id},this.value)"
+          style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+                 font-family:var(--font);font-size:0.68rem;padding:0.25rem 0.4rem;
+                 border-radius:var(--radius);outline:none;width:100%;box-sizing:border-box" />
+      </div>
+
+      <!-- Meta -->
+      <div style="display:flex;gap:1.5rem">
+        <div>
+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.2rem">Created</div>
+          <div style="font-size:0.68rem;color:var(--text2)">${created || '—'}</div>
+        </div>
+        <div>
+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.2rem">Events</div>
+          <div style="font-size:0.68rem;color:var(--text2)">${v.event_count || 0}</div>
+        </div>
+      </div>
+
+      <!-- Add sub-tag -->
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">Add Sub-tag</div>
+        <div style="display:flex;gap:5px">
+          <input id="drawer-child-inp" type="text" placeholder="Sub-tag name…"
+            onkeydown="if(event.key==='Enter')window._plannerDrawerAddChild(${catId},${v.id})"
+            style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+                   font-family:var(--font);font-size:0.68rem;padding:0.22rem 0.45rem;
+                   border-radius:var(--radius);outline:none" />
+          <button onclick="window._plannerDrawerAddChild(${catId},${v.id})"
+            style="background:var(--accent);border:none;color:#fff;font-size:0.62rem;
+                   padding:0.22rem 0.55rem;border-radius:var(--radius);cursor:pointer;
+                   font-family:var(--font);outline:none;white-space:nowrap">+ Add</button>
+        </div>
+        <div id="drawer-child-msg" style="font-size:0.6rem;color:var(--muted);margin-top:0.25rem;min-height:0.9rem"></div>
+      </div>
+
+      <!-- Danger zone -->
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <button onclick="window._plannerDeleteVal(${v.id})"
+          style="background:none;border:1px solid var(--red,#e74c3c);color:var(--red,#e74c3c);
+                 font-size:0.62rem;padding:0.22rem 0.6rem;border-radius:var(--radius);
+                 cursor:pointer;font-family:var(--font);outline:none;
+                 transition:background 0.12s,color 0.12s"
+          onmouseenter="this.style.background='var(--red,#e74c3c)';this.style.color='#fff'"
+          onmouseleave="this.style.background='none';this.style.color='var(--red,#e74c3c)'">
+          Delete tag ✕
+        </button>
+      </div>
+
+    </div>
+  `;
+}
+
+function _plannerDrawerSetStatus(valId, status) {
+  updateCachedValue(valId, { status });
   _renderTagTableFromCache();
-  api.entities.patchValue(valId, { status: nextStatus })
+  _renderCategoryList();
+  _renderDrawer();  // refresh button states
+  api.entities.patchValue(valId, { status })
     .catch(e => toast('Sync error: ' + e.message, 'error'));
 }
 
-function _plannerSaveDesc(valId, rawText) {
-  const desc = (rawText || '').trim();
-  updateCachedValue(valId, { description: desc === '—' ? '' : desc });
-  api.entities.patchValue(valId, { description: desc === '—' ? '' : desc })
+function _plannerDrawerSaveRemarks(valId, text) {
+  const desc = (text || '').trim();
+  updateCachedValue(valId, { description: desc });
+  api.entities.patchValue(valId, { description: desc })
     .catch(e => toast('Sync error: ' + e.message, 'error'));
 }
 
-function _plannerSaveDue(valId, dateStr) {
+function _plannerDrawerSaveDue(valId, dateStr) {
   updateCachedValue(valId, { due_date: dateStr || null });
   api.entities.patchValue(valId, { due_date: dateStr || '' })
     .catch(e => toast('Sync error: ' + e.message, 'error'));
 }
 
-function _plannerArchiveVal(valId) {
-  updateCachedValue(valId, { status: 'archived' });
-  _renderTagTableFromCache();
-  _renderCategoryList();
-  api.entities.patchValue(valId, { status: 'archived' })
-    .catch(e => toast('Sync error: ' + e.message, 'error'));
+async function _plannerDrawerAddChild(catId, parentId) {
+  const inp = document.getElementById('drawer-child-inp');
+  const msg = document.getElementById('drawer-child-msg');
+  const name = (inp?.value || '').trim();
+  if (!name) { if (msg) msg.textContent = 'Enter a name'; return; }
+  const { project } = _plannerState;
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const result = await api.entities.createValue({ category_id: catId, name, project, parent_id: parentId });
+    addCachedValue(catId, {
+      id: result.id, category_id: catId, name, description: '',
+      status: 'active', event_count: 0, due_date: null, parent_id: parentId,
+      created_at: new Date().toISOString(),
+    });
+    _collapsed.delete(parentId);  // auto-expand parent
+    if (inp) inp.value = '';
+    if (msg) msg.textContent = `✓ "${name}" added`;
+    _renderTagTableFromCache();
+    _renderCategoryList();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
 }
 
 async function _plannerDeleteVal(valId) {
   if (!confirm('Delete this tag (and all its children + event links)?')) return;
-  // Remove children from cache first (DB cascade handles the rest)
   getCacheDescendants(valId).forEach(d => removeCachedValue(d.id));
   removeCachedValue(valId);
   _collapsed.delete(valId);
+  _plannerCloseDrawer();
   _renderTagTableFromCache();
   _renderCategoryList();
   api.entities.deleteValue(valId)

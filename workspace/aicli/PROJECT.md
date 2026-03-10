@@ -302,9 +302,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Nested tags architecture — added parent_id column to entity_values for unlimited tag depth (category → tag → subtag); validating database migration and planner UI tree rendering
-- SQL query optimization — implemented frontend tag/category caching on project load to eliminate repeated DB calls; batch updates on save instead of per-action queries
-- Planner UI consolidation — merged Feature/Bug/Tag/Tags tabs into unified tag-based system with category hierarchy, status management, due_date, and custom properties
-- Session memory validation — ensuring user prompts and LLM responses logged to history.jsonl; verifying /memory incremental synthesis from last_memory_run timestamp
-- Frontend reload and backend connectivity — resolved port 8000 bind conflict (stale uvicorn process); confirmed schema live with due_date column; Electron frontend now loads correctly with npm run dev
-- Project dashboard enhancement — planning richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline
+- Nested tags implementation — added parent_id column to entity_values, implemented tree rendering in Planner with child-add buttons, validated idempotent migration
+- Frontend caching strategy — load all project tags/categories once on project access via single batch query, cache in memory, update DB only on explicit save to eliminate repeated SQL calls
+- Chat picker optimization — refactored tag picker to read from cached categories/values instead of DB queries, real-time filter with floating dropdown, zero database calls during selection
+- Database query optimization — implemented batch updates and single-load patterns across chat.js and planner.js, eliminated per-action DB hits
+- Backend connectivity and schema verification — resolved port 8000 bind conflict (stale uvicorn process), confirmed due_date column live in API, Electron frontend reloading correctly with npm run dev
+- Planner tab consolidation — unified Feature/Bug/Tag/Tags tabs into single tag-based system with category hierarchy, status management, due_date, and custom properties
