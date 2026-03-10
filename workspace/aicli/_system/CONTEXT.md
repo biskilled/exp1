@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-10 00:23 UTC — do not edit manually.
+> Auto-generated 2026-03-10 01:02 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 47
-- **Last active**: 2026-03-10T00:15:40Z
+- **Sessions**: 50
+- **Last active**: 2026-03-10T01:01:47Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -149,8 +149,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-10 00:52]** `claude_cli/claude`  
+→ It looks like there are multiple database calls that make the system realy slow. try to avoid many sql calls and upload 
+← _All done. Here's what was completed in `chat.js`:  **New picker flow:** 1. Click `+ Tag` → `_pickerPopulateCats()` reads from cache (zero DB calls) → populates category `<select>` with counts like `⬡ _
+
 **[2026-03-10 00:19]** `claude_cli/claude`  
 → I am shutting down elecrotn and run fresh - but cannot see anythin. also when when I click on project name - i do not se
+← _Port 8000 is now free. The stale backend is gone.  Now do a clean restart from the `ui/` directory using the **dev script** (which sets `NODE_ENV=development` and starts Vite):  ```bash cd /Users/user_
 
 **[2026-03-10 00:11]** `claude_cli/claude`  
 → I think there is an issue with ui as it is not loading properly (and I do see error whie bind address 127.0.0.1, 8000) 

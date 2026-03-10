@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-09] `claude_cli`: Assuming I will improve the project management page, workflow processes. can you update /memory - so
 - [2026-03-09] `claude_cli`: The last prompts was asking for a new feature (clinet install/ support multiple projects) - it was m
 - [2026-03-09] `claude_cli`: I dont think your update works. lets start from Planer - there is not need to have 4 tabs - Feture, 
 - [2026-03-10] `claude_cli`: I think there is an issue with ui as it is not loading properly (and I do see error whie bind addres
 - [2026-03-10] `claude_cli`: I am shutting down elecrotn and run fresh - but cannot see anythin. also when when I click on projec
+- [2026-03-10] `claude_cli`: It looks like there are multiple database calls that make the system realy slow. try to avoid many s
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
