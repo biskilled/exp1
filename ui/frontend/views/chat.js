@@ -1254,6 +1254,8 @@ window._chatSend = async () => {
       _appendSystemMsg(`✓ **Memory files refreshed**${synthNote} → \`${fileList}\``);
       if (result.suggested_tags?.length) {
         _appendSystemMsg(`📎 **${result.suggested_tags.length}** AI tag suggestion${result.suggested_tags.length > 1 ? 's' : ''} appeared above the chat — review and accept or dismiss.`);
+      } else if (result.suggestions_note) {
+        _appendSystemMsg(`ℹ️ No tag suggestions: *${result.suggestions_note}* — check backend logs for detail.`);
       }
     } catch (e) {
       _appendSystemMsg(`Error: ${e.message}`);

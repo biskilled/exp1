@@ -662,12 +662,14 @@ async def _suggest_tags(
     Returns a list of dicts: [{name, category, is_new}].
     Silent on error — returns [] when API key missing or call fails.
     """
+    _log = logging.getLogger(__name__)
     try:
         from core.api_keys import get_key
         import anthropic
 
         key = get_key("claude") or get_key("anthropic")
         if not key:
+            _log.warning("[suggest_tags] No Anthropic API key found under 'claude' or 'anthropic'")
             return []
 
         recent_text = "\n".join(
@@ -676,6 +678,7 @@ async def _suggest_tags(
             if e.get("user_input")
         )
         if not recent_text.strip():
+            _log.info("[suggest_tags] No user_input entries in recent history — skipping")
             return []
 
         existing_names = [v["name"] for v in existing_values[:30] if v.get("name")]
@@ -686,6 +689,7 @@ async def _suggest_tags(
             "propose new ones only if clearly needed.\n"
             'Respond ONLY as valid JSON array: [{"name":"tag","category":"feature|bug|task","is_new":true}]'
         )
+        _log.info("[suggest_tags] Calling Haiku for project=%s, entries=%d", project, len(entries))
         client = anthropic.AsyncAnthropic(api_key=key)
         response = await client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -693,14 +697,18 @@ async def _suggest_tags(
             messages=[{"role": "user", "content": prompt}],
         )
         text = (response.content[0].text if response.content else "").strip()
+        _log.info("[suggest_tags] Haiku raw response: %s", text)
         # Extract JSON array from response
-        import re as _re
-        match = _re.search(r'\[.*?\]', text, _re.DOTALL)
+        match = re.search(r'\[.*?\]', text, re.DOTALL)
         if match:
             suggestions = json.loads(match.group())
-            return [s for s in suggestions if isinstance(s, dict) and s.get("name")][:3]
+            result = [s for s in suggestions if isinstance(s, dict) and s.get("name")][:3]
+            _log.info("[suggest_tags] Parsed %d suggestions: %s", len(result), result)
+            return result
+        _log.warning("[suggest_tags] No JSON array found in response: %s", text)
         return []
-    except Exception:
+    except Exception as e:
+        _log.error("[suggest_tags] Failed: %s: %s", type(e).__name__, e)
         return []
 
 
@@ -1063,7 +1071,10 @@ async def generate_memory(project_name: str):
     # Works with or without PostgreSQL: existing_values is best-effort from DB,
     # falls back to [] so Haiku still suggests tags even when DB is unavailable.
     suggested_tags: list[dict] = []
-    if recent:
+    suggestions_note = ""
+    if not recent:
+        suggestions_note = "no recent history found in history.jsonl"
+    else:
         try:
             existing_values: list[dict] = []
             if db.is_available():
@@ -1080,8 +1091,10 @@ async def generate_memory(project_name: str):
                 except Exception:
                     pass
             suggested_tags = await _suggest_tags(project_name, recent, existing_values)
-        except Exception:
-            pass
+            if not suggested_tags:
+                suggestions_note = "Haiku returned no suggestions (check backend logs for detail)"
+        except Exception as e:
+            suggestions_note = f"error: {e}"
 
     return {
         "generated": generated,
@@ -1089,6 +1102,7 @@ async def generate_memory(project_name: str):
         "skipped_copy": skipped_copy,
         "synthesized": synthesis is not None,
         "incremental_since": last_memory_run,
+        "suggestions_note": suggestions_note,
         "run_ts": run_ts,
         "suggested_tags": suggested_tags,
     }
