@@ -302,9 +302,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Tag persistence across sessions — fixed GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; frontend now correctly retrieves and displays tags when switching sessions
-- Planner UI action visibility — added 3-dot menu (⋯) per tag row with edit/archive/restore/delete actions; replaced small inline buttons with discoverable dropdown menu
-- Database query optimization — batch load all project tags/categories on project access, cache in tagCache.js, eliminated per-action SQL calls during chat/planner interactions
+- AI suggestions workflow — added amber banner between tag bar and messages showing LLM-synthesized tags from /memory; banner only appears when suggestions exist with clear accept/save approval flow
+- Session tag persistence — fixed GET /entities/session-tags endpoint to correctly query event_tags_{p} joined to events/values/categories; tags now persist across session switches
+- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row; menu displays edit/archive/restore/delete actions in discoverable format
+- Database query optimization — implemented frontend tag/category caching on project load to eliminate per-action SQL calls during chat/planner interactions; batch updates only on explicit save
 - Port binding and startup stability — implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts on app restart
-- AI suggestions UX — added dedicated amber banner between tag bar and messages showing LLM-synthesized tags; banner only appears when /memory returns suggestions with clear approval workflow
-- Session tag bar improvements — fixed overflow:hidden clipping in chat tag bar, renamed 'Session:' label to 'Phase:' for clarity, ensured tags persist and display correctly when switching between sessions
+- Session phase labeling — renamed 'Session:' label to 'Phase:' in tag bar for clarity; fixed tag bar overflow clipping to ensure all tags are visible

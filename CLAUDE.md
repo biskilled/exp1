@@ -37,10 +37,10 @@ You are a senior Python software architect with deep expertise in:
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
 - 5-layer memory: immediate → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
-- Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links with parent_id for nested tags
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; root-level creation only from chat picker
 - Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit() in before-quit handler
+- AI suggestions as dedicated amber banner between tag bar and messages; appears only when /memory returns suggestions with explicit approve/reject workflow
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-10] `claude_cli`: planner UI - it is almost imposible to see the action option as they are small, is there is a way to
 - [2026-03-10] `claude_cli`: why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is at
 - [2026-03-10] `claude_cli`: I do see the save button - and when I save I do see the tag, when I am checking another session and 
 - [2026-03-10] `claude_cli`: Where do I click accept , is it in the Chat at the top ? I dont see that
 - [2026-03-10] `claude_cli`: can you run /memory, and make the UI more clear. add your sujjestion in a clear place where user can
+- [2026-03-10] `claude_cli`: can you run /memory and run some tests? I do not see any sujjestion on all the existing session ther
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
