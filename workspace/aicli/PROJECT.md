@@ -302,9 +302,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Session tag persistence — fixed GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; frontend caches and refreshes on save
-- Planner UI discoverability — added 3-dot menu (⋯) per tag row with edit/archive/restore/delete actions; improved button visibility for action triggers
-- Database query optimization — batch load all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls during chat/planner interactions
-- Chat picker refactor — zero DB calls during selection, reads from cached categories/values, real-time filter with floating dropdown, root-level tag creation only
-- Port binding and startup stability — implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts
-- Tag bar visibility and session persistence — fixed overflow:hidden clipping in chat tag bar, ensured tags persist across session switches via getEntitySessionTags() endpoint
+- Tag persistence across sessions — fixed GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; frontend now correctly retrieves and displays tags when switching sessions
+- Planner UI action visibility — added 3-dot menu (⋯) per tag row with edit/archive/restore/delete actions; replaced small inline buttons with discoverable dropdown menu
+- Database query optimization — batch load all project tags/categories on project access, cache in tagCache.js, eliminated per-action SQL calls during chat/planner interactions
+- Port binding and startup stability — implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts on app restart
+- AI suggestions UX — added dedicated amber banner between tag bar and messages showing LLM-synthesized tags; banner only appears when /memory returns suggestions with clear approval workflow
+- Session tag bar improvements — fixed overflow:hidden clipping in chat tag bar, renamed 'Session:' label to 'Phase:' for clarity, ensured tags persist and display correctly when switching between sessions

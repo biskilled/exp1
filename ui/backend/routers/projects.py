@@ -1059,20 +1059,26 @@ async def generate_memory(project_name: str):
         except Exception:
             pass
 
-    # ── Tag suggestions — fetch entity values then ask Haiku ─────────────────
+    # ── Tag suggestions — ask Haiku based on recent history ──────────────────
+    # Works with or without PostgreSQL: existing_values is best-effort from DB,
+    # falls back to [] so Haiku still suggests tags even when DB is unavailable.
     suggested_tags: list[dict] = []
-    if db.is_available() and recent:
+    if recent:
         try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """SELECT id, name, status FROM entity_values
-                           WHERE project=%s AND status='active'
-                           ORDER BY name LIMIT 50""",
-                        (project_name,),
-                    )
-                    ev_rows = cur.fetchall()
-            existing_values = [{"id": r[0], "name": r[1]} for r in ev_rows]
+            existing_values: list[dict] = []
+            if db.is_available():
+                try:
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """SELECT id, name FROM entity_values
+                                   WHERE project=%s AND status='active'
+                                   ORDER BY name LIMIT 50""",
+                                (project_name,),
+                            )
+                            existing_values = [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
+                except Exception:
+                    pass
             suggested_tags = await _suggest_tags(project_name, recent, existing_values)
         except Exception:
             pass

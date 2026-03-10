@@ -404,3 +404,99 @@ async def prompt_evals(project: str | None = Query(None)):
                     pass
 
     return {"evals": list(reversed(evals))}
+
+
+@router.get("/session-commits")
+async def session_commits(
+    session_id: str,
+    project: str | None = Query(None),
+):
+    """Return commits that occurred during a chat session's time window.
+
+    Matches commits by:
+      1. committed_at BETWEEN session.created_at AND session.updated_at  (primary)
+      2. session_id column in commits table matching the session UUID     (secondary)
+
+    Also returns `github_repo` from project.yaml so the frontend can build
+    direct links to GitHub commit pages.
+    """
+    import yaml as _yaml
+
+    p = project or settings.active_project or "default"
+
+    # ── Resolve session timestamps ──────────────────────────────────────────────
+    sessions_dir = Path(settings.workspace_dir) / p / "_system" / "sessions"
+    session_file = sessions_dir / f"{session_id}.json"
+    if not session_file.exists():
+        return {"commits": [], "session_id": session_id, "github_repo": ""}
+
+    try:
+        sess = json.loads(session_file.read_text())
+    except Exception:
+        return {"commits": [], "session_id": session_id, "github_repo": ""}
+
+    created_at  = sess.get("created_at", "")
+    updated_at  = sess.get("updated_at", created_at)
+
+    # ── Get github_repo from project.yaml ──────────────────────────────────────
+    github_repo = ""
+    proj_yaml = Path(settings.workspace_dir) / p / "project.yaml"
+    if proj_yaml.exists():
+        try:
+            cfg = _yaml.safe_load(proj_yaml.read_text()) or {}
+            github_repo = cfg.get("github_repo", "")
+        except Exception:
+            pass
+
+    # Normalise github_repo to base HTTPS URL (strip .git, git@ etc.)
+    if github_repo:
+        import re as _re
+        # git@github.com:user/repo → https://github.com/user/repo
+        github_repo = _re.sub(r'^git@([^:]+):', r'https://\1/', github_repo)
+        github_repo = github_repo.rstrip("/").removesuffix(".git")
+
+    # ── Query commits ──────────────────────────────────────────────────────────
+    commits: list[dict] = []
+
+    if db.is_available():
+        c_table = db.project_table("commits", p)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+                          FROM {c_table}
+                         WHERE (committed_at BETWEEN %s::timestamptz AND %s::timestamptz)
+                            OR session_id = %s
+                         ORDER BY committed_at""",
+                    (created_at, updated_at, session_id),
+                )
+                cols = [d[0] for d in cur.description]
+                for row in cur.fetchall():
+                    r = dict(zip(cols, row))
+                    if r.get("committed_at"):
+                        r["committed_at"] = r["committed_at"].isoformat()
+                    commits.append(r)
+    else:
+        # Fallback: scan commit_log.jsonl
+        log_path = Path(settings.workspace_dir) / p / "_system" / "commit_log.jsonl"
+        if log_path.exists():
+            for line in log_path.read_text().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    c = json.loads(line)
+                    ts  = c.get("ts", "")
+                    sid = c.get("session_id", "")
+                    if sid == session_id or (created_at and updated_at and created_at <= ts <= updated_at):
+                        commits.append({
+                            "commit_hash": c.get("hash", ""),
+                            "commit_msg":  c.get("message", c.get("msg", "")),
+                            "committed_at": ts,
+                            "phase":   c.get("phase"),
+                            "feature": c.get("feature"),
+                            "source":  c.get("source", "git"),
+                        })
+                except Exception:
+                    pass
+
+    return {"commits": commits, "session_id": session_id, "github_repo": github_repo}

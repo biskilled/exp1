@@ -65,12 +65,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Session tag persistence \u2014 fixed GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; frontend caches and refreshes on save",
-    "Planner UI discoverability \u2014 added 3-dot menu (\u22ef) per tag row with edit/archive/restore/delete actions; improved button visibility for action triggers",
-    "Database query optimization \u2014 batch load all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls during chat/planner interactions",
-    "Chat picker refactor \u2014 zero DB calls during selection, reads from cached categories/values, real-time filter with floating dropdown, root-level tag creation only",
-    "Port binding and startup stability \u2014 implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts",
-    "Tag bar visibility and session persistence \u2014 fixed overflow:hidden clipping in chat tag bar, ensured tags persist across session switches via getEntitySessionTags() endpoint"
+    "Tag persistence across sessions \u2014 fixed GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; frontend now correctly retrieves and displays tags when switching sessions",
+    "Planner UI action visibility \u2014 added 3-dot menu (\u22ef) per tag row with edit/archive/restore/delete actions; replaced small inline buttons with discoverable dropdown menu",
+    "Database query optimization \u2014 batch load all project tags/categories on project access, cache in tagCache.js, eliminated per-action SQL calls during chat/planner interactions",
+    "Port binding and startup stability \u2014 implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts on app restart",
+    "AI suggestions UX \u2014 added dedicated amber banner between tag bar and messages showing LLM-synthesized tags; banner only appears when /memory returns suggestions with clear approval workflow",
+    "Session tag bar improvements \u2014 fixed overflow:hidden clipping in chat tag bar, renamed 'Session:' label to 'Phase:' for clarity, ensured tags persist and display correctly when switching between sessions"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -102,5 +102,5 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-10T02:34:22Z"
+  "last_memory_run": "2026-03-10T02:43:27Z"
 }

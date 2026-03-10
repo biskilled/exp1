@@ -181,9 +181,18 @@ export class HistoryView {
 
   async _renderCommits(container) {
     const project = state.currentProject?.name || '';
-    const data = await api.historyCommits(project, 100);
+    const [data, cfgData] = await Promise.all([
+      api.historyCommits(project, 100),
+      api.getProjectConfig(project).catch(() => ({})),
+    ]);
     const commits = data.commits || [];
     const fromDb = data.source === 'db';
+    // Build GitHub base URL from project config
+    let ghBase = (cfgData.github_repo || '').replace(/\/$/, '').replace(/\.git$/, '');
+    if (ghBase.startsWith('git@')) {
+      ghBase = ghBase.replace(/^git@([^:]+):/, 'https://$1/');
+    }
+    this._ghBase = ghBase;
 
     const untaggedCount = commits.filter(c => !c.phase).length;
 
@@ -242,12 +251,21 @@ export class HistoryView {
     const editStyle = canEdit ? 'cursor:text;min-width:60px' : 'color:var(--muted)';
     const PHASES = ['', 'discovery', 'development', 'prod'];
 
+    const ghBase  = this._ghBase || '';
+    const hashFull = c.commit_hash || '';
+    const hashShort = hashFull.slice(0, 8);
+    const hashEl = ghBase && hashFull
+      ? `<a href="${ghBase}/commit/${hashFull}" target="_blank"
+            style="font-family:monospace;color:var(--accent);text-decoration:none"
+            title="Open commit in GitHub">${hashShort} ↗</a>`
+      : `<span style="font-family:monospace;color:var(--accent)">${hashShort}</span>`;
+
     return `
       <tr data-commit-id="${c.id || ''}" data-idx="${i}"
           style="border-bottom:1px solid var(--border);${rowBorder};transition:background .15s"
           onmouseenter="this.style.background='var(--surface)'"
           onmouseleave="this.style.background=''">
-        <td style="padding:5px 8px;font-family:monospace;color:var(--accent)">${(c.commit_hash || '').slice(0, 8)}</td>
+        <td style="padding:5px 8px">${hashEl}</td>
         <td style="padding:5px 8px;color:var(--muted);white-space:nowrap">${dateStr}</td>
         <td style="padding:5px 4px">
           ${canEdit

@@ -104,6 +104,8 @@ export const api = {
   patchCommit: (id, body) => fetch(_base() + `/history/commits/${encodeURIComponent(id)}`, {
     method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  getSessionCommits: (sessionId, project) =>
+    _get(`/history/session-commits?session_id=${encodeURIComponent(sessionId)}&project=${encodeURIComponent(project || '')}`),
   syncCommits: (project) => fetch(_base() + `/history/commits/sync?project=${encodeURIComponent(project || '')}`, {
     method: 'POST', headers: _headers(),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),

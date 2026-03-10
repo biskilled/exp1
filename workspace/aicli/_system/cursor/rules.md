@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 02:33 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 02:43 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -46,8 +46,8 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-10] yes
 - [2026-03-10] planner UI - it is almost imposible to see the action option as they are small, is there is a way to improve the visibil
 - [2026-03-10] why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is attemp to bind address
 - [2026-03-10] I do see the save button - and when I save I do see the tag, when I am checking another session and come back (at the ui
 - [2026-03-10] Where do I click accept , is it in the Chat at the top ? I dont see that
+- [2026-03-10] can you run /memory, and make the UI more clear. add your sujjestion in a clear place where user can understand it is ai

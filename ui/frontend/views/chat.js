@@ -1083,6 +1083,52 @@ function _initChatResize() {
   });
 }
 
+/** Fetch commits for this session and show a footer section in the messages area. */
+async function _renderSessionCommits(msgsContainer, sessionId, project) {
+  // Remove stale commits footer if any
+  const old = document.getElementById('session-commits-footer');
+  if (old) old.remove();
+  if (!sessionId) return;
+  try {
+    const data = await api.getSessionCommits(sessionId, project);
+    const commits = data.commits || [];
+    if (!commits.length) return;
+    const ghBase = (data.github_repo || '').replace(/\/$/, '');
+    const rows = commits.map(c => {
+      const hash  = (c.commit_hash || '').slice(0, 8);
+      const date  = (c.committed_at || '').slice(0, 16).replace('T', ' ');
+      const msg   = (c.commit_msg || '').slice(0, 80);
+      const hashEl = ghBase
+        ? `<a href="${ghBase}/commit/${_esc(c.commit_hash)}" target="_blank"
+              style="font-family:monospace;color:var(--accent);text-decoration:none"
+              title="Open in GitHub">${hash} ↗</a>`
+        : `<span style="font-family:monospace;color:var(--accent)">${hash}</span>`;
+      return `<div style="display:flex;gap:0.6rem;align-items:baseline;padding:0.18rem 0;
+                          border-bottom:1px solid var(--border);font-size:0.62rem">
+        ${hashEl}
+        <span style="color:var(--muted);white-space:nowrap">${_esc(date)}</span>
+        <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${_esc(msg)}</span>
+        ${c.feature ? `<span style="color:#27ae60;white-space:nowrap;font-size:0.55rem">#${_esc(c.feature)}</span>` : ''}
+      </div>`;
+    }).join('');
+    const footer = document.createElement('div');
+    footer.id = 'session-commits-footer';
+    footer.style.cssText = 'margin:1rem 0.75rem 0.5rem;border:1px solid var(--border);border-radius:6px;overflow:hidden';
+    footer.innerHTML = `
+      <div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.6rem;
+                  background:var(--surface2);border-bottom:1px solid var(--border)">
+        <span style="font-size:0.6rem;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase">
+          ⑂ ${commits.length} Commit${commits.length !== 1 ? 's' : ''} in this session
+        </span>
+        ${ghBase ? `<a href="${ghBase}/commits" target="_blank"
+            style="font-size:0.55rem;color:var(--accent);text-decoration:none;margin-left:auto">
+            View on GitHub ↗</a>` : ''}
+      </div>
+      <div style="padding:0.3rem 0.6rem 0.2rem">${rows}</div>`;
+    msgsContainer.appendChild(footer);
+  } catch { /* silent — no commits or no backend */ }
+}
+
 window._chatLoad = async (id) => {
   _sessionId = id;
   try {
@@ -1098,8 +1144,8 @@ window._chatLoad = async (id) => {
       if (m.role === 'assistant') _appendAssistantMsg(m.content);
     }
     // Reload confirmed entity tags from DB (they live in event_tags, not session metadata)
+    const project = state.currentProject?.name;
     try {
-      const project = state.currentProject?.name;
       const tagData = await api.entities.getEntitySessionTags(id, project);
       _appliedEntities = (tagData.tags || []).map(t => ({
         value_id:      t.id,
@@ -1111,6 +1157,8 @@ window._chatLoad = async (id) => {
       _renderEntityChips();
       _updateSaveButton();
     } catch { /* DB unavailable — silent */ }
+    // Load commits associated with this session
+    _renderSessionCommits(msgs, id, project);
     // Highlight active session in sidebar
     document.querySelectorAll('#chat-sessions > div').forEach((el, i) => {
       const active = _sessionCache[i]?.id === id;
