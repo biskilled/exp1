@@ -1,9 +1,10 @@
 /**
  * entities.js — Planner: Unified Tag Manager.
  *
- * 2-pane layout: left pane = category list (160px), right pane = tag table.
- * All project items (features, tasks, bugs, etc.) are entity_values in different
- * categories — no separate tabs needed. Status cycles active→done→archived.
+ * 2-pane layout: left = category list (160px), right = tag table.
+ * Reads from the shared tagCache — zero DB calls on navigation. Mutations
+ * update the cache synchronously (instant UI feedback) then fire the DB
+ * call in the background.
  *
  * Requires PostgreSQL (shows 503 notice when unavailable).
  */
@@ -11,14 +12,25 @@
 import { state } from '../stores/state.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
+import {
+  loadTagCache, isCacheLoaded, getCacheProject,
+  getCacheCategories, getCacheValues,
+  addCachedValue, updateCachedValue, removeCachedValue, addCachedCategory,
+} from '../utils/tagCache.js';
 
-let _plannerState = { selectedCat: null, selectedCatName: '', project: '' };
+let _plannerState = {
+  selectedCat:      null,
+  selectedCatName:  '',
+  selectedCatColor: '',
+  selectedCatIcon:  '',
+  project:          '',
+};
 
 // ── Main render ───────────────────────────────────────────────────────────────
 
 export function renderEntities(container) {
   const project = state.currentProject?.name || '';
-  _plannerState = { selectedCat: null, selectedCatName: '', project };
+  _plannerState = { selectedCat: null, selectedCatName: '', selectedCatColor: '', selectedCatIcon: '', project };
 
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
@@ -29,7 +41,7 @@ export function renderEntities(container) {
         <span style="font-size:0.85rem;font-weight:700;color:var(--text)">Tag Management</span>
         ${project ? `<span style="font-size:0.65rem;color:var(--accent)">${_esc(project)}</span>` : ''}
         <button class="btn btn-ghost btn-sm" style="margin-left:auto"
-          onclick="window._plannerSync()" title="Sync events + reload">↻ Sync</button>
+          onclick="window._plannerSync()" title="Sync events + reload cache">↻ Sync</button>
       </div>
 
       <!-- 2-pane body -->
@@ -80,88 +92,67 @@ export function renderEntities(container) {
     return;
   }
 
-  _loadCategories();
+  _initPlanner(project);
 }
 
-// ── Categories ────────────────────────────────────────────────────────────────
+// ── Init: use cache if warm, otherwise load ──────────────────────────────────
 
-async function _loadCategories() {
-  const { project } = _plannerState;
+async function _initPlanner(project) {
+  if (!isCacheLoaded() || getCacheProject() !== project) {
+    document.getElementById('planner-cat-list').innerHTML =
+      '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">Loading…</div>';
+    await loadTagCache(project);
+  }
+  _renderCategoryList();
+}
+
+// ── Category list ─────────────────────────────────────────────────────────────
+
+function _renderCategoryList() {
   const list = document.getElementById('planner-cat-list');
   if (!list) return;
-  list.innerHTML = '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">Loading…</div>';
-  try {
-    const data = await api.entities.listCategories(project);
-    const cats  = data.categories || [];
-    if (!cats.length) {
-      list.innerHTML = '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">No categories yet</div>';
-      return;
-    }
-    list.innerHTML = cats.map(c => `
-      <div class="planner-cat-row" data-id="${c.id}" data-name="${_esc(c.name)}"
-           data-color="${_esc(c.color)}" data-icon="${_esc(c.icon)}"
-           onclick="window._plannerSelectCat(${c.id},'${_esc(c.name)}')"
-           style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;
-                  cursor:pointer;margin-bottom:2px;transition:background 0.1s;
-                  background:${_plannerState.selectedCat === c.id ? 'var(--accent)22' : 'transparent'};
-                  border-left:2px solid ${_plannerState.selectedCat === c.id ? 'var(--accent)' : 'transparent'}">
-        <span style="color:${c.color};font-size:0.85rem">${c.icon}</span>
-        <span style="font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(c.name)}</span>
-        <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${c.value_count}</span>
-      </div>`).join('');
-  } catch (e) {
-    list.innerHTML = `<div style="color:var(--red,#e74c3c);font-size:0.62rem;padding:8px 10px">${_esc(e.message)}</div>`;
+  const cats = getCacheCategories();
+  if (!cats.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">No categories yet</div>';
+    return;
   }
+  list.innerHTML = cats.map(c => `
+    <div class="planner-cat-row" data-id="${c.id}"
+         onclick="window._plannerSelectCat(${c.id},'${_esc(c.name)}')"
+         style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;
+                cursor:pointer;margin-bottom:2px;transition:background 0.1s;
+                background:${_plannerState.selectedCat === c.id ? 'var(--accent)22' : 'transparent'};
+                border-left:2px solid ${_plannerState.selectedCat === c.id ? 'var(--accent)' : 'transparent'}">
+      <span style="color:${c.color};font-size:0.85rem">${c.icon}</span>
+      <span style="font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(c.name)}</span>
+      <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${c.value_count ?? getCacheValues(c.id).length}</span>
+    </div>`).join('');
 }
 
 async function _plannerSelectCat(catId, catName) {
   _plannerState.selectedCat = catId;
   _plannerState.selectedCatName = catName;
+  const cat = getCacheCategories().find(c => c.id === catId) || {};
+  _plannerState.selectedCatColor = cat.color || 'var(--accent)';
+  _plannerState.selectedCatIcon  = cat.icon  || '⬡';
+
+  // Update active style in left pane
   document.querySelectorAll('.planner-cat-row').forEach(r => {
     const sel = parseInt(r.dataset.id) === catId;
     r.style.background = sel ? 'var(--accent)22' : 'transparent';
     r.style.borderLeft = sel ? '2px solid var(--accent)' : '2px solid transparent';
   });
-  await _loadTagTable(catId, catName);
-}
 
-async function _plannerNewCat(name) {
-  name = (name || '').trim();
-  if (!name) return;
-  const { project } = _plannerState;
-  const inp = document.getElementById('planner-new-cat-inp');
-  try {
-    await api.entities.createCategory({ name, project });
-    if (inp) inp.value = '';
-    await _loadCategories();
-  } catch (e) { toast('Create failed: ' + e.message, 'error'); }
+  _renderTagTableFromCache();
 }
 
 // ── Tag table ─────────────────────────────────────────────────────────────────
 
-async function _loadTagTable(catId, catName) {
+function _renderTagTableFromCache() {
+  const { selectedCat, selectedCatName, selectedCatColor, selectedCatIcon } = _plannerState;
   const pane = document.getElementById('planner-tags-pane');
-  if (!pane) return;
-  const { project } = _plannerState;
-
-  const catRow   = document.querySelector(`.planner-cat-row[data-id="${catId}"]`);
-  const catColor = catRow?.dataset.color || 'var(--accent)';
-  const catIcon  = catRow?.dataset.icon  || '⬡';
-
-  pane.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:1rem">Loading…</div>';
-  try {
-    const data = await api.entities.listValues(project, catId);
-    _renderTagTable(pane, catId, catName, catColor, catIcon, data.values || []);
-  } catch (e) {
-    const is503 = e.message.includes('503') || e.message.includes('PostgreSQL');
-    pane.innerHTML = `
-      <div style="color:var(--muted);font-size:0.72rem;padding:3rem;text-align:center">
-        <div style="font-size:2rem;margin-bottom:0.75rem">☁</div>
-        ${is503
-          ? 'PostgreSQL required for tag management.<br><br><span style="font-size:0.65rem">Set DATABASE_URL in your environment to enable.</span>'
-          : _esc(e.message)}
-      </div>`;
-  }
+  if (!pane || !selectedCat) return;
+  _renderTagTable(pane, selectedCat, selectedCatName, selectedCatColor, selectedCatIcon, getCacheValues(selectedCat));
 }
 
 function _renderTagTable(pane, catId, catName, catColor, catIcon, vals) {
@@ -272,57 +263,50 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon, vals) {
     </table>`}
   `;
 
-  // Wire the "New Tag" show button (defined inline so catId is in scope)
   window._plannerShowNewTag = () => {
     const row = document.getElementById('planner-new-tag-row');
-    if (!row) return;
-    row.style.display = 'flex';
+    if (row) row.style.display = 'flex';
     setTimeout(() => document.getElementById('planner-new-tag-inp')?.focus(), 0);
   };
 }
 
-// ── Tag actions ───────────────────────────────────────────────────────────────
+// ── Mutations — update cache sync, fire DB in background ─────────────────────
 
-async function _plannerCycleStatus(valId, nextStatus) {
-  try {
-    await api.entities.patchValue(valId, { status: nextStatus });
-    const { selectedCat, selectedCatName } = _plannerState;
-    if (selectedCat) await _loadTagTable(selectedCat, selectedCatName);
-  } catch (e) { toast(e.message, 'error'); }
+function _plannerCycleStatus(valId, nextStatus) {
+  updateCachedValue(valId, { status: nextStatus });
+  _renderTagTableFromCache();
+  api.entities.patchValue(valId, { status: nextStatus })
+    .catch(e => toast('Sync error: ' + e.message, 'error'));
 }
 
-async function _plannerSaveDesc(valId, rawText) {
+function _plannerSaveDesc(valId, rawText) {
   const desc = (rawText || '').trim();
-  try {
-    await api.entities.patchValue(valId, { description: desc === '—' ? '' : desc });
-  } catch (e) { toast('Save failed: ' + e.message, 'error'); }
+  updateCachedValue(valId, { description: desc === '—' ? '' : desc });
+  api.entities.patchValue(valId, { description: desc === '—' ? '' : desc })
+    .catch(e => toast('Sync error: ' + e.message, 'error'));
 }
 
-async function _plannerSaveDue(valId, dateStr) {
-  try {
-    await api.entities.patchValue(valId, { due_date: dateStr || '' });
-    toast('Due date saved', 'success');
-  } catch (e) { toast('Save failed: ' + e.message, 'error'); }
+function _plannerSaveDue(valId, dateStr) {
+  updateCachedValue(valId, { due_date: dateStr || null });
+  api.entities.patchValue(valId, { due_date: dateStr || '' })
+    .catch(e => toast('Sync error: ' + e.message, 'error'));
 }
 
-async function _plannerArchiveVal(valId) {
-  try {
-    await api.entities.patchValue(valId, { status: 'archived' });
-    toast('Archived', 'success');
-    const { selectedCat, selectedCatName } = _plannerState;
-    if (selectedCat) await _loadTagTable(selectedCat, selectedCatName);
-  } catch (e) { toast(e.message, 'error'); }
+function _plannerArchiveVal(valId) {
+  updateCachedValue(valId, { status: 'archived' });
+  _renderTagTableFromCache();
+  _renderCategoryList();
+  api.entities.patchValue(valId, { status: 'archived' })
+    .catch(e => toast('Sync error: ' + e.message, 'error'));
 }
 
 async function _plannerDeleteVal(valId) {
   if (!confirm('Delete this tag and all its event links?')) return;
-  try {
-    await api.entities.deleteValue(valId);
-    toast('Deleted', 'success');
-    const { selectedCat, selectedCatName } = _plannerState;
-    if (selectedCat) await _loadTagTable(selectedCat, selectedCatName);
-    await _loadCategories();
-  } catch (e) { toast(e.message, 'error'); }
+  removeCachedValue(valId);
+  _renderTagTableFromCache();
+  _renderCategoryList();
+  api.entities.deleteValue(valId)
+    .catch(e => toast('Delete sync error: ' + e.message, 'error'));
 }
 
 async function _plannerSaveNewTag(catId) {
@@ -331,11 +315,17 @@ async function _plannerSaveNewTag(catId) {
   if (!name) { toast('Name required', 'error'); return; }
   const { project, selectedCatName } = _plannerState;
   try {
-    await api.entities.createValue({ category_id: catId, name, project });
+    // Need the new ID from DB before we can cache it
+    const result = await api.entities.createValue({ category_id: catId, name, project });
+    addCachedValue(catId, {
+      id: result.id, category_id: catId, name, description: '',
+      status: 'active', event_count: 0, due_date: null,
+      created_at: new Date().toISOString(),
+    });
     if (inp) inp.value = '';
     _plannerCancelNewTag();
-    await _loadTagTable(catId, selectedCatName);
-    await _loadCategories();
+    _renderTagTableFromCache();
+    _renderCategoryList();
   } catch (e) { toast('Create failed: ' + e.message, 'error'); }
 }
 
@@ -346,14 +336,29 @@ function _plannerCancelNewTag() {
   if (inp) inp.value = '';
 }
 
+async function _plannerNewCat(name) {
+  name = (name || '').trim();
+  if (!name) return;
+  const { project } = _plannerState;
+  const inp = document.getElementById('planner-new-cat-inp');
+  try {
+    const result = await api.entities.createCategory({ name, project });
+    addCachedCategory({ id: result.id, name, color: '#4a90e2', icon: '⬡' });
+    if (inp) inp.value = '';
+    _renderCategoryList();
+  } catch (e) { toast('Create failed: ' + e.message, 'error'); }
+}
+
 async function _plannerSync() {
   const { project, selectedCat, selectedCatName } = _plannerState;
   if (!project) return;
   try {
     const r = await api.entities.syncEvents(project);
     toast(`Synced — ${r.imported?.prompt || 0} prompts, ${r.imported?.commit || 0} commits`, 'success');
-    if (selectedCat) await _loadTagTable(selectedCat, selectedCatName);
-    await _loadCategories();
+    // Reload cache to get updated event_counts
+    await loadTagCache(project, true);
+    _renderCategoryList();
+    if (selectedCat) _renderTagTableFromCache();
   } catch (e) { toast(e.message, 'error'); }
 }
 

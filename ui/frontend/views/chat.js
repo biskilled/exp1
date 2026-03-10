@@ -1,6 +1,7 @@
 import { state, setState } from '../stores/state.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
+import { getCacheCategories, getCacheValues, addCachedValue } from '../utils/tagCache.js';
 
 const PROVIDERS = [
   { id: 'claude',   label: 'Claude'   },
@@ -24,8 +25,8 @@ let _sessionTags = { phase: '' };
 // Entity tags applied to current session via the + Tag picker
 let _appliedEntities  = []; // [{value_id, category_name, name, color, icon}]
 let _suggestedTags    = []; // [{name, category, is_new}] — LLM suggestions from /memory
-let _pickerOpen       = false;
-let _pickerCategoryData = []; // [{id, name, color, icon, values:[...]}] — loaded when picker opens
+let _pickerOpen        = false;
+let _selectedPickerCat = null;  // catId currently selected in the picker
 
 // Fallback color/icon for known category names (used in _acceptSuggestedTag)
 const _ENTITY_TYPES = [
@@ -139,48 +140,41 @@ export function renderChat(container) {
 
         <!-- Entity picker panel (shown when + Tag is clicked) -->
         <div id="chat-entity-picker"
-          style="display:none;flex-direction:column;gap:0;padding:0.4rem 0.75rem;
-                 border-bottom:1px solid var(--border);background:var(--surface);
-                 flex-shrink:0;max-height:260px">
-          <!-- Filter bar -->
-          <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem;flex-shrink:0">
-            <input id="picker-filter-inp" type="text" placeholder="🔍 Filter tags…"
-              oninput="window._pickerFilter(this.value)"
-              style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
-                     font-family:var(--font);font-size:0.64rem;padding:0.18rem 0.45rem;
-                     border-radius:var(--radius);outline:none" />
+          style="display:none;flex-direction:column;gap:0.3rem;padding:0.4rem 0.75rem;
+                 border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
+          <div style="display:flex;align-items:center;gap:0.4rem">
+            <!-- Category select (with counts) -->
+            <select id="picker-cat-sel" onchange="window._pickerCatChange(this.value)"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+                     font-family:var(--font);font-size:0.68rem;padding:0.2rem 0.4rem;
+                     border-radius:var(--radius);outline:none;max-width:155px;flex-shrink:0">
+              <option value="">Category…</option>
+            </select>
+            <!-- Smart value combobox -->
+            <div style="position:relative;flex:1">
+              <input id="picker-val-inp" type="text" placeholder="Select category first…"
+                autocomplete="off" disabled
+                oninput="window._pickerValFilter(this.value)"
+                onfocus="window._pickerValOpen()"
+                onblur="setTimeout(()=>window._pickerValClose(),160)"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();window._pickerAddNew(this.value)}"
+                style="width:100%;background:var(--bg);border:1px solid var(--border);
+                       color:var(--text);font-family:var(--font);font-size:0.68rem;
+                       padding:0.2rem 0.4rem;border-radius:var(--radius);outline:none;
+                       box-sizing:border-box" />
+              <!-- Floating dropdown -->
+              <div id="picker-val-dd"
+                   style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;
+                          z-index:200;background:var(--bg);border:1px solid var(--border);
+                          border-radius:var(--radius);max-height:180px;overflow-y:auto;
+                          box-shadow:0 4px 14px rgba(0,0,0,0.25)">
+              </div>
+            </div>
             <button onclick="window._closeEntityPicker()"
               style="background:none;border:none;color:var(--muted);cursor:pointer;
-                     font-size:0.8rem;padding:0 0.25rem;flex-shrink:0">✕</button>
+                     font-size:0.8rem;padding:0 0.25rem;flex-shrink:0;line-height:1">✕</button>
           </div>
-          <!-- Grouped list -->
-          <div id="picker-groups-list"
-               style="overflow-y:auto;flex:1;min-height:40px;
-                      border-top:1px solid var(--border);padding-top:0.25rem">
-            <div style="color:var(--muted);font-size:0.65rem;padding:0.5rem">Loading…</div>
-          </div>
-          <!-- Add new section -->
-          <div style="border-top:1px solid var(--border);padding:0.3rem 0 0;flex-shrink:0;margin-top:0.25rem">
-            <div style="font-size:0.55rem;color:var(--muted);margin-bottom:0.2rem">+ Add new tag</div>
-            <div style="display:flex;gap:0.3rem;align-items:center;flex-wrap:wrap">
-              <select id="picker-new-cat-sel"
-                style="background:var(--bg);border:1px solid var(--border);color:var(--text);
-                       font-family:var(--font);font-size:0.62rem;padding:0.15rem 0.35rem;
-                       border-radius:var(--radius);outline:none;max-width:110px">
-                <option value="">Category…</option>
-              </select>
-              <input id="picker-new-name-inp" type="text" placeholder="Tag name…"
-                onkeydown="if(event.key==='Enter')window._saveNewTagFromPicker()"
-                style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);
-                       color:var(--text);font-family:var(--font);font-size:0.62rem;
-                       padding:0.15rem 0.35rem;border-radius:var(--radius);outline:none" />
-              <button onclick="window._saveNewTagFromPicker()"
-                style="background:var(--accent);border:none;color:#fff;font-family:var(--font);
-                       font-size:0.62rem;padding:0.18rem 0.55rem;border-radius:var(--radius);
-                       cursor:pointer;flex-shrink:0;outline:none">Save</button>
-            </div>
-            <div id="picker-add-msg" style="font-size:0.6rem;color:var(--muted);min-height:0.8rem;margin-top:0.15rem"></div>
-          </div>
+          <div id="picker-msg" style="font-size:0.6rem;color:var(--muted);min-height:0.75rem"></div>
         </div>
 
         <!-- Messages -->
@@ -274,11 +268,14 @@ function _setupTagBar() {
   });
 
   // Expose picker functions globally
-  window._toggleEntityPicker  = _toggleEntityPicker;
-  window._closeEntityPicker   = _closeEntityPicker;
-  window._applyTagDirect      = _applyTagDirect;
-  window._saveNewTagFromPicker = _saveNewTagFromPicker;
-  window._pickerFilter        = (q) => _renderPickerGroups(_pickerCategoryData, q);
+  window._toggleEntityPicker = _toggleEntityPicker;
+  window._closeEntityPicker  = _closeEntityPicker;
+  window._pickerCatChange    = _pickerCatChange;
+  window._pickerValFilter    = _pickerValFilter;
+  window._pickerValOpen      = _pickerValOpen;
+  window._pickerValClose     = _pickerValClose;
+  window._pickerSelectVal    = _pickerSelectVal;
+  window._pickerAddNew       = _pickerAddNew;
 }
 
 function _updateTagBarStatus() {
@@ -318,89 +315,163 @@ function _toggleEntityPicker() {
   if (!panel) return;
   _pickerOpen = true;
   panel.style.display = 'flex';
-  // Clear filter input
-  const filterInp = document.getElementById('picker-filter-inp');
-  if (filterInp) filterInp.value = '';
-  _loadPickerGroups();
+  _pickerPopulateCats();
 }
 
 function _closeEntityPicker() {
   const panel = document.getElementById('chat-entity-picker');
   if (panel) panel.style.display = 'none';
+  const dd = document.getElementById('picker-val-dd');
+  if (dd) dd.style.display = 'none';
   _pickerOpen = false;
 }
 
-async function _loadPickerGroups() {
-  const groupsList = document.getElementById('picker-groups-list');
-  const catSel     = document.getElementById('picker-new-cat-sel');
-  const project    = state.currentProject?.name;
-  if (!project || !groupsList) return;
+/** Populate the category <select> from cache (no DB call). */
+function _pickerPopulateCats() {
+  const sel = document.getElementById('picker-cat-sel');
+  const inp = document.getElementById('picker-val-inp');
+  if (!sel) return;
 
-  groupsList.innerHTML = '<div style="color:var(--muted);font-size:0.65rem;padding:0.5rem">Loading…</div>';
-  _pickerCategoryData = [];
+  const cats = getCacheCategories();
+  sel.innerHTML = '<option value="">Category…</option>' +
+    cats.map(c => {
+      const vals = getCacheValues(c.id);
+      const cnt  = vals.filter(v => !v.status || v.status === 'active').length;
+      return `<option value="${c.id}">${_esc(c.icon)} ${_esc(c.name)} (${cnt})</option>`;
+    }).join('');
 
-  try {
-    const catData = await api.entities.listCategories(project);
-    const cats    = catData.categories || [];
-
-    // Populate new-tag category selector
-    if (catSel) {
-      catSel.innerHTML = '<option value="">Category…</option>' +
-        cats.map(c => `<option value="${c.id}" data-name="${_esc(c.name)}"
-          data-color="${_esc(c.color)}" data-icon="${_esc(c.icon)}">${_esc(c.icon)} ${_esc(c.name)}</option>`).join('');
-    }
-
-    // Load values for each category in parallel
-    const groups = await Promise.all(cats.map(async c => {
-      try {
-        const vData = await api.entities.listValues(project, c.id, { status: 'active' });
-        return { ...c, values: vData.values || [] };
-      } catch { return { ...c, values: [] }; }
-    }));
-
-    _pickerCategoryData = groups;
-    _renderPickerGroups(groups, '');
-  } catch (e) {
-    if (groupsList) groupsList.innerHTML =
-      `<div style="color:var(--red,#e74c3c);font-size:0.65rem;padding:0.5rem">${_esc(e.message)}</div>`;
-  }
+  // Reset combobox
+  _selectedPickerCat = null;
+  if (inp) { inp.value = ''; inp.placeholder = 'Select category first…'; inp.disabled = true; }
+  const dd = document.getElementById('picker-val-dd');
+  if (dd) dd.style.display = 'none';
+  const msg = document.getElementById('picker-msg');
+  if (msg) msg.textContent = '';
 }
 
-function _renderPickerGroups(groups, filter) {
-  const list = document.getElementById('picker-groups-list');
-  if (!list) return;
-  const q = (filter || '').toLowerCase();
-  let html = '';
+/** Called when user changes the category <select>. */
+function _pickerCatChange(catId) {
+  _selectedPickerCat = catId || null;
+  const inp = document.getElementById('picker-val-inp');
+  if (!inp) return;
+  if (!_selectedPickerCat) {
+    inp.value = ''; inp.placeholder = 'Select category first…'; inp.disabled = true;
+    const dd = document.getElementById('picker-val-dd');
+    if (dd) dd.style.display = 'none';
+    return;
+  }
+  inp.disabled = false;
+  const cat = getCacheCategories().find(c => String(c.id) === String(catId));
+  inp.placeholder = `Search ${cat?.name || 'tags'}… or type to add`;
+  inp.value = '';
+  inp.focus();
+  _pickerValFilter('');
+}
 
-  for (const g of groups) {
-    const matchedVals = g.values.filter(v =>
-      !q || v.name.toLowerCase().includes(q) || g.name.toLowerCase().includes(q)
-    );
-    if (!matchedVals.length && q) continue;
+/** Render the floating dropdown based on current filter text. */
+function _pickerValFilter(q) {
+  const dd = document.getElementById('picker-val-dd');
+  if (!dd || !_selectedPickerCat) return;
 
+  const query = (q || '').toLowerCase().trim();
+  const allVals = getCacheValues(_selectedPickerCat).filter(v => !v.status || v.status === 'active');
+  const matched = query
+    ? allVals.filter(v => v.name.toLowerCase().includes(query))
+    : allVals;
+
+  let html = matched.map(v => `
+    <div onmousedown="event.preventDefault();window._pickerSelectVal(${v.id},'${_esc(v.name)}')"
+         style="padding:5px 10px;cursor:pointer;font-size:0.68rem;display:flex;
+                justify-content:space-between;align-items:center"
+         onmouseenter="this.style.background='var(--surface2)'"
+         onmouseleave="this.style.background='transparent'">
+      <span>${_esc(v.name)}</span>
+      ${v.event_count ? `<span style="font-size:0.58rem;color:var(--muted)">${v.event_count}</span>` : ''}
+    </div>`).join('');
+
+  // Always show "+ Add" option when there's typed text that isn't an exact match
+  const exactMatch = allVals.some(v => v.name.toLowerCase() === query);
+  if (query && !exactMatch) {
     html += `
-      <div class="picker-group" data-cat-id="${g.id}">
-        <div style="font-size:0.58rem;color:${g.color};font-weight:600;padding:4px 6px 2px;
-                    letter-spacing:0.03em;display:flex;align-items:center;gap:4px">
-          <span>${g.icon}</span><span>${_esc(g.name)}</span>
-        </div>
-        ${matchedVals.length === 0
-          ? `<div style="font-size:0.6rem;color:var(--muted);padding:2px 18px 4px">No active tags</div>`
-          : matchedVals.map(v => `
-            <div class="picker-tag-row"
-                 onclick="window._applyTagDirect(${v.id},'${_esc(v.name)}',${g.id},'${_esc(g.name)}','${_esc(g.icon)}','${_esc(g.color)}')"
-                 style="display:flex;align-items:center;gap:6px;padding:3px 18px;cursor:pointer;
-                        font-size:0.65rem;transition:background 0.1s;border-radius:3px"
-                 onmouseenter="this.style.background='var(--surface2)'"
-                 onmouseleave="this.style.background='transparent'">
-              <span style="color:var(--muted);font-size:0.55rem">·</span>
-              <span style="flex:1">${_esc(v.name)}</span>
-              ${v.event_count ? `<span style="font-size:0.55rem;color:var(--muted)">(${v.event_count})</span>` : ''}
-            </div>`).join('')}
+      <div onmousedown="event.preventDefault();window._pickerAddNew('${_esc(q)}')"
+           style="padding:5px 10px;cursor:pointer;font-size:0.68rem;color:var(--accent);
+                  border-top:1px solid var(--border);display:flex;align-items:center;gap:4px"
+           onmouseenter="this.style.background='var(--surface2)'"
+           onmouseleave="this.style.background='transparent'">
+        <span>+</span><span>Add "${_esc(q)}"</span>
       </div>`;
   }
 
-  list.innerHTML = html || '<div style="color:var(--muted);font-size:0.65rem;padding:0.5rem">No matching tags</div>';
+  dd.innerHTML = html || `<div style="padding:5px 10px;font-size:0.65rem;color:var(--muted)">No tags yet — type to add</div>`;
+  dd.style.display = 'block';
+}
+
+function _pickerValOpen() {
+  if (!_selectedPickerCat) return;
+  const inp = document.getElementById('picker-val-inp');
+  _pickerValFilter(inp?.value || '');
+}
+
+function _pickerValClose() {
+  const dd = document.getElementById('picker-val-dd');
+  if (dd) dd.style.display = 'none';
+}
+
+/** User clicked an existing value — auto-tag immediately, no Save button. */
+async function _pickerSelectVal(valueId, valueName) {
+  const project = state.currentProject?.name;
+  if (!project) { toast('No project open', 'error'); return; }
+  if (!_sessionId) { toast('Send a message first to start a session — then tag it', 'error'); return; }
+
+  const cat  = getCacheCategories().find(c => String(c.id) === String(_selectedPickerCat)) || {};
+  const icon  = cat.icon  || '⬡';
+  const color = cat.color || '#4a90e2';
+  const catName = cat.name || '';
+
+  try {
+    const result = await api.entities.sessionTag({ session_id: _sessionId, project, value_id: valueId });
+    _appliedEntities.push({ value_id: valueId, category_name: catName, name: valueName, color, icon });
+    _renderEntityChips();
+    _closeEntityPicker();
+    toast(`Tagged: ${catName}/${valueName} (${result.events_tagged || 0} events)`, 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+/** User typed a new tag name and pressed Enter or clicked "+ Add". */
+async function _pickerAddNew(name) {
+  const project = state.currentProject?.name;
+  const msg     = document.getElementById('picker-msg');
+  if (!project) { if (msg) msg.textContent = 'No project open'; return; }
+  if (!_sessionId) { if (msg) msg.textContent = 'Send a message first to start a session'; return; }
+  if (!_selectedPickerCat) { if (msg) msg.textContent = 'Select a category first'; return; }
+
+  const valName = (name || '').trim();
+  if (!valName) { if (msg) msg.textContent = 'Enter a tag name'; return; }
+
+  const cat    = getCacheCategories().find(c => String(c.id) === String(_selectedPickerCat)) || {};
+  const catName = cat.name  || '';
+  const icon    = cat.icon  || '⬡';
+  const color   = cat.color || '#4a90e2';
+
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const result = await api.entities.sessionTag({
+      session_id: _sessionId, project, category_name: catName, value_name: valName,
+    });
+    // Add to cache so it's visible immediately in picker next time
+    addCachedValue(_selectedPickerCat, {
+      id: result.value_id, name: valName, status: 'active', event_count: result.events_tagged || 0,
+    });
+    _appliedEntities.push({
+      value_id: result.value_id, category_name: catName, name: valName, color, icon,
+    });
+    _renderEntityChips();
+    if (msg) msg.textContent = '';
+    _closeEntityPicker();
+    toast(`Tagged: ${catName}/${valName} (${result.events_tagged || 0} events)`, 'success');
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
 }
 
 async function _applyTagDirect(valueId, valueName, catId, catName, icon, color) {
@@ -419,44 +490,6 @@ async function _applyTagDirect(valueId, valueName, catId, catName, icon, color) 
   } catch (e) { toast(e.message, 'error'); }
 }
 
-async function _saveNewTagFromPicker() {
-  const msg     = document.getElementById('picker-add-msg');
-  const catSel  = document.getElementById('picker-new-cat-sel');
-  const nameInp = document.getElementById('picker-new-name-inp');
-  const project = state.currentProject?.name;
-
-  if (msg) msg.textContent = '';
-  if (!project) { if (msg) msg.textContent = 'No project open'; return; }
-  if (!_sessionId) { if (msg) msg.textContent = 'Send a message first to start a session'; return; }
-
-  const catId   = catSel?.value;
-  const valName = nameInp?.value?.trim();
-  if (!catId)   { if (msg) msg.textContent = 'Select a category'; return; }
-  if (!valName) { if (msg) msg.textContent = 'Enter a tag name'; return; }
-
-  // Resolve category name/icon/color from loaded data
-  const catInfo  = _pickerCategoryData.find(c => String(c.id) === String(catId)) || {};
-  const catName  = catInfo.name  || String(catId);
-  const catIcon  = catInfo.icon  || '⬡';
-  const catColor = catInfo.color || '#4a90e2';
-
-  if (msg) msg.textContent = 'Saving…';
-  try {
-    const result = await api.entities.sessionTag({
-      session_id: _sessionId, project, category_name: catName, value_name: valName,
-    });
-    _appliedEntities.push({
-      value_id: result.value_id, category_name: catName, name: valName, color: catColor, icon: catIcon,
-    });
-    _renderEntityChips();
-    if (nameInp) nameInp.value = '';
-    if (msg) msg.textContent = '';
-    _closeEntityPicker();
-    toast(`Tagged: ${catName}/${valName} (${result.events_tagged || 0} events)`, 'success');
-  } catch (e) {
-    if (msg) msg.textContent = e.message;
-  }
-}
 
 function _renderEntityChips() {
   const container = document.getElementById('chat-entity-chips');

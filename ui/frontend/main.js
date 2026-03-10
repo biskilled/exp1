@@ -13,6 +13,7 @@ import { renderWorkflow } from './views/workflow.js';
 import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
 import { renderEntities } from './views/entities.js';
+import { loadTagCache } from './utils/tagCache.js';
 import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';
 
 function renderHistory(container) { new HistoryView(container); }
@@ -434,6 +435,8 @@ export async function openProject(name) {
     project.system_prompt = project.context_md || project.claude_md || project.project_md || '';
     setState({ currentProject: project });
     addRecentProject(name);
+    // Pre-warm tag cache so chat picker + planner have zero-latency data
+    loadTagCache(name).catch(() => {});
 
     // Update titlebar
     const tp = document.getElementById('titlebar-project');
