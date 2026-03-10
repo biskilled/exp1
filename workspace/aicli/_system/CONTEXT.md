@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-10 01:53 UTC — do not edit manually.
+> Auto-generated 2026-03-10 02:03 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 54
-- **Last active**: 2026-03-10T01:53:29Z
+- **Sessions**: 55
+- **Last active**: 2026-03-10T02:03:02Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -149,6 +149,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ---
 
 ## Recent Development History
+
+**[2026-03-10 02:00]** `claude_cli/claude`  
+→ why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is attemp to bind address
+← _Good. Here's what was fixed and why:  ---  ### Root causes & fixes  | Problem | Fix | |---|---| | **Port still busy at startup** — previous uvicorn didn't release port before new spawn | `freePort()` _
 
 **[2026-03-10 01:42]** `claude_cli/claude`  
 → planner UI - it is almost imposible to see the action option as they are small, is there is a way to improve the visibil

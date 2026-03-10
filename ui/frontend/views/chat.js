@@ -1035,13 +1035,27 @@ window._chatLoad = async (id) => {
     const msgs = document.getElementById('chat-messages');
     if (!msgs) return;
     msgs.innerHTML = '';
-    // Restore tags from session metadata so tag bar reflects this session
+    // Restore phase/session tags from session metadata
     const storedTags = session.metadata?.tags || {};
     _restoreTagBar(storedTags);
     for (const m of session.messages || []) {
       if (m.role === 'user')      _appendUserMsg(m.content);
       if (m.role === 'assistant') _appendAssistantMsg(m.content);
     }
+    // Reload confirmed entity tags from DB (they live in event_tags, not session metadata)
+    try {
+      const project = state.currentProject?.name;
+      const tagData = await api.entities.getEntitySessionTags(id, project);
+      _appliedEntities = (tagData.tags || []).map(t => ({
+        value_id:      t.id,
+        category_name: t.category_name,
+        name:          t.name,
+        color:         t.color,
+        icon:          t.icon,
+      }));
+      _renderEntityChips();
+      _updateSaveButton();
+    } catch { /* DB unavailable — silent */ }
     // Highlight active session in sidebar
     document.querySelectorAll('#chat-sessions > div').forEach((el, i) => {
       const active = _sessionCache[i]?.id === id;

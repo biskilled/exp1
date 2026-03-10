@@ -822,3 +822,33 @@ async def session_bulk_tag(body: SessionTagBody):
         "events_tagged": tagged,
         "project": p,
     }
+
+
+@router.get("/session-tags")
+async def get_session_entity_tags(session_id: str, project: str | None = Query(None)):
+    """Return all entity values tagged for events belonging to a session.
+
+    Used by the frontend to reload the applied-tags chip bar when switching sessions.
+    """
+    _require_db()
+    p = _project(project)
+    ev_table = db.project_table("events", p)
+    et_table = db.project_table("event_tags", p)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT DISTINCT v.id, v.name, v.status,
+                           c.id AS category_id, c.name AS category_name, c.color, c.icon
+                    FROM {et_table} et
+                    JOIN {ev_table} e  ON e.id  = et.event_id
+                    JOIN entity_values v      ON v.id  = et.entity_value_id
+                    JOIN entity_categories c  ON c.id  = v.category_id
+                   WHERE e.metadata->>'session_id' = %s
+                      OR e.source_id = %s""",
+                (session_id, session_id),
+            )
+            cols = [d[0] for d in cur.description]
+            tags = [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    return {"tags": tags, "session_id": session_id, "project": p}

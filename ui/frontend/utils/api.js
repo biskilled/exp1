@@ -235,7 +235,9 @@ api.entities = {
   getLinks:       (eventId)           => _get(`/entities/events/${eventId}/links`),
 
   // Session bulk-tag — tags ALL events in a session with one entity value
-  sessionTag:     (body)              => _post('/entities/session-tag', body),
+  sessionTag:           (body)                  => _post('/entities/session-tag', body),
+  // Reload entity tags for a session (used when switching sessions in UI)
+  getEntitySessionTags: (sessionId, project)    => _get(`/entities/session-tags?session_id=${encodeURIComponent(sessionId)}&${_pq(project)}`),
 
   // Tag suggestions (auto-tag loop)
   getSuggestions:     (project, sourceId) => _get(
