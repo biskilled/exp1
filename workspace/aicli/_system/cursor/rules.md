@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 18:17 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 00:07 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -41,9 +41,10 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
 - MCP server as standalone stdio process for Claude Code integration without backend dependency
-- UI installer: install.sh (one-time) + update.sh (git pull) + start.sh — never touches workspace/
+- Unified tag-based planner: single category→tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, properties
 
 ## Recent Context (last 5 changes)
 
 - [2026-03-09] Assuming I will improve the project management page, workflow processes. can you update /memory - so it can be used for 
 - [2026-03-09] The last prompts was asking for a new feature (clinet install/ support multiple projects) - it was made by this console.
+- [2026-03-09] I dont think your update works. lets start from Planer - there is not need to have 4 tabs - Feture, tag, Bugs and Tags. 

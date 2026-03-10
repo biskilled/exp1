@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-09 18:17 UTC by aicli /memory_
+_Generated: 2026-03-10 00:07 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) into a unified CLI and web UI, enabling intelligent project tracking, workflow automation, and semantic memory synthesis. It uses PostgreSQL + pgvector for semantic search, per-project event/entity graphs, and a 5-layer memory system (immediate → working → project → historical → global) to maintain context across sessions. Current focus is on richer project dashboards, workflow-to-feature linking, and multi-project session management with persistent unified history.
+aicli is a shared AI memory platform that provides multi-agent AI workflows, semantic project history, and unified task management via a flat-file + PostgreSQL backend. It unifies CLI, Electron desktop, and web UI with JWT auth, integrates 5+ LLM providers via independent adapters, and supports Claude Code via standalone MCP server. Current focus: fixing session memory capture, consolidating planner UI into a unified tag-based system, and linking workflows to project features for full traceability.
 
 ## Tech Stack
 
@@ -41,15 +41,15 @@ aicli is a shared AI memory platform that integrates multiple LLM providers (Cla
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
 - MCP server as standalone stdio process for Claude Code integration without backend dependency
-- UI installer: install.sh (one-time) + update.sh (git pull) + start.sh — never touches workspace/
+- Unified tag-based planner: single category→tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, properties
 
 ## In Progress
 
-- Memory synthesis pipeline validation — /memory endpoint generates per-LLM summaries; Haiku incremental synthesis; copy to code_dir for persistence
-- Project management page redesign — richer dashboard with event count, active features, recent commits, workflow runs, activity timeline
+- Planner UI redesign — consolidate Feature/Bug/Tag/Status tabs into unified tag-based system with categories, status management, and custom properties per tag
+- Session memory capture — ensure user prompts and LLM responses are logged to session context alongside /memory synthesis; validate history.jsonl persistence
+- Memory synthesis validation — verify /memory endpoint generates per-LLM summaries with incremental Haiku synthesis and copies to code_dir
+- Project management dashboard — richer summary cards with event count, recent commits, active features, workflow runs, activity timeline
 - Workflow ↔ project integration — link workflow runs to features/tasks; auto-create task events from workflow outputs; show workflow status per feature
-- Workflow process improvements — better YAML editor UX, step-by-step run log with per-node timing, re-run from any node, templates library
-- Project overview dashboard — summary card per project: last activity, open tasks, active features, recent commits, LLM cost this week
 - Client install / multi-project support — session-based project switching with persistent history per project in unified history.jsonl
 
 ## Active Features / Bugs
@@ -67,4 +67,4 @@ aicli is a shared AI memory platform that integrates multiple LLM providers (Cla
 - **[phase]** discovery `(0 events)`
 - **[phase]** prod `(0 events)`
 
-**[2026-03-09 04:08]** `claude_cli` — /memory endpoint synthesis complete: generates 4 per-LLM summary files using Haiku incremental synthesis; all files copied to code_dir for persistence and multi-session reuse. **[2026-03-09 04:08]** `claude_cli` — Project summary, current features, and ongoing features updated in memory system for next development phases. **[2026-03-09 17:56]** `claude_cli` — Session-based history validation: client install/multi-project support feature tracked in unified history.jsonl; session JSON now properly captures full prompts and synthesized responses separately from long-form features. **[Recent]** `in_progress` — Project management dashboard redesign with metrics (event count, active features, workflow status) and activity timeline; workflow ↔ project linking to auto-create task events. **[Recent]** `in_progress` — Workflow UX improvements: better YAML editor, step-by-step run logs with per-node timing, re-run from any node, template library support.
+**[2026-03-09 04:08]** `claude_cli` — /memory endpoint synthesized with per-LLM outputs and Haiku incremental synthesis; all files copied to code_dir for persistence. **[2026-03-09 17:56]** `claude_cli` — Identified gap: session-based memory capture not working; user prompts and responses should appear in session context alongside history.jsonl and /memory synthesis. **[2026-03-09 23:51]** `claude_cli` — Major planner UX decision: replace 4-tab system (Features/Bugs/Tags/Status) with unified tag-based model using category→tags hierarchy; each tag stores status, description, and custom properties; eliminates UI duplication. **[ongoing]** — Memory pipeline validation in progress; project dashboard redesign underway with event counts and activity timeline; workflow↔project linking to auto-create task events; multi-project session support with persistent unified history.jsonl.
