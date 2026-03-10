@@ -109,7 +109,7 @@ export function renderChat(container) {
         <div id="chat-tag-bar"
           style="display:flex;align-items:center;gap:0.45rem;padding:0.3rem 0.75rem;
                  border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;
-                 flex-wrap:nowrap;min-height:2rem;overflow:hidden">
+                 flex-wrap:wrap;min-height:2rem">
           <span style="font-size:0.55rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex-shrink:0">Session:</span>
 
           <!-- Phase (mandatory) -->

@@ -302,9 +302,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Nested tags UI — Planner tree rendering with parent_id hierarchy, child-add buttons per row, archive/restore toggles via 3-dot menu for improved discoverability
-- Database query optimization — single batch load of all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls, batch updates only on explicit save
+- Session tag persistence — fixed GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; frontend caches and refreshes on save
+- Planner UI discoverability — added 3-dot menu (⋯) per tag row with edit/archive/restore/delete actions; improved button visibility for action triggers
+- Database query optimization — batch load all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls
 - Chat picker refactor — zero DB calls during selection, reads from cached categories/values, real-time filter with floating dropdown, root-level tag creation only
-- Backend connectivity & schema — resolved port 8000 bind conflicts, verified due_date column live in API, confirmed Electron frontend reload working with npm run dev
-- Planner tab consolidation — unified Feature/Bug/Tag/Tags into single tag-based system with category hierarchy, status management, due_date, custom properties, archive state
-- Action visibility & archive recovery — implement 3-dot menu UI for edit/archive/restore on each tag row, toggle archive state to re-enable items, improve button discoverability
+- Port binding and startup stability — implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup, resolved 127.0.0.1:8000 bind conflicts
+- Archive/restore workflow — 3-dot menu toggles archive state in event_tags_{p}, UI hides archived items by default, restore option visible in menu to re-enable

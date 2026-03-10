@@ -24,19 +24,19 @@
   "key_decisions": [
     "Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state",
     "Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph",
-    "Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}) via project_table() + ensure_project_schema()",
-    "Electron UI with xterm.js + Monaco; Vanilla JS frontend \u2014 no React/Vue/build step",
+    "Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}) via project_table() + ensure_project_schema()",
+    "Electron UI with xterm.js + Monaco; Vanilla JS frontend \u2014 no React/Vue/build step; Vite dev server only",
     "JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login",
-    "All LLM providers independent; server holds API keys; client sends NO keys",
+    "All LLM providers independent adapters; server holds API keys; client sends NO keys",
     "Config-driven pricing via provider_costs.json as single source of truth",
     "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap",
     "Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata",
     "5-layer memory: immediate \u2192 working (session JSON) \u2192 project (PROJECT.md) \u2192 historical (history.jsonl) \u2192 global (templates)",
     "Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) \u2192 single file per project",
-    "Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links",
-    "Nested tags via parent_id FK: unlimited depth (category \u2192 tag \u2192 subtag) with tree UI in Planner",
+    "Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links with parent_id for nested tags",
+    "Nested tags via parent_id FK: unlimited depth (category \u2192 tag \u2192 subtag) with tree UI in Planner; root-level creation only from chat picker",
     "Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save",
-    "Picker flow creates root-level tags; nested sub-tags created via Planner tree UI with child button"
+    "Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit() in before-quit handler"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -65,12 +65,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Nested tags UI \u2014 Planner tree rendering with parent_id hierarchy, child-add buttons per row, archive/restore toggles via 3-dot menu for improved discoverability",
-    "Database query optimization \u2014 single batch load of all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls, batch updates only on explicit save",
+    "Session tag persistence \u2014 fixed GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; frontend caches and refreshes on save",
+    "Planner UI discoverability \u2014 added 3-dot menu (\u22ef) per tag row with edit/archive/restore/delete actions; improved button visibility for action triggers",
+    "Database query optimization \u2014 batch load all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls",
     "Chat picker refactor \u2014 zero DB calls during selection, reads from cached categories/values, real-time filter with floating dropdown, root-level tag creation only",
-    "Backend connectivity & schema \u2014 resolved port 8000 bind conflicts, verified due_date column live in API, confirmed Electron frontend reload working with npm run dev",
-    "Planner tab consolidation \u2014 unified Feature/Bug/Tag/Tags into single tag-based system with category hierarchy, status management, due_date, custom properties, archive state",
-    "Action visibility & archive recovery \u2014 implement 3-dot menu UI for edit/archive/restore on each tag row, toggle archive state to re-enable items, improve button discoverability"
+    "Port binding and startup stability \u2014 implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup, resolved 127.0.0.1:8000 bind conflicts",
+    "Archive/restore workflow \u2014 3-dot menu toggles archive state in event_tags_{p}, UI hides archived items by default, restore option visible in menu to re-enable"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -102,5 +102,5 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-10T01:53:54Z"
+  "last_memory_run": "2026-03-10T02:19:10Z"
 }

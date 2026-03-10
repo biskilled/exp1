@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-10 02:03 UTC — do not edit manually.
+> Auto-generated 2026-03-10 02:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 55
-- **Last active**: 2026-03-10T02:03:02Z
+- **Sessions**: 56
+- **Last active**: 2026-03-10T02:18:43Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -33,30 +33,30 @@
 
 ## In Progress
 
-- Nested tags UI — Planner tree rendering with parent_id hierarchy, child-add buttons per row, archive/restore toggles via 3-dot menu for improved discoverability
-- Database query optimization — single batch load of all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls, batch updates only on explicit save
+- Session tag persistence — fixed GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; frontend caches and refreshes on save
+- Planner UI discoverability — added 3-dot menu (⋯) per tag row with edit/archive/restore/delete actions; improved button visibility for action triggers
+- Database query optimization — batch load all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls
 - Chat picker refactor — zero DB calls during selection, reads from cached categories/values, real-time filter with floating dropdown, root-level tag creation only
-- Backend connectivity & schema — resolved port 8000 bind conflicts, verified due_date column live in API, confirmed Electron frontend reload working with npm run dev
-- Planner tab consolidation — unified Feature/Bug/Tag/Tags into single tag-based system with category hierarchy, status management, due_date, custom properties, archive state
-- Action visibility & archive recovery — implement 3-dot menu UI for edit/archive/restore on each tag row, toggle archive state to re-enable items, improve button discoverability
+- Port binding and startup stability — implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup, resolved 127.0.0.1:8000 bind conflicts
+- Archive/restore workflow — 3-dot menu toggles archive state in event_tags_{p}, UI hides archived items by default, restore option visible in menu to re-enable
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
 - Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph
-- Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}) via project_table() + ensure_project_schema()
-- Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step
+- Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}) via project_table() + ensure_project_schema()
+- Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step; Vite dev server only
 - JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
-- All LLM providers independent; server holds API keys; client sends NO keys
+- All LLM providers independent adapters; server holds API keys; client sends NO keys
 - Config-driven pricing via provider_costs.json as single source of truth
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
 - 5-layer memory: immediate → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
-- Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
-- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
+- Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links with parent_id for nested tags
+- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; root-level creation only from chat picker
 - Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
-- Picker flow creates root-level tags; nested sub-tags created via Planner tree UI with child button
+- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit() in before-quit handler
 
 ---
 
@@ -149,6 +149,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ---
 
 ## Recent Development History
+
+**[2026-03-10 02:12]** `claude_cli/claude`  
+→ I do see the save button - and when I save I do see the tag, when I am checking another session and come back (at the ui
+← _Only module resolution error (expected) — no syntax errors. The fix is complete.  Here's what was implemented:  **Backend** (`entities.py`): New `GET /entities/session-tags?session_id=X&project=Y` end_
 
 **[2026-03-10 02:00]** `claude_cli/claude`  
 → why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is attemp to bind address

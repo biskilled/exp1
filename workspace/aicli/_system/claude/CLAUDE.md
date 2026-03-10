@@ -28,19 +28,19 @@ You are a senior Python software architect with deep expertise in:
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
 - Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph
-- Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}) via project_table() + ensure_project_schema()
-- Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step
+- Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}) via project_table() + ensure_project_schema()
+- Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step; Vite dev server only
 - JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
-- All LLM providers independent; server holds API keys; client sends NO keys
+- All LLM providers independent adapters; server holds API keys; client sends NO keys
 - Config-driven pricing via provider_costs.json as single source of truth
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
 - 5-layer memory: immediate → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
-- Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
-- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
+- Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links with parent_id for nested tags
+- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; root-level creation only from chat picker
 - Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
-- Picker flow creates root-level tags; nested sub-tags created via Planner tree UI with child button
+- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit() in before-quit handler
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-10] `claude_cli`: Can you make sure that sql queries are optimized (loading one time when project is loading, save in 
 - [2026-03-10] `claude_cli`: yes. just to clarify when I add login - it will be first level only ? 
 - [2026-03-10] `claude_cli`: yes
 - [2026-03-10] `claude_cli`: planner UI - it is almost imposible to see the action option as they are small, is there is a way to
 - [2026-03-10] `claude_cli`: why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is at
+- [2026-03-10] `claude_cli`: I do see the save button - and when I save I do see the tag, when I am checking another session and 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
