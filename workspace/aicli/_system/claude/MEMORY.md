@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-10 02:18 UTC by aicli /memory_
+_Generated: 2026-03-10 02:33 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI with FastAPI backend and Electron + Vanilla JS frontend to manage multi-agent workflows, per-project context, and semantic search over development history. Current focus is optimizing database query patterns (zero calls during UI interaction, batch saves only), implementing hierarchical tag management with archive/restore via 3-dot menus, and ensuring session tag state persists correctly across project switches.
+**aicli** is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron/Vanilla JS frontend to manage development workflows with semantic search, multi-agent workflows, and project-scoped entity/event tracking. It integrates PostgreSQL with pgvector for semantic memory, supports multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok), and features a Planner with nested tags, session tag persistence, and flat-file-first history (JSONL) backed by SQL. The system is currently optimizing database queries via frontend caching, stabilizing port binding on startup, and improving Planner UI visibility for tag management.
 
 ## Tech Stack
 
@@ -24,7 +24,7 @@ aicli is a shared AI memory platform combining a Python CLI with FastAPI backend
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server — 8 tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nested tags), events (with due_date)
+- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting, due_date tracking)
 
 ## Key Decisions
 
@@ -48,10 +48,10 @@ aicli is a shared AI memory platform combining a Python CLI with FastAPI backend
 
 - Session tag persistence — fixed GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; frontend caches and refreshes on save
 - Planner UI discoverability — added 3-dot menu (⋯) per tag row with edit/archive/restore/delete actions; improved button visibility for action triggers
-- Database query optimization — batch load all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls
+- Database query optimization — batch load all project tags/categories on project access, cache in tagCache.js, eliminate per-action SQL calls during chat/planner interactions
 - Chat picker refactor — zero DB calls during selection, reads from cached categories/values, real-time filter with floating dropdown, root-level tag creation only
-- Port binding and startup stability — implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup, resolved 127.0.0.1:8000 bind conflicts
-- Archive/restore workflow — 3-dot menu toggles archive state in event_tags_{p}, UI hides archived items by default, restore option visible in menu to re-enable
+- Port binding and startup stability — implemented freePort() to kill stale uvicorn, fixed Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts
+- Tag bar visibility and session persistence — fixed overflow:hidden clipping in chat tag bar, ensured tags persist across session switches via getEntitySessionTags() endpoint
 
 ## Active Features / Bugs
 
@@ -70,14 +70,4 @@ aicli is a shared AI memory platform combining a Python CLI with FastAPI backend
 - **[phase]** discovery `(0 events)`
 - **[phase]** prod `(0 events)`
 
-**[2026-03-09 23:51]** `claude_cli` — Consolidated Planner from 4 tabs (Feature/Bug/Tag/Tags) into unified tag-based system with category hierarchy, status management, due_date tracking, and custom properties per tag.
-
-**[2026-03-10 00:11]** `claude_cli` — Resolved port 8000 bind conflict by killing stale uvicorn process; confirmed backend health and due_date column live in API; fixed Electron frontend reload via npm run dev.
-
-**[2026-03-10 00:52]** `claude_cli` — Implemented zero-DB-call chat picker by caching all categories and entity values on project load into tagCache; real-time filter with floating dropdown; root-level tag creation only.
-
-**[2026-03-10 01:11]** `claude_cli` — Added parent_id column to entity_values for unlimited nested tag depth (category → tag → subtag); updated backend entities.py and frontend tagCache.js to support hierarchical tree rendering in Planner with child-add buttons.
-
-**[2026-03-10 01:42]** `claude_cli` — Improved Planner UI discoverability by adding 3-dot menu (⋯) per tag row with edit/archive/restore/delete actions; archive state toggles visibility in UI; batch tag updates only on explicit save.
-
-**[2026-03-10 02:12]** `claude_cli` — Fixed session tag persistence by creating GET /entities/session-tags endpoint that queries event_tags_{p} joined to events/values/categories; frontend now refreshes tag list after save and across session switches.
+**[2026-03-10 00:52]** `claude_cli` — Eliminated N+1 database calls in Planner by batch-loading all project tags/categories once on project access, caching in tagCache.js, and reading zero-DB chat picker with real-time filtering from cache; saves only on explicit user action. **[2026-03-10 01:11]** `claude_cli` — Designed unlimited nested tags via parent_id FK addition to entity_values, allowing category→tag→subtag hierarchy with Planner tree UI and root-level creation from chat picker only. **[2026-03-10 01:19]** `claude_cli` — Implemented parent_id column in database.py and entities.py (idempotent ALTER TABLE), updated ValueCreate/ValuePatch payloads, and added parent_id handling to SELECT/INSERT/PATCH endpoints. **[2026-03-10 01:42]** `claude_cli` — Improved Planner UI discoverability by adding 3-dot menu (⋯) per tag row with edit/archive/restore/delete actions, replacing hard-to-see inline buttons with accessible dropdown menu. **[2026-03-10 02:00]** `claude_cli` — Fixed port binding crashes by implementing freePort() utility to kill stale uvicorn processes (via lsof + kill -9) and Electron before-quit cleanup (process.exit()), eliminating 127.0.0.1:8000 bind conflicts on restart. **[2026-03-10 02:33]** `claude_cli` — Fixed session tag persistence by adding GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories, and fixed tag bar overflow clipping so tagged items display across session switches.

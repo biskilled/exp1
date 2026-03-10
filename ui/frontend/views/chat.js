@@ -110,7 +110,7 @@ export function renderChat(container) {
           style="display:flex;align-items:center;gap:0.45rem;padding:0.3rem 0.75rem;
                  border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;
                  flex-wrap:wrap;min-height:2rem">
-          <span style="font-size:0.55rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex-shrink:0">Session:</span>
+          <span style="font-size:0.55rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex-shrink:0">Phase:</span>
 
           <!-- Phase (mandatory) -->
           <select id="chat-phase-sel"
@@ -148,6 +148,9 @@ export function renderChat(container) {
           <span style="font-size:0.58rem;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0"
             onclick="window._chatNew()" title="Start new session">+ new</span>
         </div>
+
+        <!-- AI Suggestions banner — only shown after /memory returns suggestions -->
+        <div id="chat-ai-suggestions" style="display:none"></div>
 
         <!-- Entity picker panel (shown when + Tag is clicked) -->
         <div id="chat-entity-picker"
@@ -274,6 +277,7 @@ function _setupTagBar() {
       _pendingEntities = [];   // clear pending too
       _suggestedTags = [];     // clear suggestions on session reset
       _renderEntityChips();
+      _renderSuggestionsBar();
       _updateSaveButton();
     }
     _updateTagBarStatus();
@@ -339,11 +343,13 @@ function _restoreTagBar(tags) {
   _sessionTags = { phase: (tags?.phase) || '' };
   _appliedEntities = [];  // chips not persisted — clear on session load
   _pendingEntities = [];
+  _suggestedTags = [];    // suggestions are per-session — clear when switching
   const phaseSel = document.getElementById('chat-phase-sel');
   if (phaseSel) phaseSel.value = _sessionTags.phase;
   _updateTagBarStatus();
   _updateSaveButton();
   _renderEntityChips();
+  _renderSuggestionsBar();
 }
 
 // ── Entity picker ─────────────────────────────────────────────────────────────
@@ -611,23 +617,63 @@ function _renderEntityChips() {
         title="Remove">✕</button>
     </span>`).join('');
 
-  // Suggested chips — amber dashed style, with Accept / Dismiss buttons
-  const suggestedHtml = _suggestedTags.map((s, idx) => `
-    <span class="entity-chip suggested-tag"
-          style="display:inline-flex;align-items:center;gap:0.18rem;
-                 background:#fffbe6;border:1px dashed #d4a017;color:#8a6500;
-                 border-radius:10px;padding:0.08rem 0.38rem;font-size:0.56rem;white-space:nowrap;font-style:italic"
-          title="LLM suggestion: ${_esc(s.category)}/${_esc(s.name)} — click ✓ to queue">
-      ✦ ${_esc(s.name)}
-      <button onclick="window._acceptSuggestedTag(${idx})"
-        style="border:none;background:none;cursor:pointer;color:#27ae60;font-size:0.6rem;padding:0 1px;line-height:1"
-        title="Add to pending">✓</button>
-      <button onclick="window._dismissSuggestedTag(${idx})"
-        style="border:none;background:none;cursor:pointer;color:#888;font-size:0.6rem;padding:0 1px;line-height:1"
-        title="Dismiss">✕</button>
-    </span>`).join('');
+  container.innerHTML = appliedHtml + pendingHtml;
+}
 
-  container.innerHTML = appliedHtml + pendingHtml + suggestedHtml;
+/** Renders the dedicated AI suggestions banner below the tag bar. */
+function _renderSuggestionsBar() {
+  const bar = document.getElementById('chat-ai-suggestions');
+  if (!bar) return;
+  if (!_suggestedTags.length) { bar.style.display = 'none'; return; }
+
+  const project      = state.currentProject?.name || '';
+  const sessionShort = _sessionId ? _sessionId.slice(0, 8) + '…' : 'new session';
+
+  const chipsHtml = _suggestedTags.map((s, idx) => {
+    const cat      = getCacheCategories().find(c => c.name === s.category);
+    const typeInfo = cat || _ENTITY_TYPES.find(t => t.id === s.category) || { color: '#9b7fcc', icon: '⬡' };
+    return `
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;
+                   background:${typeInfo.color}18;border:1px solid ${typeInfo.color}55;
+                   border-radius:6px;padding:0.2rem 0.5rem;font-size:0.62rem;white-space:nowrap">
+        <span style="color:${typeInfo.color}">${_esc(typeInfo.icon)}</span>
+        <span style="color:var(--muted);font-size:0.55rem">${_esc(s.category)}</span>
+        <strong style="color:var(--text)">${_esc(s.name)}</strong>
+        <button onclick="window._acceptSuggestedTag(${idx})"
+          style="border:1px solid #27ae60;background:#27ae6018;cursor:pointer;color:#27ae60;
+                 font-size:0.58rem;padding:0.06rem 0.35rem;border-radius:4px;line-height:1.2;
+                 font-family:var(--font);white-space:nowrap">✓ Accept</button>
+        <button onclick="window._dismissSuggestedTag(${idx})"
+          style="border:none;background:none;cursor:pointer;color:var(--muted);
+                 font-size:0.65rem;padding:0 2px;line-height:1"
+          title="Dismiss">✕</button>
+      </span>`;
+  }).join('');
+
+  bar.style.display = 'block';
+  bar.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:0.5rem;flex-wrap:wrap;
+                padding:0.5rem 0.75rem;border-bottom:2px solid #d4a017;
+                background:linear-gradient(to right,#fffbe6,#fff9d6)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem;flex-wrap:wrap">
+          <span style="font-size:0.62rem;font-weight:700;color:#8a6500">🤖 AI Tag Suggestions</span>
+          <span style="font-size:0.55rem;color:#b08000;background:#d4a01722;border:1px solid #d4a01744;
+                       border-radius:4px;padding:0.05rem 0.3rem">
+            session: <code style="font-size:0.55rem">${_esc(sessionShort)}</code>
+            ${project ? ` · ${_esc(project)}` : ''}
+          </span>
+          <span style="font-size:0.55rem;color:#b08000;font-style:italic">
+            Based on your recent history — click ✓ Accept, then 💾 Save to apply
+          </span>
+        </div>
+        <div style="display:flex;gap:0.35rem;flex-wrap:wrap;align-items:center">${chipsHtml}</div>
+      </div>
+      <button onclick="window._dismissAllSuggestions()"
+        style="border:none;background:none;cursor:pointer;color:#b08000;font-size:0.6rem;
+               padding:0;line-height:1;white-space:nowrap;flex-shrink:0;align-self:flex-start"
+        title="Dismiss all suggestions">Dismiss all</button>
+    </div>`;
 }
 
 window._acceptSuggestedTag = (idx) => {
@@ -641,13 +687,19 @@ window._acceptSuggestedTag = (idx) => {
     color: typeInfo.color, icon: typeInfo.icon, is_new: !cat,
   });
   _suggestedTags = _suggestedTags.filter((_, i) => i !== idx);
+  _renderSuggestionsBar();
   _renderEntityChips();
   _updateSaveButton();
 };
 
 window._dismissSuggestedTag = (idx) => {
   _suggestedTags = _suggestedTags.filter((_, i) => i !== idx);
-  _renderEntityChips();
+  _renderSuggestionsBar();
+};
+
+window._dismissAllSuggestions = () => {
+  _suggestedTags = [];
+  _renderSuggestionsBar();
 };
 
 // ── Commands autocomplete ─────────────────────────────────────────────────────
@@ -988,12 +1040,15 @@ async function _loadRolesAndWorkflows() {
 window._chatNew = () => {
   _sessionId = null;
   _appliedEntities = [];
+  _pendingEntities = [];
   _suggestedTags = [];
   _closeEntityPicker();
   const msgs = document.getElementById('chat-messages');
   if (msgs) msgs.innerHTML = '';
   _showWelcome();  // roles already loaded — show immediately
   _renderEntityChips();
+  _renderSuggestionsBar();
+  _updateSaveButton();
   _loadSessions();
 };
 
@@ -1134,10 +1189,10 @@ window._chatSend = async () => {
     _appendSystemMsg('Generating memory files…');
     try {
       const result = await api.generateMemory(proj);
-      // Load LLM-suggested tags into the tag bar
+      // Load LLM-suggested tags into the dedicated suggestions banner
       if (result.suggested_tags?.length) {
         _suggestedTags = result.suggested_tags;
-        _renderEntityChips();
+        _renderSuggestionsBar();
       }
       // Refresh system prompt from freshly-written CONTEXT.md
       try {
@@ -1150,7 +1205,7 @@ window._chatSend = async () => {
       const synthNote = result.synthesized ? ' *(LLM-synthesized)*' : '';
       _appendSystemMsg(`✓ **Memory files refreshed**${synthNote} → \`${fileList}\``);
       if (result.suggested_tags?.length) {
-        _appendSystemMsg(`📎 **${result.suggested_tags.length}** tag suggestion${result.suggested_tags.length > 1 ? 's' : ''} shown in the tag bar above — accept or dismiss.`);
+        _appendSystemMsg(`📎 **${result.suggested_tags.length}** AI tag suggestion${result.suggested_tags.length > 1 ? 's' : ''} appeared above the chat — review and accept or dismiss.`);
       }
     } catch (e) {
       _appendSystemMsg(`Error: ${e.message}`);

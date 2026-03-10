@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-10] `claude_cli`: yes. just to clarify when I add login - it will be first level only ? 
-- [2026-03-10] `claude_cli`: yes
 - [2026-03-10] `claude_cli`: planner UI - it is almost imposible to see the action option as they are small, is there is a way to
 - [2026-03-10] `claude_cli`: why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is at
 - [2026-03-10] `claude_cli`: I do see the save button - and when I save I do see the tag, when I am checking another session and 
+- [2026-03-10] `claude_cli`: Where do I click accept , is it in the Chat at the top ? I dont see that
+- [2026-03-10] `claude_cli`: can you run /memory, and make the UI more clear. add your sujjestion in a clear place where user can
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

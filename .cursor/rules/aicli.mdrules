@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 02:18 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 02:33 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -24,7 +24,7 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server — 8 tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nested tags), events (with due_date)
+- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting, due_date tracking)
 
 ## Key Decisions
 
@@ -46,8 +46,8 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-10] yes. just to clarify when I add login - it will be first level only ?
 - [2026-03-10] yes
 - [2026-03-10] planner UI - it is almost imposible to see the action option as they are small, is there is a way to improve the visibil
 - [2026-03-10] why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is attemp to bind address
 - [2026-03-10] I do see the save button - and when I save I do see the tag, when I am checking another session and come back (at the ui
+- [2026-03-10] Where do I click accept , is it in the Chat at the top ? I dont see that
