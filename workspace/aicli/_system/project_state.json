@@ -6,11 +6,11 @@
   "tech_stack": {
     "cli": "Python 3.12 + prompt_toolkit + rich",
     "backend": "FastAPI + uvicorn + python-jose + bcrypt",
-    "frontend": "Vanilla JS (no framework, no bundler) + Electron shell",
+    "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
     "ui_components": "xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)",
     "storage_primary": "JSONL (history.jsonl, commit_log.jsonl), JSON, CSV \u2014 flat file first",
     "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-    "db_schema": "Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values; events table includes due_date column",
+    "db_schema": "Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting); events table includes due_date column",
     "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
     "llm_providers": "Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok \u2014 all independent adapters",
     "workflow_engine": "Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config",
@@ -34,8 +34,8 @@
     "/memory generates per-LLM files + copies to code_dir; Haiku incremental synthesis",
     "Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) \u2192 single file per project",
     "Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links",
-    "MCP server as standalone stdio process for Claude Code integration without backend dependency",
-    "Unified tag-based planner: single category\u2192tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, custom properties, due_date"
+    "Unified tag-based planner: single category\u2192tags hierarchy with unlimited nesting via parent_id FK",
+    "Frontend caching strategy: load all project tags/categories once on project access, update DB only on explicit save"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -64,12 +64,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Planner UI redesign \u2014 consolidate Feature/Bug/Tag tabs into unified tag-based system with category hierarchy, status management, custom properties (due_date, user-created fields), and full CRUD via API",
-    "Session memory capture validation \u2014 ensure user prompts and LLM responses are logged to session context; verify /memory synthesis increments correctly from last_memory_run; validate history.jsonl persistence across sources",
-    "Backend API integration for planner \u2014 added due_date column to database schema and API endpoint; frontend tags.js now calls updated /entities endpoints",
-    "Frontend reload issue resolution \u2014 identified bind address conflict (uvicorn PID 86671 already running); confirmed backend healthy and schema live; frontend requires Cmd+R reload in Electron",
-    "Project management dashboard enhancement \u2014 plan richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline",
-    "Client install / multi-project support \u2014 design session-based project switching with persistent unified history.jsonl per project"
+    "Nested tags architecture \u2014 added parent_id column to entity_values for unlimited tag depth (category \u2192 tag \u2192 subtag); validating database migration and planner UI tree rendering",
+    "SQL query optimization \u2014 implemented frontend tag/category caching on project load to eliminate repeated DB calls; batch updates on save instead of per-action queries",
+    "Planner UI consolidation \u2014 merged Feature/Bug/Tag/Tags tabs into unified tag-based system with category hierarchy, status management, due_date, and custom properties",
+    "Session memory validation \u2014 ensuring user prompts and LLM responses logged to history.jsonl; verifying /memory incremental synthesis from last_memory_run timestamp",
+    "Frontend reload and backend connectivity \u2014 resolved port 8000 bind conflict (stale uvicorn process); confirmed schema live with due_date column; Electron frontend now loads correctly with npm run dev",
+    "Project dashboard enhancement \u2014 planning richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -101,5 +101,5 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-10T00:16:03Z"
+  "last_memory_run": "2026-03-10T01:12:32Z"
 }

@@ -1,21 +1,21 @@
 # Project Memory — aicli
-_Generated: 2026-03-10 00:15 UTC by aicli /memory_
+_Generated: 2026-03-10 01:12 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that unifies project development history across multiple LLM sources (Claude, OpenAI, DeepSeek, etc.) via a Vanilla JS + Electron frontend backed by FastAPI, PostgreSQL with pgvector, and flat-file JSONL storage. Current state (v2.1.0) includes a unified tag-based planner replacing separate Feature/Bug tabs, session memory capture in history.jsonl, and /memory synthesis with per-LLM summaries; immediate focus is validating session logging, fixing frontend reload on startup, and integrating workflow status with features/tasks.
+aicli is a shared AI memory platform that integrates multiple LLM providers (Claude, OpenAI, DeepSeek, etc.) with a unified project workspace, semantic search via PostgreSQL+pgvector, and a workflow engine for multi-agent DAG execution. The system combines flat-file history (JSONL) with relational storage, features a Vanilla JS + Electron UI with terminal emulation and code editor, and uses JWT-based role authentication. Current focus is optimizing database queries through frontend caching, consolidating the planner into a unified tag-based system with nested hierarchy support, and ensuring session memory capture flows correctly into persistent history.
 
 ## Tech Stack
 
 - **cli**: Python 3.12 + prompt_toolkit + rich
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt
-- **frontend**: Vanilla JS (no framework, no bundler) + Electron shell
+- **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values; events table includes due_date column
+- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting); events table includes due_date column
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — all independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -40,17 +40,17 @@ aicli is a shared AI memory platform that unifies project development history ac
 - /memory generates per-LLM files + copies to code_dir; Haiku incremental synthesis
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
-- MCP server as standalone stdio process for Claude Code integration without backend dependency
-- Unified tag-based planner: single category→tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, custom properties, due_date
+- Unified tag-based planner: single category→tags hierarchy with unlimited nesting via parent_id FK
+- Frontend caching strategy: load all project tags/categories once on project access, update DB only on explicit save
 
 ## In Progress
 
-- Planner UI redesign — consolidate Feature/Bug/Tag tabs into unified tag-based system with category hierarchy, status management, custom properties (due_date, user-created fields), and full CRUD via API
-- Session memory capture validation — ensure user prompts and LLM responses are logged to session context; verify /memory synthesis increments correctly from last_memory_run; validate history.jsonl persistence across sources
-- Backend API integration for planner — added due_date column to database schema and API endpoint; frontend tags.js now calls updated /entities endpoints
-- Frontend reload issue resolution — identified bind address conflict (uvicorn PID 86671 already running); confirmed backend healthy and schema live; frontend requires Cmd+R reload in Electron
-- Project management dashboard enhancement — plan richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline
-- Client install / multi-project support — design session-based project switching with persistent unified history.jsonl per project
+- Nested tags architecture — added parent_id column to entity_values for unlimited tag depth (category → tag → subtag); validating database migration and planner UI tree rendering
+- SQL query optimization — implemented frontend tag/category caching on project load to eliminate repeated DB calls; batch updates on save instead of per-action queries
+- Planner UI consolidation — merged Feature/Bug/Tag/Tags tabs into unified tag-based system with category hierarchy, status management, due_date, and custom properties
+- Session memory validation — ensuring user prompts and LLM responses logged to history.jsonl; verifying /memory incremental synthesis from last_memory_run timestamp
+- Frontend reload and backend connectivity — resolved port 8000 bind conflict (stale uvicorn process); confirmed schema live with due_date column; Electron frontend now loads correctly with npm run dev
+- Project dashboard enhancement — planning richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline
 
 ## Active Features / Bugs
 
@@ -59,17 +59,13 @@ aicli is a shared AI memory platform that unifies project development history ac
 - **[feature]** mcp `(0 events)`
 - **[feature]** graph-workflow `(0 events)`
 - **[feature]** tagging `(0 events)`
+- **[feature]** UI `(0 events)`
 - **[feature]** billing `(0 events)`
 - **[feature]** auth `(0 events)`
 - **[feature]** shared-memory `(0 events)`
 - **[feature]** embeddings `(0 events)`
 - **[phase]** development `(0 events)`
-- **[phase]** discovery `(0 events)`
 - **[phase]** prod `(0 events)`
+- **[phase]** discovery `(0 events)`
 
-**[2026-03-09 04:08]** `claude_cli` — /memory endpoint ran with LLM synthesis; all summaries copied to code_dir for next development phase.
-**[2026-03-09 17:56]** `claude_cli` — User identified that session capture for prompts and responses is missing; expected synthesis in history.jsonl alongside /memory output.
-**[2026-03-09 23:51]** `claude_cli` — Planner UI redesign initiated: consolidated Feature/Bug/Tag/Tags tabs into unified tag-based system with category hierarchy, status, description, and custom properties (due_date, user-created fields).
-**[2026-03-10 00:11]** `claude_cli` — Frontend UI loading issue diagnosed: uvicorn bind error at 127.0.0.1:8000 caused by existing PID 86671; backend confirmed healthy with due_date column live in API; frontend syntax valid; fix: Cmd+R reload in Electron.
-**[2026-03-10 (inferred)]** — Planner tag-based API endpoints updated with due_date and custom properties support; /entities endpoints integrated into frontend tags.js.
-**[2026-03-10 (inferred)]** — Session memory capture validation prioritized: ensure prompts/responses logged to session context, /memory increments from last_memory_run, and history.jsonl persists across all sources (ui/claude_cli/workflow).
+**[2026-03-09 04:08]** `claude_cli` — /memory synthesis run with project summary and feature updates to code_dir. **[2026-03-09 17:56]** `claude_cli` — Identified gap: user prompts and LLM responses should appear in session context before full history.jsonl persistence. **[2026-03-09 23:51]** `claude_cli` — Planner redesign: consolidated Feature/Bug/Tag/Tags into unified tag system with category hierarchy, status, due_date, and custom properties. **[2026-03-10 00:11]** `claude_cli` — Resolved port 8000 bind conflict (stale uvicorn PID 86671); confirmed backend healthy with due_date column live in API. **[2026-03-10 00:52]** `claude_cli` — Optimized frontend: eliminated repeated SQL calls by caching all tags/categories in memory on project load; updates only on explicit save. **[2026-03-10 01:11]** `claude_cli` — Designed nested tags via parent_id FK in entity_values table, enabling unlimited tag hierarchy depth for richer organization.

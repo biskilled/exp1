@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 00:15 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-10 01:12 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -11,11 +11,11 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 
 - **cli**: Python 3.12 + prompt_toolkit + rich
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt
-- **frontend**: Vanilla JS (no framework, no bundler) + Electron shell
+- **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values; events table includes due_date column
+- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting); events table includes due_date column
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — all independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -40,12 +40,13 @@ _Last updated: 2026-03-09 | Version 2.1.0_
 - /memory generates per-LLM files + copies to code_dir; Haiku incremental synthesis
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
-- MCP server as standalone stdio process for Claude Code integration without backend dependency
-- Unified tag-based planner: single category→tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, custom properties, due_date
+- Unified tag-based planner: single category→tags hierarchy with unlimited nesting via parent_id FK
+- Frontend caching strategy: load all project tags/categories once on project access, update DB only on explicit save
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-09] Assuming I will improve the project management page, workflow processes. can you update /memory - so it can be used for 
-- [2026-03-09] The last prompts was asking for a new feature (clinet install/ support multiple projects) - it was made by this console.
 - [2026-03-09] I dont think your update works. lets start from Planer - there is not need to have 4 tabs - Feture, tag, Bugs and Tags. 
 - [2026-03-10] I think there is an issue with ui as it is not loading properly (and I do see error whie bind address 127.0.0.1, 8000)
+- [2026-03-10] I am shutting down elecrotn and run fresh - but cannot see anythin. also when when I click on project name - i do not se
+- [2026-03-10] It looks like there are multiple database calls that make the system realy slow. try to avoid many sql calls and upload 
+- [2026-03-10] Can you make sure that sql queries are optimized (loading one time when project is loading, save in any update). also ca

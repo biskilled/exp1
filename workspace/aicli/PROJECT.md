@@ -302,9 +302,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Planner UI redesign — consolidate Feature/Bug/Tag tabs into unified tag-based system with category hierarchy, status management, custom properties (due_date, user-created fields), and full CRUD via API
-- Session memory capture validation — ensure user prompts and LLM responses are logged to session context; verify /memory synthesis increments correctly from last_memory_run; validate history.jsonl persistence across sources
-- Backend API integration for planner — added due_date column to database schema and API endpoint; frontend tags.js now calls updated /entities endpoints
-- Frontend reload issue resolution — identified bind address conflict (uvicorn PID 86671 already running); confirmed backend healthy and schema live; frontend requires Cmd+R reload in Electron
-- Project management dashboard enhancement — plan richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline
-- Client install / multi-project support — design session-based project switching with persistent unified history.jsonl per project
+- Nested tags architecture — added parent_id column to entity_values for unlimited tag depth (category → tag → subtag); validating database migration and planner UI tree rendering
+- SQL query optimization — implemented frontend tag/category caching on project load to eliminate repeated DB calls; batch updates on save instead of per-action queries
+- Planner UI consolidation — merged Feature/Bug/Tag/Tags tabs into unified tag-based system with category hierarchy, status management, due_date, and custom properties
+- Session memory validation — ensuring user prompts and LLM responses logged to history.jsonl; verifying /memory incremental synthesis from last_memory_run timestamp
+- Frontend reload and backend connectivity — resolved port 8000 bind conflict (stale uvicorn process); confirmed schema live with due_date column; Electron frontend now loads correctly with npm run dev
+- Project dashboard enhancement — planning richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline

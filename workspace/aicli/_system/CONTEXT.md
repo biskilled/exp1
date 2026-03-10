@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-10 01:02 UTC — do not edit manually.
+> Auto-generated 2026-03-10 01:12 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 50
-- **Last active**: 2026-03-10T01:01:47Z
+- **Sessions**: 51
+- **Last active**: 2026-03-10T01:12:07Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -16,11 +16,11 @@
 
 - **cli**: Python 3.12 + prompt_toolkit + rich
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt
-- **frontend**: Vanilla JS (no framework, no bundler) + Electron shell
+- **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values; events table includes due_date column
+- **db_schema**: Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting); events table includes due_date column
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — all independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -32,12 +32,12 @@
 
 ## In Progress
 
-- Planner UI redesign — consolidate Feature/Bug/Tag tabs into unified tag-based system with category hierarchy, status management, custom properties (due_date, user-created fields), and full CRUD via API
-- Session memory capture validation — ensure user prompts and LLM responses are logged to session context; verify /memory synthesis increments correctly from last_memory_run; validate history.jsonl persistence across sources
-- Backend API integration for planner — added due_date column to database schema and API endpoint; frontend tags.js now calls updated /entities endpoints
-- Frontend reload issue resolution — identified bind address conflict (uvicorn PID 86671 already running); confirmed backend healthy and schema live; frontend requires Cmd+R reload in Electron
-- Project management dashboard enhancement — plan richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline
-- Client install / multi-project support — design session-based project switching with persistent unified history.jsonl per project
+- Nested tags architecture — added parent_id column to entity_values for unlimited tag depth (category → tag → subtag); validating database migration and planner UI tree rendering
+- SQL query optimization — implemented frontend tag/category caching on project load to eliminate repeated DB calls; batch updates on save instead of per-action queries
+- Planner UI consolidation — merged Feature/Bug/Tag/Tags tabs into unified tag-based system with category hierarchy, status management, due_date, and custom properties
+- Session memory validation — ensuring user prompts and LLM responses logged to history.jsonl; verifying /memory incremental synthesis from last_memory_run timestamp
+- Frontend reload and backend connectivity — resolved port 8000 bind conflict (stale uvicorn process); confirmed schema live with due_date column; Electron frontend now loads correctly with npm run dev
+- Project dashboard enhancement — planning richer summary cards with event count, recent commits, active features, workflow runs, and activity timeline
 
 ## Key Decisions
 
@@ -54,8 +54,8 @@
 - /memory generates per-LLM files + copies to code_dir; Haiku incremental synthesis
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
-- MCP server as standalone stdio process for Claude Code integration without backend dependency
-- Unified tag-based planner: single category→tags hierarchy replaces separate Features/Bugs/Tags tabs; tags store status, description, custom properties, due_date
+- Unified tag-based planner: single category→tags hierarchy with unlimited nesting via parent_id FK
+- Frontend caching strategy: load all project tags/categories once on project access, update DB only on explicit save
 
 ---
 
@@ -148,6 +148,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ---
 
 ## Recent Development History
+
+**[2026-03-10 01:11]** `claude_cli/claude`  
+→ Can you make sure that sql queries are optimized (loading one time when project is loading, save in any update). also ca
+← _## Feasibility Answer  **Yes, nested tags are absolutely feasible.** Here's the design before I write any code:  ---  ### Database change One column addition to `entity_values`: ```sql ALTER TABLE ent_
 
 **[2026-03-10 00:52]** `claude_cli/claude`  
 → It looks like there are multiple database calls that make the system realy slow. try to avoid many sql calls and upload 
