@@ -274,6 +274,8 @@ class _Database:
         CREATE INDEX IF NOT EXISTS idx_ev_category ON entity_values(category_id);
         CREATE INDEX IF NOT EXISTS idx_ev_project  ON entity_values(project);
         ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS due_date DATE;
+        ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES entity_values(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_ev_parent ON entity_values(parent_id);
         -- events, event_tags, event_links are now per-project tables (see ensure_project_schema)
         """
 

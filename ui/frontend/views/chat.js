@@ -1,7 +1,7 @@
 import { state, setState } from '../stores/state.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
-import { getCacheCategories, getCacheValues, addCachedValue } from '../utils/tagCache.js';
+import { getCacheCategories, getCacheValues, getCacheLeaves, getValuePath, addCachedValue } from '../utils/tagCache.js';
 
 const PROVIDERS = [
   { id: 'claude',   label: 'Claude'   },
@@ -368,29 +368,45 @@ function _pickerCatChange(catId) {
   _pickerValFilter('');
 }
 
-/** Render the floating dropdown based on current filter text. */
+/** Render the floating dropdown based on current filter text.
+ *  Shows leaf nodes with full path strings (e.g. "auth-refactor / login-form").
+ *  "+ Add" always creates at root level.
+ */
 function _pickerValFilter(q) {
   const dd = document.getElementById('picker-val-dd');
   if (!dd || !_selectedPickerCat) return;
 
-  const query = (q || '').toLowerCase().trim();
-  const allVals = getCacheValues(_selectedPickerCat).filter(v => !v.status || v.status === 'active');
-  const matched = query
-    ? allVals.filter(v => v.name.toLowerCase().includes(query))
-    : allVals;
+  const query  = (q || '').toLowerCase().trim();
+  const catId  = _selectedPickerCat;
 
-  let html = matched.map(v => `
-    <div onmousedown="event.preventDefault();window._pickerSelectVal(${v.id},'${_esc(v.name)}')"
+  // Show only leaf nodes (values with no children) that are active
+  const leaves = getCacheLeaves(catId).filter(v => !v.status || v.status === 'active');
+
+  // Build display entries with full path for each leaf
+  const entries = leaves.map(v => ({
+    id:    v.id,
+    name:  v.name,
+    path:  getValuePath(catId, v.id),
+    count: v.event_count || 0,
+  }));
+
+  const matched = query
+    ? entries.filter(e => e.path.toLowerCase().includes(query))
+    : entries;
+
+  let html = matched.map(e => `
+    <div onmousedown="event.preventDefault();window._pickerSelectVal(${e.id},'${_esc(e.name)}')"
          style="padding:5px 10px;cursor:pointer;font-size:0.68rem;display:flex;
-                justify-content:space-between;align-items:center"
+                justify-content:space-between;align-items:center;gap:6px"
          onmouseenter="this.style.background='var(--surface2)'"
          onmouseleave="this.style.background='transparent'">
-      <span>${_esc(v.name)}</span>
-      ${v.event_count ? `<span style="font-size:0.58rem;color:var(--muted)">${v.event_count}</span>` : ''}
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+            title="${_esc(e.path)}">${_esc(e.path)}</span>
+      ${e.count ? `<span style="font-size:0.58rem;color:var(--muted);flex-shrink:0">${e.count}</span>` : ''}
     </div>`).join('');
 
-  // Always show "+ Add" option when there's typed text that isn't an exact match
-  const exactMatch = allVals.some(v => v.name.toLowerCase() === query);
+  // Show "+ Add" when there's typed text with no exact match (creates at root level)
+  const exactMatch = entries.some(e => e.name.toLowerCase() === query || e.path.toLowerCase() === query);
   if (query && !exactMatch) {
     html += `
       <div onmousedown="event.preventDefault();window._pickerAddNew('${_esc(q)}')"

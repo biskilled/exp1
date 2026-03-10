@@ -15,6 +15,7 @@ import { toast } from '../utils/toast.js';
 import {
   loadTagCache, isCacheLoaded, getCacheProject,
   getCacheCategories, getCacheValues,
+  getCacheRoots, getCacheChildren, getCacheDescendants, hasChildren,
   addCachedValue, updateCachedValue, removeCachedValue, addCachedCategory,
 } from '../utils/tagCache.js';
 
@@ -75,16 +76,18 @@ export function renderEntities(container) {
   `;
 
   // Wire window globals
-  window._plannerSelectCat    = _plannerSelectCat;
-  window._plannerCycleStatus  = _plannerCycleStatus;
-  window._plannerSaveDesc     = _plannerSaveDesc;
-  window._plannerSaveDue      = _plannerSaveDue;
-  window._plannerDeleteVal    = _plannerDeleteVal;
-  window._plannerArchiveVal   = _plannerArchiveVal;
-  window._plannerSaveNewTag   = _plannerSaveNewTag;
-  window._plannerCancelNewTag = _plannerCancelNewTag;
-  window._plannerSync         = _plannerSync;
-  window._plannerNewCat       = _plannerNewCat;
+  window._plannerSelectCat     = _plannerSelectCat;
+  window._plannerCycleStatus   = _plannerCycleStatus;
+  window._plannerSaveDesc      = _plannerSaveDesc;
+  window._plannerSaveDue       = _plannerSaveDue;
+  window._plannerDeleteVal     = _plannerDeleteVal;
+  window._plannerArchiveVal    = _plannerArchiveVal;
+  window._plannerSaveNewTag    = _plannerSaveNewTag;
+  window._plannerCancelNewTag  = _plannerCancelNewTag;
+  window._plannerSync          = _plannerSync;
+  window._plannerNewCat        = _plannerNewCat;
+  window._plannerAddChild      = _plannerAddChild;
+  window._plannerToggleExpand  = _plannerToggleExpand;
 
   if (!project) {
     document.getElementById('planner-tags-pane').innerHTML =
@@ -148,22 +151,109 @@ async function _plannerSelectCat(catId, catName) {
 
 // ── Tag table ─────────────────────────────────────────────────────────────────
 
+// Which parent rows are collapsed (set of value IDs whose children are hidden)
+const _collapsed = new Set();
+
 function _renderTagTableFromCache() {
   const { selectedCat, selectedCatName, selectedCatColor, selectedCatIcon } = _plannerState;
   const pane = document.getElementById('planner-tags-pane');
   if (!pane || !selectedCat) return;
-  _renderTagTable(pane, selectedCat, selectedCatName, selectedCatColor, selectedCatIcon, getCacheValues(selectedCat));
+  _renderTagTable(pane, selectedCat, selectedCatName, selectedCatColor, selectedCatIcon);
 }
 
-function _renderTagTable(pane, catId, catName, catColor, catIcon, vals) {
+function _renderTagTable(pane, catId, catName, catColor, catIcon) {
   const STATUS_CYCLE  = { active: 'done', done: 'archived', archived: 'active' };
   const STATUS_COLORS = { active: '#27ae60', done: '#888', archived: '#666' };
+  const roots = getCacheRoots(catId);
+
+  // Recursively build table rows for a node and its visible children
+  function _rowsForNode(v, depth) {
+    const sc      = STATUS_COLORS[v.status] || '#888';
+    const next    = STATUS_CYCLE[v.status]  || 'active';
+    const desc    = v.description || '';
+    const due     = v.due_date    || '';
+    const created = (v.created_at || '').slice(0, 10);
+    const kids    = getCacheChildren(v.id);
+    const hasKids = kids.length > 0;
+    const expanded = !_collapsed.has(v.id);
+    const indent  = depth * 18;
+
+    const toggleBtn = hasKids
+      ? `<span onclick="window._plannerToggleExpand(${v.id})"
+               style="cursor:pointer;color:var(--muted);margin-right:4px;display:inline-block;
+                      width:12px;text-align:center;font-size:0.7rem;user-select:none"
+               title="${expanded ? 'Collapse' : 'Expand'}">${expanded ? '▾' : '▸'}</span>`
+      : `<span style="display:inline-block;width:16px"></span>`;
+
+    let html = `
+      <tr style="border-bottom:1px solid var(--border);transition:background 0.1s"
+          data-val-id="${v.id}"
+          onmouseenter="this.style.background='var(--surface2)'"
+          onmouseleave="this.style.background=''">
+        <td style="padding:0.45rem 0.5rem;color:var(--text);font-weight:${depth===0?'500':'400'}">
+          <div style="display:flex;align-items:center;padding-left:${indent}px">
+            ${toggleBtn}
+            <span>${_esc(v.name)}</span>
+          </div>
+        </td>
+        <td style="padding:0.45rem 0.5rem">
+          <span onclick="window._plannerCycleStatus(${v.id},'${next}')"
+            style="font-size:0.6rem;color:${sc};background:${sc}22;
+                   padding:0.1rem 0.38rem;border-radius:10px;white-space:nowrap;
+                   cursor:pointer;user-select:none"
+            title="Click to cycle: active→done→archived">${_esc(v.status || 'active')}</span>
+        </td>
+        <td style="padding:0.45rem 0.5rem;max-width:180px">
+          <span contenteditable="true"
+            onblur="window._plannerSaveDesc(${v.id},this.textContent)"
+            onfocus="this.style.borderBottomColor='var(--accent)'"
+            style="display:inline-block;color:var(--text2);font-size:0.65rem;outline:none;
+                   cursor:text;min-width:20px;border-bottom:1px dashed transparent;
+                   transition:border-color 0.15s"
+            title="Click to edit description">${_esc(desc || '—')}</span>
+        </td>
+        <td style="padding:0.45rem 0.5rem">
+          <input type="date" value="${_esc(due)}"
+            onchange="window._plannerSaveDue(${v.id},this.value)"
+            style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+                   font-family:var(--font);font-size:0.62rem;padding:0.1rem 0.25rem;
+                   border-radius:var(--radius);outline:none;max-width:115px" />
+        </td>
+        <td style="padding:0.45rem 0.5rem;color:var(--muted);font-size:0.62rem;white-space:nowrap">${created}</td>
+        <td style="padding:0.45rem 0.5rem;text-align:right;color:var(--muted)">${v.event_count || 0}</td>
+        <td style="padding:0.45rem 0.5rem;text-align:center">
+          <div style="display:flex;gap:0.2rem;justify-content:center;flex-wrap:nowrap">
+            <button onclick="window._plannerAddChild(${catId},${v.id})"
+              style="font-size:0.55rem;padding:0.1rem 0.28rem;background:var(--surface);
+                     border:1px solid var(--border);border-radius:var(--radius);
+                     cursor:pointer;color:var(--accent);font-family:var(--font);outline:none"
+              title="Add child tag">+</button>
+            <button onclick="window._plannerArchiveVal(${v.id})"
+              style="font-size:0.58rem;padding:0.1rem 0.3rem;background:var(--surface);
+                     border:1px solid var(--border);border-radius:var(--radius);
+                     cursor:pointer;color:var(--muted);font-family:var(--font);outline:none"
+              title="Archive">⊘</button>
+            <button onclick="window._plannerDeleteVal(${v.id})"
+              style="font-size:0.58rem;padding:0.1rem 0.3rem;background:var(--surface);
+                     border:1px solid var(--border);border-radius:var(--radius);
+                     cursor:pointer;color:var(--red,#e74c3c);font-family:var(--font);outline:none"
+              title="Delete">✕</button>
+          </div>
+        </td>
+      </tr>`;
+
+    // Recurse into children if expanded
+    if (hasKids && expanded) {
+      html += kids.map(child => _rowsForNode(child, depth + 1)).join('');
+    }
+    return html;
+  }
 
   pane.innerHTML = `
     <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
       <span style="font-size:0.8rem;color:${catColor}">${catIcon}</span>
       <span style="font-size:0.78rem;font-weight:600;color:var(--text)">${_esc(catName)}</span>
-      <button onclick="window._plannerShowNewTag()"
+      <button onclick="window._plannerShowNewTag(${catId})"
         style="background:var(--accent);border:none;color:#fff;font-size:0.62rem;
                padding:0.2rem 0.55rem;border-radius:var(--radius);cursor:pointer;
                font-family:var(--font);outline:none;margin-left:auto">+ New Tag</button>
@@ -174,12 +264,13 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon, vals) {
          style="display:none;gap:0.4rem;align-items:center;margin-bottom:0.5rem;
                 padding:0.4rem 0.5rem;background:var(--surface2);
                 border:1px solid var(--border);border-radius:var(--radius)">
+      <span id="planner-new-tag-label" style="font-size:0.6rem;color:var(--muted);white-space:nowrap"></span>
       <input id="planner-new-tag-inp" placeholder="Tag name…" type="text"
-        onkeydown="if(event.key==='Enter')window._plannerSaveNewTag(${catId});if(event.key==='Escape')window._plannerCancelNewTag()"
+        onkeydown="if(event.key==='Enter')window._plannerSaveNewTag();if(event.key==='Escape')window._plannerCancelNewTag()"
         style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
                font-family:var(--font);font-size:0.68rem;padding:0.22rem 0.45rem;
                border-radius:var(--radius);outline:none" />
-      <button onclick="window._plannerSaveNewTag(${catId})"
+      <button onclick="window._plannerSaveNewTag()"
         style="background:var(--accent);border:none;color:#fff;font-size:0.62rem;
                padding:0.22rem 0.55rem;border-radius:var(--radius);cursor:pointer;
                font-family:var(--font);outline:none">Save</button>
@@ -189,7 +280,7 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon, vals) {
                font-family:var(--font);outline:none">✕</button>
     </div>
 
-    ${vals.length === 0 ? `
+    ${roots.length === 0 ? `
       <div style="text-align:center;padding:3rem 1rem;color:var(--muted);font-size:0.72rem">
         <div style="font-size:2rem;margin-bottom:0.75rem">${catIcon}</div>
         No tags in <strong>${_esc(catName)}</strong> yet
@@ -203,69 +294,26 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon, vals) {
           <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:125px">Due Date</th>
           <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:80px">Created</th>
           <th style="text-align:right;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:52px">Events</th>
-          <th style="text-align:center;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:64px">Actions</th>
+          <th style="text-align:center;padding:0.4rem 0.5rem;color:var(--muted);font-weight:500;width:80px">Actions</th>
         </tr>
       </thead>
       <tbody>
-        ${vals.map(v => {
-          const sc   = STATUS_COLORS[v.status] || '#888';
-          const next = STATUS_CYCLE[v.status]  || 'active';
-          const desc    = v.description || '';
-          const due     = v.due_date    || '';
-          const created = (v.created_at || '').slice(0, 10);
-          return `
-          <tr style="border-bottom:1px solid var(--border);transition:background 0.1s"
-              onmouseenter="this.style.background='var(--surface2)'"
-              onmouseleave="this.style.background=''">
-            <td style="padding:0.45rem 0.5rem;color:var(--text);font-weight:500">${_esc(v.name)}</td>
-            <td style="padding:0.45rem 0.5rem">
-              <span onclick="window._plannerCycleStatus(${v.id},'${next}')"
-                style="font-size:0.6rem;color:${sc};background:${sc}22;
-                       padding:0.1rem 0.38rem;border-radius:10px;white-space:nowrap;
-                       cursor:pointer;user-select:none"
-                title="Click to cycle: active→done→archived">${_esc(v.status || 'active')}</span>
-            </td>
-            <td style="padding:0.45rem 0.5rem;max-width:180px">
-              <span contenteditable="true"
-                onblur="window._plannerSaveDesc(${v.id},this.textContent)"
-                onfocus="this.style.borderBottomColor='var(--accent)'"
-                style="display:inline-block;color:var(--text2);font-size:0.65rem;outline:none;
-                       cursor:text;min-width:20px;border-bottom:1px dashed transparent;
-                       transition:border-color 0.15s"
-                title="Click to edit description">${_esc(desc || '—')}</span>
-            </td>
-            <td style="padding:0.45rem 0.5rem">
-              <input type="date" value="${_esc(due)}"
-                onchange="window._plannerSaveDue(${v.id},this.value)"
-                style="background:var(--bg);border:1px solid var(--border);color:var(--text);
-                       font-family:var(--font);font-size:0.62rem;padding:0.1rem 0.25rem;
-                       border-radius:var(--radius);outline:none;max-width:115px" />
-            </td>
-            <td style="padding:0.45rem 0.5rem;color:var(--muted);font-size:0.62rem;white-space:nowrap">${created}</td>
-            <td style="padding:0.45rem 0.5rem;text-align:right;color:var(--muted)">${v.event_count || 0}</td>
-            <td style="padding:0.45rem 0.5rem;text-align:center">
-              <div style="display:flex;gap:0.2rem;justify-content:center">
-                <button onclick="window._plannerArchiveVal(${v.id})"
-                  style="font-size:0.58rem;padding:0.1rem 0.3rem;background:var(--surface);
-                         border:1px solid var(--border);border-radius:var(--radius);
-                         cursor:pointer;color:var(--muted);font-family:var(--font);outline:none"
-                  title="Archive">⊘</button>
-                <button onclick="window._plannerDeleteVal(${v.id})"
-                  style="font-size:0.58rem;padding:0.1rem 0.3rem;background:var(--surface);
-                         border:1px solid var(--border);border-radius:var(--radius);
-                         cursor:pointer;color:var(--red,#e74c3c);font-family:var(--font);outline:none"
-                  title="Delete">✕</button>
-              </div>
-            </td>
-          </tr>`;
-        }).join('')}
+        ${roots.map(v => _rowsForNode(v, 0)).join('')}
       </tbody>
     </table>`}
   `;
 
-  window._plannerShowNewTag = () => {
-    const row = document.getElementById('planner-new-tag-row');
-    if (row) row.style.display = 'flex';
+  window._plannerShowNewTag = (catId, parentId = null) => {
+    const row   = document.getElementById('planner-new-tag-row');
+    const label = document.getElementById('planner-new-tag-label');
+    if (row) {
+      row.style.display = 'flex';
+      row.dataset.catId    = catId;
+      row.dataset.parentId = parentId ?? '';
+    }
+    if (label) {
+      label.textContent = parentId ? 'Child of …:' : 'New root tag:';
+    }
     setTimeout(() => document.getElementById('planner-new-tag-inp')?.focus(), 0);
   };
 }
@@ -301,28 +349,35 @@ function _plannerArchiveVal(valId) {
 }
 
 async function _plannerDeleteVal(valId) {
-  if (!confirm('Delete this tag and all its event links?')) return;
+  if (!confirm('Delete this tag (and all its children + event links)?')) return;
+  // Remove children from cache first (DB cascade handles the rest)
+  getCacheDescendants(valId).forEach(d => removeCachedValue(d.id));
   removeCachedValue(valId);
+  _collapsed.delete(valId);
   _renderTagTableFromCache();
   _renderCategoryList();
   api.entities.deleteValue(valId)
     .catch(e => toast('Delete sync error: ' + e.message, 'error'));
 }
 
-async function _plannerSaveNewTag(catId) {
-  const inp  = document.getElementById('planner-new-tag-inp');
-  const name = (inp?.value || '').trim();
+async function _plannerSaveNewTag() {
+  const inp     = document.getElementById('planner-new-tag-inp');
+  const row     = document.getElementById('planner-new-tag-row');
+  const name    = (inp?.value || '').trim();
   if (!name) { toast('Name required', 'error'); return; }
-  const { project, selectedCatName } = _plannerState;
+  const catId   = row ? parseInt(row.dataset.catId, 10) : _plannerState.selectedCat;
+  const parentId = row?.dataset.parentId ? parseInt(row.dataset.parentId, 10) : null;
+  const { project } = _plannerState;
   try {
-    // Need the new ID from DB before we can cache it
-    const result = await api.entities.createValue({ category_id: catId, name, project });
+    const result = await api.entities.createValue({ category_id: catId, name, project, parent_id: parentId });
     addCachedValue(catId, {
       id: result.id, category_id: catId, name, description: '',
-      status: 'active', event_count: 0, due_date: null,
+      status: 'active', event_count: 0, due_date: null, parent_id: parentId,
       created_at: new Date().toISOString(),
     });
     if (inp) inp.value = '';
+    // Auto-expand the parent so the new child is visible
+    if (parentId) _collapsed.delete(parentId);
     _plannerCancelNewTag();
     _renderTagTableFromCache();
     _renderCategoryList();
@@ -334,6 +389,29 @@ function _plannerCancelNewTag() {
   if (row) row.style.display = 'none';
   const inp = document.getElementById('planner-new-tag-inp');
   if (inp) inp.value = '';
+}
+
+/** Open the new-tag inline form pre-configured to add a child under parentId. */
+function _plannerAddChild(catId, parentId) {
+  const row   = document.getElementById('planner-new-tag-row');
+  const label = document.getElementById('planner-new-tag-label');
+  const inp   = document.getElementById('planner-new-tag-inp');
+  const parentVal = getCacheValues(catId).find(v => v.id === parentId);
+  if (row) {
+    row.style.display = 'flex';
+    row.dataset.catId    = catId;
+    row.dataset.parentId = parentId;
+  }
+  if (label) label.textContent = `Child of "${parentVal?.name ?? parentId}":`;
+  if (inp)   inp.value = '';
+  setTimeout(() => inp?.focus(), 0);
+}
+
+/** Toggle expand/collapse for a node's children. */
+function _plannerToggleExpand(valId) {
+  if (_collapsed.has(valId)) _collapsed.delete(valId);
+  else _collapsed.add(valId);
+  _renderTagTableFromCache();
 }
 
 async function _plannerNewCat(name) {

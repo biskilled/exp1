@@ -51,6 +51,49 @@ export const getCacheValues     = catId   => _cache.values[String(catId)] || [];
 export const getCacheProject    = ()      => _cache.project;
 export const isCacheLoaded      = ()      => _cache.loaded;
 
+/** Root-level values for a category (parent_id is null/undefined). */
+export const getCacheRoots = catId =>
+  getCacheValues(catId).filter(v => !v.parent_id);
+
+/** Direct children of a value (parent_id matches). */
+export const getCacheChildren = parentId =>
+  Object.values(_cache.values)
+    .flat()
+    .filter(v => String(v.parent_id) === String(parentId));
+
+/** All descendants of a value (recursive). Returns flat array. */
+export function getCacheDescendants(parentId) {
+  const children = getCacheChildren(parentId);
+  return children.flatMap(c => [c, ...getCacheDescendants(c.id)]);
+}
+
+/** True if a value has any children. */
+export const hasChildren = valId =>
+  Object.values(_cache.values).flat().some(v => String(v.parent_id) === String(valId));
+
+/**
+ * Build full path string for a value: "grandparent / parent / name".
+ * catId is needed to scope the lookup.
+ */
+export function getValuePath(catId, valId) {
+  const all = getCacheValues(catId);
+  const byId = Object.fromEntries(all.map(v => [String(v.id), v]));
+  const parts = [];
+  let cur = byId[String(valId)];
+  while (cur) {
+    parts.unshift(cur.name);
+    cur = cur.parent_id ? byId[String(cur.parent_id)] : null;
+  }
+  return parts.join(' / ');
+}
+
+/** Leaf values for a category (values that have no children). */
+export function getCacheLeaves(catId) {
+  const all = getCacheValues(catId);
+  const parentIds = new Set(all.map(v => String(v.parent_id)).filter(Boolean));
+  return all.filter(v => !parentIds.has(String(v.id)));
+}
+
 /** Add a newly created value to the cache and bump the parent category count. */
 export function addCachedValue(catId, value) {
   const key = String(catId);
