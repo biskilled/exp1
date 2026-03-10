@@ -175,11 +175,13 @@ class ValueCreate(BaseModel):
     name:        str
     description: str = ""
     project:     Optional[str] = None
+    due_date:    Optional[str] = None
 
 class ValuePatch(BaseModel):
     name:        Optional[str] = None
     description: Optional[str] = None
     status:      Optional[str] = None
+    due_date:    Optional[str] = None
 
 
 @router.get("/values")
@@ -214,7 +216,7 @@ async def list_values(
             et_table = db.project_table("event_tags", p)
             cur.execute(
                 f"""SELECT v.id, v.category_id, v.name, v.description, v.status,
-                          v.created_at,
+                          v.created_at, v.due_date,
                           (SELECT COUNT(*) FROM {et_table} et
                            WHERE et.entity_value_id = v.id) AS event_count,
                           c.name AS category_name, c.color, c.icon
@@ -230,6 +232,8 @@ async def list_values(
                 row = dict(zip(cols, r))
                 if row.get("created_at"):
                     row["created_at"] = row["created_at"].isoformat()
+                if row.get("due_date"):
+                    row["due_date"] = row["due_date"].isoformat()
                 rows.append(row)
             return {"values": rows, "project": p}
 
@@ -247,9 +251,9 @@ async def create_value(body: ValueCreate):
             if not cur.fetchone():
                 raise HTTPException(404, "Category not found")
             cur.execute(
-                "INSERT INTO entity_values (category_id,project,name,description) "
-                "VALUES (%s,%s,%s,%s) RETURNING id",
-                (body.category_id, p, body.name, body.description),
+                "INSERT INTO entity_values (category_id,project,name,description,due_date) "
+                "VALUES (%s,%s,%s,%s,%s) RETURNING id",
+                (body.category_id, p, body.name, body.description, body.due_date or None),
             )
             return {"id": cur.fetchone()[0], "name": body.name, "project": p}
 
@@ -261,6 +265,7 @@ async def patch_value(val_id: int, body: ValuePatch):
     if body.name        is not None: fields.append("name=%s");        params.append(body.name)
     if body.description is not None: fields.append("description=%s"); params.append(body.description)
     if body.status      is not None: fields.append("status=%s");      params.append(body.status)
+    if body.due_date    is not None: fields.append("due_date=%s");    params.append(body.due_date or None)
     if not fields:
         raise HTTPException(400, "Nothing to update")
     params.append(val_id)

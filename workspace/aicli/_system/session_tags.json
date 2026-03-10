@@ -1,6 +1,6 @@
 {
-  "phase": "development",
-  "feature": "tagging",
-  "bug_ref": null,
+  "phase": "discovery",
+  "feature": "taggingds",
+  "bug_ref": "dsds",
   "extra": {}
 }

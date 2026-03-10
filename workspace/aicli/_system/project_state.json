@@ -22,20 +22,20 @@
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state",
-    "Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph \u2014 no SQLite/ChromaDB",
-    "Per-project DB tables (commits_aicli, events_aicli, etc.) via project_table() + ensure_project_schema() \u2014 no full-table scans with project filter",
+    "Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph",
+    "Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}) via project_table() + ensure_project_schema()",
     "Electron UI with xterm.js + Monaco; Vanilla JS frontend \u2014 no React/Vue/build step",
-    "JWT auth via python-jose + bcrypt (NOT passlib); dev_mode toggle for local testing without login",
-    "All LLM providers independent; server holds API keys (api_keys.json); client sends NO keys",
-    "Config-driven pricing \u2014 provider_costs.json is single source of truth; no hardcoded costs",
-    "Multi-agent workflows: async DAG executor via asyncio.gather; loop-back edges with max_iterations cap",
-    "Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata filters",
-    "5-layer memory: immediate (in-memory) \u2192 working (session JSON) \u2192 project (PROJECT.md + project_state.json) \u2192 historical (history.jsonl) \u2192 global (templates)",
-    "/memory generates 4 per-LLM files + copies to code_dir; LLM synthesis via Haiku; incremental ingest",
+    "JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login",
+    "All LLM providers independent; server holds API keys; client sends NO keys",
+    "Config-driven pricing via provider_costs.json as single source of truth",
+    "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap",
+    "Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata",
+    "5-layer memory: immediate (in-memory) \u2192 working (session JSON) \u2192 project (PROJECT.md) \u2192 historical (history.jsonl) \u2192 global (templates)",
+    "/memory generates 4 per-LLM files + copies to code_dir; Haiku incremental synthesis",
     "Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) \u2192 single file per project",
-    "Entity/event model: entity_categories + entity_values (shared) + per-project events/event_tags/event_links",
-    "MCP server as standalone stdio process so Claude Code connects without backend running",
-    "UI installer: install.sh (one-time) + update.sh (git pull + deps) + start.sh \u2014 never touches workspace/"
+    "Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links",
+    "MCP server as standalone stdio process for Claude Code integration without backend dependency",
+    "UI installer: install.sh (one-time) + update.sh (git pull) + start.sh \u2014 never touches workspace/"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -64,12 +64,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Project management page redesign \u2014 richer dashboard with metrics (event count, active features, recent commits, workflow runs), activity timeline, quick-action buttons",
+    "Memory synthesis pipeline validation \u2014 /memory endpoint generates per-LLM summaries; Haiku incremental synthesis; copy to code_dir for persistence",
+    "Project management page redesign \u2014 richer dashboard with event count, active features, recent commits, workflow runs, activity timeline",
     "Workflow \u2194 project integration \u2014 link workflow runs to features/tasks; auto-create task events from workflow outputs; show workflow status per feature",
-    "Workflow process improvements \u2014 better YAML editor UX, step-by-step run log with timing per node, re-run from any node, templates library",
+    "Workflow process improvements \u2014 better YAML editor UX, step-by-step run log with per-node timing, re-run from any node, templates library",
     "Project overview dashboard \u2014 summary card per project: last activity, open tasks, active features, recent commits, LLM cost this week",
-    "DB schema refactoring complete \u2014 project_table() and ensure_project_schema() deployed; per-project tables (commits_{p}, events_{p}, embeddings_{p})",
-    "Memory synthesis pipeline \u2014 /memory endpoint generates 4 per-LLM summary files; Haiku incremental synthesis; copy to code_dir for persistence"
+    "Client install / multi-project support \u2014 session-based project switching with persistent history per project in unified history.jsonl"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -101,5 +101,5 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-09T04:12:26Z"
+  "last_memory_run": "2026-03-09T18:17:26Z"
 }

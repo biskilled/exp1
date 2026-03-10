@@ -302,9 +302,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Project management page redesign — richer dashboard with metrics (event count, active features, recent commits, workflow runs), activity timeline, quick-action buttons
+- Memory synthesis pipeline validation — /memory endpoint generates per-LLM summaries; Haiku incremental synthesis; copy to code_dir for persistence
+- Project management page redesign — richer dashboard with event count, active features, recent commits, workflow runs, activity timeline
 - Workflow ↔ project integration — link workflow runs to features/tasks; auto-create task events from workflow outputs; show workflow status per feature
-- Workflow process improvements — better YAML editor UX, step-by-step run log with timing per node, re-run from any node, templates library
+- Workflow process improvements — better YAML editor UX, step-by-step run log with per-node timing, re-run from any node, templates library
 - Project overview dashboard — summary card per project: last activity, open tasks, active features, recent commits, LLM cost this week
-- DB schema refactoring complete — project_table() and ensure_project_schema() deployed; per-project tables (commits_{p}, events_{p}, embeddings_{p})
-- Memory synthesis pipeline — /memory endpoint generates 4 per-LLM summary files; Haiku incremental synthesis; copy to code_dir for persistence
+- Client install / multi-project support — session-based project switching with persistent history per project in unified history.jsonl

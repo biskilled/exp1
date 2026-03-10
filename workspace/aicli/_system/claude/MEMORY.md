@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-09 04:12 UTC by aicli /memory_
+_Generated: 2026-03-09 18:17 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-**aicli** is a shared AI memory platform (v2.1.0) that integrates multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with persistent project memory, semantic search via PostgreSQL+pgvector, and workflow automation. It combines a Python CLI (prompt_toolkit + rich) with a web UI (Vanilla JS + Electron) featuring an embedded terminal (xterm.js), Monaco editor, and Cytoscape-based workflow graphs. Currently enhancing project management dashboards, workflow-to-project integration for feature tracking, and memory synthesis pipelines to enable rich historical context for multi-session AI collaboration.
+aicli is a shared AI memory platform that integrates multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) into a unified CLI and web UI, enabling intelligent project tracking, workflow automation, and semantic memory synthesis. It uses PostgreSQL + pgvector for semantic search, per-project event/entity graphs, and a 5-layer memory system (immediate → working → project → historical → global) to maintain context across sessions. Current focus is on richer project dashboards, workflow-to-feature linking, and multi-project session management with persistent unified history.
 
 ## Tech Stack
 
@@ -28,29 +28,29 @@ _Generated: 2026-03-09 04:12 UTC by aicli /memory_
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph — no SQLite/ChromaDB
-- Per-project DB tables (commits_aicli, events_aicli, etc.) via project_table() + ensure_project_schema() — no full-table scans with project filter
+- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph
+- Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}) via project_table() + ensure_project_schema()
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step
-- JWT auth via python-jose + bcrypt (NOT passlib); dev_mode toggle for local testing without login
-- All LLM providers independent; server holds API keys (api_keys.json); client sends NO keys
-- Config-driven pricing — provider_costs.json is single source of truth; no hardcoded costs
-- Multi-agent workflows: async DAG executor via asyncio.gather; loop-back edges with max_iterations cap
-- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata filters
-- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md + project_state.json) → historical (history.jsonl) → global (templates)
-- /memory generates 4 per-LLM files + copies to code_dir; LLM synthesis via Haiku; incremental ingest
+- JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
+- All LLM providers independent; server holds API keys; client sends NO keys
+- Config-driven pricing via provider_costs.json as single source of truth
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
+- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
+- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
+- /memory generates 4 per-LLM files + copies to code_dir; Haiku incremental synthesis
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
-- Entity/event model: entity_categories + entity_values (shared) + per-project events/event_tags/event_links
-- MCP server as standalone stdio process so Claude Code connects without backend running
-- UI installer: install.sh (one-time) + update.sh (git pull + deps) + start.sh — never touches workspace/
+- Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
+- MCP server as standalone stdio process for Claude Code integration without backend dependency
+- UI installer: install.sh (one-time) + update.sh (git pull) + start.sh — never touches workspace/
 
 ## In Progress
 
-- Project management page redesign — richer dashboard with metrics (event count, active features, recent commits, workflow runs), activity timeline, quick-action buttons
+- Memory synthesis pipeline validation — /memory endpoint generates per-LLM summaries; Haiku incremental synthesis; copy to code_dir for persistence
+- Project management page redesign — richer dashboard with event count, active features, recent commits, workflow runs, activity timeline
 - Workflow ↔ project integration — link workflow runs to features/tasks; auto-create task events from workflow outputs; show workflow status per feature
-- Workflow process improvements — better YAML editor UX, step-by-step run log with timing per node, re-run from any node, templates library
+- Workflow process improvements — better YAML editor UX, step-by-step run log with per-node timing, re-run from any node, templates library
 - Project overview dashboard — summary card per project: last activity, open tasks, active features, recent commits, LLM cost this week
-- DB schema refactoring complete — project_table() and ensure_project_schema() deployed; per-project tables (commits_{p}, events_{p}, embeddings_{p})
-- Memory synthesis pipeline — /memory endpoint generates 4 per-LLM summary files; Haiku incremental synthesis; copy to code_dir for persistence
+- Client install / multi-project support — session-based project switching with persistent history per project in unified history.jsonl
 
 ## Active Features / Bugs
 
@@ -67,4 +67,4 @@ _Generated: 2026-03-09 04:12 UTC by aicli /memory_
 - **[phase]** discovery `(0 events)`
 - **[phase]** prod `(0 events)`
 
-**[2026-03-09]** `claude_cli` — DB schema refactoring completed: added `project_table(base, project)` static method and `ensure_project_schema(project)` to create per-project tables (commits_aicli, events_aicli, embeddings_aicli, etc.) without redundant project columns. Removed legacy shared commits/events tables; schema now enforces project isolation at table level, not filter level. **[2026-03-09]** `claude_cli` — Prepared /memory endpoint for synthesis: generates 4 per-LLM summary files using Claude Haiku for incremental synthesis since last_memory_run, copies to code_dir for persistence. Ready to integrate with project dashboard. **[2026-03-09]** `in-progress` — Project management page redesign underway: adding metrics dashboard (event count, active features, recent commits, workflow runs), activity timeline, and quick-action buttons to replace static project list. **[2026-03-09]** `in-progress` — Workflow ↔ project integration: planning to link workflow run outputs to feature/task events, auto-create task events from node outputs, and display workflow status per feature in Projects tab for end-to-end feature tracking. **[2026-03-09]** `in-progress` — Workflow UX improvements: better YAML editor, step-by-step run log with per-node timing, re-run from arbitrary nodes, and workflow templates library in workspace/_templates/workflows/. **[2026-03-09]** `in-progress` — Global knowledge layer: shipping 6 default shared roles in workspace/_templates/roles/ on install, enabling multi-agent collaboration without per-project role duplication.
+**[2026-03-09 04:08]** `claude_cli` — /memory endpoint synthesis complete: generates 4 per-LLM summary files using Haiku incremental synthesis; all files copied to code_dir for persistence and multi-session reuse. **[2026-03-09 04:08]** `claude_cli` — Project summary, current features, and ongoing features updated in memory system for next development phases. **[2026-03-09 17:56]** `claude_cli` — Session-based history validation: client install/multi-project support feature tracked in unified history.jsonl; session JSON now properly captures full prompts and synthesized responses separately from long-form features. **[Recent]** `in_progress` — Project management dashboard redesign with metrics (event count, active features, workflow status) and activity timeline; workflow ↔ project linking to auto-create task events. **[Recent]** `in_progress` — Workflow UX improvements: better YAML editor, step-by-step run logs with per-node timing, re-run from any node, template library support.

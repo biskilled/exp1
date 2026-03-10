@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-09 18:13 UTC — do not edit manually.
+> Auto-generated 2026-03-09 23:24 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 44
-- **Last active**: 2026-03-09T04:12:46Z
+- **Sessions**: 45
+- **Last active**: 2026-03-09T18:17:08Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -32,30 +32,30 @@
 
 ## In Progress
 
-- Project management page redesign — richer dashboard with metrics (event count, active features, recent commits, workflow runs), activity timeline, quick-action buttons
+- Memory synthesis pipeline validation — /memory endpoint generates per-LLM summaries; Haiku incremental synthesis; copy to code_dir for persistence
+- Project management page redesign — richer dashboard with event count, active features, recent commits, workflow runs, activity timeline
 - Workflow ↔ project integration — link workflow runs to features/tasks; auto-create task events from workflow outputs; show workflow status per feature
-- Workflow process improvements — better YAML editor UX, step-by-step run log with timing per node, re-run from any node, templates library
+- Workflow process improvements — better YAML editor UX, step-by-step run log with per-node timing, re-run from any node, templates library
 - Project overview dashboard — summary card per project: last activity, open tasks, active features, recent commits, LLM cost this week
-- DB schema refactoring complete — project_table() and ensure_project_schema() deployed; per-project tables (commits_{p}, events_{p}, embeddings_{p})
-- Memory synthesis pipeline — /memory endpoint generates 4 per-LLM summary files; Haiku incremental synthesis; copy to code_dir for persistence
+- Client install / multi-project support — session-based project switching with persistent history per project in unified history.jsonl
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph — no SQLite/ChromaDB
-- Per-project DB tables (commits_aicli, events_aicli, etc.) via project_table() + ensure_project_schema() — no full-table scans with project filter
+- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph
+- Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}) via project_table() + ensure_project_schema()
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step
-- JWT auth via python-jose + bcrypt (NOT passlib); dev_mode toggle for local testing without login
-- All LLM providers independent; server holds API keys (api_keys.json); client sends NO keys
-- Config-driven pricing — provider_costs.json is single source of truth; no hardcoded costs
-- Multi-agent workflows: async DAG executor via asyncio.gather; loop-back edges with max_iterations cap
-- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata filters
-- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md + project_state.json) → historical (history.jsonl) → global (templates)
-- /memory generates 4 per-LLM files + copies to code_dir; LLM synthesis via Haiku; incremental ingest
+- JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
+- All LLM providers independent; server holds API keys; client sends NO keys
+- Config-driven pricing via provider_costs.json as single source of truth
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
+- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
+- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
+- /memory generates 4 per-LLM files + copies to code_dir; Haiku incremental synthesis
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
-- Entity/event model: entity_categories + entity_values (shared) + per-project events/event_tags/event_links
-- MCP server as standalone stdio process so Claude Code connects without backend running
-- UI installer: install.sh (one-time) + update.sh (git pull + deps) + start.sh — never touches workspace/
+- Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
+- MCP server as standalone stdio process for Claude Code integration without backend dependency
+- UI installer: install.sh (one-time) + update.sh (git pull) + start.sh — never touches workspace/
 
 ---
 
@@ -155,43 +155,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-09 04:08]** `claude_cli/claude`  
 → Assuming I will improve the project management page, workflow processes. can you update /memory - so it can be used for 
 ← _`/memory` ran with LLM synthesis and all files copied to `code_dir`. Let me verify the MEMORY.md output:_
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-← _Implementation complete. Here's a summary of what was done:  ---  ## Summary  ### Part 1 — DB Schema Refactoring  **`core/database.py`** - Added `project_table(base, project)` static method — returns _
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat
-
-**[2026-03-09 03:50]** `claude_cli/claude`  
-→ <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8</tool-use-id> <stat

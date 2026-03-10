@@ -27,20 +27,20 @@ You are a senior Python software architect with deep expertise in:
 ## Key Architectural Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph — no SQLite/ChromaDB
-- Per-project DB tables (commits_aicli, events_aicli, etc.) via project_table() + ensure_project_schema() — no full-table scans with project filter
+- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph
+- Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}) via project_table() + ensure_project_schema()
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step
-- JWT auth via python-jose + bcrypt (NOT passlib); dev_mode toggle for local testing without login
-- All LLM providers independent; server holds API keys (api_keys.json); client sends NO keys
-- Config-driven pricing — provider_costs.json is single source of truth; no hardcoded costs
-- Multi-agent workflows: async DAG executor via asyncio.gather; loop-back edges with max_iterations cap
-- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata filters
-- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md + project_state.json) → historical (history.jsonl) → global (templates)
-- /memory generates 4 per-LLM files + copies to code_dir; LLM synthesis via Haiku; incremental ingest
+- JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
+- All LLM providers independent; server holds API keys; client sends NO keys
+- Config-driven pricing via provider_costs.json as single source of truth
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
+- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
+- 5-layer memory: immediate (in-memory) → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
+- /memory generates 4 per-LLM files + copies to code_dir; Haiku incremental synthesis
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
-- Entity/event model: entity_categories + entity_values (shared) + per-project events/event_tags/event_links
-- MCP server as standalone stdio process so Claude Code connects without backend running
-- UI installer: install.sh (one-time) + update.sh (git pull + deps) + start.sh — never touches workspace/
+- Entity/event model: shared entity_categories/entity_values + per-project events/event_tags/event_links
+- MCP server as standalone stdio process for Claude Code integration without backend dependency
+- UI installer: install.sh (one-time) + update.sh (git pull) + start.sh — never touches workspace/
 
 ---
 
@@ -112,9 +112,6 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-09] `claude_cli`: <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8
-- [2026-03-09] `claude_cli`: <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8
-- [2026-03-09] `claude_cli`: <task-notification> <task-id>a6ebd0b686c66a5d7</task-id> <tool-use-id>toolu_01Jci8F3L8X9pwNVWA2V2Hk8
 - [2026-03-09] `claude_cli`: Assuming I will improve the project management page, workflow processes. can you update /memory - so
 - [2026-03-09] `claude_cli`: The last prompts was asking for a new feature (clinet install/ support multiple projects) - it was m
 
