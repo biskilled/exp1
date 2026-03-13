@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-10 03:19 UTC — do not edit manually.
+> Auto-generated 2026-03-13 17:35 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 61
-- **Last active**: 2026-03-10T03:19:20Z
+- **Sessions**: 62
+- **Last active**: 2026-03-10T03:25:08Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-10 03:22]** `claude_cli/claude`  
+→ I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks also managing the c
+← _All clean. Here's the full picture:  ---  **No hook changes needed.** The `auto_commit_push.sh` hook already writes `session_id` to `commit_log.jsonl` on lines 181 and 294. The data connection exists._
+
 **[2026-03-10 03:16]** `ui/claude`  
 → hellow, how are you ?
 ← _Hello! I'm doing well, thanks for asking. Ready to help with the **aicli** project.  Looking at the context, it seems you've been making good progress — recent work includes AI suggestion banners, ses_
@@ -205,6 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 00:11]** `claude_cli/claude`  
 → I think there is an issue with ui as it is not loading properly (and I do see error whie bind address 127.0.0.1, 8000) 
 ← _Everything is working on the backend side. To summarise:  - **Bind error**: Caused by trying to start a second uvicorn instance — the old one (PID 86671) was already running and is still running fine _
-
-**[2026-03-09 23:51]** `claude_cli/claude`  
-→ I dont think your update works. lets start from Planer - there is not need to have 4 tabs - Feture, tag, Bugs and Tags. 
