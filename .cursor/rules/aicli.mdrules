@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-14 18:50 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-14 19:16 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -34,20 +34,20 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
+- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl; bidirectional mapping via POST /entities/events/tag-by-source-id
 - Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
-- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl; POST /entities/events/tag-by-source-id maps commits to events
 - Session tags persist via GET /entities/session-tags endpoint; tag cache loaded once on history tab open
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js for graph visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents (search_memory, get_project_state, commit_push, etc.)
+- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project with source_id timestamp linking
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-13] I am siting with my freid and try to explain him wha is this system is about ? can you explain that shortly ?
 - [2026-03-14] I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is currently works in my syst
 - [2026-03-14] I do see the option to add tag in history - can you make sure all tags are loaded only once into mermory (to save db cal
 - [2026-03-14] can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) pr
 - [2026-03-14] I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt 
+- [2026-03-14] I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would like to start rotate t

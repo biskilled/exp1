@@ -330,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Commit-to-prompt-to-session linking matured — source_id timestamp from history.jsonl maps bidirectionally; POST /entities/events/tag-by-source-id creates links; multiple commits per session each tagged to originating prompt; verified working in production (2026-03-14)
+- Commit-to-prompt-to-session linking fully matured — source_id timestamp from history.jsonl maps bidirectionally; POST /entities/events/tag-by-source-id creates event-value links; multiple commits per session each tagged to originating prompt; verified working (2026-03-14)
 - Tag cache persistence fully implemented — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker operations verified (2026-03-14)
-- CLAUDE.md memory layer alignment complete — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured in synthesis; PROJECT.md v2.2.0 aligned (2026-03-14)
-- AI suggestions banner stable — /memory runs always (DB best-effort), displays dedicated amber banner between tag bar and messages; works without PostgreSQL fallback; approval workflow clear (2026-03-10)
-- Port stability resolved — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() eliminates bind address conflicts; clean restart workflow documented (2026-03-10)
-- Session phase labeling clarity — 'Phase:' label instead of 'Session:' in tag bar; tag bar flex-wrap displays all suggestion chips; amber banner distinguishes AI suggestions from user-created tags (2026-03-10)
+- CLAUDE.md memory layer alignment complete — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured in synthesis; PROJECT.md v2.2.0 aligned to current state (2026-03-14)
+- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; tag bar flex-wrap displays all suggestion chips; dedicated amber banner distinguishes AI suggestions from user-created tags (2026-03-10–2026-03-14)
+- Port stability and Electron restart workflow resolved — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
+- History tab commit-to-session display implemented — commit logs show source_id linking to originating prompts; /memory suggestions and tag loading optimized for zero thrashing (2026-03-14)

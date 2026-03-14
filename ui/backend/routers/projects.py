@@ -17,6 +17,60 @@ from config import settings
 from core.database import db
 
 router = APIRouter()
+log = logging.getLogger(__name__)
+
+# ── History rotation ──────────────────────────────────────────────────────────
+
+def _rotate_history(sys_dir: Path, max_rows: int = 500) -> dict:
+    """Rotate history.jsonl when it exceeds max_rows.
+
+    Keeps the most recent max_rows entries in history.jsonl.
+    Archives older entries to history_YYMMDDHHMM.jsonl (named from the first
+    entry's timestamp so the filename reflects the period it covers).
+
+    Returns a dict with rotation metadata (rotated, archived_to, rows_kept, rows_archived).
+    Called during /memory so the DB has already imported older entries via _do_sync_events.
+    """
+    hist = sys_dir / "history.jsonl"
+    if not hist.exists():
+        return {"rotated": False}
+    lines = [ln for ln in hist.read_text().splitlines() if ln.strip()]
+    if len(lines) <= max_rows:
+        return {"rotated": False, "total_rows": len(lines)}
+
+    archive_lines = lines[:-max_rows]
+    keep_lines    = lines[-max_rows:]
+
+    # Name the archive after the first (oldest) entry's timestamp
+    suffix = datetime.utcnow().strftime("%y%m%d%H%M")
+    try:
+        first = json.loads(archive_lines[0])
+        ts_raw = first.get("ts", "")
+        if ts_raw:
+            dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+            suffix = dt.strftime("%y%m%d%H%M")
+    except Exception:
+        pass
+
+    archive_path = sys_dir / f"history_{suffix}.jsonl"
+    # Avoid overwriting if file already exists (e.g. two rotations same minute)
+    counter = 0
+    while archive_path.exists():
+        counter += 1
+        archive_path = sys_dir / f"history_{suffix}_{counter}.jsonl"
+
+    archive_path.write_text("\n".join(archive_lines) + "\n")
+    hist.write_text("\n".join(keep_lines) + "\n")
+
+    log.info(f"Rotated history.jsonl: {len(archive_lines)} rows → {archive_path.name}, "
+             f"{len(keep_lines)} rows kept")
+    return {
+        "rotated":        True,
+        "archived_to":    archive_path.name,
+        "rows_archived":  len(archive_lines),
+        "rows_kept":      len(keep_lines),
+    }
+
 
 # ── Noise filtering ───────────────────────────────────────────────────────────
 
@@ -745,6 +799,10 @@ async def generate_memory(project_name: str):
         except Exception:
             pass
 
+    # Rotate history.jsonl if it exceeds the configured limit
+    history_max_rows: int = int(cfg.get("history_max_rows", 500))
+    rotation = _rotate_history(sys_dir, max_rows=history_max_rows)
+
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
     # Load recent history (last 40 entries with user_input, excluding noisy entries)
@@ -1105,6 +1163,7 @@ async def generate_memory(project_name: str):
         "suggestions_note": suggestions_note,
         "run_ts": run_ts,
         "suggested_tags": suggested_tags,
+        "history_rotation": rotation,
     }
 
 
