@@ -376,8 +376,10 @@ def _do_sync_events(p: str) -> dict[str, int]:
     """
     ws = _workspace(p)
     imported = {"prompt": 0, "commit": 0}
-    ev_table = db.project_table("events", p)
-    c_table  = db.project_table("commits", p)
+    ev_table = db.project_table("events",      p)
+    c_table  = db.project_table("commits",     p)
+    et_table = db.project_table("event_tags",  p)
+    el_table = db.project_table("event_links", p)
 
     with db.conn() as conn:
         with conn.cursor() as cur:

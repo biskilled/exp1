@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-14 14:30 UTC by aicli /memory_
+_Generated: 2026-03-14 14:37 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-**aicli** is a shared AI memory platform that unifies history and context across multiple AI tools (Claude CLI, Cursor, ChatGPT, etc.) so developers never start from scratch. The system stores unified history in JSONL, tags/categories in PostgreSQL with pgvector for semantic search, and provides a web UI + Electron desktop app for browsing sessions, managing nested tags, and viewing AI-synthesized suggestions. Currently at v2.2.0 with full commit-to-prompt linking, optimized tag caching, port stability fixes, and memory layer alignment across all features.
+aicli is a shared AI memory platform that unifies history and context across multiple AI tools (Claude CLI, Cursor, ChatGPT, etc.) for developers. It stores unified prompt/response history per project in JSONL format, enables semantic search via PostgreSQL + pgvector, and provides a desktop UI (Electron + Vanilla JS) and CLI for managing sessions, tags, commits, and workflows. Current state (v2.2.0): commit-to-prompt linking complete, tag caching optimized, memory synthesis working, phase-based session management live, and multi-agent DAG workflows visualized via Cytoscape.
 
 ## Tech Stack
 
@@ -38,20 +38,20 @@ _Generated: 2026-03-14 14:30 UTC by aicli /memory_
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl; POST /entities/events/tag-by-source-id maps commits to events
-- Session tags persist via GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories
-- Phase labeling (renamed from 'Session:') visible in tag bar; 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions
+- Session tags persist via GET /entities/session-tags endpoint; tag cache loaded once on history tab open
+- Phase labeling visible in tag bar; 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js for graph visualization
 
 ## In Progress
 
-- Commit-to-prompt linking via source_id — POST /entities/events/tag-by-source-id endpoint maps history.jsonl timestamps to events; enables tracking which commits relate to which prompts within a session (2026-03-14)
-- Tag cache persistence in history tab — all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing (2026-03-14)
-- CLAUDE.md memory layer alignment — verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured in memory output (2026-03-14)
-- Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts (2026-03-10)
-- AI suggestions banner refinement — /memory runs always (DB best-effort), displays dedicated amber banner with approve/reject UI; works even without PostgreSQL (2026-03-10)
-- Session phase labeling clarity — 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10)
+- Commit-to-prompt-to-session linking — source_id timestamp from history.jsonl maps to events in event_tags_{p}; POST /entities/events/tag-by-source-id creates bidirectional links between commits and prompts; multiple commits per session each tagged to their originating prompt (2026-03-14)
+- Tag cache persistence in history tab — all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker operations (2026-03-14)
+- CLAUDE.md memory layer alignment — verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured in memory output; PROJECT.md v2.2.0 updated (2026-03-14)
+- Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts; clean restart workflow documented (2026-03-10)
+- AI suggestions banner refinement — /memory runs always (DB best-effort), displays dedicated amber banner with approve/reject UI between tag bar and messages; works even without PostgreSQL fallback (2026-03-10)
+- Session phase labeling clarity — 'Phase:' label instead of 'Session:' in tag bar; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions with clear approval workflow (2026-03-10)
 
 ## Active Features / Bugs
 
@@ -70,4 +70,4 @@ _Generated: 2026-03-14 14:30 UTC by aicli /memory_
 - **[phase]** prod `(0 events)`
 - **[phase]** development `(0 events)`
 
-**[2026-03-14]** `claude_cli` — Commit-to-prompt linking finalized: `POST /entities/events/tag-by-source-id` maps history.jsonl source_id (timestamp) to events, enabling queries like "which commits relate to this prompt"; multiple commits can be tagged to the same event within a session. **[2026-03-14]** `claude_cli` — Tag cache optimization completed: history tab loads all categories + values once on open via `Promise.all`, eliminating DB thrashing during tag selection; colors persist on save. **[2026-03-14]** `claude_cli` — CLAUDE.md memory layers fully aligned: all nested tag improvements, commit linking, session persistence, graph workflows, and tag caching now reflected in project memory output (v2.2.0). **[2026-03-10]** `claude_cli` — Port binding stability resolved: `freePort()` kills stale uvicorn via lsof before restart; Electron before-quit calls `process.exit()` ensuring clean shutdown; eliminates "address already in use" errors. **[2026-03-10]** `claude_cli` — AI suggestions now a dedicated amber banner between tag bar and messages; /memory always runs (DB best-effort), displays approve/reject UI, works without PostgreSQL. **[2026-03-10]** `claude_cli` — Phase labeling clarity improved: renamed 'Session:' to 'Phase:' in tag bar; 3-dot menu (⋯) per tag row for edit/archive/restore/delete; tag bar flex-wraps to show all suggestion chips.
+**[2026-03-14]** `claude_cli` — Commit-to-prompt linking finalized: POST /entities/events/tag-by-source-id maps history.jsonl source_id timestamps to events; enables tracking which commits relate to which specific prompts within a session; multiple commits per session each linked to originating prompt. **[2026-03-14]** `claude_cli` — Tag cache optimization completed: history tab loads all categories/values once on open via Promise.all; color preservation on save prevents DB thrashing; tag picker now operates with zero DB calls. **[2026-03-14]** `claude_cli` — Memory layer alignment verified: CLAUDE.md multi-layer design confirmed; PROJECT.md updated to v2.2.0; all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) properly documented. **[2026-03-10]** `claude_cli` — Port binding and startup stability resolved: freePort() kills stale uvicorn via lsof before port reuse; Electron before-quit cleanup via process.exit() prevents bind address conflicts; clean startup workflow documented. **[2026-03-10]** `claude_cli` — AI suggestions banner finalized: /memory runs always (DB best-effort fallback), displays dedicated amber banner between tag bar and messages; includes approve/reject UI with clear visual distinction from session tags. **[2026-03-10]** `claude_cli` — Phase labeling and session tag clarity improved: 'Phase:' label replaces 'Session:' in tag bar; tag bar flex-wrap handles multiple suggestion chips; session-tags endpoint persists tags across sessions; 3-dot menu (⋯) enables archive/restore/delete workflows.
