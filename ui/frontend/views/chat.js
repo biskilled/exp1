@@ -919,9 +919,13 @@ window._chatLoadAny = async (id) => {
     return;
   }
   // Sort entries oldest-first so messages flow top→bottom chronologically
+  const _NOISE = ['<task-notification>', '<tool-use-id>', '<task-id>', '<parameter>'];
   const chronological = [...session.entries].sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
   for (const e of chronological) {
-    if (e.user_input) _appendUserMsg(e.user_input);
+    const inp = e.user_input || '';
+    // Skip internal Claude Code tool noise entries
+    if (_NOISE.some(p => inp.includes(p))) continue;
+    if (inp) _appendUserMsg(inp);
     if (e.output) _appendAssistantMsg(e.output);
   }
   // Highlight active in sidebar

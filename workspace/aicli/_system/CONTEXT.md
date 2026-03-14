@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-14 19:17 UTC — do not edit manually.
+> Auto-generated 2026-03-14 19:22 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 77
-- **Last active**: 2026-03-14T19:00:52Z
+- **Sessions**: 79
+- **Last active**: 2026-03-14T19:20:48Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -18,7 +18,7 @@
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
-- **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
+- **storage_primary**: JSONL (history.jsonl, commit_log.jsonl with rotation support), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
@@ -33,12 +33,12 @@
 
 ## In Progress
 
-- Commit-to-prompt-to-session linking fully matured — source_id timestamp from history.jsonl maps bidirectionally; POST /entities/events/tag-by-source-id creates event-value links; multiple commits per session each tagged to originating prompt; verified working (2026-03-14)
-- Tag cache persistence fully implemented — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker operations verified (2026-03-14)
-- CLAUDE.md memory layer alignment complete — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured in synthesis; PROJECT.md v2.2.0 aligned to current state (2026-03-14)
-- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; tag bar flex-wrap displays all suggestion chips; dedicated amber banner distinguishes AI suggestions from user-created tags (2026-03-10–2026-03-14)
-- Port stability and Electron restart workflow resolved — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
-- History tab commit-to-session display implemented — commit logs show source_id linking to originating prompts; /memory suggestions and tag loading optimized for zero thrashing (2026-03-14)
+- Commit-to-prompt-to-session linking fully matured — source_id timestamp from history.jsonl maps bidirectionally; POST /entities/events/tag-by-source-id creates event-value links; multiple commits per session each tagged to originating prompt (2026-03-14)
+- Tag cache persistence fully implemented — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker operations (2026-03-14)
+- History rotation and tag caching on history tab — tag cache loads once when history tab opens; color fidelity preserved on save; history.jsonl rotates to history_YYMMDDHHSS when /memory processes (2026-03-14)
+- CLAUDE.md memory layer alignment complete — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured; PROJECT.md v2.2.0 aligned to current state (2026-03-14)
+- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; amber banner distinguishes AI suggestions; suggestions populate from /memory synthesis without DB requirement (2026-03-10–2026-03-14)
+- Port stability and Electron restart workflow resolved — freePort() kills stale uvicorn via lsof; Electron before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
 
 ## Key Decisions
 
@@ -55,8 +55,8 @@
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js for graph visualization
-- MCP server (stdio): 8 tools for integration with Claude CLI and external agents (search_memory, get_project_state, commit_push, etc.)
-- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project with source_id timestamp linking
+- MCP server (stdio): 8 tools for integration with Claude CLI and external agents
+- History rotation on /memory call: configurable max_rows (default 500), creates history_YYMMDDHHSS archive, original becomes history.jsonl
 
 ---
 
@@ -152,6 +152,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-14 19:08]** `claude_cli/claude`  
 →  I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would like to start rotate 
+← _Everything works. Here's the summary of what was completed:  **History rotation — done:** - `_rotate_history()` was already in `projects.py`; added `log = logging.getLogger(__name__)` and wired up the_
 
 **[2026-03-14 13:59]** `claude_cli/claude`  
 → I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt 

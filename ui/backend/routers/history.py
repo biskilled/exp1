@@ -27,6 +27,13 @@ router = APIRouter()
 # Engine root: .../aicli/ui/backend/routers/history.py → four parents up
 _ENGINE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
+# Noise patterns — entries whose user_input contains these are internal tool noise
+_NOISE_PATTERNS = ["<task-notification>", "<tool-use-id>", "<task-id>", "<parameter>"]
+
+def _is_noisy(e: dict) -> bool:
+    txt = e.get("user_input") or ""
+    return any(p in txt for p in _NOISE_PATTERNS)
+
 
 def _project_dir(project: str | None = None) -> Path:
     p = project or settings.active_project or "default"
@@ -88,10 +95,14 @@ def _load_prompt_log_legacy() -> list[dict]:
 async def chat_history(
     project: str | None = Query(None),
     provider: str | None = Query(None),
-    limit: int = Query(100),
+    limit: int = Query(0),          # 0 = return all (frontend handles pagination)
     current_user: Optional[dict] = Depends(get_optional_user),
 ):
-    """Return unified project history — all sources, all users."""
+    """Return unified project history — all sources, all users.
+
+    Noise entries (user_input containing <task-notification>, <tool-use-id>, etc.)
+    are filtered out before returning. limit=0 means no cap (frontend paginates).
+    """
     entries = _load_unified_history(project, provider)
 
     # Also merge legacy prompt_log.jsonl entries not yet in unified file
@@ -108,8 +119,13 @@ async def chat_history(
             seen.add(key)
             deduped.append(e)
 
+    # Filter out internal noise entries
+    deduped = [e for e in deduped if not _is_noisy(e)]
+
     deduped.sort(key=lambda x: x.get("ts", ""), reverse=True)
-    return {"entries": deduped[:limit], "total": len(deduped)}
+    if limit > 0:
+        return {"entries": deduped[:limit], "total": len(deduped)}
+    return {"entries": deduped, "total": len(deduped)}
 
 
 class CommitPatch(BaseModel):

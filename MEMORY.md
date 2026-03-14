@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-14 19:16 UTC by aicli /memory_
+_Generated: 2026-03-14 19:20 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+**aicli** is a unified AI memory platform for developers that captures all prompts, responses, and project context across multiple AI tools (Claude CLI, Cursor, ChatGPT, etc.) into a single searchable history with semantic search via PostgreSQL + pgvector. It provides an Electron desktop app with a vanilla JS frontend (no build step), nested tag/category organization, session-to-commit linking, workflow graph automation, and always-on memory synthesis via Claude Haiku. Currently at v2.2.0 (2026-03-14) with full commit-to-prompt traceability, zero-DB-call tag caching, history rotation, and MCP server integration for external agent access.
 
 ## Tech Stack
 
@@ -9,7 +13,7 @@ _Generated: 2026-03-14 19:16 UTC by aicli /memory_
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
-- **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
+- **storage_primary**: JSONL (history.jsonl, commit_log.jsonl with rotation support), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
@@ -37,17 +41,17 @@ _Generated: 2026-03-14 19:16 UTC by aicli /memory_
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js for graph visualization
-- MCP server (stdio): 8 tools for integration with Claude CLI and external agents (search_memory, get_project_state, commit_push, etc.)
-- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project with source_id timestamp linking
+- MCP server (stdio): 8 tools for integration with Claude CLI and external agents
+- History rotation on /memory call: configurable max_rows (default 500), creates history_YYMMDDHHSS archive, original becomes history.jsonl
 
 ## In Progress
 
-- Commit-to-prompt-to-session linking fully matured — source_id timestamp from history.jsonl maps bidirectionally; POST /entities/events/tag-by-source-id creates event-value links; multiple commits per session each tagged to originating prompt; verified working (2026-03-14)
-- Tag cache persistence fully implemented — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker operations verified (2026-03-14)
-- CLAUDE.md memory layer alignment complete — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured in synthesis; PROJECT.md v2.2.0 aligned to current state (2026-03-14)
-- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; tag bar flex-wrap displays all suggestion chips; dedicated amber banner distinguishes AI suggestions from user-created tags (2026-03-10–2026-03-14)
-- Port stability and Electron restart workflow resolved — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
-- History tab commit-to-session display implemented — commit logs show source_id linking to originating prompts; /memory suggestions and tag loading optimized for zero thrashing (2026-03-14)
+- Commit-to-prompt-to-session linking fully matured — source_id timestamp from history.jsonl maps bidirectionally; POST /entities/events/tag-by-source-id creates event-value links; multiple commits per session each tagged to originating prompt (2026-03-14)
+- Tag cache persistence fully implemented — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker operations (2026-03-14)
+- History rotation and tag caching on history tab — tag cache loads once when history tab opens; color fidelity preserved on save; history.jsonl rotates to history_YYMMDDHHSS when /memory processes (2026-03-14)
+- CLAUDE.md memory layer alignment complete — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured; PROJECT.md v2.2.0 aligned to current state (2026-03-14)
+- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; amber banner distinguishes AI suggestions; suggestions populate from /memory synthesis without DB requirement (2026-03-10–2026-03-14)
+- Port stability and Electron restart workflow resolved — freePort() kills stale uvicorn via lsof; Electron before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
 
 ## Active Features / Bugs
 
@@ -66,43 +70,4 @@ _Generated: 2026-03-14 19:16 UTC by aicli /memory_
 - **[phase]** prod `(0 events)`
 - **[phase]** development `(0 events)`
 
-## Recent Work (last 10 exchanges)
-
-**[2026-03-14 19:08]** `claude_cli/claude`
-Q: I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would like to start rotate that (when user is doing /memory) - the current one will remain history.jsonl wbu
-
-**[2026-03-14 13:59]** `claude_cli/claude`
-Q: I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt ID ? commit are created after prompt (in session there might be several commits,
-A: It worked. "Links created: 0" means they already existed from the previous run (conflict). The sample shows 5 real links:  - `d0f14c21` → prompt "It is lookls like hooks are not working now..." - `951768bc` → prompt "do I need the dev_runtime_state.json?..." - `0336f3e5` → prompt "I am thinking to a
-
-**[2026-03-14 13:11]** `claude_cli/claude`
-Q: can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) properly and add all new feutre that was created
-A: `GET /graph/` returns `{"workflows":[]}` — the graph router is live and the tables are working. Everything is now aligned. Here's the full summary of what was done:  ---  ### Memory + Alignment Update — Complete  **`workspace/aicli/PROJECT.md`** — updated to v2.2.0 (2026-03-14): - Goal 9 changed fro
-
-**[2026-03-14 13:04]** `claude_cli/claude`
-Q: I do see the option to add tag in history - can you make sure all tags are loaded only once into mermory (to save db calls) as each time I am trying to ad tag, its looks like to loading all tags. also
-A: Everything looks correct. Here's a summary of all changes made:  ---  ### Changes  **`ui/frontend/views/history.js`**  1. **Tag cache loaded once on tab open** — `_renderChat` now includes `listCategories` in its initial `Promise.all` (4 parallel requests: history, commits, categories, config). A ne
-
-**[2026-03-14 11:10]** `claude_cli/claude`
-Q: I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is currently works in my system. the goal is to be bale to use/memory in order to update all data (update sum
-A: All changes are done. Here's a summary of what was implemented:  ### Changes  **`ui/backend/routers/entities.py`** — new endpoint `POST /entities/events/tag-by-source-id`: - Accepts `{ source_id, entity_value_id, project }` - Looks up event by `source_id` (the timestamp from history.jsonl) - If not 
-
-**[2026-03-13 17:44]** `claude_cli/claude`
-Q: I am siting with my freid and try to explain him wha is this system is about ? can you explain that shortly ?
-A: **aicli** is a shared AI memory platform for developers.  The core problem it solves: when you use different AI tools (Claude CLI, Cursor, ChatGPT in the browser, etc.), each one starts from scratch — no memory of your project, your decisions, or your history.  **aicli gives all of them the same mem
-
-**[2026-03-10 03:22]** `claude_cli/claude`
-Q: I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks also managing the commit/push (as most communication is from calude CLI). I would like to have that
-A: All clean. Here's the full picture:  ---  **No hook changes needed.** The `auto_commit_push.sh` hook already writes `session_id` to `commit_log.jsonl` on lines 181 and 294. The data connection exists. What was missing was the UI to display it.  **How it works now:**  ``` Claude Code CLI starts   └─ 
-
-**[2026-03-10 03:16]** `ui/claude`
-Q: hellow, how are you ?
-A: Hello! I'm doing well, thanks for asking. Ready to help with the **aicli** project.  Looking at the context, it seems you've been making good progress — recent work includes AI suggestion banners, session tag persistence, planner UI improvements, and port binding fixes.  What would you like to work 
-
-**[2026-03-10 03:14]** `claude_cli/claude`
-Q: Are you using the mcp server in order to reciave all project information ? Also, I do not see any sujjestion in any session , api key is configured properly . also I dont see in chat view N commits in
-A: ---  Now let me answer your three questions clearly:  ---  **1. Am I (Claude Code) using the aicli MCP server?**  No. I'm reading your files directly using the Read/Grep/Bash tools. The MCP server (`ui/mcp_server.py`) is a **separate integration** — it's designed so that when you run **Claude Code C
-
-**[2026-03-10 02:57]** `claude_cli/claude`
-Q: can you run /memory and run some tests? I do not see any sujjestion on all the existing session there are. also I do not see any commint logs at the history tab. also I would like to see for each sess
-A: All clean (only the expected module resolution errors from Node's ES module checker, no syntax errors).  ---  Here's everything that was done:  ### 1. `/memory` suggestions — fixed to work without PostgreSQL Previously suggestions were gated behind `if db.is_available()`. Now they always run — DB is
+**[2026-03-14]** `claude_cli` — Commit-to-prompt linking finalized via source_id (timestamp from history.jsonl); POST /entities/events/tag-by-source-id creates bidirectional event-value links so each commit in a session maps back to its originating prompt. **[2026-03-14]** `claude_cli` — Tag cache optimization: all categories/values loaded once on history tab open via Promise.all (4 parallel requests); color fidelity preserved on save; zero DB calls during tag picker operations verified. **[2026-03-14]** `claude_cli` — History rotation implemented: _rotate_history() triggered on every /memory call; configurable max_rows (default 500); creates history_YYMMDDHHSS archive and resets history.jsonl to new entries only. **[2026-03-14]** `claude_cli` — CLAUDE.md memory layer alignment complete; PROJECT.md v2.2.0 updated with all new features (nested tags, commit linking, session persistence, tag cache, workflow graphs); all Goals marked ✓ Implemented. **[2026-03-10–2026-03-14]** `claude_cli` — AI suggestions banner stable: dedicated amber banner between tag bar and messages; suggestions sourced from /memory synthesis without DB dependency; 'Phase:' label in tag bar clarifies session phase selection. **[2026-03-10]** `claude_cli` — Port binding resolved: freePort() kills stale uvicorn via lsof before restart; Electron process.exit() on before-quit eliminates bind address conflicts; clean restart workflow verified.
