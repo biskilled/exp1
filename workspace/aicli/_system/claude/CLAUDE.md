@@ -37,10 +37,10 @@ You are a senior Python software architect with deep expertise in:
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
 - Session tags persist via GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories
-- Planner action visibility via 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete
+- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl; POST /entities/events/tag-by-source-id maps commits to events
+- Phase labeling (renamed from 'Session:') visible in tag bar; 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
-- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
-- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl
+- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
 
 ---
 
@@ -48,7 +48,7 @@ You are a senior Python software architect with deep expertise in:
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-03-09 | Version 2.1.0_
+_Last updated: 2026-03-14 | Version 2.2.0_
 
 ---
 
@@ -74,7 +74,7 @@ No more copy-pasting context. No more re-explaining your architecture.
 | 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
 | 7 | **Entity/knowledge graph** — Tag every event (prompt/commit) to features, bugs, tasks | ✓ Implemented |
 | 8 | **Semantic search** — pgvector cosine similarity over chunked history + code | ✓ Implemented |
-| 9 | **Project management UI** — Feature/Task/Bug tracking tied to AI workflows | ◷ In Progress |
+| 9 | **Project management UI** — Unified Planner: 2-pane tag manager, per-entry tagging, commit linking | ✓ Implemented |
 
 ---
 
@@ -108,15 +108,15 @@ Layer 5 — Global Knowledge
 ```
 
 
-*See PROJECT.md for full documentation (310 lines total)*
+*See PROJECT.md for full documentation (338 lines total)*
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-10] `claude_cli`: Are you using the mcp server in order to reciave all project information ? Also, I do not see any su
-- [2026-03-10] `ui`: hellow, how are you ?
 - [2026-03-10] `claude_cli`: I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks
 - [2026-03-13] `claude_cli`: I am siting with my freid and try to explain him wha is this system is about ? can you explain that 
 - [2026-03-14] `claude_cli`: I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is curren
+- [2026-03-14] `claude_cli`: I do see the option to add tag in history - can you make sure all tags are loaded only once into mer
+- [2026-03-14] `claude_cli`: can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.m
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

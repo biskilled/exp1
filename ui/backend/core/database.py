@@ -279,10 +279,79 @@ class _Database:
         -- events, event_tags, event_links are now per-project tables (see ensure_project_schema)
         """
 
+        _DDL_GRAPH = """
+        -- Graph workflow definitions
+        CREATE TABLE IF NOT EXISTS graph_workflows (
+            id             SERIAL         PRIMARY KEY,
+            project        VARCHAR(255)   NOT NULL,
+            name           VARCHAR(255)   NOT NULL,
+            description    TEXT           NOT NULL DEFAULT '',
+            max_iterations INTEGER        NOT NULL DEFAULT 3,
+            created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(project, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_gw_project ON graph_workflows(project);
+
+        -- Graph nodes (steps within a workflow)
+        CREATE TABLE IF NOT EXISTS graph_nodes (
+            id          SERIAL         PRIMARY KEY,
+            workflow_id INT            NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
+            name        VARCHAR(255)   NOT NULL,
+            node_type   VARCHAR(50)    NOT NULL DEFAULT 'llm',
+            prompt      TEXT           NOT NULL DEFAULT '',
+            provider    VARCHAR(50)    NOT NULL DEFAULT 'claude',
+            model       VARCHAR(100)   NOT NULL DEFAULT '',
+            pos_x       REAL           NOT NULL DEFAULT 0,
+            pos_y       REAL           NOT NULL DEFAULT 0,
+            config      JSONB          NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS idx_gn_workflow ON graph_nodes(workflow_id);
+
+        -- Graph edges (connections between nodes)
+        CREATE TABLE IF NOT EXISTS graph_edges (
+            id            SERIAL       PRIMARY KEY,
+            workflow_id   INT          NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
+            source_node   INT          NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            target_node   INT          NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            edge_type     VARCHAR(50)  NOT NULL DEFAULT 'default',
+            UNIQUE(workflow_id, source_node, target_node, edge_type)
+        );
+
+        -- Workflow run instances
+        CREATE TABLE IF NOT EXISTS graph_runs (
+            id           SERIAL         PRIMARY KEY,
+            workflow_id  INT            NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
+            project      VARCHAR(255)   NOT NULL,
+            status       VARCHAR(50)    NOT NULL DEFAULT 'pending',
+            started_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            finished_at  TIMESTAMPTZ,
+            total_cost   NUMERIC(12, 8) NOT NULL DEFAULT 0,
+            input        TEXT           NOT NULL DEFAULT '',
+            output       TEXT           NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_gr_workflow ON graph_runs(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_gr_project  ON graph_runs(project);
+
+        -- Results per node per run
+        CREATE TABLE IF NOT EXISTS graph_node_results (
+            id        SERIAL         PRIMARY KEY,
+            run_id    INT            NOT NULL REFERENCES graph_runs(id) ON DELETE CASCADE,
+            node_id   INT            NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            status    VARCHAR(50)    NOT NULL DEFAULT 'pending',
+            output    TEXT           NOT NULL DEFAULT '',
+            cost      NUMERIC(12, 8) NOT NULL DEFAULT 0,
+            started_at  TIMESTAMPTZ,
+            finished_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS idx_gnr_run  ON graph_node_results(run_id);
+        CREATE INDEX IF NOT EXISTS idx_gnr_node ON graph_node_results(node_id);
+        """
+
         for label, sql in [
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
             ("Tagging (commits + session_tags)", _DDL_TAGGING),
             ("Entities (categories + values + events + links)", _DDL_ENTITIES),
+            ("Graph workflows (nodes, edges, runs, results)", _DDL_GRAPH),
         ]:
             try:
                 with conn.cursor() as cur:

@@ -1,6 +1,6 @@
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-03-09 | Version 2.1.0_
+_Last updated: 2026-03-14 | Version 2.2.0_
 
 ---
 
@@ -26,7 +26,7 @@ No more copy-pasting context. No more re-explaining your architecture.
 | 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
 | 7 | **Entity/knowledge graph** — Tag every event (prompt/commit) to features, bugs, tasks | ✓ Implemented |
 | 8 | **Semantic search** — pgvector cosine similarity over chunked history + code | ✓ Implemented |
-| 9 | **Project management UI** — Feature/Task/Bug tracking tied to AI workflows | ◷ In Progress |
+| 9 | **Project management UI** — Unified Planner: 2-pane tag manager, per-entry tagging, commit linking | ✓ Implemented |
 
 ---
 
@@ -156,16 +156,33 @@ Migrated from old shared tables via `POST /admin/migrate-project-tables`.
 - [x] `POST /entities/events/sync` — imports history.jsonl + commits → events (idempotent)
 - [x] LLM relationship detection: keyword (fix/close/resolve → bug link) + Haiku semantic links
 
-**Projects Tab (UI)**
-- [x] Features / Tasks / Bugs table with status toggle, archive, delete
-- [x] Inline create form (type selector + name + description)
-- [x] `↻ Sync` button → `POST /entities/events/sync` to update event_count
-- [x] Per-project event counts displayed per entity value
+**Planner Tab (UI)** — unified tag manager (renamed from "Projects")
+- [x] 2-pane layout: category list (left 160px) + tag table (right flex)
+- [x] Category list: icon + name + value_count badge; `+ New category` input at bottom
+- [x] Tag table: Name | Status | Description | Due Date | Created | Events | Actions columns
+- [x] Status cycle: click badge → active → done → archived (PATCH saved instantly)
+- [x] Inline description edit: click text → contenteditable → blur → PATCH
+- [x] Due date picker: `<input type="date">` → change → PATCH
+- [x] Nested tags via `parent_id` FK: tree UI with indent + ▶ expand + child button
+- [x] Archive (⊘) + Delete (✕) action buttons on each row
+- [x] `↻ Sync` → `POST /entities/events/sync` to update event_count + auto-propagate tags
+- [x] `due_date DATE` column added to `entity_values` (idempotent ALTER TABLE)
 
 **History Tab (UI)**
-- [x] Unified sessions tab: all sources (ui/claude_cli/workflow) with source badges
-- [x] Commits tab: red border for untagged, inline phase dropdown, editable feature/bug cells
-- [x] Tags (⬡) tab: 3-column layout (categories | values | events) with tag picker modal
+- [x] Chat sub-tab: source + phase filter bar (client-side, instant, no re-fetch)
+- [x] Chat sub-tab: entries grouped by session with commit strip (hashes + GitHub links)
+- [x] Chat sub-tab: `⬡ Tag` button per entry → instant picker (cached, zero API calls on open)
+- [x] Chat sub-tab: tag chip shown with category color + icon after saving
+- [x] Commits sub-tab: `⬡ Tag` button per row — same picker mechanism as chat
+- [x] Tags (⬡) sub-tab removed — tag management moved to Planner
+- [x] Commits sub-tab: GitHub link on hash (↗) when `github_repo` configured
+
+**Entity Tagging — Backend**
+- [x] `POST /entities/events/tag-by-source-id`: tag individual events by timestamp (source_id); creates event record from history.jsonl if not yet synced
+- [x] `GET /entities/session-tags`: reload entity chips when switching chat sessions
+- [x] `_do_sync_events`: stores `session_id` in commit event metadata; backfills existing rows
+- [x] Auto-propagation: every sync copies entity tags from session prompts → session commits (same `session_id`)
+- [x] `POST /entities/session-tag`: bulk-tag all events in a session; find-or-create entity value
 
 **Graph Workflows**
 - [x] Async DAG executor with `asyncio.gather` for parallel nodes
@@ -214,17 +231,6 @@ Migrated from old shared tables via `POST /admin/migrate-project-tables`.
 ---
 
 ## In Progress ◷
-
-### Project Management Page Redesign
-
-**Goal**: transform the Projects tab from a simple CRUD list into a real project management view where AI workflow outputs feed directly into tracked features and tasks.
-
-Planned components:
-- **Project overview card**: active features (count + top 3 by event_count), open tasks, last commit, workflow runs, LLM cost this week
-- **Activity timeline**: unified event stream (prompts + commits + workflow runs) per project, filterable by type/date/entity
-- **Feature detail panel**: click feature → see linked events, commits, workflow runs, related bugs
-- **Kanban board** (optional): columns = backlog / in-progress / review / done, drag to move status
-- **Quick actions**: + New Feature, + New Task, + New Bug, Run Workflow, Open in Terminal
 
 ### Workflow Process Improvements
 
@@ -279,14 +285,36 @@ class BaseProvider:
 ### UI Tab Structure
 ```
 sidebar tabs:
-  chat      → views/chat.js      — SSE streaming chat with tag bar
-  summary   → views/summary.js   — PROJECT.md viewer/editor
-  prompts   → views/prompts.js   — role + feature prompt tree
-  code      → views/files.js     — folder tree + file viewer
-  graph     → views/graph_workflow.js — Cytoscape.js DAG editor
-  projects  → views/entities.js  — Features/Tasks/Bugs management  ← NEXT PHASE
-  history   → views/history.js   — sessions + commits + tags tabs
-  admin     → views/admin.js     — 6-tab admin panel
+  summary  → views/summary.js        — PROJECT.md viewer/editor
+  chat     → views/chat.js           — SSE streaming chat; tag bar (phase + entity chips);
+                                        AI suggestions amber banner; session-commit footer
+  planner  → views/entities.js       — 2-pane unified tag manager (categories + tag table)
+  prompts  → views/prompts.js        — role + feature prompt tree
+  code     → views/code.js           — folder tree + file viewer
+  workflow → views/workflow.js        — YAML workflow editor
+  history  → views/history.js        — Chat (filter+grouped+per-entry tag) | Commits (tag btn) | Runs | Evals
+  settings → views/settings.js       — billing, backend URL, theme
+  admin    → views/admin.js          — 6-tab admin panel (users/pricing/coupons/api-keys/usage/billing)
+            (conditional: admin role only)
+```
+
+### Registered API Routers
+```
+/auth        routers/auth.py          JWT login/register/me
+/usage       routers/usage.py         per-user usage stats
+/chat        routers/chat.py          SSE streaming chat + session history
+/history     routers/history.py       history.jsonl + commits + runs + session-commits
+/workflows   routers/workflows.py     YAML workflow CRUD + run execution
+/prompts     routers/prompts.py       prompt file tree CRUD
+/files       routers/files.py         code directory browser
+/projects    routers/projects.py      project CRUD + /memory + context generation
+/config      routers/config_sync.py   settings sync
+/admin       routers/admin.py         user mgmt + pricing + coupons + api-keys + usage
+/git         routers/git.py           git status/pull/push/commit-push + OAuth device flow
+/billing     routers/billing.py       user balance + coupon + transaction history
+/search      routers/search.py        semantic search (pgvector)
+/entities    routers/entities.py      entity taxonomy + events + tagging + suggestions
+/graph       routers/graph_workflows.py  async DAG graph workflows (Cytoscape.js)
 ```
 
 ---
@@ -302,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Commit/prompt linking mechanism — POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events for tagging; enables /memory to update summaries and embeddings via commit reference
-- Tagging workflow validation — confirmed tag system works end-to-end: tags persist across sessions, /memory can query and synthesize tags for suggestions, frontend caching eliminates per-action SQL calls
-- Session phase labeling and visibility — renamed 'Session:' to 'Phase:' in tag bar; fixed tag bar overflow with flex-wrap to ensure all suggestion chips visible
-- AI suggestions banner display — /memory now always runs (DB best-effort), displays suggestions as amber banner between tag bar and messages with approve/reject UI
-- Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts
-- Database query optimization — frontend caches all tags/categories on project load, batch saves on explicit save only, eliminated per-action SQL round-trips
+- Tag cache persistence in history tab — all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing (2026-03-14 13:04)
+- Commit-to-prompt linking mechanism — POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events; enables /memory to update summaries/embeddings via commit reference (2026-03-14 11:10)
+- Session phase labeling clarity — 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10 02:40)
+- AI suggestions banner refinement — /memory runs always (DB best-effort), displays dedcated amber banner with approve/reject UI; works even without PostgreSQL (2026-03-10 02:57)
+- Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts (2026-03-10 02:00)
+- /memory alignment to CLAUDE.md memory layers — verify synthesis logic matches multi-layer design; ensure all recent features (nested tags, commit linking, session persistence) captured in memory output (2026-03-14 13:11)

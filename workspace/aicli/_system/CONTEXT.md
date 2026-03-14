@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-14 12:54 UTC — do not edit manually.
+> Auto-generated 2026-03-14 13:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 64
-- **Last active**: 2026-03-14T11:20:20Z
+- **Sessions**: 65
+- **Last active**: 2026-03-14T13:08:49Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -33,12 +33,12 @@
 
 ## In Progress
 
-- Commit/prompt linking mechanism — POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events for tagging; enables /memory to update summaries and embeddings via commit reference
-- Tagging workflow validation — confirmed tag system works end-to-end: tags persist across sessions, /memory can query and synthesize tags for suggestions, frontend caching eliminates per-action SQL calls
-- Session phase labeling and visibility — renamed 'Session:' to 'Phase:' in tag bar; fixed tag bar overflow with flex-wrap to ensure all suggestion chips visible
-- AI suggestions banner display — /memory now always runs (DB best-effort), displays suggestions as amber banner between tag bar and messages with approve/reject UI
-- Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts
-- Database query optimization — frontend caches all tags/categories on project load, batch saves on explicit save only, eliminated per-action SQL round-trips
+- Tag cache persistence in history tab — all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing (2026-03-14 13:04)
+- Commit-to-prompt linking mechanism — POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events; enables /memory to update summaries/embeddings via commit reference (2026-03-14 11:10)
+- Session phase labeling clarity — 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10 02:40)
+- AI suggestions banner refinement — /memory runs always (DB best-effort), displays dedcated amber banner with approve/reject UI; works even without PostgreSQL (2026-03-10 02:57)
+- Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts (2026-03-10 02:00)
+- /memory alignment to CLAUDE.md memory layers — verify synthesis logic matches multi-layer design; ensure all recent features (nested tags, commit linking, session persistence) captured in memory output (2026-03-14 13:11)
 
 ## Key Decisions
 
@@ -53,10 +53,10 @@
 - Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
 - Session tags persist via GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories
-- Planner action visibility via 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete
+- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl; POST /entities/events/tag-by-source-id maps commits to events
+- Phase labeling (renamed from 'Session:') visible in tag bar; 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
-- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
-- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl
+- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
 
 ---
 
@@ -64,7 +64,7 @@
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-03-09 | Version 2.1.0_
+_Last updated: 2026-03-14 | Version 2.2.0_
 
 ---
 
@@ -90,7 +90,7 @@ No more copy-pasting context. No more re-explaining your architecture.
 | 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
 | 7 | **Entity/knowledge graph** — Tag every event (prompt/commit) to features, bugs, tasks | ✓ Implemented |
 | 8 | **Semantic search** — pgvector cosine similarity over chunked history + code | ✓ Implemented |
-| 9 | **Project management UI** — Feature/Task/Bug tracking tied to AI workflows | ◷ In Progress |
+| 9 | **Project management UI** — Unified Planner: 2-pane tag manager, per-entry tagging, commit linking | ✓ Implemented |
 
 ---
 
@@ -144,11 +144,18 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ├── cli.py                 ← Interactive REPL (prompt_toolkit + rich)
 
 
-*...230 more lines in PROJECT.md*
+*...258 more lines in PROJECT.md*
 
 ---
 
 ## Recent Development History
+
+**[2026-03-14 13:11]** `claude_cli/claude`  
+→ can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) pr
+
+**[2026-03-14 13:04]** `claude_cli/claude`  
+→ I do see the option to add tag in history - can you make sure all tags are loaded only once into mermory (to save db cal
+← _Everything looks correct. Here's a summary of all changes made:  ---  ### Changes  **`ui/frontend/views/history.js`**  1. **Tag cache loaded once on tab open** — `_renderChat` now includes `listCatego_
 
 **[2026-03-14 11:10]** `claude_cli/claude`  
 → I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is currently works in my syst
@@ -201,11 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 01:14]** `claude_cli/claude`  
 → yes. just to clarify when I add login - it will be first level only ? 
 ← _Yes — from the chat picker, **adding a new tag always creates it at the root level** (first level under the selected category). To create a nested sub-tag, you use the Planner where you have the full _
-
-**[2026-03-10 01:11]** `claude_cli/claude`  
-→ Can you make sure that sql queries are optimized (loading one time when project is loading, save in any update). also ca
-← _## Feasibility Answer  **Yes, nested tags are absolutely feasible.** Here's the design before I write any code:  ---  ### Database change One column addition to `entity_values`: ```sql ALTER TABLE ent_
-
-**[2026-03-10 00:52]** `claude_cli/claude`  
-→ It looks like there are multiple database calls that make the system realy slow. try to avoid many sql calls and upload 
-← _All done. Here's what was completed in `chat.js`:  **New picker flow:** 1. Click `+ Tag` → `_pickerPopulateCats()` reads from cache (zero DB calls) → populates category `<select>` with counts like `⬡ _

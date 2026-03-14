@@ -33,10 +33,10 @@
     "Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) \u2192 single file per project",
     "AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages",
     "Session tags persist via GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories",
-    "Planner action visibility via 3-dot dropdown menu (\u22ef) per tag row for edit/archive/restore/delete",
+    "Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl; POST /entities/events/tag-by-source-id maps commits to events",
+    "Phase labeling (renamed from 'Session:') visible in tag bar; 3-dot dropdown menu (\u22ef) per tag row for edit/archive/restore/delete actions",
     "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap",
-    "Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata",
-    "Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl"
+    "Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -65,12 +65,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Commit/prompt linking mechanism \u2014 POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events for tagging; enables /memory to update summaries and embeddings via commit reference",
-    "Tagging workflow validation \u2014 confirmed tag system works end-to-end: tags persist across sessions, /memory can query and synthesize tags for suggestions, frontend caching eliminates per-action SQL calls",
-    "Session phase labeling and visibility \u2014 renamed 'Session:' to 'Phase:' in tag bar; fixed tag bar overflow with flex-wrap to ensure all suggestion chips visible",
-    "AI suggestions banner display \u2014 /memory now always runs (DB best-effort), displays suggestions as amber banner between tag bar and messages with approve/reject UI",
-    "Port stability and startup flow \u2014 freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts",
-    "Database query optimization \u2014 frontend caches all tags/categories on project load, batch saves on explicit save only, eliminated per-action SQL round-trips"
+    "Tag cache persistence in history tab \u2014 all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing (2026-03-14 13:04)",
+    "Commit-to-prompt linking mechanism \u2014 POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events; enables /memory to update summaries/embeddings via commit reference (2026-03-14 11:10)",
+    "Session phase labeling clarity \u2014 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10 02:40)",
+    "AI suggestions banner refinement \u2014 /memory runs always (DB best-effort), displays dedcated amber banner with approve/reject UI; works even without PostgreSQL (2026-03-10 02:57)",
+    "Port stability and startup flow \u2014 freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts (2026-03-10 02:00)",
+    "/memory alignment to CLAUDE.md memory layers \u2014 verify synthesis logic matches multi-layer design; ensure all recent features (nested tags, commit linking, session persistence) captured in memory output (2026-03-14 13:11)"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -102,5 +102,5 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-14T11:20:46Z"
+  "last_memory_run": "2026-03-14T13:22:10Z"
 }
