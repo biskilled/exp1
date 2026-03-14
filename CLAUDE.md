@@ -39,8 +39,8 @@ You are a senior Python software architect with deep expertise in:
 - Session tags persist via GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories
 - Phase labeling (renamed from 'Session:') visible in tag bar; 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 
 ---
 

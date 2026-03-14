@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-14 13:57 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-14 14:30 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config + loop-back support
@@ -41,13 +41,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Session tags persist via GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories
 - Phase labeling (renamed from 'Session:') visible in tag bar; 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-10] I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks also managing the c
 - [2026-03-13] I am siting with my freid and try to explain him wha is this system is about ? can you explain that shortly ?
 - [2026-03-14] I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is currently works in my syst
 - [2026-03-14] I do see the option to add tag in history - can you make sure all tags are loaded only once into mermory (to save db cal
 - [2026-03-14] can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) pr
+- [2026-03-14] I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt 

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-14 14:04 UTC — do not edit manually.
+> Auto-generated 2026-03-14 14:30 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 69
-- **Last active**: 2026-03-14T13:57:22Z
+- **Sessions**: 71
+- **Last active**: 2026-03-14T14:30:36Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,7 +20,7 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config + loop-back support
@@ -33,9 +33,9 @@
 
 ## In Progress
 
+- Commit-to-prompt linking via source_id — POST /entities/events/tag-by-source-id endpoint maps history.jsonl timestamps to events; enables tracking which commits relate to which prompts within a session (2026-03-14)
 - Tag cache persistence in history tab — all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing (2026-03-14)
-- Commit-to-prompt linking mechanism — POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events; enables /memory to update summaries/embeddings via commit reference (2026-03-14)
-- CLAUDE.md memory layer alignment — verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache) captured in memory output (2026-03-14)
+- CLAUDE.md memory layer alignment — verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured in memory output (2026-03-14)
 - Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts (2026-03-10)
 - AI suggestions banner refinement — /memory runs always (DB best-effort), displays dedicated amber banner with approve/reject UI; works even without PostgreSQL (2026-03-10)
 - Session phase labeling clarity — 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10)
@@ -55,8 +55,8 @@
 - Session tags persist via GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories
 - Phase labeling (renamed from 'Session:') visible in tag bar; 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 
 ---
 
@@ -152,6 +152,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-14 13:59]** `claude_cli/claude`  
 → I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt 
+← _It worked. "Links created: 0" means they already existed from the previous run (conflict). The sample shows 5 real links:  - `d0f14c21` → prompt "It is lookls like hooks are not working now..." - `951_
 
 **[2026-03-14 13:11]** `claude_cli/claude`  
 → can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) pr
