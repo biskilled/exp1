@@ -1108,7 +1108,6 @@ async def get_events_source_tags(project: str | None = Query(None)):
                     JOIN {ev_table} ev ON ev.id = et.event_id
                     JOIN entity_values v  ON v.id  = et.entity_value_id
                     JOIN entity_categories c ON c.id = v.category_id
-                    WHERE ev.event_type = 'prompt'
                     ORDER BY ev.source_id, v.name""",
             )
             rows = cur.fetchall()

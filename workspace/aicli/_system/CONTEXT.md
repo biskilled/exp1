@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-14 20:19 UTC — do not edit manually.
+> Auto-generated 2026-03-14 21:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 81
-- **Last active**: 2026-03-14T20:15:35Z
+- **Sessions**: 83
+- **Last active**: 2026-03-14T21:22:16Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -33,12 +33,12 @@
 
 ## In Progress
 
-- Commit-to-prompt linking matured — source_id timestamp from history.jsonl maps to commits via POST /entities/events/tag-by-source-id; multiple commits per session each tagged to originating prompt (2026-03-14)
-- Tag cache persistence in history view — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker (2026-03-14)
-- History rotation fully operational — /memory triggers rotation at configurable row threshold (default 500); creates timestamped archive (history_YYMMDDHHSS), original becomes history.jsonl (2026-03-14)
-- Project memory layers (PROJECT.md + CLAUDE.md) fully aligned to v2.2.0 — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows, history rotation) documented (2026-03-14)
-- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; amber banner with AI suggestions appears between tag bar and messages; suggestions from /memory synthesis work without PostgreSQL (2026-03-10–2026-03-14)
-- Port stability and Electron restart workflow resolved — freePort() kills stale uvicorn via lsof; Electron before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
+- Commit-to-prompt linking fully operational — source_id timestamp stored in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id; multiple commits per session linked to originating prompt (2026-03-14)
+- History rotation fully implemented — /memory triggers rotation at configurable row threshold (default 500); creates timestamped archive (history_YYMMDDHHSS), rotates original to history.jsonl (2026-03-14)
+- Tag cache persistence in history view — all categories/values loaded once on tab open; zero DB calls during tag picker; color preservation on save prevents thrashing (2026-03-14)
+- Project memory layers (PROJECT.md + CLAUDE.md) fully aligned to v2.2.0 — all features documented: nested tags, commit linking, session persistence, tag cache, graph workflows, history rotation (2026-03-14)
+- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; amber banner with suggestions between tag bar and messages; works without PostgreSQL via best-effort DB (2026-03-10)
+- Port stability and Electron restart resolved — freePort() kills stale uvicorn via lsof; before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
 
 ## Key Decisions
 
@@ -48,15 +48,15 @@
 - JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
+- Tag cache loaded once on project tab open: zero DB calls during chat/planner; batch updates only on explicit save
+- History rotation on /memory call: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS), original becomes history.jsonl
 - Commit-to-prompt linking: source_id (history.jsonl timestamp) stored in commit_log.jsonl; bidirectional via POST /entities/events/tag-by-source-id
-- Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- History rotation on /memory call: configurable max_rows (default 500), creates history_YYMMDDHHSS archive, original becomes history.jsonl
-- AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
-- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
+- AI suggestions as dedicated amber banner between tag bar and messages; always-on (DB best-effort), synthesized by Claude Haiku from /memory
+- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
-- Session tags persist via GET /entities/session-tags endpoint; tag cache loaded once on history tab open
+- Session phase labeling: 'Phase:' tag bar selector; multiple commits per session each tagged to originating prompt via source_id
 
 ---
 

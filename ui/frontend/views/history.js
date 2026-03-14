@@ -324,7 +324,8 @@ export class HistoryView {
           : '';
 
         return `
-        <div class="history-entry" style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
+        <div class="history-entry" data-ts="${this._escapeHtml(e.ts || '')}"
+             style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
                     border-radius:6px;padding:8px 10px;margin-bottom:5px">
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;font-size:11px">
             <span style="color:var(--muted)">${e.ts?.slice(0, 16) || ''}</span>
@@ -368,15 +369,14 @@ export class HistoryView {
     const totalPages = Math.ceil(total / _PAGE_SIZE);
     const end        = Math.min(start + _PAGE_SIZE, total);
 
+    const btnStyle = 'padding:2px 8px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px';
     if (totalPages <= 1) {
-      // Show count only — no Prev/Next needed
-      nav.innerHTML = `<span style="color:var(--muted)">${total} prompts</span>`;
+      nav.innerHTML = `<span style="color:var(--text);font-size:11px">${total} prompts</span>`;
     } else {
-      const btnStyle = 'padding:2px 8px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px';
       nav.innerHTML = `
         <button onclick="window._historyView._changePage(-1)" style="${btnStyle}"
           ${page <= 1 ? 'disabled style="opacity:.4"' : ''}>◀</button>
-        <span style="color:var(--muted);white-space:nowrap">${start + 1}–${end} / ${total}</span>
+        <span style="color:var(--text);white-space:nowrap;font-size:11px">${start + 1}–${end} / ${total}</span>
         <button onclick="window._historyView._changePage(1)" style="${btnStyle}"
           ${page >= totalPages ? 'disabled style="opacity:.4"' : ''}>▶</button>`;
     }
@@ -509,12 +509,18 @@ export class HistoryView {
 
   async _renderCommits(container) {
     const project = state.currentProject?.name || '';
-    const [data, cfgData, catsRes] = await Promise.all([
+    const [data, cfgData, catsRes, sourceTags] = await Promise.all([
       api.historyCommits(project, 2000),
       api.getProjectConfig(project).catch(() => ({})),
       this._tagCache ? Promise.resolve(null) : api.entities.listCategories(project).catch(() => ({ categories: [] })),
+      api.entities.getSourceTags(project).catch(() => ({})),
     ]);
     if (catsRes) await this._buildTagCache(project, catsRes.categories || []);
+
+    // Load commit tags into _entryTags (same dict as prompt tags — keyed by source_id = commit_hash)
+    for (const [sid, tags] of Object.entries(sourceTags || {})) {
+      if (!this._entryTags[sid]) this._entryTags[sid] = tags;
+    }
 
     this._commitData = data;
     this._commitPage = 1;
@@ -531,30 +537,26 @@ export class HistoryView {
     const fromDb     = this._commitData?.source === 'db';
     const untagged   = commits.filter(c => !c.phase).length;
 
-    // Build datalists from tag cache for comboboxes
-    const catVals = (name) => {
-      const entry = (this._tagCache || []).find(e => e.cat.name === name);
-      return entry ? entry.values : [];
-    };
-    const featureList = catVals('feature').map(v => `<option value="${this._escapeHtml(v.name)}">`).join('');
-    const bugList     = catVals('bug').map(v    => `<option value="${this._escapeHtml(v.name)}">`).join('');
-    const taskList    = catVals('task').map(v   => `<option value="${this._escapeHtml(v.name)}">`).join('');
-
-    const totalPages  = Math.ceil(commits.length / _PAGE_SIZE);
+    const totalPages  = Math.ceil(commits.length / _PAGE_SIZE) || 1;
     const start       = (this._commitPage - 1) * _PAGE_SIZE;
     const end         = Math.min(start + _PAGE_SIZE, commits.length);
     const pageCommits = commits.slice(start, end);
 
-    const pageBarHtml = totalPages > 1 ? `
-      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px">
-        <button onclick="window._historyView._changeCommitPage(-1)"
-          style="padding:3px 10px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--surface)"
-          ${this._commitPage <= 1 ? 'disabled' : ''}>◀ Prev</button>
-        <span style="color:var(--muted)">Showing ${start + 1}–${end} of ${commits.length} · Page ${this._commitPage}/${totalPages}</span>
-        <button onclick="window._historyView._changeCommitPage(1)"
-          style="padding:3px 10px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--surface)"
-          ${this._commitPage >= totalPages ? 'disabled' : ''}>Next ▶</button>
-      </div>` : `<div style="font-size:11px;color:var(--muted);padding:4px 0">${commits.length} commits</div>`;
+    // Update top-right nav bar (same as chat pagination)
+    const nav = document.getElementById('hist-nav-bar');
+    if (nav) {
+      const btnStyle = 'padding:2px 8px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px';
+      if (totalPages <= 1) {
+        nav.innerHTML = `<span style="color:var(--text);font-size:11px">${commits.length} commits</span>`;
+      } else {
+        nav.innerHTML = `
+          <button onclick="window._historyView._changeCommitPage(-1)" style="${btnStyle}"
+            ${this._commitPage <= 1 ? 'disabled style="opacity:.4"' : ''}>◀</button>
+          <span style="color:var(--text);white-space:nowrap;font-size:11px">${start + 1}–${end} / ${commits.length}</span>
+          <button onclick="window._historyView._changeCommitPage(1)" style="${btnStyle}"
+            ${this._commitPage >= totalPages ? 'disabled style="opacity:.4"' : ''}>▶</button>`;
+      }
+    }
 
     if (!commits.length) {
       container.innerHTML = `
@@ -575,9 +577,6 @@ export class HistoryView {
     }
 
     container.innerHTML = `
-      <datalist id="commit-feature-list">${featureList}</datalist>
-      <datalist id="commit-bug-list">${bugList}</datalist>
-      <datalist id="commit-task-list">${taskList}</datalist>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
         <span style="font-size:13px;color:var(--muted)">${commits.length} commits${untagged > 0 ? ` · <span style="color:#e74c3c;font-weight:600">${untagged} untagged</span>` : ''}</span>
         ${fromDb ? `<span style="font-size:11px;color:green;background:rgba(39,174,96,.12);padding:2px 6px;border-radius:4px">live DB</span>`
@@ -588,7 +587,6 @@ export class HistoryView {
           ↻ Sync Commits
         </button>
       </div>
-      ${pageBarHtml}
       <div style="overflow-x:auto">
         <table id="commits-table" style="width:100%;border-collapse:collapse;font-size:12px">
           <thead>
@@ -596,11 +594,9 @@ export class HistoryView {
               <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">Hash</th>
               <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">Date</th>
               <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border)">Phase</th>
-              <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border)">Feature ▾</th>
-              <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border)">Bug ▾</th>
-              <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border)">Task ▾</th>
+              <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border)">Tags ⬡</th>
               <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border)">Message</th>
-              <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">Prompt</th>
+              <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">Prompt ↗</th>
             </tr>
           </thead>
           <tbody>
@@ -608,7 +604,6 @@ export class HistoryView {
           </tbody>
         </table>
       </div>
-      <div style="margin-top:4px">${pageBarHtml}</div>
     `;
   }
 
@@ -622,35 +617,39 @@ export class HistoryView {
   }
 
   _commitRow(c, i) {
-    const untagged  = !c.phase;
-    const rowBorder = untagged ? 'border-left:3px solid #e74c3c' : 'border-left:3px solid transparent';
-    const dateStr   = c.committed_at ? c.committed_at.slice(0, 10) : '';
-    const canEdit   = !!c.id;
-    const PHASES    = ['', 'discovery', 'development', 'prod'];
-    const ghBase    = this._ghBase || '';
-    const hashFull  = c.commit_hash || '';
-    const hashShort = hashFull.slice(0, 8);
+    const untagged   = !c.phase;
+    const rowBorder  = untagged ? 'border-left:3px solid #e74c3c' : 'border-left:3px solid transparent';
+    const dateStr    = c.committed_at ? c.committed_at.slice(0, 10) : '';
+    const canEdit    = !!c.id;
+    const PHASES     = ['', 'discovery', 'development', 'testing', 'review', 'production', 'maintenance', 'bugfix'];
+    const ghBase     = this._ghBase || '';
+    const hashFull   = c.commit_hash || '';
+    const hashShort  = hashFull.slice(0, 8);
+    const anchorId   = `ca-${hashShort}`;
 
     const hashEl = ghBase && hashFull
       ? `<a href="${ghBase}/commit/${hashFull}" target="_blank"
             style="font-family:monospace;color:var(--accent);text-decoration:none">${hashShort} ↗</a>`
       : `<span style="font-family:monospace;color:var(--accent)">${hashShort}</span>`;
 
+    // Prompt cell — clickable ⊙ HH:MM to jump to Chat tab at that entry
     const promptCell = c.prompt_source_id
-      ? `<span title="Triggered by prompt at ${this._escapeHtml(c.prompt_source_id)}"
-               style="font-family:monospace;font-size:11px;color:var(--accent);cursor:default">
+      ? `<button onclick="window._historyView._jumpToPrompt('${this._escapeHtml(c.prompt_source_id)}')"
+           title="Jump to prompt at ${this._escapeHtml(c.prompt_source_id)}"
+           style="font-family:monospace;font-size:11px;color:var(--accent);cursor:pointer;
+                  background:none;border:none;padding:0;text-decoration:underline dotted">
            ⊙ ${c.prompt_source_id.slice(11, 16)}
-         </span>`
+         </button>`
       : `<span style="color:var(--muted);font-size:11px">—</span>`;
 
-    // Input style for combobox columns
-    const inp = `width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);
-                 padding:1px 2px;font-size:11px;color:var(--text);outline:none;min-width:70px`;
-
-    const tagsJson = this._escapeHtml(JSON.stringify(c.tags || {}));
+    // Tag chips from _entryTags keyed by commit_hash
+    const existing     = this._entryTags[hashFull] || [];
+    const existingChips = existing.map(t =>
+      `<span style="font-size:10px;background:${t.color}22;color:${t.color};border:1px solid ${t.color}55;padding:1px 5px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px">${this._escapeHtml(t.icon || '⬡')} ${this._escapeHtml(t.name)}</span>`
+    ).join('');
 
     return `
-      <tr data-commit-id="${c.id || ''}" data-tags="${tagsJson}"
+      <tr data-commit-id="${c.id || ''}" data-hash="${this._escapeHtml(hashFull)}"
           style="border-bottom:1px solid var(--border);${rowBorder};transition:background .15s"
           onmouseenter="this.style.background='var(--surface)'"
           onmouseleave="this.style.background=''">
@@ -664,32 +663,21 @@ export class HistoryView {
                </select>`
             : `<span style="color:${untagged ? '#e74c3c' : 'var(--muted)'}">—</span>`}
         </td>
-        <td style="padding:4px 4px">
-          ${canEdit
-            ? `<input type="text" list="commit-feature-list" value="${this._escapeHtml(c.feature || '')}"
-                style="${inp}" onchange="window._historyView._saveField(${c.id},'feature',this.value)"
-                placeholder="feature…">`
-            : `<span style="color:var(--muted)">${this._escapeHtml(c.feature || '—')}</span>`}
+        <td style="padding:4px 6px">
+          <span id="${anchorId}" style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
+            ${existingChips}
+            <button onclick="window._historyView._openEntryTagPicker('${this._escapeHtml(hashFull)}','${anchorId}')"
+              style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;
+                     cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap">
+              + Tag
+            </button>
+          </span>
         </td>
-        <td style="padding:4px 4px">
-          ${canEdit
-            ? `<input type="text" list="commit-bug-list" value="${this._escapeHtml(c.bug_ref || '')}"
-                style="${inp}" onchange="window._historyView._saveField(${c.id},'bug_ref',this.value)"
-                placeholder="bug…">`
-            : `<span style="color:var(--muted)">${this._escapeHtml(c.bug_ref || '—')}</span>`}
-        </td>
-        <td style="padding:4px 4px">
-          ${canEdit
-            ? `<input type="text" list="commit-task-list" value="${this._escapeHtml((c.tags?.task) || '')}"
-                style="${inp}" onchange="window._historyView._saveTagField(${c.id},'task',this.value,this.closest('tr'))"
-                placeholder="task…">`
-            : `<span style="color:var(--muted)">${this._escapeHtml(c.tags?.task || '—')}</span>`}
-        </td>
-        <td style="padding:4px 6px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+        <td style="padding:4px 6px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
             title="${this._escapeHtml(c.commit_msg || '')}">
           ${this._escapeHtml(c.commit_msg || '')}
         </td>
-        <td style="padding:4px 6px">${promptCell}</td>
+        <td style="padding:4px 6px;white-space:nowrap">${promptCell}</td>
       </tr>
     `;
   }
@@ -711,18 +699,50 @@ export class HistoryView {
     }
   }
 
-  async _saveTagField(commitId, tagKey, value, row) {
-    if (!commitId || !row) return;
-    let existing = {};
-    try { existing = JSON.parse(row.dataset.tags || '{}'); } catch (_) {}
-    if (value) existing[tagKey] = value;
-    else delete existing[tagKey];
-    try {
-      await api.patchCommit(commitId, { tags: existing });
-      row.dataset.tags = JSON.stringify(existing);
-    } catch (e) {
-      console.warn('Tag save failed:', e.message);
+  // ── Jump to prompt from commit ─────────────────────────────────────────────
+
+  async _jumpToPrompt(promptSourceId) {
+    if (!promptSourceId) return;
+    // Switch to Chat tab (load from cache if available, else fetch)
+    this.activeTab = 'chat';
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.style.background = btn.dataset.tab === 'chat' ? 'var(--accent)' : 'var(--surface)';
+    });
+    const content = document.getElementById('history-content');
+    if (!content) return;
+
+    if (!this._histData) {
+      content.innerHTML = "<div style='padding:20px;color:var(--muted)'>Loading…</div>";
+      await this._renderChat(content);
+    } else {
+      this._renderChatContainer(content);
     }
+
+    // After render, scroll to + highlight the matching entry
+    // Entries have data-ts attribute set to e.ts
+    setTimeout(() => {
+      // Find the entry with matching ts
+      const entries = content.querySelectorAll('.history-entry');
+      for (const el of entries) {
+        const tsEl = el.querySelector('[data-ts]');
+        if (tsEl?.dataset.ts === promptSourceId || el.dataset.ts === promptSourceId) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.style.outline = '2px solid var(--accent)';
+          setTimeout(() => { el.style.outline = ''; }, 2000);
+          return;
+        }
+      }
+      // Fallback: look for timestamp text match (HH:MM)
+      const timeStr = promptSourceId.slice(11, 16);
+      for (const el of entries) {
+        if (el.textContent.includes(timeStr)) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.style.outline = '2px solid var(--accent)';
+          setTimeout(() => { el.style.outline = ''; }, 2000);
+          return;
+        }
+      }
+    }, 100);
   }
 
   _refreshUntaggedCount() {
