@@ -58,16 +58,18 @@ export class HistoryView {
     const tabs = ["chat", "commits", "runs", "evals"];
     this.container.innerHTML = `
       <div class="history-layout" style="display:flex;flex-direction:column;height:100%">
-        <div class="tab-bar" style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border);align-items:center">
+        <div class="tab-bar" style="display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap">
           ${tabs.map(t =>
             `<button class="tab-btn" data-tab="${t}"
-              style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);cursor:pointer;background:${this.activeTab === t ? 'var(--accent)' : 'var(--surface)'}"
+              style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);cursor:pointer;background:${this.activeTab === t ? 'var(--accent)' : 'var(--surface)'};font-size:12px"
               onclick="window._historyView._loadTab('${t}')">
               ${t.charAt(0).toUpperCase() + t.slice(1)}
             </button>`).join('')}
           <div style="flex:1"></div>
-          <input id="history-search" placeholder="Search all…"
-            style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);width:160px" />
+          <!-- Pagination controls — updated by _renderPageBars() -->
+          <div id="hist-nav-bar" style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)"></div>
+          <input id="history-search" placeholder="Search…"
+            style="padding:3px 7px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);width:130px;font-size:12px;margin-left:6px" />
         </div>
         <div id="history-content" style="flex:1;overflow-y:auto;padding:12px;min-height:0"></div>
       </div>
@@ -108,6 +110,12 @@ export class HistoryView {
       return;
     }
 
+    // Clear nav bar when switching away from chat
+    if (tab !== 'chat') {
+      const nav = document.getElementById('hist-nav-bar');
+      if (nav) nav.innerHTML = '';
+    }
+
     content.innerHTML = "<div style='padding:20px;color:var(--muted)'>Loading…</div>";
     try {
       if (tab === "chat")         await this._renderChat(content);
@@ -124,8 +132,10 @@ export class HistoryView {
   async _renderChat(container) {
     const project = state.currentProject?.name || '';
 
+    // Cache-busting timestamp prevents browser from serving stale history data
+    const _ts = Date.now();
     const [histRes, commitsData, catsRes, cfgData] = await Promise.all([
-      fetch(_histUrl('/history/chat')).then(r => r.json()),
+      fetch(_histUrl(`/history/chat?_t=${_ts}`)).then(r => r.json()),
       api.historyCommits(project, 2000).catch(() => ({ commits: [] })),
       api.entities.listCategories(project).catch(() => ({ categories: [] })),
       api.getProjectConfig(project).catch(() => ({})),
@@ -159,33 +169,30 @@ export class HistoryView {
     const untagged   = entries.filter(e => !e.phase && !e.feature).length;
 
     container.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;
-                  background:var(--surface);border-radius:6px;flex-wrap:wrap;font-size:12px">
-        <span style="color:var(--muted);font-weight:600">Filter:</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:5px 8px;
+                  background:var(--surface);border-radius:6px;flex-wrap:wrap;font-size:11px">
         <select id="hist-filter-source" onchange="window._historyView._applyFilter()"
-          style="background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:11px;color:var(--text)">
+          style="background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:2px 5px;font-size:11px;color:var(--text)">
           <option value="">All sources</option>
           <option value="claude_cli">Claude CLI</option>
           <option value="ui">UI</option>
           <option value="workflow">Workflow</option>
         </select>
         <select id="hist-filter-phase" onchange="window._historyView._applyFilter()"
-          style="background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:11px;color:var(--text)">
+          style="background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:2px 5px;font-size:11px;color:var(--text)">
           <option value="">All phases</option>
           <option value="discovery">Discovery</option>
           <option value="development">Development</option>
           <option value="prod">Prod</option>
         </select>
-        <span style="color:var(--muted);font-size:11px">${total} entries${filtered > 0 ? ` · <span style="color:var(--muted)">${filtered} noise hidden</span>` : ''}</span>
+        ${filtered > 0 ? `<span style="color:var(--muted)">${filtered} noise entries hidden</span>` : ''}
         <div style="flex:1"></div>
-        ${untagged > 0 ? `<span style="color:#e74c3c;font-size:11px;font-weight:600">${untagged} untagged</span>` : `<span style="color:green;font-size:11px">All tagged ✓</span>`}
+        ${untagged > 0 ? `<span style="color:#e74c3c;font-weight:600">${untagged} untagged</span>` : `<span style="color:green">All tagged ✓</span>`}
         <button onclick="window._historyView._refreshHistory()"
-          style="padding:2px 8px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px;color:var(--muted)"
-          title="Reload history from server">↻ Refresh</button>
+          style="padding:2px 7px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px;color:var(--muted)"
+          title="Reload from server">↻</button>
       </div>
-      <div id="hist-page-bar-top"></div>
-      <div id="hist-chat-groups"></div>
-      <div id="hist-page-bar-bot"></div>`;
+      <div id="hist-chat-groups"></div>`;
 
     // Restore filter state
     const srcEl = document.getElementById('hist-filter-source');
@@ -354,26 +361,25 @@ export class HistoryView {
   // ── Pagination ─────────────────────────────────────────────────────────────
 
   _renderPageBars(total, start) {
+    const nav = document.getElementById('hist-nav-bar');
+    if (!nav) return;
+
     const page       = this._histPage;
     const totalPages = Math.ceil(total / _PAGE_SIZE);
     const end        = Math.min(start + _PAGE_SIZE, total);
 
-    const barHtml = totalPages <= 1
-      ? `<div style="text-align:center;padding:6px;font-size:11px;color:var(--muted)">${total} entries</div>`
-      : `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px">
-          <button onclick="window._historyView._changePage(-1)"
-            style="padding:3px 10px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--surface)"
-            ${page <= 1 ? 'disabled' : ''}>◀ Prev</button>
-          <span style="color:var(--muted)">Showing ${start + 1}–${end} of ${total} · Page ${page}/${totalPages}</span>
-          <button onclick="window._historyView._changePage(1)"
-            style="padding:3px 10px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--surface)"
-            ${page >= totalPages ? 'disabled' : ''}>Next ▶</button>
-        </div>`;
-
-    const topBar = document.getElementById('hist-page-bar-top');
-    const botBar = document.getElementById('hist-page-bar-bot');
-    if (topBar) topBar.innerHTML = barHtml;
-    if (botBar) botBar.innerHTML = totalPages > 1 ? barHtml : '';
+    if (totalPages <= 1) {
+      // Show count only — no Prev/Next needed
+      nav.innerHTML = `<span style="color:var(--muted)">${total} prompts</span>`;
+    } else {
+      const btnStyle = 'padding:2px 8px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px';
+      nav.innerHTML = `
+        <button onclick="window._historyView._changePage(-1)" style="${btnStyle}"
+          ${page <= 1 ? 'disabled style="opacity:.4"' : ''}>◀</button>
+        <span style="color:var(--muted);white-space:nowrap">${start + 1}–${end} / ${total}</span>
+        <button onclick="window._historyView._changePage(1)" style="${btnStyle}"
+          ${page >= totalPages ? 'disabled style="opacity:.4"' : ''}>▶</button>`;
+    }
   }
 
   _changePage(delta) {

@@ -39,7 +39,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 
 from config import settings
@@ -508,11 +508,23 @@ def _do_sync_events(p: str) -> dict[str, int]:
             )
             imported["tags_propagated"] = cur.rowcount
 
-            # 5. Link each commit to its triggering prompt via event_links (link_type='triggered_by').
-            #    Strategy: for each commit, find the most recent prompt in the same session
-            #    whose timestamp (source_id) is ≤ the commit's committed_at.
-            #    This correctly handles sessions with multiple prompt→commit cycles.
-            try:
+    return imported
+
+
+def _do_sync_phase5(p: str) -> dict[str, int]:
+    """Phase 5 — link each commit to its triggering prompt (can be slow, run in background).
+
+    For each commit event, finds the most recent prompt event in the same session
+    whose timestamp ≤ committed_at and creates an event_link with type='triggered_by'.
+    Also backfills prompt_source_id into the commit event metadata and commits table.
+    """
+    ev_table = db.project_table("events",      p)
+    c_table  = db.project_table("commits",     p)
+    el_table = db.project_table("event_links", p)
+    result: dict[str, int] = {}
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
                 cur.execute(
                     f"""INSERT INTO {el_table} (from_event_id, to_event_id, link_type)
                         SELECT DISTINCT ON (ce.id)
@@ -539,9 +551,9 @@ def _do_sync_events(p: str) -> dict[str, int]:
                         ORDER BY ce.id, pe.source_id DESC
                         ON CONFLICT DO NOTHING"""
                 )
-                imported["commit_prompt_links"] = cur.rowcount
+                result["commit_prompt_links"] = cur.rowcount
 
-                # Backfill prompt_source_id into commit event metadata + commits table
+                # Backfill prompt_source_id into commit event metadata
                 cur.execute(
                     f"""UPDATE {ev_table} ce
                            SET metadata = ce.metadata || jsonb_build_object('prompt_source_id', pe.source_id)
@@ -552,6 +564,8 @@ def _do_sync_events(p: str) -> dict[str, int]:
                            AND ce.event_type = 'commit'
                            AND (ce.metadata->>'prompt_source_id') IS NULL"""
                 )
+
+                # Backfill prompt_source_id into commits table
                 cur.execute(
                     f"""UPDATE {c_table} c
                            SET prompt_source_id = pe.source_id
@@ -563,19 +577,29 @@ def _do_sync_events(p: str) -> dict[str, int]:
                          WHERE ce.source_id = c.commit_hash
                            AND c.prompt_source_id IS NULL"""
                 )
-            except Exception as exc:
-                log.warning(f"commit→prompt linking skipped: {exc}")
-
-    return imported
+                result["prompt_source_backfill"] = cur.rowcount
+    except Exception as exc:
+        log.warning(f"Phase 5 commit→prompt linking failed: {exc}")
+    return result
 
 
 @router.post("/events/sync")
-async def sync_events(project: str | None = Query(None)):
-    """Import history.jsonl + commits → events table. Idempotent."""
+async def sync_events(
+    background: BackgroundTasks,
+    project: str | None = Query(None),
+):
+    """Import history.jsonl + commits → events table.
+
+    Phases 1–4 (prompt import, commit import, session_id backfill, tag propagation)
+    run synchronously and results are returned immediately.
+    Phase 5 (commit→prompt linking via event_links) runs in the background to avoid
+    HTTP timeouts on large datasets — check commit.prompt_source_id after a few seconds.
+    """
     _require_db()
     p = _project(project)
     imported = _do_sync_events(p)
-    return {"imported": imported, "project": p}
+    background.add_task(_do_sync_phase5, p)
+    return {"imported": imported, "project": p, "phase5": "running_in_background"}
 
 
 # ── Event tagging ──────────────────────────────────────────────────────────────

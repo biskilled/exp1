@@ -330,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- History rotation fully operational — /memory triggers rotation at configurable row threshold (default 500); creates timestamped archive (history_YYMMDDHHSS), original becomes history.jsonl (2026-03-14)
-- Commit-to-prompt bidirectional linking matured — source_id timestamp from history.jsonl maps to commits via POST /entities/events/tag-by-source-id; multiple commits per session each tagged to originating prompt (2026-03-14)
+- Commit-to-prompt linking matured — source_id timestamp from history.jsonl maps to commits via POST /entities/events/tag-by-source-id; multiple commits per session each tagged to originating prompt (2026-03-14)
 - Tag cache persistence in history view — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker (2026-03-14)
+- History rotation fully operational — /memory triggers rotation at configurable row threshold (default 500); creates timestamped archive (history_YYMMDDHHSS), original becomes history.jsonl (2026-03-14)
+- Project memory layers (PROJECT.md + CLAUDE.md) fully aligned to v2.2.0 — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows, history rotation) documented (2026-03-14)
 - Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; amber banner with AI suggestions appears between tag bar and messages; suggestions from /memory synthesis work without PostgreSQL (2026-03-10–2026-03-14)
 - Port stability and Electron restart workflow resolved — freePort() kills stale uvicorn via lsof; Electron before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
-- PROJECT.md and CLAUDE.md memory layers fully aligned to v2.2.0 — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows, history rotation) documented (2026-03-14)

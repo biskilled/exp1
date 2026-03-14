@@ -37,6 +37,17 @@ except:
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+# ── Skip internal Claude Code tool noise ──────────────────────────────────────
+# Task notifications and tool IDs are system messages, not real user prompts.
+# Check only the START of the prompt to avoid filtering user messages that
+# happen to MENTION these tag names in their text.
+PROMPT_START=$(echo "$PROMPT_TEXT" | head -c 30)
+case "$PROMPT_START" in
+    "<task-notification>"*|"<tool-use-id>"*|"<task-id>"*)
+        exit 0
+        ;;
+esac
+
 # ── Write to unified history.jsonl ────────────────────────────────────────────
 HIST_DIR="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system"
 HIST_FILE="${HIST_DIR}/history.jsonl"

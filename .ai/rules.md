@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-14 19:48 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-14 20:15 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -24,7 +24,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server — 8 tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for unlimited nesting, due_date tracking)
+- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 
 ## Key Decisions
 
@@ -34,15 +34,15 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
-- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl; bidirectional mapping via POST /entities/events/tag-by-source-id
+- Commit-to-prompt linking: source_id (history.jsonl timestamp) stored in commit_log.jsonl; bidirectional via POST /entities/events/tag-by-source-id
 - Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Session tags persist via GET /entities/session-tags endpoint; tag cache loaded once on history tab open
+- History rotation on /memory call: configurable max_rows (default 500), creates history_YYMMDDHHSS archive, original becomes history.jsonl
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js for graph visualization
-- History rotation on /memory call: configurable max_rows (default 500), creates history_YYMMDDHHSS archive, original becomes history.jsonl
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
+- Session tags persist via GET /entities/session-tags endpoint; tag cache loaded once on history tab open
 
 ## Recent Context (last 5 changes)
 

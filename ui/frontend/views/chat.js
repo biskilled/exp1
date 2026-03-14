@@ -924,7 +924,7 @@ window._chatLoadAny = async (id) => {
   for (const e of chronological) {
     const inp = e.user_input || '';
     // Skip internal Claude Code tool noise entries
-    if (_NOISE.some(p => inp.includes(p))) continue;
+    if (_NOISE.some(p => inp.startsWith(p))) continue;
     if (inp) _appendUserMsg(inp);
     if (e.output) _appendAssistantMsg(e.output);
   }

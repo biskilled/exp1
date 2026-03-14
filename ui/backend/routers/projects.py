@@ -77,9 +77,12 @@ def _rotate_history(sys_dir: Path, max_rows: int = 500) -> dict:
 _NOISE_PATTERNS = ["<task-notification>", "<tool-use-id>", "<task-id>", "<parameter>"]
 
 def _is_noisy(entry: dict) -> bool:
-    """Return True if the entry's user_input contains internal XML noise."""
-    txt = entry.get("user_input") or ""
-    return any(p in txt for p in _NOISE_PATTERNS)
+    """Return True only when the entry IS a noise message (starts with XML tag).
+
+    Uses startswith so user messages that discuss these tags are never filtered.
+    """
+    txt = (entry.get("user_input") or "").strip()
+    return any(txt.startswith(p) for p in _NOISE_PATTERNS)
 
 
 def _workspace() -> Path:

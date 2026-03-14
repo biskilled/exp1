@@ -32,15 +32,15 @@ You are a senior Python software architect with deep expertise in:
 - JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
-- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl; bidirectional mapping via POST /entities/events/tag-by-source-id
+- Commit-to-prompt linking: source_id (history.jsonl timestamp) stored in commit_log.jsonl; bidirectional via POST /entities/events/tag-by-source-id
 - Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Session tags persist via GET /entities/session-tags endpoint; tag cache loaded once on history tab open
+- History rotation on /memory call: configurable max_rows (default 500), creates history_YYMMDDHHSS archive, original becomes history.jsonl
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js for graph visualization
-- History rotation on /memory call: configurable max_rows (default 500), creates history_YYMMDDHHSS archive, original becomes history.jsonl
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
+- Session tags persist via GET /entities/session-tags endpoint; tag cache loaded once on history tab open
 
 ---
 

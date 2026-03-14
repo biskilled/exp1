@@ -31,8 +31,12 @@ _ENGINE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _NOISE_PATTERNS = ["<task-notification>", "<tool-use-id>", "<task-id>", "<parameter>"]
 
 def _is_noisy(e: dict) -> bool:
-    txt = e.get("user_input") or ""
-    return any(p in txt for p in _NOISE_PATTERNS)
+    """True only when the entry IS a system noise message (starts with an XML tag).
+
+    Uses startswith, not 'in', so user messages that DISCUSS these tags are kept.
+    """
+    txt = (e.get("user_input") or "").strip()
+    return any(txt.startswith(p) for p in _NOISE_PATTERNS)
 
 
 def _project_dir(project: str | None = None) -> Path:
@@ -282,7 +286,12 @@ async def sync_commits(project: str | None = Query(None)):
                         INSERT INTO {c_table}
                             (commit_hash, commit_msg, source, session_id, committed_at)
                         VALUES (%s, %s, %s, %s, %s)
-                        ON CONFLICT (commit_hash) DO NOTHING
+                        ON CONFLICT (commit_hash) DO UPDATE SET
+                            session_id = CASE
+                                WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
+                                THEN EXCLUDED.session_id
+                                ELSE {c_table}.session_id
+                            END
                     """, (
                         commit_hash,
                         raw.get("message", raw.get("msg", "")),
@@ -293,6 +302,38 @@ async def sync_commits(project: str | None = Query(None)):
                     inserted += cur.rowcount
 
     return {"imported": inserted, "project": p}
+
+
+@router.post("/clean-noise")
+async def clean_noise(project: str | None = Query(None)):
+    """Remove <task-notification>/<tool-use-id> noise entries from history.jsonl.
+
+    Safe to call repeatedly — idempotent. Also cleans history_*.jsonl archives.
+    Returns counts of removed entries per file.
+    """
+    p     = project or settings.active_project or "default"
+    sys_d = _project_dir(p) / "_system"
+    result: dict = {}
+
+    for hist in sorted(sys_d.glob("history*.jsonl")):
+        lines = [l for l in hist.read_text().splitlines() if l.strip()]
+        clean: list[str] = []
+        removed = 0
+        for line in lines:
+            try:
+                e   = json.loads(line)
+                txt = e.get("user_input") or ""
+                if _is_noisy(e) or not txt.strip():
+                    removed += 1
+                    continue
+            except json.JSONDecodeError:
+                pass
+            clean.append(line)
+        if removed:
+            hist.write_text("\n".join(clean) + "\n")
+        result[hist.name] = {"total": len(lines), "removed": removed, "kept": len(clean)}
+
+    return {"cleaned": result, "project": p}
 
 
 @router.get("/session-tags")
