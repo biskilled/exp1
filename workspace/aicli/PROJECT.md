@@ -332,7 +332,7 @@ sidebar tabs:
 
 - Tag cache persistence in history tab — all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing (2026-03-14)
 - Commit-to-prompt linking mechanism — POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events; enables /memory to update summaries/embeddings via commit reference (2026-03-14)
-- Session phase labeling clarity — 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10)
-- /memory alignment to CLAUDE.md memory layers — verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache) captured in memory output (2026-03-14)
+- CLAUDE.md memory layer alignment — verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache) captured in memory output (2026-03-14)
 - Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts (2026-03-10)
 - AI suggestions banner refinement — /memory runs always (DB best-effort), displays dedicated amber banner with approve/reject UI; works even without PostgreSQL (2026-03-10)
+- Session phase labeling clarity — 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10)

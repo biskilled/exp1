@@ -67,10 +67,10 @@
   "in_progress": [
     "Tag cache persistence in history tab \u2014 all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing (2026-03-14)",
     "Commit-to-prompt linking mechanism \u2014 POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events; enables /memory to update summaries/embeddings via commit reference (2026-03-14)",
-    "Session phase labeling clarity \u2014 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10)",
-    "/memory alignment to CLAUDE.md memory layers \u2014 verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache) captured in memory output (2026-03-14)",
+    "CLAUDE.md memory layer alignment \u2014 verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache) captured in memory output (2026-03-14)",
     "Port stability and startup flow \u2014 freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts (2026-03-10)",
-    "AI suggestions banner refinement \u2014 /memory runs always (DB best-effort), displays dedicated amber banner with approve/reject UI; works even without PostgreSQL (2026-03-10)"
+    "AI suggestions banner refinement \u2014 /memory runs always (DB best-effort), displays dedicated amber banner with approve/reject UI; works even without PostgreSQL (2026-03-10)",
+    "Session phase labeling clarity \u2014 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10)"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -102,5 +102,5 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-14T13:42:51Z"
+  "last_memory_run": "2026-03-14T14:04:12Z"
 }

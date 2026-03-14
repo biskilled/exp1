@@ -396,10 +396,11 @@ def _do_sync_events(p: str) -> dict[str, int]:
                         continue
                     title = (e.get("user_input") or "")[:120] or "(no input)"
                     meta = json.dumps({
-                        "provider": e.get("provider"),
-                        "source":   e.get("source"),
-                        "phase":    e.get("phase"),
-                        "feature":  e.get("feature"),
+                        "provider":   e.get("provider"),
+                        "source":     e.get("source"),
+                        "phase":      e.get("phase"),
+                        "feature":    e.get("feature"),
+                        "session_id": e.get("session_id") or e.get("session") or None,
                     })
                     cur.execute(
                         f"""INSERT INTO {ev_table}
@@ -454,6 +455,39 @@ def _do_sync_events(p: str) -> dict[str, int]:
             except Exception:
                 pass  # session_id column may not exist in old schemas
 
+            # 3b. Backfill session_id into existing prompt events from history.jsonl.
+            #     (older imports omitted this field — fix retroactively via batch update)
+            if hist.exists():
+                pairs: list[tuple[str, str]] = []  # (ts, session_id)
+                for line in hist.read_text().splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        e = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    sid = (e.get("session_id") or e.get("session") or "").strip()
+                    ts  = (e.get("ts") or "").strip()
+                    if sid and ts:
+                        pairs.append((ts, sid))
+                if pairs:
+                    cur.execute(
+                        "CREATE TEMP TABLE IF NOT EXISTS _hist_sid_map "
+                        "(ts TEXT, session_id TEXT) ON COMMIT DROP"
+                    )
+                    cur.execute("DELETE FROM _hist_sid_map")
+                    cur.executemany("INSERT INTO _hist_sid_map VALUES (%s,%s)", pairs)
+                    cur.execute(
+                        f"""UPDATE {ev_table} ev
+                               SET metadata = ev.metadata ||
+                                   jsonb_build_object('session_id', m.session_id)
+                              FROM _hist_sid_map m
+                             WHERE ev.event_type = 'prompt'
+                               AND ev.source_id  = m.ts
+                               AND (ev.metadata->>'session_id') IS NULL"""
+                    )
+                    imported["prompt_session_backfill"] = cur.rowcount
+
             # 4. Auto-propagate entity tags: prompt events → commit events in the same session
             #    Any entity tags applied to prompts in a session are automatically inherited
             #    by commits from that session. Runs after every sync — idempotent.
@@ -471,6 +505,64 @@ def _do_sync_events(p: str) -> dict[str, int]:
                     ON CONFLICT DO NOTHING"""
             )
             imported["tags_propagated"] = cur.rowcount
+
+            # 5. Link each commit to its triggering prompt via event_links (link_type='triggered_by').
+            #    Strategy: for each commit, find the most recent prompt in the same session
+            #    whose timestamp (source_id) is ≤ the commit's committed_at.
+            #    This correctly handles sessions with multiple prompt→commit cycles.
+            try:
+                cur.execute(
+                    f"""INSERT INTO {el_table} (from_event_id, to_event_id, link_type)
+                        SELECT DISTINCT ON (ce.id)
+                            ce.id,
+                            pe.id,
+                            'triggered_by'
+                        FROM {ev_table} ce
+                        JOIN {c_table} c ON c.commit_hash = ce.source_id
+                        JOIN {ev_table} pe ON (
+                            pe.metadata->>'session_id' = ce.metadata->>'session_id'
+                            AND pe.event_type = 'prompt'
+                            AND pe.source_id ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}T\\d{{2}}:\\d{{2}}'
+                            AND pe.source_id::timestamptz <= c.committed_at
+                        )
+                        WHERE ce.event_type = 'commit'
+                          AND (ce.metadata->>'session_id') IS NOT NULL
+                          AND (ce.metadata->>'session_id') NOT IN ('', 'null')
+                          AND c.committed_at IS NOT NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM {el_table} el2
+                              WHERE el2.from_event_id = ce.id
+                                AND el2.link_type = 'triggered_by'
+                          )
+                        ORDER BY ce.id, pe.source_id DESC
+                        ON CONFLICT DO NOTHING"""
+                )
+                imported["commit_prompt_links"] = cur.rowcount
+
+                # Backfill prompt_source_id into commit event metadata + commits table
+                cur.execute(
+                    f"""UPDATE {ev_table} ce
+                           SET metadata = ce.metadata || jsonb_build_object('prompt_source_id', pe.source_id)
+                          FROM {el_table} el
+                          JOIN {ev_table} pe ON pe.id = el.to_event_id AND pe.event_type = 'prompt'
+                         WHERE el.from_event_id = ce.id
+                           AND el.link_type = 'triggered_by'
+                           AND ce.event_type = 'commit'
+                           AND (ce.metadata->>'prompt_source_id') IS NULL"""
+                )
+                cur.execute(
+                    f"""UPDATE {c_table} c
+                           SET prompt_source_id = pe.source_id
+                          FROM {ev_table} ce
+                          JOIN {el_table} el ON el.from_event_id = ce.id
+                                            AND el.link_type = 'triggered_by'
+                          JOIN {ev_table} pe ON pe.id = el.to_event_id
+                                            AND pe.event_type = 'prompt'
+                         WHERE ce.source_id = c.commit_hash
+                           AND c.prompt_source_id IS NULL"""
+                )
+            except Exception as exc:
+                log.warning(f"commit→prompt linking skipped: {exc}")
 
     return imported
 

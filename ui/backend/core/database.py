@@ -81,13 +81,15 @@ class _Database:
             feature      VARCHAR(255),
             bug_ref      VARCHAR(255),
             source       VARCHAR(50)    NOT NULL DEFAULT 'git',
-            session_id   VARCHAR(255),
-            tags         JSONB          NOT NULL DEFAULT '{{}}',
-            committed_at TIMESTAMPTZ,
-            created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            session_id        VARCHAR(255),
+            prompt_source_id  VARCHAR(255),
+            tags              JSONB          NOT NULL DEFAULT '{{}}',
+            committed_at      TIMESTAMPTZ,
+            created_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
             UNIQUE(commit_hash)
         );
         CREATE INDEX IF NOT EXISTS idx_{c}_committed ON {c}(committed_at DESC);
+        ALTER TABLE {c} ADD COLUMN IF NOT EXISTS prompt_source_id VARCHAR(255);
 
         CREATE TABLE IF NOT EXISTS {e} (
             id         SERIAL         PRIMARY KEY,

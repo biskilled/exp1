@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-14 13:42 UTC — do not edit manually.
+> Auto-generated 2026-03-14 14:04 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 66
-- **Last active**: 2026-03-14T13:42:23Z
+- **Sessions**: 69
+- **Last active**: 2026-03-14T13:57:22Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,10 +35,10 @@
 
 - Tag cache persistence in history tab — all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing (2026-03-14)
 - Commit-to-prompt linking mechanism — POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events; enables /memory to update summaries/embeddings via commit reference (2026-03-14)
-- Session phase labeling clarity — 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10)
-- /memory alignment to CLAUDE.md memory layers — verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache) captured in memory output (2026-03-14)
+- CLAUDE.md memory layer alignment — verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache) captured in memory output (2026-03-14)
 - Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts (2026-03-10)
 - AI suggestions banner refinement — /memory runs always (DB best-effort), displays dedicated amber banner with approve/reject UI; works even without PostgreSQL (2026-03-10)
+- Session phase labeling clarity — 'Phase:' label instead of 'Session:'; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions between tag bar and messages (2026-03-10)
 
 ## Key Decisions
 
@@ -150,6 +150,9 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-14 13:59]** `claude_cli/claude`  
+→ I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt 
+
 **[2026-03-14 13:11]** `claude_cli/claude`  
 → can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) pr
 ← _`GET /graph/` returns `{"workflows":[]}` — the graph router is live and the tables are working. Everything is now aligned. Here's the full summary of what was done:  ---  ### Memory + Alignment Update_
@@ -205,7 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 01:19]** `claude_cli/claude`  
 → yes
 ← _All done. Here's a summary of what was implemented:  ---  ### What changed  **Backend** - `database.py`: Added `parent_id INTEGER REFERENCES entity_values(id) ON DELETE SET NULL` + index (idempotent `_
-
-**[2026-03-10 01:14]** `claude_cli/claude`  
-→ yes. just to clarify when I add login - it will be first level only ? 
-← _Yes — from the chat picker, **adding a new tag always creates it at the root level** (first level under the selected category). To create a nested sub-tag, you use the Planner where you have the full _

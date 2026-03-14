@@ -138,7 +138,8 @@ async def commits_history(
             with conn.cursor() as cur:
                 cur.execute(f"""
                     SELECT id, commit_hash, commit_msg, summary, phase,
-                           feature, bug_ref, source, session_id, tags, committed_at
+                           feature, bug_ref, source, session_id, prompt_source_id,
+                           tags, committed_at
                     FROM {c_table}
                     ORDER BY committed_at DESC NULLS LAST, id DESC
                     LIMIT %s

@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-10] `claude_cli`: I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks
 - [2026-03-13] `claude_cli`: I am siting with my freid and try to explain him wha is this system is about ? can you explain that 
 - [2026-03-14] `claude_cli`: I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is curren
 - [2026-03-14] `claude_cli`: I do see the option to add tag in history - can you make sure all tags are loaded only once into mer
 - [2026-03-14] `claude_cli`: can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.m
+- [2026-03-14] `claude_cli`: I do see that there is a link between commit and session ID. is it possible to have link between com
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
