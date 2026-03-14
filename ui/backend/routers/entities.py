@@ -411,12 +411,25 @@ def _do_sync_events(p: str) -> dict[str, int]:
                     imported["prompt"] += cur.rowcount
 
             # 2. commits_{p} table → event_type="commit"
-            cur.execute(
-                f"SELECT commit_hash, commit_msg, phase, feature, source, committed_at "
-                f"FROM {c_table}"
-            )
-            for commit_hash, msg, phase, feature, src, committed_at in cur.fetchall():
-                meta = json.dumps({"phase": phase, "feature": feature, "source": src})
+            # Include session_id so we can propagate entity tags automatically.
+            # COALESCE guards against older schema rows that lack the column.
+            try:
+                cur.execute(
+                    f"SELECT commit_hash, commit_msg, phase, feature, source, "
+                    f"       committed_at, COALESCE(session_id,'') "
+                    f"FROM {c_table}"
+                )
+            except Exception:
+                # Fallback if session_id column doesn't exist yet
+                cur.execute(
+                    f"SELECT commit_hash, commit_msg, phase, feature, source, "
+                    f"       committed_at, '' FROM {c_table}"
+                )
+            for commit_hash, msg, phase, feature, src, committed_at, session_id in cur.fetchall():
+                meta = json.dumps({
+                    "phase": phase, "feature": feature, "source": src,
+                    "session_id": session_id or None,
+                })
                 cur.execute(
                     f"""INSERT INTO {ev_table}
                            (event_type, source_id, title, content, metadata, created_at)
@@ -426,6 +439,38 @@ def _do_sync_events(p: str) -> dict[str, int]:
                      meta, committed_at or "2026-01-01T00:00:00+00:00"),
                 )
                 imported["commit"] += cur.rowcount
+
+            # 3. Backfill session_id into existing commit events that were imported without it
+            try:
+                cur.execute(
+                    f"""UPDATE {ev_table} ev
+                           SET metadata = ev.metadata || jsonb_build_object('session_id', c.session_id)
+                          FROM {c_table} c
+                         WHERE ev.source_id = c.commit_hash
+                           AND ev.event_type = 'commit'
+                           AND (c.session_id IS NOT NULL AND c.session_id != '')
+                           AND (ev.metadata->>'session_id') IS NULL"""
+                )
+            except Exception:
+                pass  # session_id column may not exist in old schemas
+
+            # 4. Auto-propagate entity tags: prompt events → commit events in the same session
+            #    Any entity tags applied to prompts in a session are automatically inherited
+            #    by commits from that session. Runs after every sync — idempotent.
+            cur.execute(
+                f"""INSERT INTO {et_table} (event_id, entity_value_id, auto_tagged)
+                    SELECT DISTINCT commit_ev.id, pt.entity_value_id, TRUE
+                    FROM {ev_table} commit_ev
+                    JOIN {ev_table} prompt_ev
+                         ON prompt_ev.metadata->>'session_id' = commit_ev.metadata->>'session_id'
+                        AND commit_ev.metadata->>'session_id' IS NOT NULL
+                        AND commit_ev.metadata->>'session_id' NOT IN ('', 'null')
+                    JOIN {et_table} pt ON pt.event_id = prompt_ev.id
+                    WHERE commit_ev.event_type = 'commit'
+                      AND prompt_ev.event_type  = 'prompt'
+                    ON CONFLICT DO NOTHING"""
+            )
+            imported["tags_propagated"] = cur.rowcount
 
     return imported
 

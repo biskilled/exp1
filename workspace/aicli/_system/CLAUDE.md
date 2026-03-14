@@ -27,20 +27,20 @@ You are a senior Python software architect with deep expertise in:
 ## Key Architectural Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph
-- Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}) via project_table() + ensure_project_schema()
+- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search; per-project DB tables via project_table()
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step; Vite dev server only
 - JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
-- All LLM providers independent adapters; server holds API keys; client sends NO keys
-- Config-driven pricing via provider_costs.json as single source of truth
+- All LLM providers as independent adapters; server holds API keys; client sends NO keys
+- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
+- Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
+- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
+- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
+- AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
+- Session tags persist via GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories
+- Planner action visibility via 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
-- 5-layer memory: immediate → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
-- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
-- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; root-level creation only from chat picker
-- Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
-- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit() in before-quit handler
-- AI suggestions as dedicated amber banner with synthesized tags from /memory; always-on (DB best-effort), appears between tag bar and messages with approve/reject workflow
+- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-10] `claude_cli`: can you run /memory and run some tests? I do not see any sujjestion on all the existing session ther
 - [2026-03-10] `claude_cli`: Are you using the mcp server in order to reciave all project information ? Also, I do not see any su
 - [2026-03-10] `ui`: hellow, how are you ?
 - [2026-03-10] `claude_cli`: I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks
 - [2026-03-13] `claude_cli`: I am siting with my freid and try to explain him wha is this system is about ? can you explain that 
+- [2026-03-14] `claude_cli`: I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is curren
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

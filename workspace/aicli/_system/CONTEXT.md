@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-14 11:03 UTC — do not edit manually.
+> Auto-generated 2026-03-14 12:54 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 63
-- **Last active**: 2026-03-13T17:45:13Z
+- **Sessions**: 64
+- **Last active**: 2026-03-14T11:20:20Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -29,34 +29,34 @@
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server — 8 tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for nesting, due_date tracking)
+- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for nesting)
 
 ## In Progress
 
-- AI suggestions with /memory synthesis — amber banner now always runs (DB best-effort), displays between tag bar and messages with approve/reject UI; fixed to work without PostgreSQL
-- Session tag persistence — GET /entities/session-tags endpoint queries event_tags_{p} joined to events/values/categories; tags now persist across session switches with frontend reload
-- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions; improved discoverability
-- Database query optimization — frontend tag/category caching on project load eliminates per-action SQL calls during chat/planner; batch updates only on explicit save
-- Port binding and startup stability — freePort() kills stale uvicorn via lsof, Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts
-- Session phase labeling and tag bar overflow — renamed 'Session:' to 'Phase:' label for clarity; fixed tag bar overflow clipping with flex-wrap to ensure all suggestion chips visible
+- Commit/prompt linking mechanism — POST /entities/events/tag-by-source-id endpoint maps history.jsonl source_id to events for tagging; enables /memory to update summaries and embeddings via commit reference
+- Tagging workflow validation — confirmed tag system works end-to-end: tags persist across sessions, /memory can query and synthesize tags for suggestions, frontend caching eliminates per-action SQL calls
+- Session phase labeling and visibility — renamed 'Session:' to 'Phase:' in tag bar; fixed tag bar overflow with flex-wrap to ensure all suggestion chips visible
+- AI suggestions banner display — /memory now always runs (DB best-effort), displays suggestions as amber banner between tag bar and messages with approve/reject UI
+- Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts
+- Database query optimization — frontend caches all tags/categories on project load, batch saves on explicit save only, eliminated per-action SQL round-trips
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search and entity graph
-- Per-project DB tables (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}) via project_table() + ensure_project_schema()
+- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search; per-project DB tables via project_table()
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step; Vite dev server only
 - JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
-- All LLM providers independent adapters; server holds API keys; client sends NO keys
-- Config-driven pricing via provider_costs.json as single source of truth
+- All LLM providers as independent adapters; server holds API keys; client sends NO keys
+- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
+- Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
+- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
+- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
+- AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
+- Session tags persist via GET /entities/session-tags endpoint querying event_tags_{p} joined to events/values/categories
+- Planner action visibility via 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
-- 5-layer memory: immediate → working (session JSON) → project (PROJECT.md) → historical (history.jsonl) → global (templates)
-- Unified history.jsonl: all sources (ui/claude_cli/workflow/cursor) → single file per project
-- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; root-level creation only from chat picker
-- Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
-- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit() in before-quit handler
-- AI suggestions as dedicated amber banner with synthesized tags from /memory; always-on (DB best-effort), appears between tag bar and messages with approve/reject workflow
+- Commit-to-prompt linking via source_id (timestamp from history.jsonl) stored in commit_log.jsonl
 
 ---
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-14 11:10]** `claude_cli/claude`  
+→ I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is currently works in my syst
+← _All changes are done. Here's a summary of what was implemented:  ### Changes  **`ui/backend/routers/entities.py`** — new endpoint `POST /entities/events/tag-by-source-id`: - Accepts `{ source_id, enti_
+
 **[2026-03-13 17:44]** `claude_cli/claude`  
 → I am siting with my freid and try to explain him wha is this system is about ? can you explain that shortly ?
 ← _**aicli** is a shared AI memory platform for developers.  The core problem it solves: when you use different AI tools (Claude CLI, Cursor, ChatGPT in the browser, etc.), each one starts from scratch —_
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 00:52]** `claude_cli/claude`  
 → It looks like there are multiple database calls that make the system realy slow. try to avoid many sql calls and upload 
 ← _All done. Here's what was completed in `chat.js`:  **New picker flow:** 1. Click `+ Tag` → `_pickerPopulateCats()` reads from cache (zero DB calls) → populates category `<select>` with counts like `⬡ _
-
-**[2026-03-10 00:19]** `claude_cli/claude`  
-→ I am shutting down elecrotn and run fresh - but cannot see anythin. also when when I click on project name - i do not se
-← _Port 8000 is now free. The stale backend is gone.  Now do a clean restart from the `ui/` directory using the **dev script** (which sets `NODE_ENV=development` and starts Vite):  ```bash cd /Users/user_

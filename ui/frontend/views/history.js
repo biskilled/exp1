@@ -82,21 +82,22 @@ export class HistoryView {
   async _renderChat(container) {
     const project = state.currentProject?.name || '';
 
-    // Load history + commits in parallel
-    const [histRes, commitsData] = await Promise.all([
+    // Load history, commits, categories, and project config all in parallel
+    const [histRes, commitsData, catsRes, cfgData] = await Promise.all([
       fetch(_histUrl('/history/chat?limit=200')).then(r => r.json()),
       api.historyCommits(project, 1000).catch(() => ({ commits: [] })),
+      api.entities.listCategories(project).catch(() => ({ categories: [] })),
+      api.getProjectConfig(project).catch(() => ({})),
     ]);
     this._chatEntries = histRes.entries || [];
     this._chatCommits = commitsData.commits || [];
 
-    // Build github_repo base URL (from project config if available)
-    let ghBase = '';
-    try {
-      const cfg = await api.getProjectConfig(project).catch(() => ({}));
-      ghBase = (cfg.github_repo || '').replace(/\.git$/, '').replace(/\/$/, '');
-      if (ghBase.startsWith('git@')) ghBase = ghBase.replace(/^git@([^:]+):/, 'https://$1/');
-    } catch {}
+    // Build tag cache (load all active values once — used by all entry pickers without further API calls)
+    await this._buildTagCache(project, catsRes.categories || []);
+
+    // Build github_repo base URL
+    let ghBase = (cfgData.github_repo || '').replace(/\.git$/, '').replace(/\/$/, '');
+    if (ghBase.startsWith('git@')) ghBase = ghBase.replace(/^git@([^:]+):/, 'https://$1/');
     this._chatGhBase = ghBase;
 
     const untaggedCount = this._chatEntries.filter(e => !e.phase && !e.feature).length;
@@ -250,14 +251,31 @@ export class HistoryView {
     }).join('');
   }
 
-  async _openEntryTagPicker(sourceId, anchorId) {
-    // Close any existing picker
-    document.querySelectorAll('.entry-tag-picker').forEach(el => el.remove());
+  // Build tag cache from already-fetched categories (avoids repeat API calls for each picker open)
+  async _buildTagCache(project, categories) {
+    const valResults = await Promise.all(
+      categories.map(cat =>
+        api.entities.listValues(project, cat.id, { status: 'active' })
+          .then(r => ({ cat, values: r.values || [] }))
+          .catch(() => ({ cat, values: [] }))
+      )
+    );
+    this._tagCache    = valResults.filter(g => g.values.length > 0);
+    this._tagCacheMap = {};
+    for (const { cat, values } of this._tagCache) {
+      for (const v of values) {
+        this._tagCacheMap[v.id] = { color: cat.color || '#4a90e2', name: v.name, catName: cat.name, icon: cat.icon || '⬡' };
+      }
+    }
+  }
 
+  // Shared picker — opens instantly using cached tag data (no API calls)
+  _openEntryTagPicker(sourceId, anchorId) {
+    document.querySelectorAll('.entry-tag-picker').forEach(el => el.remove());
     const anchor = document.getElementById(anchorId);
     if (!anchor) return;
 
-    const project = state.currentProject?.name || '';
+    const groups = this._tagCache || [];
     const picker = document.createElement('div');
     picker.className = 'entry-tag-picker';
     picker.style.cssText = [
@@ -266,35 +284,10 @@ export class HistoryView {
       'border-radius:6px;padding:8px;min-width:200px;max-height:260px;overflow-y:auto;',
       'box-shadow:0 4px 12px rgba(0,0,0,.35)',
     ].join('');
-    picker.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px">Loading…</div>';
-    anchor.appendChild(picker);
 
-    // Close when clicking outside
-    const closeHandler = (ev) => {
-      if (!picker.contains(ev.target) && !anchor.contains(ev.target)) {
-        picker.remove();
-        document.removeEventListener('click', closeHandler, true);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', closeHandler, true), 50);
-
-    try {
-      const cats = await api.entities.listCategories(project);
-      const allCats = cats.categories || [];
-      const valResults = await Promise.all(
-        allCats.map(cat =>
-          api.entities.listValues(project, cat.id, { status: 'active' })
-            .then(r => ({ cat, values: r.values || [] }))
-            .catch(() => ({ cat, values: [] }))
-        )
-      );
-      const groups = valResults.filter(g => g.values.length > 0);
-
-      if (!groups.length) {
-        picker.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px">No active tags available</div>';
-        return;
-      }
-
+    if (!groups.length) {
+      picker.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px">No active tags — open Planner to add some</div>';
+    } else {
       picker.innerHTML = `
         <input id="entry-tag-search" placeholder="Filter tags…" autocomplete="off"
           style="width:100%;box-sizing:border-box;padding:3px 6px;border:1px solid var(--border);
@@ -316,10 +309,18 @@ export class HistoryView {
                 </div>`).join('')}
             </div>`).join('')}
         </div>`;
-      picker.querySelector('#entry-tag-search')?.focus();
-    } catch (e) {
-      picker.innerHTML = `<div style="color:red;font-size:11px;padding:4px">Error: ${this._escapeHtml(e.message)}</div>`;
     }
+
+    anchor.appendChild(picker);
+    picker.querySelector('#entry-tag-search')?.focus();
+
+    const closeHandler = (ev) => {
+      if (!picker.contains(ev.target) && !anchor.contains(ev.target)) {
+        picker.remove();
+        document.removeEventListener('click', closeHandler, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler, true), 50);
   }
 
   _filterEntryTagPicker(query) {
@@ -338,12 +339,14 @@ export class HistoryView {
     const project = state.currentProject?.name || '';
     document.querySelectorAll('.entry-tag-picker').forEach(el => el.remove());
     const anchor = document.getElementById(anchorId);
+    const info = this._tagCacheMap?.[valueId] || {};
+    const color = info.color || '#4a90e2';
     try {
       await api.entities.tagBySourceId({ source_id: sourceId, entity_value_id: valueId, project });
       if (anchor) {
         const chip = document.createElement('span');
-        chip.style.cssText = 'font-size:10px;background:rgba(74,144,226,.2);color:#4a90e2;padding:1px 5px;border-radius:3px;margin-left:4px';
-        chip.textContent = '⬡ tagged';
+        chip.style.cssText = `font-size:10px;background:${color}22;color:${color};border:1px solid ${color}55;padding:1px 5px;border-radius:3px;margin-left:4px;white-space:nowrap`;
+        chip.textContent = `${info.icon || '⬡'} ${info.name || 'tagged'}`;
         anchor.appendChild(chip);
       }
     } catch (e) {
@@ -359,10 +362,14 @@ export class HistoryView {
 
   async _renderCommits(container) {
     const project = state.currentProject?.name || '';
-    const [data, cfgData] = await Promise.all([
+    const [data, cfgData, catsRes] = await Promise.all([
       api.historyCommits(project, 100),
       api.getProjectConfig(project).catch(() => ({})),
+      // Load tag cache if not already built (e.g. user navigated directly to Commits tab)
+      this._tagCache ? Promise.resolve(null) : api.entities.listCategories(project).catch(() => ({ categories: [] })),
     ]);
+    if (catsRes) await this._buildTagCache(project, catsRes.categories || []);
+
     const commits = data.commits || [];
     const fromDb = data.source === 'db';
     // Build GitHub base URL from project config
@@ -410,6 +417,7 @@ export class HistoryView {
               <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">Bug</th>
               <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">Message</th>
               <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">Source</th>
+              <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">Tags</th>
             </tr>
           </thead>
           <tbody>
@@ -474,6 +482,15 @@ export class HistoryView {
           ${this._escapeHtml(c.commit_msg || '')}
         </td>
         <td style="padding:5px 8px;color:var(--muted);font-size:11px">${c.source || ''}</td>
+        <td style="padding:5px 4px">
+          <span id="ctag-${hashFull.slice(0,8) || i}" style="position:relative">
+            <button onclick="window._historyView._openEntryTagPicker('${this._escapeHtml(hashFull)}','ctag-${hashFull.slice(0,8) || i}')"
+              style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;
+                     cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap">
+              ⬡ Tag
+            </button>
+          </span>
+        </td>
       </tr>
     `;
   }
