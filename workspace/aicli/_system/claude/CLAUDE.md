@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; root-level creation only from chat picker
 - Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit() in before-quit handler
-- AI suggestions as dedicated amber banner between tag bar and messages; appears only when /memory returns suggestions with explicit approve/reject workflow
+- AI suggestions as dedicated amber banner with synthesized tags from /memory; always-on (DB best-effort), appears between tag bar and messages with approve/reject workflow
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-10] `claude_cli`: can you run /memory, and make the UI more clear. add your sujjestion in a clear place where user can
 - [2026-03-10] `claude_cli`: can you run /memory and run some tests? I do not see any sujjestion on all the existing session ther
 - [2026-03-10] `claude_cli`: Are you using the mcp server in order to reciave all project information ? Also, I do not see any su
 - [2026-03-10] `ui`: hellow, how are you ?
 - [2026-03-10] `claude_cli`: I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks
+- [2026-03-13] `claude_cli`: I am siting with my freid and try to explain him wha is this system is about ? can you explain that 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

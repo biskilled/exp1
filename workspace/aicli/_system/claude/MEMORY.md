@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-10 03:19 UTC by aicli /memory_
+_Generated: 2026-03-13 17:45 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI + FastAPI backend + Electron desktop UI to manage project history, semantic search, multi-agent workflows, and collaborative AI-assisted development. It uses flat-file storage (JSONL) as primary with PostgreSQL + pgvector for semantic indexing, nested tagging, and entity graphs. Current focus is on stabilizing UI/UX (session persistence, AI suggestion visibility, optimized DB queries) and fixing infrastructure issues (port binding, startup reliability).
+**aicli** is a unified AI memory platform that syncs prompts, responses, and project state across multiple AI tools (Claude CLI, Cursor, ChatGPT, etc.), so every AI assistant has context. It uses a 5-layer memory stack (immediate → working → project → historical → global), PostgreSQL semantic search, nested tagging with Planner UI, and a FastAPI + Electron desktop app with native terminal and Monaco editor integration.
 
 ## Tech Stack
 
@@ -15,7 +15,7 @@ aicli is a shared AI memory platform combining a Python CLI + FastAPI backend + 
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for unlimited nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -42,16 +42,16 @@ aicli is a shared AI memory platform combining a Python CLI + FastAPI backend + 
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; root-level creation only from chat picker
 - Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit() in before-quit handler
-- AI suggestions as dedicated amber banner between tag bar and messages; appears only when /memory returns suggestions with explicit approve/reject workflow
+- AI suggestions as dedicated amber banner with synthesized tags from /memory; always-on (DB best-effort), appears between tag bar and messages with approve/reject workflow
 
 ## In Progress
 
-- AI suggestions workflow — amber banner with synthesized tags from /memory; fixed to always run (DB best-effort), appears between tag bar and messages with approve/reject UI
-- Session tag persistence — GET /entities/session-tags endpoint queries event_tags_{p} joined to events/values/categories; tags now persist across session switches
-- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions in discoverable format
+- AI suggestions with /memory synthesis — amber banner now always runs (DB best-effort), displays between tag bar and messages with approve/reject UI; fixed to work without PostgreSQL
+- Session tag persistence — GET /entities/session-tags endpoint queries event_tags_{p} joined to events/values/categories; tags now persist across session switches with frontend reload
+- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions; improved discoverability
 - Database query optimization — frontend tag/category caching on project load eliminates per-action SQL calls during chat/planner; batch updates only on explicit save
 - Port binding and startup stability — freePort() kills stale uvicorn via lsof, Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts
-- Session phase labeling and tag bar overflow — renamed 'Session:' to 'Phase:' label for clarity; fixed tag bar overflow clipping to ensure all suggestion chips are visible
+- Session phase labeling and tag bar overflow — renamed 'Session:' to 'Phase:' label for clarity; fixed tag bar overflow clipping with flex-wrap to ensure all suggestion chips visible
 
 ## Active Features / Bugs
 
@@ -70,4 +70,13 @@ aicli is a shared AI memory platform combining a Python CLI + FastAPI backend + 
 - **[phase]** development `(0 events)`
 - **[phase]** prod `(0 events)`
 
-**[2026-03-10 02:40]** `claude_cli` — Redesigned AI suggestions as dedicated amber banner between tag bar and messages; renamed Session label to Phase for clarity; fixed tag bar overflow clipping so suggestion chips are always visible. **[2026-03-10 02:33]** `claude_cli` — Implemented GET /entities/session-tags endpoint to query event_tags_{p} joined to events/values/categories; tags now persist across session switches with proper load/refresh. **[2026-03-10 02:12]** `claude_cli` — Fixed session tag persistence: tags now save to event_tags_{p} and reload correctly when switching sessions; verified via API endpoint. **[2026-03-10 02:00]** `claude_cli` — Resolved port binding conflicts with freePort() helper that kills stale uvicorn via lsof + xargs; fixed Electron before-quit cleanup via process.exit() to prevent dangling processes. **[2026-03-10 01:42]** `claude_cli` — Replaced small inline planner action buttons with 3-dot dropdown menu (⋯) per tag row; menu displays edit/archive/restore/delete in discoverable format; added restore action for archived tags. **[2026-03-10 00:52]** `claude_cli` — Optimized database queries by implementing frontend tag/category caching on project load; eliminated per-action SQL calls during chat/planner interactions; batch updates trigger only on explicit save.
+**[2026-03-10 02:40]** `claude_cli` — Phase label renamed from 'Session:' to clarify UI semantics; AI suggestions moved to dedicated amber banner between tag bar and messages with approve/reject workflow for clarity.
+**[2026-03-10 02:57]** `claude_cli` — /memory synthesis fixed to always run even without PostgreSQL (DB best-effort); suggestions now appear dynamically when /memory detects tag patterns from project history.
+**[2026-03-10 02:12]** `claude_cli` — Session tag persistence implemented via GET /entities/session-tags endpoint; tags now survive session switches by querying event_tags_{p} joined to events, values, and categories.
+**[2026-03-10 02:00]** `claude_cli` — Port binding stability resolved with freePort() helper killing stale uvicorn via lsof, plus Electron before-quit handler via process.exit() to prevent 127.0.0.1:8000 conflicts on restart.
+**[2026-03-10 01:42]** `claude_cli` — Planner UI action visibility improved by replacing small inline buttons with 3-dot dropdown menu (⋯) per tag row; added restore option for archived tags.
+**[2026-03-10 00:52]** `claude_cli` — Frontend tag/category caching implemented on project load, eliminating per-action SQL calls during chat/planner; batch updates only on explicit save.
+**[2026-03-10 01:19]** `claude_cli` — Nested tag hierarchy enabled via parent_id FK in entity_values; unlimited depth (category → tag → subtag) with Planner tree UI; root-level creation only from chat picker.
+**[2026-03-13 17:44]** `claude_cli` — Project summary articulated: aicli is a shared AI memory platform giving all AI tools (Claude CLI, Cursor, ChatGPT) unified project context via unified history.jsonl across all sources.
+**[2026-03-10 03:22]** `claude_cli` — Commit/session connection clarified: auto_commit_push.sh hook already writes session_id to commit_log.jsonl; UI layer missing, not data layer.
+**[2026-03-10 00:19]** `claude_cli` — Database schema verified live with due_date column; port 8000 bind conflicts resolved; Vite dev server initialization standardized.

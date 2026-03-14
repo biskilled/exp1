@@ -824,6 +824,106 @@ async def session_bulk_tag(body: SessionTagBody):
     }
 
 
+class TagBySourceIdBody(BaseModel):
+    source_id:       str
+    entity_value_id: int
+    project:         Optional[str] = None
+
+
+@router.post("/events/tag-by-source-id")
+async def tag_event_by_source_id(body: TagBySourceIdBody):
+    """Tag a single event identified by its source_id (timestamp string from history.jsonl).
+
+    - Looks up the event by source_id in events_{project}.
+    - If not found, imports it from history.jsonl (upsert) or creates a minimal record.
+    - Tags the event with entity_value_id (idempotent).
+    Used by the History tab per-entry ⬡ Tag button.
+    """
+    _require_db()
+    p = _project(body.project)
+    ev_table = db.project_table("events", p)
+    et_table = db.project_table("event_tags", p)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            # Find existing event by source_id
+            cur.execute(f"SELECT id FROM {ev_table} WHERE source_id=%s LIMIT 1", (body.source_id,))
+            row = cur.fetchone()
+            event_id: int | None = row[0] if row else None
+
+            if event_id is None:
+                # Try to import from history.jsonl
+                ws = _workspace(p)
+                hist = ws / "_system" / "history.jsonl"
+                if hist.exists():
+                    for line in hist.read_text().splitlines():
+                        if not line.strip():
+                            continue
+                        try:
+                            e = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if e.get("ts") != body.source_id:
+                            continue
+                        title = (e.get("user_input") or "")[:120] or "(no input)"
+                        meta = json.dumps({
+                            "provider":   e.get("provider"),
+                            "source":     e.get("source"),
+                            "phase":      e.get("phase"),
+                            "feature":    e.get("feature"),
+                            "session_id": e.get("session_id"),
+                        })
+                        cur.execute(
+                            f"""INSERT INTO {ev_table}
+                                   (event_type, source_id, title, content, metadata, created_at)
+                               VALUES ('prompt',%s,%s,%s,%s,%s::timestamptz)
+                               ON CONFLICT (event_type, source_id) DO UPDATE SET title=EXCLUDED.title
+                               RETURNING id""",
+                            (body.source_id, title,
+                             (e.get("user_input") or "")[:2000], meta, body.source_id),
+                        )
+                        r2 = cur.fetchone()
+                        if r2:
+                            event_id = r2[0]
+                        break
+
+            if event_id is None:
+                # Create minimal placeholder event
+                cur.execute(
+                    f"""INSERT INTO {ev_table}
+                           (event_type, source_id, title, metadata, created_at)
+                       VALUES ('prompt',%s,'(history entry)','{{}}',%s::timestamptz)
+                       ON CONFLICT (event_type, source_id) DO NOTHING
+                       RETURNING id""",
+                    (body.source_id, body.source_id),
+                )
+                r3 = cur.fetchone()
+                if r3:
+                    event_id = r3[0]
+                else:
+                    cur.execute(f"SELECT id FROM {ev_table} WHERE source_id=%s LIMIT 1", (body.source_id,))
+                    r4 = cur.fetchone()
+                    if r4:
+                        event_id = r4[0]
+
+            if event_id is None:
+                raise HTTPException(404, "Event not found and could not be created")
+
+            # Verify entity value exists
+            cur.execute("SELECT id FROM entity_values WHERE id=%s AND project=%s", (body.entity_value_id, p))
+            if not cur.fetchone():
+                raise HTTPException(404, "Entity value not found")
+
+            # Tag (idempotent)
+            cur.execute(
+                f"INSERT INTO {et_table} (event_id, entity_value_id, auto_tagged) "
+                "VALUES (%s,%s,false) ON CONFLICT DO NOTHING",
+                (event_id, body.entity_value_id),
+            )
+
+    return {"ok": True, "event_id": event_id, "source_id": body.source_id, "project": p}
+
+
 @router.get("/session-tags")
 async def get_session_entity_tags(session_id: str, project: str | None = Query(None)):
     """Return all entity values tagged for events belonging to a session.

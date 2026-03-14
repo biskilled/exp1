@@ -82,14 +82,13 @@ export class HistoryView {
   async _renderChat(container) {
     const project = state.currentProject?.name || '';
 
-    // Load history + commits + session tags in parallel
-    const [histRes, commitsData, sessionTags] = await Promise.all([
-      fetch(_histUrl('/history/chat?limit=100')).then(r => r.json()),
+    // Load history + commits in parallel
+    const [histRes, commitsData] = await Promise.all([
+      fetch(_histUrl('/history/chat?limit=200')).then(r => r.json()),
       api.historyCommits(project, 1000).catch(() => ({ commits: [] })),
-      api.getSessionTags(project).catch(() => ({ phase: null, feature: null, bug_ref: null })),
     ]);
-    const entries = histRes.entries || [];
-    const allCommits = commitsData.commits || [];
+    this._chatEntries = histRes.entries || [];
+    this._chatCommits = commitsData.commits || [];
 
     // Build github_repo base URL (from project config if available)
     let ghBase = '';
@@ -98,51 +97,81 @@ export class HistoryView {
       ghBase = (cfg.github_repo || '').replace(/\.git$/, '').replace(/\/$/, '');
       if (ghBase.startsWith('git@')) ghBase = ghBase.replace(/^git@([^:]+):/, 'https://$1/');
     } catch {}
+    this._chatGhBase = ghBase;
 
-    // Build session_id → commits map (only commits with a session_id)
+    const untaggedCount = this._chatEntries.filter(e => !e.phase && !e.feature).length;
+
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;
+                  background:var(--surface);border-radius:6px;flex-wrap:wrap;font-size:12px">
+        <span style="color:var(--muted);font-weight:600">Filter:</span>
+        <select id="hist-filter-source" onchange="window._historyView._applyFilter()"
+          style="background:var(--bg);border:1px solid var(--border);border-radius:3px;
+                 padding:2px 6px;font-size:11px;color:var(--text)">
+          <option value="">All sources</option>
+          <option value="claude_cli">Claude CLI</option>
+          <option value="ui">UI</option>
+          <option value="workflow">Workflow</option>
+        </select>
+        <select id="hist-filter-phase" onchange="window._historyView._applyFilter()"
+          style="background:var(--bg);border:1px solid var(--border);border-radius:3px;
+                 padding:2px 6px;font-size:11px;color:var(--text)">
+          <option value="">All phases</option>
+          <option value="discovery">Discovery</option>
+          <option value="development">Development</option>
+          <option value="prod">Prod</option>
+        </select>
+        <div style="flex:1"></div>
+        ${untaggedCount > 0
+          ? `<span style="color:#e74c3c;font-size:11px;font-weight:600">${untaggedCount} untagged prompts</span>`
+          : `<span style="color:green;font-size:11px">All prompts tagged ✓</span>`}
+      </div>
+      <div id="hist-chat-groups"></div>`;
+
+    this._renderChatGroups(document.getElementById('hist-chat-groups'));
+  }
+
+  _applyFilter() {
+    const wrapper = document.getElementById('hist-chat-groups');
+    if (wrapper) this._renderChatGroups(wrapper);
+  }
+
+  _renderChatGroups(wrapper) {
+    if (!wrapper) return;
+    const srcFilter   = document.getElementById('hist-filter-source')?.value  || '';
+    const phaseFilter = document.getElementById('hist-filter-phase')?.value   || '';
+
+    let entries = this._chatEntries || [];
+    if (srcFilter)   entries = entries.filter(e => (e.source || 'ui') === srcFilter);
+    if (phaseFilter) entries = entries.filter(e => e.phase === phaseFilter);
+
+    if (!entries.length) {
+      wrapper.innerHTML = "<div style='padding:20px;color:var(--muted)'>No entries match the current filter.</div>";
+      return;
+    }
+
+    // Build session_id → commits map
     const commitsBySession = {};
-    for (const c of allCommits) {
+    for (const c of (this._chatCommits || [])) {
       if (c.session_id) {
         if (!commitsBySession[c.session_id]) commitsBySession[c.session_id] = [];
         commitsBySession[c.session_id].push(c);
       }
     }
 
-    const untaggedCount = entries.filter(e => !e.phase && !e.feature).length;
-
-    const tagsBar = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;background:var(--surface);border-radius:6px;flex-wrap:wrap;font-size:12px">
-        <span style="color:var(--muted);font-weight:600">Active tags:</span>
-        ${this._tagChip('phase', sessionTags.phase, ['', 'discovery', 'development', 'prod'])}
-        ${this._tagChip('feature', sessionTags.feature, null)}
-        ${this._tagChip('bug_ref', sessionTags.bug_ref, null)}
-        <div style="flex:1"></div>
-        ${untaggedCount > 0
-          ? `<span style="color:#e74c3c;font-size:11px;font-weight:600">${untaggedCount} untagged prompts</span>`
-          : `<span style="color:green;font-size:11px">All prompts tagged ✓</span>`}
-      </div>`;
-
-    if (!entries.length) {
-      container.innerHTML = tagsBar + "<div style='padding:20px;color:var(--muted)'>No chat history yet.</div>";
-      return;
-    }
-
-    // Group consecutive entries with the same session_id so commits show once per session
+    // Group consecutive entries by session_id
     const groups = [];
     for (const e of entries) {
       const last = groups[groups.length - 1];
-      if (last && last.session_id === e.session_id) {
-        last.entries.push(e);
-      } else {
-        groups.push({ session_id: e.session_id, entries: [e] });
-      }
+      if (last && last.session_id === e.session_id) last.entries.push(e);
+      else groups.push({ session_id: e.session_id, entries: [e] });
     }
 
-    container.innerHTML = tagsBar + groups.map(group => {
+    const ghBase = this._chatGhBase || '';
+    wrapper.innerHTML = groups.map(group => {
       const sid = group.session_id || '';
       const commits = sid ? (commitsBySession[sid] || []) : [];
 
-      // Commit badge strip (shown once per session group)
       const commitStrip = commits.length ? `
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;
                     padding:5px 8px;background:var(--surface2);border-radius:4px;margin-bottom:6px;font-size:11px">
@@ -163,7 +192,10 @@ export class HistoryView {
       const entriesHtml = group.entries.map((e, idx) => {
         const isUntagged = !e.phase && !e.feature;
         const borderColor = isUntagged ? '#e74c3c' : 'var(--border)';
-        const entryId = `hist-entry-${sid.slice(0,8)}-${idx}`;
+        const entryId     = `hist-entry-${(sid || 'ns').slice(0, 8)}-${idx}`;
+        const tagAnchorId = `hist-tag-${entryId}`;
+        const sourceId    = e.ts || '';
+
         const outputHtml = e.output
           ? `<div style="margin-top:6px">
               <div id="${entryId}-resp"
@@ -180,6 +212,7 @@ export class HistoryView {
                 : ''}
             </div>`
           : '';
+
         return `
         <div class="history-entry" style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
                     border-radius:6px;padding:10px 12px;margin-bottom:6px">
@@ -191,6 +224,13 @@ export class HistoryView {
             ${e.feature ? `<span style="background:rgba(39,174,96,.15);color:#27ae60;padding:1px 5px;border-radius:3px">#${e.feature}</span>` : ''}
             ${e.bug_ref ? `<span style="background:rgba(231,76,60,.12);color:#e74c3c;padding:1px 5px;border-radius:3px">🐛${e.bug_ref}</span>` : ''}
             ${isUntagged ? `<span style="color:#e74c3c;font-size:10px">⚠ untagged</span>` : ''}
+            <span id="${tagAnchorId}" style="margin-left:auto;position:relative">
+              <button onclick="window._historyView._openEntryTagPicker('${this._escapeHtml(sourceId)}','${tagAnchorId}')"
+                style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;
+                       cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap">
+                ⬡ Tag
+              </button>
+            </span>
           </div>
           <div style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word">${this._escapeHtml(e.user_input || "")}</div>
           ${outputHtml}
@@ -200,7 +240,7 @@ export class HistoryView {
       return `
       <div style="margin-bottom:14px">
         ${sid ? `<div style="font-size:10px;color:var(--muted);margin-bottom:4px;padding-left:2px">
-          session <code style="font-size:10px">${sid.slice(0,8)}</code>
+          session <code style="font-size:10px">${sid.slice(0, 8)}</code>
           ${group.entries[0]?.source ? `· ${group.entries[0].source}` : ''}
           · ${group.entries.length} prompt${group.entries.length > 1 ? 's' : ''}
         </div>` : ''}
@@ -210,34 +250,110 @@ export class HistoryView {
     }).join('');
   }
 
-  _tagChip(field, value, options) {
-    const label = field === 'bug_ref' ? 'Bug' : field.charAt(0).toUpperCase() + field.slice(1);
-    if (options) {
-      return `<label style="display:flex;align-items:center;gap:4px">
-        <span style="color:var(--muted)">${label}:</span>
-        <select onchange="window._historyView._saveSessionTag('${field}',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:11px;color:${value ? 'var(--accent)' : 'var(--muted)'}">
-          ${options.map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o || '—'}</option>`).join('')}
-        </select></label>`;
+  async _openEntryTagPicker(sourceId, anchorId) {
+    // Close any existing picker
+    document.querySelectorAll('.entry-tag-picker').forEach(el => el.remove());
+
+    const anchor = document.getElementById(anchorId);
+    if (!anchor) return;
+
+    const project = state.currentProject?.name || '';
+    const picker = document.createElement('div');
+    picker.className = 'entry-tag-picker';
+    picker.style.cssText = [
+      'position:absolute;right:0;top:100%;z-index:300;',
+      'background:var(--bg);border:1px solid var(--border);',
+      'border-radius:6px;padding:8px;min-width:200px;max-height:260px;overflow-y:auto;',
+      'box-shadow:0 4px 12px rgba(0,0,0,.35)',
+    ].join('');
+    picker.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px">Loading…</div>';
+    anchor.appendChild(picker);
+
+    // Close when clicking outside
+    const closeHandler = (ev) => {
+      if (!picker.contains(ev.target) && !anchor.contains(ev.target)) {
+        picker.remove();
+        document.removeEventListener('click', closeHandler, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler, true), 50);
+
+    try {
+      const cats = await api.entities.listCategories(project);
+      const allCats = cats.categories || [];
+      const valResults = await Promise.all(
+        allCats.map(cat =>
+          api.entities.listValues(project, cat.id, { status: 'active' })
+            .then(r => ({ cat, values: r.values || [] }))
+            .catch(() => ({ cat, values: [] }))
+        )
+      );
+      const groups = valResults.filter(g => g.values.length > 0);
+
+      if (!groups.length) {
+        picker.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px">No active tags available</div>';
+        return;
+      }
+
+      picker.innerHTML = `
+        <input id="entry-tag-search" placeholder="Filter tags…" autocomplete="off"
+          style="width:100%;box-sizing:border-box;padding:3px 6px;border:1px solid var(--border);
+                 border-radius:3px;background:var(--surface);color:var(--text);font-size:11px;margin-bottom:6px"
+          oninput="window._historyView._filterEntryTagPicker(this.value)">
+        <div id="entry-tag-list">
+          ${groups.map(({ cat, values }) => `
+            <div class="etag-group">
+              <div style="font-size:10px;color:var(--muted);font-weight:600;padding:2px 4px;
+                          text-transform:uppercase;letter-spacing:.5px">
+                ${this._escapeHtml(cat.icon || '')} ${this._escapeHtml(cat.name)}
+              </div>
+              ${values.map(v => `
+                <div class="etag-item" data-catname="${this._escapeHtml(cat.name)}"
+                  onclick="window._historyView._tagEntryWith('${this._escapeHtml(sourceId)}',${v.id},'${anchorId}')"
+                  style="padding:3px 10px;cursor:pointer;border-radius:3px;font-size:12px;color:${this._escapeHtml(cat.color || 'var(--text)')}"
+                  onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background=''">
+                  ${this._escapeHtml(v.name)}
+                </div>`).join('')}
+            </div>`).join('')}
+        </div>`;
+      picker.querySelector('#entry-tag-search')?.focus();
+    } catch (e) {
+      picker.innerHTML = `<div style="color:red;font-size:11px;padding:4px">Error: ${this._escapeHtml(e.message)}</div>`;
     }
-    return `<label style="display:flex;align-items:center;gap:4px">
-      <span style="color:var(--muted)">${label}:</span>
-      <input type="text" value="${this._escapeHtml(value || '')}" placeholder="—"
-        onblur="window._historyView._saveSessionTag('${field}',this.value)"
-        onkeydown="if(event.key==='Enter')this.blur()"
-        style="background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:11px;width:90px;color:${value ? 'var(--accent)' : 'var(--muted)'}"/>
-      </label>`;
   }
 
-  async _saveSessionTag(field, value) {
+  _filterEntryTagPicker(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.etag-item').forEach(item => {
+      const match = !q || item.textContent.toLowerCase().includes(q) || (item.dataset.catname || '').includes(q);
+      item.style.display = match ? '' : 'none';
+    });
+    document.querySelectorAll('.etag-group').forEach(g => {
+      const anyVisible = [...g.querySelectorAll('.etag-item')].some(i => i.style.display !== 'none');
+      g.style.display = anyVisible ? '' : 'none';
+    });
+  }
+
+  async _tagEntryWith(sourceId, valueId, anchorId) {
     const project = state.currentProject?.name || '';
+    document.querySelectorAll('.entry-tag-picker').forEach(el => el.remove());
+    const anchor = document.getElementById(anchorId);
     try {
-      let current = { phase: null, feature: null, bug_ref: null };
-      try { current = await api.getSessionTags(project); } catch {}
-      current[field] = value || null;
-      await api.putSessionTags(project, current);
+      await api.entities.tagBySourceId({ source_id: sourceId, entity_value_id: valueId, project });
+      if (anchor) {
+        const chip = document.createElement('span');
+        chip.style.cssText = 'font-size:10px;background:rgba(74,144,226,.2);color:#4a90e2;padding:1px 5px;border-radius:3px;margin-left:4px';
+        chip.textContent = '⬡ tagged';
+        anchor.appendChild(chip);
+      }
     } catch (e) {
-      console.warn('Session tag save failed:', e.message);
+      console.warn('Tag entry failed:', e.message);
+      if (anchor) {
+        const err = document.createElement('span');
+        err.style.cssText = 'font-size:10px;color:#e74c3c;margin-left:4px';
+        err.textContent = '✕ ' + e.message;
+        anchor.appendChild(err);
+      }
     }
   }
 

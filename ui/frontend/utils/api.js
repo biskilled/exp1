@@ -240,6 +240,8 @@ api.entities = {
   sessionTag:           (body)                  => _post('/entities/session-tag', body),
   // Reload entity tags for a session (used when switching sessions in UI)
   getEntitySessionTags: (sessionId, project)    => _get(`/entities/session-tags?session_id=${encodeURIComponent(sessionId)}&${_pq(project)}`),
+  // Tag a single event by its source_id (history.jsonl timestamp)
+  tagBySourceId:        (body)                  => _post('/entities/events/tag-by-source-id', body),
 
   // Tag suggestions (auto-tag loop)
   getSuggestions:     (project, sourceId) => _get(

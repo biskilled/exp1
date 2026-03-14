@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-13 17:35 UTC — do not edit manually.
+> Auto-generated 2026-03-14 11:03 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 62
-- **Last active**: 2026-03-10T03:25:08Z
+- **Sessions**: 63
+- **Last active**: 2026-03-13T17:45:13Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,7 +20,7 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (with parent_id for unlimited nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id for nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -33,12 +33,12 @@
 
 ## In Progress
 
-- AI suggestions workflow — amber banner with synthesized tags from /memory; fixed to always run (DB best-effort), appears between tag bar and messages with approve/reject UI
-- Session tag persistence — GET /entities/session-tags endpoint queries event_tags_{p} joined to events/values/categories; tags now persist across session switches
-- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions in discoverable format
+- AI suggestions with /memory synthesis — amber banner now always runs (DB best-effort), displays between tag bar and messages with approve/reject UI; fixed to work without PostgreSQL
+- Session tag persistence — GET /entities/session-tags endpoint queries event_tags_{p} joined to events/values/categories; tags now persist across session switches with frontend reload
+- Planner UI action visibility — replaced small inline buttons with 3-dot dropdown menu (⋯) per tag row for edit/archive/restore/delete actions; improved discoverability
 - Database query optimization — frontend tag/category caching on project load eliminates per-action SQL calls during chat/planner; batch updates only on explicit save
 - Port binding and startup stability — freePort() kills stale uvicorn via lsof, Electron before-quit cleanup via process.exit(), resolved 127.0.0.1:8000 bind conflicts
-- Session phase labeling and tag bar overflow — renamed 'Session:' to 'Phase:' label for clarity; fixed tag bar overflow clipping to ensure all suggestion chips are visible
+- Session phase labeling and tag bar overflow — renamed 'Session:' to 'Phase:' label for clarity; fixed tag bar overflow clipping with flex-wrap to ensure all suggestion chips visible
 
 ## Key Decisions
 
@@ -56,7 +56,7 @@
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; root-level creation only from chat picker
 - Frontend tag/category caching on project load: zero DB calls during chat/planner; batch updates only on explicit save
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit() in before-quit handler
-- AI suggestions as dedicated amber banner between tag bar and messages; appears only when /memory returns suggestions with explicit approve/reject workflow
+- AI suggestions as dedicated amber banner with synthesized tags from /memory; always-on (DB best-effort), appears between tag bar and messages with approve/reject workflow
 
 ---
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-13 17:44]** `claude_cli/claude`  
+→ I am siting with my freid and try to explain him wha is this system is about ? can you explain that shortly ?
+← _**aicli** is a shared AI memory platform for developers.  The core problem it solves: when you use different AI tools (Claude CLI, Cursor, ChatGPT in the browser, etc.), each one starts from scratch —_
+
 **[2026-03-10 03:22]** `claude_cli/claude`  
 → I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks also managing the c
 ← _All clean. Here's the full picture:  ---  **No hook changes needed.** The `auto_commit_push.sh` hook already writes `session_id` to `commit_log.jsonl` on lines 181 and 294. The data connection exists._
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 00:19]** `claude_cli/claude`  
 → I am shutting down elecrotn and run fresh - but cannot see anythin. also when when I click on project name - i do not se
 ← _Port 8000 is now free. The stale backend is gone.  Now do a clean restart from the `ui/` directory using the **dev script** (which sets `NODE_ENV=development` and starts Vite):  ```bash cd /Users/user_
-
-**[2026-03-10 00:11]** `claude_cli/claude`  
-→ I think there is an issue with ui as it is not loading properly (and I do see error whie bind address 127.0.0.1, 8000) 
-← _Everything is working on the backend side. To summarise:  - **Bind error**: Caused by trying to start a second uvicorn instance — the old one (PID 86671) was already running and is still running fine _
