@@ -242,6 +242,8 @@ api.entities = {
   getEntitySessionTags: (sessionId, project)    => _get(`/entities/session-tags?session_id=${encodeURIComponent(sessionId)}&${_pq(project)}`),
   // Tag a single event by its source_id (history.jsonl timestamp)
   tagBySourceId:        (body)                  => _post('/entities/events/tag-by-source-id', body),
+  // Return source_id → [tags] map for all tagged prompt events (used by History tab to persist chips)
+  getSourceTags:        (project)               => _get(`/entities/events/source-tags?${_pq(project)}`),
 
   // Tag suggestions (auto-tag loop)
   getSuggestions:     (project, sourceId) => _get(

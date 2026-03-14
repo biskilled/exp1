@@ -39,8 +39,8 @@ You are a senior Python software architect with deep expertise in:
 - AI suggestions as dedicated amber banner with /memory synthesis; always-on (DB best-effort), appears between tag bar and messages
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata; Claude Haiku for memory synthesis
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js for graph visualization
-- MCP server (stdio): 8 tools for integration with Claude CLI and external agents
 - History rotation on /memory call: configurable max_rows (default 500), creates history_YYMMDDHHSS archive, original becomes history.jsonl
+- MCP server (stdio): 8 tools for integration with Claude CLI and external agents
 
 ---
 

@@ -119,13 +119,16 @@ async def chat_history(
             seen.add(key)
             deduped.append(e)
 
+    total_raw = len(deduped)
+
     # Filter out internal noise entries
     deduped = [e for e in deduped if not _is_noisy(e)]
 
     deduped.sort(key=lambda x: x.get("ts", ""), reverse=True)
+    filtered = total_raw - len(deduped)
     if limit > 0:
-        return {"entries": deduped[:limit], "total": len(deduped)}
-    return {"entries": deduped, "total": len(deduped)}
+        return {"entries": deduped[:limit], "total": len(deduped), "filtered": filtered}
+    return {"entries": deduped, "total": len(deduped), "filtered": filtered}
 
 
 class CommitPatch(BaseModel):

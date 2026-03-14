@@ -1063,6 +1063,46 @@ async def tag_event_by_source_id(body: TagBySourceIdBody):
     return {"ok": True, "event_id": event_id, "source_id": body.source_id, "project": p}
 
 
+@router.get("/events/source-tags")
+async def get_events_source_tags(project: str | None = Query(None)):
+    """Return a map of source_id → [tag list] for all tagged prompt events.
+
+    Used by the History tab to display persisted tags on each history entry.
+    Returns {} (not 503) when DB is unavailable so the History tab still loads.
+    """
+    if not db.is_available():
+        return {}
+    p = _project(project)
+    ev_table = db.project_table("events", p)
+    et_table = db.project_table("event_tags", p)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT ev.source_id, v.id, v.name, c.color, c.icon, c.name AS cat_name
+                    FROM {et_table} et
+                    JOIN {ev_table} ev ON ev.id = et.event_id
+                    JOIN entity_values v  ON v.id  = et.entity_value_id
+                    JOIN entity_categories c ON c.id = v.category_id
+                    WHERE ev.event_type = 'prompt'
+                    ORDER BY ev.source_id, v.name""",
+            )
+            rows = cur.fetchall()
+
+    result: dict = {}
+    for source_id, vid, vname, color, icon, cat_name in rows:
+        if source_id not in result:
+            result[source_id] = []
+        result[source_id].append({
+            "value_id": vid,
+            "name":     vname,
+            "color":    color or "#4a90e2",
+            "icon":     icon  or "⬡",
+            "cat_name": cat_name,
+        })
+    return result
+
+
 @router.get("/session-tags")
 async def get_session_entity_tags(session_id: str, project: str | None = Query(None)):
     """Return all entity values tagged for events belonging to a session.

@@ -330,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Commit-to-prompt-to-session linking fully matured — source_id timestamp from history.jsonl maps bidirectionally; POST /entities/events/tag-by-source-id creates event-value links; multiple commits per session each tagged to originating prompt (2026-03-14)
-- Tag cache persistence fully implemented — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker operations (2026-03-14)
-- History rotation and tag caching on history tab — tag cache loads once when history tab opens; color fidelity preserved on save; history.jsonl rotates to history_YYMMDDHHSS when /memory processes (2026-03-14)
-- CLAUDE.md memory layer alignment complete — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured; PROJECT.md v2.2.0 aligned to current state (2026-03-14)
-- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; amber banner distinguishes AI suggestions; suggestions populate from /memory synthesis without DB requirement (2026-03-10–2026-03-14)
+- History rotation fully operational — /memory triggers rotation at configurable row threshold (default 500); creates timestamped archive (history_YYMMDDHHSS), original becomes history.jsonl (2026-03-14)
+- Commit-to-prompt bidirectional linking matured — source_id timestamp from history.jsonl maps to commits via POST /entities/events/tag-by-source-id; multiple commits per session each tagged to originating prompt (2026-03-14)
+- Tag cache persistence in history view — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker (2026-03-14)
+- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; amber banner with AI suggestions appears between tag bar and messages; suggestions from /memory synthesis work without PostgreSQL (2026-03-10–2026-03-14)
 - Port stability and Electron restart workflow resolved — freePort() kills stale uvicorn via lsof; Electron before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
+- PROJECT.md and CLAUDE.md memory layers fully aligned to v2.2.0 — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows, history rotation) documented (2026-03-14)
