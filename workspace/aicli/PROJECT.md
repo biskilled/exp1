@@ -330,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Commit-to-prompt-to-session linking — source_id timestamp from history.jsonl maps to events in event_tags_{p}; POST /entities/events/tag-by-source-id creates bidirectional links between commits and prompts; multiple commits per session each tagged to their originating prompt (2026-03-14)
-- Tag cache persistence in history tab — all categories/values loaded once on tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker operations (2026-03-14)
-- CLAUDE.md memory layer alignment — verified synthesis logic matches multi-layer design; all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured in memory output; PROJECT.md v2.2.0 updated (2026-03-14)
-- Port stability and startup flow — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() resolves bind address conflicts; clean restart workflow documented (2026-03-10)
-- AI suggestions banner refinement — /memory runs always (DB best-effort), displays dedicated amber banner with approve/reject UI between tag bar and messages; works even without PostgreSQL fallback (2026-03-10)
-- Session phase labeling clarity — 'Phase:' label instead of 'Session:' in tag bar; tag bar flex-wrap displays all suggestion chips; amber banner for AI suggestions with clear approval workflow (2026-03-10)
+- Commit-to-prompt-to-session linking matured — source_id timestamp from history.jsonl maps bidirectionally; POST /entities/events/tag-by-source-id creates links; multiple commits per session each tagged to originating prompt; verified working in production (2026-03-14)
+- Tag cache persistence fully implemented — all categories/values loaded once on history tab open via Promise.all; color preservation on save prevents DB thrashing; zero DB calls during tag picker operations verified (2026-03-14)
+- CLAUDE.md memory layer alignment complete — all recent features (nested tags, commit linking, session persistence, tag cache, graph workflows) captured in synthesis; PROJECT.md v2.2.0 aligned (2026-03-14)
+- AI suggestions banner stable — /memory runs always (DB best-effort), displays dedicated amber banner between tag bar and messages; works without PostgreSQL fallback; approval workflow clear (2026-03-10)
+- Port stability resolved — freePort() kills stale uvicorn via lsof before restart; Electron before-quit cleanup via process.exit() eliminates bind address conflicts; clean restart workflow documented (2026-03-10)
+- Session phase labeling clarity — 'Phase:' label instead of 'Session:' in tag bar; tag bar flex-wrap displays all suggestion chips; amber banner distinguishes AI suggestions from user-created tags (2026-03-10)
