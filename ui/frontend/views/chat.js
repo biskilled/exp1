@@ -1,7 +1,7 @@
 import { state, setState } from '../stores/state.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
-import { getCacheCategories, getCacheValues, getCacheLeaves, getValuePath, addCachedValue } from '../utils/tagCache.js';
+import { getCacheCategories, getCacheValues, addCachedValue } from '../utils/tagCache.js';
 
 const PROVIDERS = [
   { id: 'claude',   label: 'Claude'   },
@@ -27,7 +27,6 @@ let _appliedEntities  = []; // [{value_id, category_name, name, color, icon}] �
 let _pendingEntities  = []; // same shape — selected but not yet saved
 let _suggestedTags    = []; // [{name, category, is_new}] — LLM suggestions from /memory
 let _pickerOpen        = false;
-let _selectedPickerCat = null;  // catId currently selected in the picker
 
 // Fallback color/icon for known category names (used in _acceptSuggestedTag)
 const _ENTITY_TYPES = [
@@ -152,43 +151,46 @@ export function renderChat(container) {
         <!-- AI Suggestions banner — only shown after /memory returns suggestions -->
         <div id="chat-ai-suggestions" style="display:none"></div>
 
-        <!-- Entity picker panel (shown when + Tag is clicked) -->
+        <!-- Entity picker panel (shown when + Tag is clicked) — grouped listbox -->
         <div id="chat-entity-picker"
-          style="display:none;flex-direction:column;gap:0.3rem;padding:0.4rem 0.75rem;
+          style="display:none;flex-direction:column;max-height:280px;
                  border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
-          <div style="display:flex;align-items:center;gap:0.4rem">
-            <!-- Category select (with counts) -->
-            <select id="picker-cat-sel" onchange="window._pickerCatChange(this.value)"
-              style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+          <!-- Filter row -->
+          <div style="display:flex;align-items:center;gap:0.4rem;padding:0.35rem 0.75rem;
+                      border-bottom:1px solid var(--border);flex-shrink:0">
+            <input id="picker-filter-inp" type="text" placeholder="🔍 Filter tags…"
+              autocomplete="off"
+              oninput="window._pickerFilter(this.value)"
+              style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
                      font-family:var(--font);font-size:0.68rem;padding:0.2rem 0.4rem;
-                     border-radius:var(--radius);outline:none;max-width:155px;flex-shrink:0">
-              <option value="">Category…</option>
-            </select>
-            <!-- Smart value combobox -->
-            <div style="position:relative;flex:1">
-              <input id="picker-val-inp" type="text" placeholder="Select category first…"
-                autocomplete="off" disabled
-                oninput="window._pickerValFilter(this.value)"
-                onfocus="window._pickerValOpen()"
-                onblur="setTimeout(()=>window._pickerValClose(),160)"
-                onkeydown="if(event.key==='Enter'){event.preventDefault();window._pickerAddNew(this.value)}"
-                style="width:100%;background:var(--bg);border:1px solid var(--border);
-                       color:var(--text);font-family:var(--font);font-size:0.68rem;
-                       padding:0.2rem 0.4rem;border-radius:var(--radius);outline:none;
-                       box-sizing:border-box" />
-              <!-- Floating dropdown -->
-              <div id="picker-val-dd"
-                   style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;
-                          z-index:200;background:var(--bg);border:1px solid var(--border);
-                          border-radius:var(--radius);max-height:180px;overflow-y:auto;
-                          box-shadow:0 4px 14px rgba(0,0,0,0.25)">
-              </div>
-            </div>
+                     border-radius:var(--radius);outline:none" />
             <button onclick="window._closeEntityPicker()"
               style="background:none;border:none;color:var(--muted);cursor:pointer;
                      font-size:0.8rem;padding:0 0.25rem;flex-shrink:0;line-height:1">✕</button>
           </div>
-          <div id="picker-msg" style="font-size:0.6rem;color:var(--muted);min-height:0.75rem"></div>
+          <!-- Grouped tag list -->
+          <div id="picker-groups-list"
+               style="flex:1;overflow-y:auto;padding:0.2rem 0;min-height:60px"></div>
+          <!-- Add new section -->
+          <div style="border-top:1px solid var(--border);padding:0.3rem 0.75rem;flex-shrink:0;
+                      display:flex;align-items:center;gap:0.4rem">
+            <span style="font-size:0.6rem;color:var(--muted);white-space:nowrap;flex-shrink:0">+ Add:</span>
+            <select id="picker-add-cat"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+                     font-family:var(--font);font-size:0.62rem;padding:0.15rem 0.3rem;
+                     border-radius:var(--radius);outline:none;max-width:115px;flex-shrink:0">
+              <option value="">Category…</option>
+            </select>
+            <input id="picker-add-name" type="text" placeholder="Tag name"
+              onkeydown="if(event.key==='Enter')window._pickerSaveNew()"
+              style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+                     font-family:var(--font);font-size:0.62rem;padding:0.15rem 0.3rem;
+                     border-radius:var(--radius);outline:none;min-width:0" />
+            <button onclick="window._pickerSaveNew()"
+              style="background:var(--accent);border:none;color:#fff;font-size:0.6rem;
+                     padding:0.2rem 0.5rem;border-radius:var(--radius);cursor:pointer;
+                     font-family:var(--font);outline:none;white-space:nowrap;flex-shrink:0">Save</button>
+          </div>
         </div>
 
         <!-- Messages -->
@@ -287,12 +289,9 @@ function _setupTagBar() {
   // Expose picker functions globally
   window._toggleEntityPicker    = _toggleEntityPicker;
   window._closeEntityPicker     = _closeEntityPicker;
-  window._pickerCatChange       = _pickerCatChange;
-  window._pickerValFilter       = _pickerValFilter;
-  window._pickerValOpen         = _pickerValOpen;
-  window._pickerValClose        = _pickerValClose;
-  window._pickerSelectVal       = _pickerSelectVal;
-  window._pickerAddNew          = _pickerAddNew;
+  window._pickerFilter          = _pickerFilter;
+  window._pickerSaveNew         = _pickerSaveNew;
+  window._applyTagDirect        = _applyTagDirect;
   window._saveEntitiesToSession = _saveEntitiesToSession;
   window._removePendingTag      = _removePendingTag;
 }
@@ -360,169 +359,90 @@ function _toggleEntityPicker() {
   if (!panel) return;
   _pickerOpen = true;
   panel.style.display = 'flex';
-  _pickerPopulateCats();
+  _loadPickerGroups();
 }
 
 function _closeEntityPicker() {
   const panel = document.getElementById('chat-entity-picker');
   if (panel) panel.style.display = 'none';
-  const dd = document.getElementById('picker-val-dd');
-  if (dd) dd.style.display = 'none';
   _pickerOpen = false;
 }
 
-/** Populate the category <select> from cache (no DB call). */
-function _pickerPopulateCats() {
-  const sel = document.getElementById('picker-cat-sel');
-  const inp = document.getElementById('picker-val-inp');
-  if (!sel) return;
-
-  const cats = getCacheCategories();
-  sel.innerHTML = '<option value="">Category…</option>' +
-    cats.map(c => {
-      const vals = getCacheValues(c.id);
-      const cnt  = vals.filter(v => !v.status || v.status === 'active').length;
-      return `<option value="${c.id}">${_esc(c.icon)} ${_esc(c.name)} (${cnt})</option>`;
-    }).join('');
-
-  // Reset combobox
-  _selectedPickerCat = null;
-  if (inp) { inp.value = ''; inp.placeholder = 'Select category first…'; inp.disabled = true; }
-  const dd = document.getElementById('picker-val-dd');
-  if (dd) dd.style.display = 'none';
-  const msg = document.getElementById('picker-msg');
-  if (msg) msg.textContent = '';
-}
-
-/** Called when user changes the category <select>. */
-function _pickerCatChange(catId) {
-  _selectedPickerCat = catId || null;
-  const inp = document.getElementById('picker-val-inp');
-  if (!inp) return;
-  if (!_selectedPickerCat) {
-    inp.value = ''; inp.placeholder = 'Select category first…'; inp.disabled = true;
-    const dd = document.getElementById('picker-val-dd');
-    if (dd) dd.style.display = 'none';
-    return;
+/** Open the grouped listbox picker — uses tag cache (zero DB calls). */
+function _loadPickerGroups() {
+  const cats   = getCacheCategories();
+  // Populate "+ Add" category select
+  const addSel = document.getElementById('picker-add-cat');
+  if (addSel) {
+    addSel.innerHTML = '<option value="">Category…</option>' +
+      cats.map(c => `<option value="${c.id}">${_esc(c.icon)} ${_esc(c.name)}</option>`).join('');
   }
-  inp.disabled = false;
-  const cat = getCacheCategories().find(c => String(c.id) === String(catId));
-  inp.placeholder = `Search ${cat?.name || 'tags'}… or type to add`;
-  inp.value = '';
-  inp.focus();
-  _pickerValFilter('');
+  // Reset filter + name inputs
+  const filterInp = document.getElementById('picker-filter-inp');
+  if (filterInp) { filterInp.value = ''; setTimeout(() => filterInp.focus(), 0); }
+  const nameInp = document.getElementById('picker-add-name');
+  if (nameInp) nameInp.value = '';
+  _renderPickerGroups('');
 }
 
-/** Render the floating dropdown based on current filter text.
- *  Shows leaf nodes with full path strings (e.g. "auth-refactor / login-form").
- *  "+ Add" always creates at root level.
- */
-function _pickerValFilter(q) {
-  const dd = document.getElementById('picker-val-dd');
-  if (!dd || !_selectedPickerCat) return;
-
-  const query  = (q || '').toLowerCase().trim();
-  const catId  = _selectedPickerCat;
-
-  // Show only leaf nodes (values with no children) that are active
-  const leaves = getCacheLeaves(catId).filter(v => !v.status || v.status === 'active');
-
-  // Build display entries with full path for each leaf
-  const entries = leaves.map(v => ({
-    id:    v.id,
-    name:  v.name,
-    path:  getValuePath(catId, v.id),
-    count: v.event_count || 0,
-  }));
-
-  const matched = query
-    ? entries.filter(e => e.path.toLowerCase().includes(query))
-    : entries;
-
-  let html = matched.map(e => `
-    <div onmousedown="event.preventDefault();window._pickerSelectVal(${e.id},'${_esc(e.name)}')"
-         style="padding:5px 10px;cursor:pointer;font-size:0.68rem;display:flex;
-                justify-content:space-between;align-items:center;gap:6px"
-         onmouseenter="this.style.background='var(--surface2)'"
-         onmouseleave="this.style.background='transparent'">
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-            title="${_esc(e.path)}">${_esc(e.path)}</span>
-      ${e.count ? `<span style="font-size:0.58rem;color:var(--muted);flex-shrink:0">${e.count}</span>` : ''}
-    </div>`).join('');
-
-  // Show "+ Add" when there's typed text with no exact match (creates at root level)
-  const exactMatch = entries.some(e => e.name.toLowerCase() === query || e.path.toLowerCase() === query);
-  if (query && !exactMatch) {
+/** Render all categories + their active tags into the grouped list. */
+function _renderPickerGroups(q) {
+  const list = document.getElementById('picker-groups-list');
+  if (!list) return;
+  const cats  = getCacheCategories();
+  const query = (q || '').toLowerCase().trim();
+  let html = '';
+  for (const cat of cats) {
+    const vals    = getCacheValues(cat.id).filter(v => !v.status || v.status === 'active');
+    const matched = query ? vals.filter(v => v.name.toLowerCase().includes(query)) : vals;
+    if (!matched.length) continue;
     html += `
-      <div onmousedown="event.preventDefault();window._pickerAddNew('${_esc(q)}')"
-           style="padding:5px 10px;cursor:pointer;font-size:0.68rem;color:var(--accent);
-                  border-top:1px solid var(--border);display:flex;align-items:center;gap:4px"
-           onmouseenter="this.style.background='var(--surface2)'"
-           onmouseleave="this.style.background='transparent'">
-        <span>+</span><span>Add "${_esc(q)}"</span>
+      <div class="picker-group">
+        <div style="padding:0.18rem 0.75rem;font-size:0.57rem;font-weight:600;
+                    color:${cat.color};text-transform:uppercase;letter-spacing:0.04em">
+          ${_esc(cat.icon)} ${_esc(cat.name)}
+        </div>
+        ${matched.map(v => `
+          <div onmousedown="event.preventDefault();window._applyTagDirect(${v.id},'${_esc(v.name)}',${cat.id},'${_esc(cat.name)}','${_esc(cat.icon)}','${_esc(cat.color)}')"
+               style="padding:0.22rem 0.75rem 0.22rem 1.6rem;cursor:pointer;font-size:0.68rem;
+                      display:flex;align-items:center;justify-content:space-between;gap:6px"
+               onmouseenter="this.style.background='var(--surface2)'"
+               onmouseleave="this.style.background='transparent'">
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(v.name)}</span>
+            ${v.event_count ? `<span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${v.event_count}</span>` : ''}
+          </div>`).join('')}
       </div>`;
   }
-
-  dd.innerHTML = html || `<div style="padding:5px 10px;font-size:0.65rem;color:var(--muted)">No tags yet — type to add</div>`;
-  dd.style.display = 'block';
+  list.innerHTML = html || `
+    <div style="padding:1rem;text-align:center;font-size:0.65rem;color:var(--muted)">
+      ${query ? 'No matching tags' : 'No tags yet — add one below'}
+    </div>`;
 }
 
-function _pickerValOpen() {
-  if (!_selectedPickerCat) return;
-  const inp = document.getElementById('picker-val-inp');
-  _pickerValFilter(inp?.value || '');
+function _pickerFilter(q) {
+  _renderPickerGroups(q);
 }
 
-function _pickerValClose() {
-  const dd = document.getElementById('picker-val-dd');
-  if (dd) dd.style.display = 'none';
-}
-
-/** User clicked an existing value — queue as pending (not saved until 💾 Save is clicked). */
-function _pickerSelectVal(valueId, valueName) {
-  const project = state.currentProject?.name;
-  if (!project) { toast('No project open', 'error'); return; }
-
-  const cat     = getCacheCategories().find(c => String(c.id) === String(_selectedPickerCat)) || {};
-  const icon    = cat.icon  || '⬡';
-  const color   = cat.color || '#4a90e2';
-  const catName = cat.name  || '';
-
-  // Avoid duplicates
-  const exists = _pendingEntities.some(e => e.value_id === valueId) ||
-                 _appliedEntities.some(e => e.value_id === valueId);
-  if (exists) { _closeEntityPicker(); return; }
-
-  _pendingEntities.push({ value_id: valueId, category_name: catName, name: valueName, color, icon });
-  _renderEntityChips();
-  _updateSaveButton();
-  _closeEntityPicker();
-}
-
-/** User typed a new tag name — queue as pending with a temporary marker (no value_id yet). */
-function _pickerAddNew(name) {
-  const project = state.currentProject?.name;
-  const msg     = document.getElementById('picker-msg');
-  if (!project) { if (msg) msg.textContent = 'No project open'; return; }
-  if (!_selectedPickerCat) { if (msg) msg.textContent = 'Select a category first'; return; }
-
-  const valName = (name || '').trim();
-  if (!valName) { if (msg) msg.textContent = 'Enter a tag name'; return; }
-
-  const cat     = getCacheCategories().find(c => String(c.id) === String(_selectedPickerCat)) || {};
+/** Save a brand-new tag from the "+ Add" section in the picker. */
+function _pickerSaveNew() {
+  const catSel  = document.getElementById('picker-add-cat');
+  const nameInp = document.getElementById('picker-add-name');
+  const catId   = catSel?.value;
+  const name    = (nameInp?.value || '').trim();
+  if (!catId) { toast('Select a category', 'error'); return; }
+  if (!name)  { toast('Enter a tag name', 'error'); return; }
+  const cat = getCacheCategories().find(c => String(c.id) === String(catId)) || {};
   const catName = cat.name  || '';
   const icon    = cat.icon  || '⬡';
   const color   = cat.color || '#4a90e2';
-
-  // Avoid duplicates
-  const exists = _pendingEntities.some(e => e.name === valName && e.category_name === catName) ||
-                 _appliedEntities.some(e => e.name === valName && e.category_name === catName);
-  if (exists) { _closeEntityPicker(); return; }
-
-  // value_id is null for new tags — resolved on save
-  _pendingEntities.push({ value_id: null, category_name: catName, name: valName, color, icon, is_new: true });
-  _renderEntityChips();
-  _updateSaveButton();
+  const exists = _pendingEntities.some(e => e.name === name && e.category_name === catName) ||
+                 _appliedEntities.some(e => e.name === name && e.category_name === catName);
+  if (!exists) {
+    _pendingEntities.push({ value_id: null, category_name: catName, name, color, icon, is_new: true });
+    _renderEntityChips();
+    _updateSaveButton();
+  }
+  if (nameInp) nameInp.value = '';
   _closeEntityPicker();
 }
 
