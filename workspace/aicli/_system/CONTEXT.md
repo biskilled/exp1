@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 17:25 UTC — do not edit manually.
+> Auto-generated 2026-03-15 17:41 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 85
-- **Last active**: 2026-03-15T17:14:57Z
+- **Sessions**: 86
+- **Last active**: 2026-03-15T17:39:53Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 17:28]** `claude_cli/claude`  
+→ Taggin - there is a wau to add tags in History, commit and chat - which is good. can you make sure all is aligned to the
+← _149 tags, 0 duplicates. Everything is clean. Here's a summary of all changes:  ---  **No duplicates** — confirmed: 149 event tags, 0 duplicates. The backend uses `ON CONFLICT DO NOTHING` on every tag _
+
 **[2026-03-15 16:47]** `claude_cli/claude`  
 → Pagination - I do see now in the chat only 24 prompts (there are much more) can you add pagination < > 24/xxx on the top
 ← _All changes are working. Here's a summary:  **Backend — archive files included** - `_load_unified_history()` now reads `history.jsonl` + all `history_*.jsonl` archives - Result: **204 entries** (was 2_
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 02:33]** `claude_cli/claude`  
 → Where do I click accept , is it in the Chat at the top ? I dont see that
 ← _The tag bar is the **thin bar at the top of the chat area**, right below the title and above the messages. After running `/memory`:  1. The bar will show amber/gold italic chips like: `✦ auth-refactor_
-
-**[2026-03-10 02:12]** `claude_cli/claude`  
-→ I do see the save button - and when I save I do see the tag, when I am checking another session and come back (at the ui
-← _Only module resolution error (expected) — no syntax errors. The fix is complete.  Here's what was implemented:  **Backend** (`entities.py`): New `GET /entities/session-tags?session_id=X&project=Y` end_

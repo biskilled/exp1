@@ -487,14 +487,21 @@ export class HistoryView {
       this._entryTags[sourceId].push({ value_id: valueId, icon: info.icon || '⬡', name: info.name || 'tagged', color, cat_name: info.catName || '' });
     }
 
-    // Render chip into anchor immediately
+    // Render chip into anchor immediately (with data-value-id and ✕ for removal)
     if (anchor) {
       const chip = document.createElement('span');
-      chip.style.cssText = `font-size:10px;background:${color}22;color:${color};border:1px solid ${color}55;padding:1px 5px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px`;
-      chip.textContent = `${info.icon || '⬡'} ${info.name || 'tagged'}`;
+      chip.dataset.valueId = String(valueId);
+      chip.style.cssText = `font-size:10px;background:${color}22;color:${color};border:1px solid ${color}55;padding:1px 4px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px`;
+      chip.appendChild(document.createTextNode(`${info.icon || '⬡'} ${info.name || 'tagged'}`));
+      const rmBtn = document.createElement('button');
+      rmBtn.textContent = '✕';
+      rmBtn.title = 'Remove tag';
+      rmBtn.style.cssText = `border:none;background:none;cursor:pointer;color:${color};font-size:9px;padding:0 1px;line-height:1;opacity:.7`;
+      rmBtn.addEventListener('click', (ev) => { ev.stopPropagation(); window._historyView._removeTag(sourceId, valueId, anchorId); });
+      chip.appendChild(rmBtn);
       // Insert before the "+ Tag" button
-      const btn = anchor.querySelector('button');
-      if (btn) anchor.insertBefore(chip, btn);
+      const firstBtn = anchor.querySelector('button:not([title="Remove tag"])');
+      if (firstBtn) anchor.insertBefore(chip, firstBtn);
       else anchor.appendChild(chip);
     }
 
@@ -715,46 +722,43 @@ export class HistoryView {
 
   async _jumpToPrompt(promptSourceId) {
     if (!promptSourceId) return;
-    // Switch to Chat tab (load from cache if available, else fetch)
-    this.activeTab = 'chat';
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.style.background = btn.dataset.tab === 'chat' ? 'var(--accent)' : 'var(--surface)';
-    });
+
+    // Ensure history data is loaded
     const content = document.getElementById('history-content');
     if (!content) return;
 
     if (!this._histData) {
       content.innerHTML = "<div style='padding:20px;color:var(--muted)'>Loading…</div>";
       await this._renderChat(content);
-    } else {
-      this._renderChatContainer(content);
     }
 
-    // After render, scroll to + highlight the matching entry
-    // Entries have data-ts attribute set to e.ts
+    // Find which page the entry is on and navigate there
+    const entries = this._histData?.entries || [];
+    const filter  = this._histFilter || {};
+    let filtered  = [...entries];
+    if (filter.source)  filtered = filtered.filter(e => (e.source || 'ui') === filter.source);
+    if (filter.phase)   filtered = filtered.filter(e => e.phase === filter.phase);
+    const idx = filtered.findIndex(e => e.ts === promptSourceId);
+    if (idx >= 0) {
+      this._histPage = Math.floor(idx / _PAGE_SIZE) + 1;
+    }
+
+    // Switch to chat tab and render
+    this.activeTab = 'chat';
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.style.background = btn.dataset.tab === 'chat' ? 'var(--accent)' : 'var(--surface)';
+    });
+    this._renderChatContainer(content);
+
+    // Scroll to + highlight the entry after render
     setTimeout(() => {
-      // Find the entry with matching ts
-      const entries = content.querySelectorAll('.history-entry');
-      for (const el of entries) {
-        const tsEl = el.querySelector('[data-ts]');
-        if (tsEl?.dataset.ts === promptSourceId || el.dataset.ts === promptSourceId) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.style.outline = '2px solid var(--accent)';
-          setTimeout(() => { el.style.outline = ''; }, 2000);
-          return;
-        }
+      const el = content.querySelector(`.history-entry[data-ts="${CSS.escape(promptSourceId)}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.style.outline = '2px solid var(--accent)';
+        setTimeout(() => { el.style.outline = ''; }, 2500);
       }
-      // Fallback: look for timestamp text match (HH:MM)
-      const timeStr = promptSourceId.slice(11, 16);
-      for (const el of entries) {
-        if (el.textContent.includes(timeStr)) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.style.outline = '2px solid var(--accent)';
-          setTimeout(() => { el.style.outline = ''; }, 2000);
-          return;
-        }
-      }
-    }, 100);
+    }, 120);
   }
 
   // ── Tag removal ────────────────────────────────────────────────────────────

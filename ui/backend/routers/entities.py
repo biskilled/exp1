@@ -993,14 +993,43 @@ class TagBySourceIdBody(BaseModel):
     project:         Optional[str] = None
 
 
+def _propagate_tags_phase4(p: str) -> None:
+    """Background task: propagate prompt event tags → commit events in same session.
+
+    Called after every manual tag operation so the commit tag bar stays in sync
+    without requiring an explicit full entities sync.
+    """
+    try:
+        ev_table = db.project_table("events",     p)
+        et_table = db.project_table("event_tags", p)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""INSERT INTO {et_table} (event_id, entity_value_id, auto_tagged)
+                        SELECT DISTINCT commit_ev.id, pt.entity_value_id, TRUE
+                        FROM {ev_table} commit_ev
+                        JOIN {ev_table} prompt_ev
+                             ON prompt_ev.metadata->>'session_id' = commit_ev.metadata->>'session_id'
+                            AND commit_ev.metadata->>'session_id' IS NOT NULL
+                            AND commit_ev.metadata->>'session_id' NOT IN ('', 'null')
+                        JOIN {et_table} pt ON pt.event_id = prompt_ev.id
+                        WHERE commit_ev.event_type = 'commit'
+                          AND prompt_ev.event_type  = 'prompt'
+                        ON CONFLICT DO NOTHING"""
+                )
+    except Exception as exc:
+        log.debug(f"Background tag propagation skipped: {exc}")
+
+
 @router.post("/events/tag-by-source-id")
-async def tag_event_by_source_id(body: TagBySourceIdBody):
+async def tag_event_by_source_id(body: TagBySourceIdBody, background: BackgroundTasks):
     """Tag a single event identified by its source_id (timestamp string from history.jsonl).
 
     - Looks up the event by source_id in events_{project}.
-    - If not found, imports it from history.jsonl (upsert) or creates a minimal record.
+    - If not found, imports from history files (all archives) or commits table.
     - Tags the event with entity_value_id (idempotent).
-    Used by the History tab per-entry ⬡ Tag button.
+    - Triggers background Phase 4 so prompt tags auto-propagate to same-session commits.
+    Used by the History tab per-entry ⬡ Tag button and Commits tab.
     """
     _require_db()
     p = _project(body.project)
@@ -1015,50 +1044,90 @@ async def tag_event_by_source_id(body: TagBySourceIdBody):
             event_id: int | None = row[0] if row else None
 
             if event_id is None:
-                # Try to import from history.jsonl
-                ws = _workspace(p)
-                hist = ws / "_system" / "history.jsonl"
-                if hist.exists():
-                    for line in hist.read_text().splitlines():
-                        if not line.strip():
+                # Detect whether this is a commit hash (40-char hex) or a prompt timestamp
+                is_commit = bool(re.match(r'^[0-9a-f]{7,40}$', body.source_id.lower()))
+
+                if is_commit:
+                    # Look up in commits table and create a proper commit event
+                    c_table = db.project_table("commits", p)
+                    try:
+                        cur.execute(
+                            f"SELECT commit_hash, commit_msg, phase, source, committed_at, "
+                            f"COALESCE(session_id,'') FROM {c_table} WHERE commit_hash=%s LIMIT 1",
+                            (body.source_id,),
+                        )
+                        c_row = cur.fetchone()
+                        if c_row:
+                            hash_, msg, phase, src, committed_at, sid = c_row
+                            meta = json.dumps({"phase": phase, "source": src, "session_id": sid or None})
+                            cur.execute(
+                                f"""INSERT INTO {ev_table}
+                                       (event_type, source_id, title, content, metadata, created_at)
+                                   VALUES ('commit',%s,%s,%s,%s,%s)
+                                   ON CONFLICT (event_type, source_id) DO UPDATE SET title=EXCLUDED.title
+                                   RETURNING id""",
+                                (hash_, (msg or "")[:120], msg or "", meta,
+                                 committed_at or body.source_id),
+                            )
+                            r2 = cur.fetchone()
+                            if r2:
+                                event_id = r2[0]
+                    except Exception as exc:
+                        log.warning(f"Commit lookup failed for {body.source_id}: {exc}")
+                else:
+                    # It's a prompt timestamp — search all history files (current + archives)
+                    ws = _workspace(p)
+                    sys_dir = ws / "_system"
+                    hist_files = [sys_dir / "history.jsonl"] + sorted(sys_dir.glob("history_*.jsonl"))
+                    for hist_file in hist_files:
+                        if not hist_file.exists() or event_id is not None:
                             continue
                         try:
-                            e = json.loads(line)
-                        except json.JSONDecodeError:
+                            for line in hist_file.read_text().splitlines():
+                                if not line.strip():
+                                    continue
+                                try:
+                                    e = json.loads(line)
+                                except json.JSONDecodeError:
+                                    continue
+                                if e.get("ts") != body.source_id:
+                                    continue
+                                title = (e.get("user_input") or "")[:120] or "(no input)"
+                                meta = json.dumps({
+                                    "provider":   e.get("provider"),
+                                    "source":     e.get("source"),
+                                    "phase":      e.get("phase"),
+                                    "feature":    e.get("feature"),
+                                    "session_id": e.get("session_id"),
+                                })
+                                cur.execute(
+                                    f"""INSERT INTO {ev_table}
+                                           (event_type, source_id, title, content, metadata, created_at)
+                                       VALUES ('prompt',%s,%s,%s,%s,%s::timestamptz)
+                                       ON CONFLICT (event_type, source_id) DO UPDATE SET title=EXCLUDED.title
+                                       RETURNING id""",
+                                    (body.source_id, title,
+                                     (e.get("user_input") or "")[:2000], meta, body.source_id),
+                                )
+                                r2 = cur.fetchone()
+                                if r2:
+                                    event_id = r2[0]
+                                break
+                        except OSError:
                             continue
-                        if e.get("ts") != body.source_id:
-                            continue
-                        title = (e.get("user_input") or "")[:120] or "(no input)"
-                        meta = json.dumps({
-                            "provider":   e.get("provider"),
-                            "source":     e.get("source"),
-                            "phase":      e.get("phase"),
-                            "feature":    e.get("feature"),
-                            "session_id": e.get("session_id"),
-                        })
-                        cur.execute(
-                            f"""INSERT INTO {ev_table}
-                                   (event_type, source_id, title, content, metadata, created_at)
-                               VALUES ('prompt',%s,%s,%s,%s,%s::timestamptz)
-                               ON CONFLICT (event_type, source_id) DO UPDATE SET title=EXCLUDED.title
-                               RETURNING id""",
-                            (body.source_id, title,
-                             (e.get("user_input") or "")[:2000], meta, body.source_id),
-                        )
-                        r2 = cur.fetchone()
-                        if r2:
-                            event_id = r2[0]
-                        break
 
             if event_id is None:
-                # Create minimal placeholder event
+                # Last resort: create minimal placeholder with correct event_type
+                is_commit = bool(re.match(r'^[0-9a-f]{7,40}$', body.source_id.lower()))
+                etype = 'commit' if is_commit else 'prompt'
+                title = '(commit)' if is_commit else '(history entry)'
                 cur.execute(
                     f"""INSERT INTO {ev_table}
                            (event_type, source_id, title, metadata, created_at)
-                       VALUES ('prompt',%s,'(history entry)','{{}}',%s::timestamptz)
+                       VALUES (%s,%s,%s,'{{}}',now())
                        ON CONFLICT (event_type, source_id) DO NOTHING
                        RETURNING id""",
-                    (body.source_id, body.source_id),
+                    (etype, body.source_id, title),
                 )
                 r3 = cur.fetchone()
                 if r3:
@@ -1083,6 +1152,9 @@ async def tag_event_by_source_id(body: TagBySourceIdBody):
                 "VALUES (%s,%s,false) ON CONFLICT DO NOTHING",
                 (event_id, body.entity_value_id),
             )
+
+    # Background: propagate prompt tags → commit events in same session
+    background.add_task(_propagate_tags_phase4, p)
 
     return {"ok": True, "event_id": event_id, "source_id": body.source_id, "project": p}
 

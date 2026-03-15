@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-15 17:15 UTC by aicli /memory_
+_Generated: 2026-03-15 17:39 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -68,6 +68,10 @@ _Generated: 2026-03-15 17:15 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-15 17:28]** `claude_cli/claude`
+Q: Taggin - there is a wau to add tags in History, commit and chat - which is good. can you make sure all is aligned to the sabe data (there are no duplicate? ) . I would like also to add option to remov
+A: 149 tags, 0 duplicates. Everything is clean. Here's a summary of all changes:  ---  **No duplicates** — confirmed: 149 event tags, 0 duplicates. The backend uses `ON CONFLICT DO NOTHING` on every tag insert, and the frontend deduplicates in-memory before calling the API.  **New backend endpoints:** 
+
 **[2026-03-15 16:47]** `claude_cli/claude`
 Q: Pagination - I do see now in the chat only 24 prompts (there are much more) can you add pagination < > 24/xxx on the top right where filter tab exists. can you do the same for chats and commits ?
 A: All changes are working. Here's a summary:  **Backend — archive files included** - `_load_unified_history()` now reads `history.jsonl` + all `history_*.jsonl` archives - Result: **204 entries** (was 26) — includes the 380-entry archive from Feb 23 (deduped + noise filtered) - Data range: 2026-02-23 
@@ -103,7 +107,3 @@ A: **aicli** is a shared AI memory platform for developers.  The core problem it
 **[2026-03-10 03:22]** `claude_cli/claude`
 Q: I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks also managing the commit/push (as most communication is from calude CLI). I would like to have that
 A: All clean. Here's the full picture:  ---  **No hook changes needed.** The `auto_commit_push.sh` hook already writes `session_id` to `commit_log.jsonl` on lines 181 and 294. The data connection exists. What was missing was the UI to display it.  **How it works now:**  ``` Claude Code CLI starts   └─ 
-
-**[2026-03-10 03:16]** `ui/claude`
-Q: hellow, how are you ?
-A: Hello! I'm doing well, thanks for asking. Ready to help with the **aicli** project.  Looking at the context, it seems you've been making good progress — recent work includes AI suggestion banners, session tag persistence, planner UI improvements, and port binding fixes.  What would you like to work 
