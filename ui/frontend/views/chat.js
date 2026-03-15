@@ -255,6 +255,22 @@ export function renderChat(container) {
   // ── Session tag bar listeners ────────────────────────────────────────────
   _setupTagBar();
 
+  // Restore last persisted phase for this project from DB
+  (async () => {
+    const project = state.currentProject?.name;
+    if (!project) return;
+    try {
+      const tags = await api.getSessionTags(project);
+      if (tags?.phase && !_sessionTags.phase) {
+        _sessionTags = { phase: tags.phase };
+        const phaseSel = document.getElementById('chat-phase-sel');
+        if (phaseSel) phaseSel.value = tags.phase;
+        window.__currentPhase = tags.phase;
+        _updateTagBarStatus();
+      }
+    } catch { /* DB unavailable — silent */ }
+  })();
+
   _setupInput();
   _initChatResize();
   _loadSessions();
@@ -284,6 +300,9 @@ function _setupTagBar() {
     }
     // Share current phase with History tab so its filter defaults to same phase
     window.__currentPhase = newPhase;
+    // Persist to DB so phase is restored on next app load
+    const project = state.currentProject?.name;
+    if (project) api.putSessionTags(project, { phase: newPhase || null }).catch(() => {});
     _updateTagBarStatus();
     _loadSessions();
   });
@@ -1095,9 +1114,12 @@ window._chatLoad = async (id) => {
     const msgs = document.getElementById('chat-messages');
     if (!msgs) return;
     msgs.innerHTML = '';
-    // Restore phase/session tags from session metadata
+    // Restore phase/session tags — prefer session metadata, fall back to session cache
+    // (cache is populated from list_sessions which also reads metadata.tags)
     const storedTags = session.metadata?.tags || {};
-    _restoreTagBar(storedTags);
+    const cacheTags  = _sessionCache.find(s => s.id === id)?.tags || {};
+    const effectiveTags = Object.keys(storedTags).length ? storedTags : cacheTags;
+    _restoreTagBar(effectiveTags);
     for (const m of session.messages || []) {
       if (m.role === 'user')      _appendUserMsg(m.content);
       if (m.role === 'assistant') _appendAssistantMsg(m.content);

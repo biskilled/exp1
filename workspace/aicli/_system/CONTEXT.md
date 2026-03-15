@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 20:40 UTC — do not edit manually.
+> Auto-generated 2026-03-15 20:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 91
-- **Last active**: 2026-03-15T20:39:33Z
+- **Sessions**: 92
+- **Last active**: 2026-03-15T20:51:35Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 20:44]** `claude_cli/claude`  
+→ When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem is that is not save p
+← _All three changes are done:  **1. AI suggestions auto-save** (`chat.js:625`): - `_acceptSuggestedTag` is now `async` - After pushing to `_pendingEntities`, if `_sessionId` exists it immediately calls _
+
 **[2026-03-15 20:33]** `claude_cli/claude`  
 → The last commit was b255366 which suppose to be linked to the last prompt. it did worked before , but it seems that the 
 ← _All good. Here's what happened and what was fixed:  ---  ## Root Cause  **Phase 5 only ran on explicit `POST /entities/events/sync`.** The `auto_commit_push.sh` hook called `POST /git/{project}/commit_
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-13 17:44]** `claude_cli/claude`  
 → I am siting with my freid and try to explain him wha is this system is about ? can you explain that shortly ?
 ← _**aicli** is a shared AI memory platform for developers.  The core problem it solves: when you use different AI tools (Claude CLI, Cursor, ChatGPT in the browser, etc.), each one starts from scratch —_
-
-**[2026-03-10 03:22]** `claude_cli/claude`  
-→ I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks also managing the c
-← _All clean. Here's the full picture:  ---  **No hook changes needed.** The `auto_commit_push.sh` hook already writes `session_id` to `commit_log.jsonl` on lines 181 and 294. The data connection exists._
