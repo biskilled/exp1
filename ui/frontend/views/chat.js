@@ -872,7 +872,7 @@ async function _loadSessions() {
       id: s.id,
       title: s.title || s.id.slice(0, 14),
       source: 'ui',
-      ts: s.updated_at || s.created_at || s.id,
+      ts: s.created_at || s.id,   // sort by creation time, not updated_at (tag edits shouldn't reorder)
       message_count: s.message_count || 0,
       phase: s.phase || null,
       feature: s.feature || null,

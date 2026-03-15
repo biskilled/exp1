@@ -27,16 +27,16 @@ You are a senior Python software architect with deep expertise in:
 ## Key Architectural Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file storage primary (JSONL/JSON with rotation); PostgreSQL + pgvector for semantic search; per-project DB tables via project_table()
+- Flat file storage primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables via project_table()
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server only for local development
-- JWT auth via python-jose + bcrypt; dev_mode toggle for local testing; 3 roles: admin/paid/free
+- JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
 - Tag cache loaded once per project tab open: zero DB calls during chat/planner; batch updates only on explicit save
-- History rotation on /memory call: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
+- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; always-on (DB best-effort)
+- AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-15] `claude_cli`: When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem i
 - [2026-03-15] `claude_cli`: There is still UI issue with updateting/ showing the correct phase per session. when ever app is loa
 - [2026-03-15] `claude_cli`: The error still exists - When I change the phase (on chats) - I am not able to save. also when I swi
 - [2026-03-15] `claude_cli`: Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the 
 - [2026-03-15] `claude_cli`: Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do
+- [2026-03-15] `claude_cli`: I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

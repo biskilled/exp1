@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 22:35 UTC — do not edit manually.
+> Auto-generated 2026-03-15 22:45 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 96
-- **Last active**: 2026-03-15T22:30:50Z
+- **Sessions**: 97
+- **Last active**: 2026-03-15T22:44:25Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,7 +20,7 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for nested tags)
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude, OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -33,26 +33,26 @@
 
 ## In Progress
 
-- Phase synchronization across Chat tabs — fixed: phase now updates current session (not forcing new one); PATCH /chat/sessions/{id}/tags endpoint writes phase to session JSON; phase persists on session switch (2026-03-15)
+- Phase synchronization across Chat tabs — fixed: phase now updates current session (not forcing new one); PATCH /chat/sessions/{id}/tags endpoint writes phase to session JSON; phase persists on session switch and loads correctly on app init for both UI and CLI sessions (2026-03-15)
 - Commit-per-prompt display in Chat tab — replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link); shows linked commits only for that prompt (2026-03-15)
 - Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); tag removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
 - Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup; 204 total entries including Feb 23 archive (2026-03-15)
-- AI suggestions auto-save to session — fixed: suggestions now immediately create tags in proper category via _acceptSuggestedTag async call; tags appear in Planner; phase filter fully functional (2026-03-15)
-- Commit phase filtering — added phase column to Commits table in Chat view; filter by phase same as Chat tab; phase persists per commit in database (2026-03-15)
+- AI suggestions auto-save to session — suggestions immediately create tags in proper category via _acceptSuggestedTag async call; tags appear in Planner; phase filter fully functional (2026-03-15)
+- Commit phase filtering — added phase column to Commits table; filter by phase same as Chat tab; phase persists per commit in database; red ⚠ badge on sessions without phase (UI/CLI/WF all supported) (2026-03-15)
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file storage primary (JSONL/JSON with rotation); PostgreSQL + pgvector for semantic search; per-project DB tables via project_table()
+- Flat file storage primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables via project_table()
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server only for local development
-- JWT auth via python-jose + bcrypt; dev_mode toggle for local testing; 3 roles: admin/paid/free
+- JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
 - Tag cache loaded once per project tab open: zero DB calls during chat/planner; batch updates only on explicit save
-- History rotation on /memory call: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
+- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; always-on (DB best-effort)
+- AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 22:40]** `claude_cli/claude`  
+→ I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently 
+← _The full flow works. Here's what was changed and why:  **Root causes fixed:**  1. **Red `⚠` only on UI sessions** — removed the `s.source === 'ui'` condition. Now ALL sessions (UI, CLI, WF) without a _
+
 **[2026-03-15 22:22]** `claude_cli/claude`  
 → Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct
 ← _The endpoint is live (404 "Session not found" is the correct response for a non-existent test ID). The fix is complete.  **Summary of what changed:**  The phase change listener in `chat.js` no longer _
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-14 19:08]** `claude_cli/claude`  
 →  I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would like to start rotate 
 ← _Everything works. Here's the summary of what was completed:  **History rotation — done:** - `_rotate_history()` was already in `projects.py`; added `log = logging.getLogger(__name__)` and wired up the_
-
-**[2026-03-14 13:59]** `claude_cli/claude`  
-→ I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt 
-← _It worked. "Links created: 0" means they already existed from the previous run (conflict). The sample shows 5 real links:  - `d0f14c21` → prompt "It is lookls like hooks are not working now..." - `951_

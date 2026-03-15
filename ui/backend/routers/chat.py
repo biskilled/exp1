@@ -460,7 +460,7 @@ async def patch_session_tags(
         if body.phase   is not None: tags["phase"]   = body.phase or None
         if body.feature is not None: tags["feature"] = body.feature or None
         if body.bug_ref is not None: tags["bug_ref"] = body.bug_ref or None
-        session["updated_at"] = datetime.utcnow().isoformat()
+        # Do NOT update updated_at — tag edits shouldn't change session sort order
         store._save(session)
         return {"ok": True, "tags": tags}
 
