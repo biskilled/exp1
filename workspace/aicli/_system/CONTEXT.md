@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 23:36 UTC — do not edit manually.
+> Auto-generated 2026-03-15 23:38 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 100
-- **Last active**: 2026-03-15T23:24:29Z
+- **Sessions**: 101
+- **Last active**: 2026-03-15T23:37:34Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -152,6 +152,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-15 23:29]** `claude_cli/claude`  
 → is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details inform
+← _All three enhancements are implemented and working. Here's a summary of what was done:  ---  **Three changes implemented:**  **1. `GET /entities/summary` — new endpoint in `entities.py`** Returns all _
 
 **[2026-03-15 23:13]** `claude_cli/claude`  
 → now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly f

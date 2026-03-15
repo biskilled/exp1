@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-15 23:35 UTC by aicli /memory_
+_Generated: 2026-03-15 23:37 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform that unifies history, commits, and project state across multiple LLM tools (Claude CLI, Cursor, ChatGPT, etc.) using a flat-file + PostgreSQL + semantic search architecture. Currently at v2.2.0, it supports nested tagging, session phase tracking, commit-to-prompt linking, pagination, and MCP integration for external agents to manage features/bugs/tasks via a unified memory layer.
 
 ## Tech Stack
 
@@ -92,4 +88,44 @@ aicli is a shared AI memory platform that unifies history, commits, and project 
 - **memory** `(94 events, 51 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
-**[2026-03-15]** `claude_cli` — Session phase persistence completed: phase loads on app init, saves via PATCH endpoint, backfills history.jsonl on change, shows red ⚠ badge for missing phase, maintains chronological order by created_at. **[2026-03-15]** `claude_cli` — Commit-per-prompt linking: each prompt now displays its linked commits inline at bottom with accent border and hash ↗ link via prompt_source_id. **[2026-03-15]** `claude_cli` — Tag deduplication verified (149 tags, 0 duplicates); ✕ remove buttons propagate across Chat/History/Commits simultaneously. **[2026-03-15]** `claude_cli` — Pagination UI added to Chat/History/Commits showing offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives. **[2026-03-15]** `claude_cli` — AI suggestions auto-save to session: Claude Haiku suggestions appear in amber banner, user accepts via ✓, saves to proper category in Planner. **[2026-03-15]** `claude_cli` — Database schema aligned to 5-step memory: phase/feature/session_id added as real indexed columns to events_{p}; MCP tools retrieve tagged data efficiently for project feature/bug/task management.
+## Recent Work (last 10 exchanges)
+
+**[2026-03-15 23:29]** `claude_cli/claude`
+Q: is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details information about the project? I remind that the goal is the have ability to manage pr
+A: All three enhancements are implemented and working. Here's a summary of what was done:  ---  **Three changes implemented:**  **1. `GET /entities/summary` — new endpoint in `entities.py`** Returns all non-archived entity values grouped by category, with `description`, `status`, `due_date`, `event_cou
+
+**[2026-03-15 23:13]** `claude_cli/claude`
+Q: now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly for retirive data using mcp tool. tagging was done in order to manage memery effi
+A: Everything is working. Here's a summary of all changes made:  ---  ## What was changed and why  ### Schema (`core/database.py`) - Added `phase`, `feature`, `session_id` as **real columns** (not just JSONB) to `events_{p}` table - Added indexes: `idx_{e}_session` and `idx_{e}_phase` — fast filtered q
+
+**[2026-03-15 22:57]** `claude_cli/claude`
+Q: It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by session - it suppose to be linked to all prompts in that session and all commit
+A: Now the full flow works. Here's a summary of everything fixed:  **Root causes and fixes:**  1. **History chat filter shows nothing for a phase** — History.jsonl entries had no `phase` field if the session was tagged after-the-fact. Fix: `_backfill_session_phase()` now rewrites all matching `session_
+
+**[2026-03-15 22:51]** `claude_cli/claude`
+Q: That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possible to remain the same order (by prompt or session date)
+A: Two changes:  1. **Backend** — `patch_session_tags` no longer updates `updated_at` when saving tags. The session's timestamp stays frozen at when it was last messaged.  2. **Frontend** — `_loadSessions` now sorts by `created_at` instead of `updated_at`, so the session order is always by when the ses
+
+**[2026-03-15 22:40]** `claude_cli/claude`
+Q: I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently I do see some session marked in red (on the left of the sesscio name), but this 
+A: The full flow works. Here's what was changed and why:  **Root causes fixed:**  1. **Red `⚠` only on UI sessions** — removed the `s.source === 'ui'` condition. Now ALL sessions (UI, CLI, WF) without a phase show the red `⚠` badge and red left border.  2. **Phase not saving for CLI sessions** — `PATCH
+
+**[2026-03-15 22:22]** `claude_cli/claude`
+Q: Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct phase, also when I change from one session to another - I dont see that changed
+A: The endpoint is live (404 "Session not found" is the correct response for a non-existent test ID). The fix is complete.  **Summary of what changed:**  The phase change listener in `chat.js` no longer resets `_sessionId = null`. Now:  1. **Phase change on existing session** → calls `api.patchSessionT
+
+**[2026-03-15 21:45]** `claude_cli/claude`
+Q: Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the right phase now. and when I swtih from on chat to another - I do not see the phase update. In Histor
+A: Here's a summary of all fixes:  **Chat — phase change** (restored): - `_sessionId = null` is back → each phase gets its own new session → sessions have correct phase in metadata - `api.putSessionTags(project, {phase})` persists globally → restored on next app load - On init: `api.getSessionTags(proj
+
+**[2026-03-15 21:15]** `claude_cli/claude`
+Q: The error still exists - When I change the phase (on chats) - I am not able to save. also when I switch between diffrent session at the Chat place - phses (in the UI) are not changing properly. also i
+A: All changes look good. Here's a summary of everything fixed:  **Issue 1 — Phase can't save** (root cause: `_sessionId = null` on phase change): - Removed `_sessionId = null` from phase change — phase now updates the current session, doesn't force a new one - New `PATCH /chat/sessions/{id}/tags` endp
+
+**[2026-03-15 20:56]** `claude_cli/claude`
+Q: There is still UI issue with updateting/ showing the correct phase per session. when ever app is loaded - phase in on required (default option) . also when I go to another chat session - it is not upd
+A: All changes look correct. Here's a summary of what was fixed:  **Root causes:** 1. **App load shows "required"**: No code ever loaded the last phase from DB on startup 2. **Session switch doesn't update phase**: `session.metadata.tags` could be missing for old sessions; also the `PUT /history/sessio
+
+**[2026-03-15 20:44]** `claude_cli/claude`
+Q: When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem is that is not save properly for the session. it also must be saved in the prper category and added t
+A: All three changes are done:  **1. AI suggestions auto-save** (`chat.js:625`): - `_acceptSuggestedTag` is now `async` - After pushing to `_pendingEntities`, if `_sessionId` exists it immediately calls `_saveEntitiesToSession()` (which creates the tag in the right category via `api.entities.sessionTag
