@@ -97,6 +97,9 @@ export const api = {
   // Chat session history
   chatSessions: ()    => _get('/chat/sessions'),
   chatSession:  (id)  => _get(`/chat/sessions/${encodeURIComponent(id)}`),
+  patchSessionTags: (id, body) => fetch(_base() + `/chat/sessions/${encodeURIComponent(id)}/tags`, {
+    method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
 
   // Unified project history (all sources: ui, claude_cli, workflow)
   historyChat: (project, limit = 200) => _get(`/history/chat?project=${encodeURIComponent(project || '')}&limit=${limit}`),

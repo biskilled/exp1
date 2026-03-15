@@ -432,3 +432,26 @@ async def get_session(session_id: str):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Session not found")
     return session
+
+
+class SessionTagsPatch(BaseModel):
+    phase:   Optional[str] = None
+    feature: Optional[str] = None
+    bug_ref: Optional[str] = None
+
+
+@router.patch("/sessions/{session_id}/tags")
+async def patch_session_tags(session_id: str, body: SessionTagsPatch):
+    """Update the phase/feature/bug_ref tags stored in a session's metadata."""
+    store = _get_store()
+    session = store.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    meta = session.setdefault("metadata", {})
+    tags = meta.setdefault("tags", {})
+    if body.phase   is not None: tags["phase"]   = body.phase or None
+    if body.feature is not None: tags["feature"] = body.feature or None
+    if body.bug_ref is not None: tags["bug_ref"] = body.bug_ref or None
+    session["updated_at"] = datetime.utcnow().isoformat()
+    store._save(session)
+    return {"ok": True, "tags": tags}

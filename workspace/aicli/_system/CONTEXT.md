@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 20:52 UTC — do not edit manually.
+> Auto-generated 2026-03-15 21:02 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 92
-- **Last active**: 2026-03-15T20:51:35Z
+- **Sessions**: 93
+- **Last active**: 2026-03-15T21:00:54Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 20:56]** `claude_cli/claude`  
+→ There is still UI issue with updateting/ showing the correct phase per session. when ever app is loaded - phase in on re
+← _All changes look correct. Here's a summary of what was fixed:  **Root causes:** 1. **App load shows "required"**: No code ever loaded the last phase from DB on startup 2. **Session switch doesn't upda_
+
 **[2026-03-15 20:44]** `claude_cli/claude`  
 → When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem is that is not save p
 ← _All three changes are done:  **1. AI suggestions auto-save** (`chat.js:625`): - `_acceptSuggestedTag` is now `async` - After pushing to `_pendingEntities`, if `_sessionId` exists it immediately calls _
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-14 11:10]** `claude_cli/claude`  
 → I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is currently works in my syst
 ← _All changes are done. Here's a summary of what was implemented:  ### Changes  **`ui/backend/routers/entities.py`** — new endpoint `POST /entities/events/tag-by-source-id`: - Accepts `{ source_id, enti_
-
-**[2026-03-13 17:44]** `claude_cli/claude`  
-→ I am siting with my freid and try to explain him wha is this system is about ? can you explain that shortly ?
-← _**aicli** is a shared AI memory platform for developers.  The core problem it solves: when you use different AI tools (Claude CLI, Cursor, ChatGPT in the browser, etc.), each one starts from scratch —_

@@ -49,6 +49,7 @@ export class HistoryView {
     this._histPage      = 1;
     this._commitPage    = 1;
     this._histFilter    = { source: '', phase: '', query: '' };
+    this._commitFilter  = { phase: '' };
 
     this._render();
     this._loadTab("chat");
@@ -577,9 +578,18 @@ export class HistoryView {
   }
 
   _renderCommitsContainer(container) {
-    const commits    = this._commitData?.commits || [];
+    const allCommits = this._commitData?.commits || [];
     const fromDb     = this._commitData?.source === 'db';
-    const untagged   = commits.filter(c => !c.phase).length;
+
+    // Auto-populate phase filter from Chat's active phase if not already set
+    if (!this._commitFilter.phase && window.__currentPhase) {
+      this._commitFilter.phase = window.__currentPhase;
+    }
+
+    // Apply phase filter
+    const phaseFilter = this._commitFilter.phase || '';
+    const commits = phaseFilter ? allCommits.filter(c => c.phase === phaseFilter) : allCommits;
+    const untagged = allCommits.filter(c => !c.phase).length;
 
     const totalPages  = Math.ceil(commits.length / _PAGE_SIZE) || 1;
     const start       = (this._commitPage - 1) * _PAGE_SIZE;
@@ -622,7 +632,19 @@ export class HistoryView {
 
     container.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-        <span style="font-size:13px;color:var(--muted)">${commits.length} commits${untagged > 0 ? ` · <span style="color:#e74c3c;font-weight:600">${untagged} untagged</span>` : ''}</span>
+        <select id="commit-filter-phase" onchange="window._historyView._applyCommitFilter()"
+          style="background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:2px 5px;font-size:11px;color:var(--text)">
+          <option value="">All phases</option>
+          <option value="discovery">Discovery</option>
+          <option value="development">Development</option>
+          <option value="testing">Testing</option>
+          <option value="review">Review</option>
+          <option value="production">Production</option>
+          <option value="maintenance">Maintenance</option>
+          <option value="bugfix">Bugfix</option>
+          <option value="prod">Prod</option>
+        </select>
+        <span style="font-size:13px;color:var(--muted)">${phaseFilter ? commits.length + ' / ' + allCommits.length : allCommits.length} commits${untagged > 0 ? ` · <span style="color:#e74c3c;font-weight:600">${untagged} untagged</span>` : ''}</span>
         ${fromDb ? `<span style="font-size:11px;color:green;background:rgba(39,174,96,.12);padding:2px 6px;border-radius:4px">live DB</span>`
                  : `<span style="font-size:11px;color:orange;background:rgba(230,126,34,.12);padding:2px 6px;border-radius:4px">file fallback</span>`}
         <div style="flex:1"></div>
@@ -649,10 +671,24 @@ export class HistoryView {
         </table>
       </div>
     `;
+
+    // Restore filter select value (state was set before filtering above)
+    const phEl = document.getElementById('commit-filter-phase');
+    if (phEl && this._commitFilter.phase) phEl.value = this._commitFilter.phase;
+  }
+
+  _applyCommitFilter() {
+    const phEl = document.getElementById('commit-filter-phase');
+    this._commitFilter.phase = phEl?.value || '';
+    this._commitPage = 1;
+    const container = document.getElementById('history-content');
+    if (container) this._renderCommitsContainer(container);
   }
 
   _changeCommitPage(delta) {
-    const commits    = this._commitData?.commits || [];
+    const allCommits = this._commitData?.commits || [];
+    const phaseFilter = this._commitFilter.phase || '';
+    const commits = phaseFilter ? allCommits.filter(c => c.phase === phaseFilter) : allCommits;
     const totalPages = Math.ceil(commits.length / _PAGE_SIZE);
     this._commitPage = Math.max(1, Math.min(totalPages, this._commitPage + delta));
     const container  = document.getElementById('history-content');

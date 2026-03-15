@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-15 20:39 UTC by aicli /memory_
+_Generated: 2026-03-15 21:00 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -70,6 +70,14 @@ _Generated: 2026-03-15 20:39 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-15 20:56]** `claude_cli/claude`
+Q: There is still UI issue with updateting/ showing the correct phase per session. when ever app is loaded - phase in on required (default option) . also when I go to another chat session - it is not upd
+A: All changes look correct. Here's a summary of what was fixed:  **Root causes:** 1. **App load shows "required"**: No code ever loaded the last phase from DB on startup 2. **Session switch doesn't update phase**: `session.metadata.tags` could be missing for old sessions; also the `PUT /history/sessio
+
+**[2026-03-15 20:44]** `claude_cli/claude`
+Q: When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem is that is not save properly for the session. it also must be saved in the prper category and added t
+A: All three changes are done:  **1. AI suggestions auto-save** (`chat.js:625`): - `_acceptSuggestedTag` is now `async` - After pushing to `_pendingEntities`, if `_sessionId` exists it immediately calls `_saveEntitiesToSession()` (which creates the tag in the right category via `api.entities.sessionTag
+
 **[2026-03-15 20:33]** `claude_cli/claude`
 Q: The last commit was b255366 which suppose to be linked to the last prompt. it did worked before , but it seems that the last 9 commits are not linked to any prompts
 A: All good. Here's what happened and what was fixed:  ---  ## Root Cause  **Phase 5 only ran on explicit `POST /entities/events/sync`.** The `auto_commit_push.sh` hook called `POST /git/{project}/commit-push`, which committed and wrote to `commit_log.jsonl` — but never triggered the DB sync or Phase 5
@@ -101,11 +109,3 @@ A: All changes are working. Here's a summary:  **Backend — archive files inclu
 **[2026-03-14 21:36]** `claude_cli/claude`
 Q: Something wit hooks is not working now, as I do not see any new prompts / llm response adding into history.jsonl . also can you explain why they are session starting with <task-notification>\n<task-id
 A: Everything is working. Here's a summary of all fixes:  ---  **1. Hook fixed — noise filtered at write time** - The deployed hook (`workspace/aicli/_system/hooks/log_user_prompt.sh`) was the old version without noise filtering — real prompts were being written correctly but so were `<task-notificatio
-
-**[2026-03-14 19:08]** `claude_cli/claude`
-Q: I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would like to start rotate that (when user is doing /memory) - the current one will remain history.jsonl wbu
-A: Everything works. Here's the summary of what was completed:  **History rotation — done:** - `_rotate_history()` was already in `projects.py`; added `log = logging.getLogger(__name__)` and wired up the call inside `generate_memory()` - Triggered on every `/memory` call; reads `history_max_rows` from 
-
-**[2026-03-14 13:59]** `claude_cli/claude`
-Q: I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt ID ? commit are created after prompt (in session there might be several commits,
-A: It worked. "Links created: 0" means they already existed from the previous run (conflict). The sample shows 5 real links:  - `d0f14c21` → prompt "It is lookls like hooks are not working now..." - `951768bc` → prompt "do I need the dev_runtime_state.json?..." - `0336f3e5` → prompt "I am thinking to a

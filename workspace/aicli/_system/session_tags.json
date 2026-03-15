@@ -1,6 +1,6 @@
 {
-  "phase": "development",
-  "feature": "hello ",
-  "bug_ref": "dsds",
+  "phase": "testing",
+  "feature": null,
+  "bug_ref": null,
   "extra": {}
 }

@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-15] `claude_cli`: Currently the commit tags in Chat are all on a session phase. I would like to linled each commit int
 - [2026-03-15] `claude_cli`: let me summerise not. first run /memroy to update all sumeeries, db tagging and all new changes. and
 - [2026-03-15] `claude_cli`: I would like to set that up , and also add that to new prokect as autoamted set up. when creating a 
 - [2026-03-15] `claude_cli`: The last commit was b255366 which suppose to be linked to the last prompt. it did worked before , bu
 - [2026-03-15] `claude_cli`: When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem i
+- [2026-03-15] `claude_cli`: There is still UI issue with updateting/ showing the correct phase per session. when ever app is loa
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

@@ -288,23 +288,24 @@ function _setupTagBar() {
 
   phaseSel.addEventListener('change', () => {
     const newPhase = phaseSel.value;
-    if (newPhase !== (_sessionTags.phase || '')) {
-      _sessionTags = { phase: newPhase };
-      _sessionId = null;       // force new session
-      _appliedEntities = [];   // clear chips for new session
-      _pendingEntities = [];   // clear pending too
-      _suggestedTags = [];     // clear suggestions on session reset
-      _renderEntityChips();
-      _renderSuggestionsBar();
-      _updateSaveButton();
-    }
+    _sessionTags = { ..._sessionTags, phase: newPhase };
+
     // Share current phase with History tab so its filter defaults to same phase
     window.__currentPhase = newPhase;
-    // Persist to DB so phase is restored on next app load
+
     const project = state.currentProject?.name;
+    // Persist globally (restored on next app load + used by CLI hooks)
     if (project) api.putSessionTags(project, { phase: newPhase || null }).catch(() => {});
+    // Patch the current session's stored metadata so it shows correct phase on reload
+    if (_sessionId) {
+      api.patchSessionTags(_sessionId, { phase: newPhase || null })
+        .then(() => _loadSessions())   // refresh sidebar badges
+        .catch(() => {});
+    } else {
+      _loadSessions();
+    }
+
     _updateTagBarStatus();
-    _loadSessions();
   });
 
   // Expose picker functions globally
@@ -903,6 +904,8 @@ async function _loadSessions() {
         const s = bySession.get(sid);
         s.message_count++;
         s.entries.push(e);
+        // Capture phase from entries (use first non-empty value found)
+        if (e.phase && !s.phase) { s.phase = e.phase; s.tags = { phase: e.phase }; }
       }
       merged.push(...bySession.values());
     } catch { /* silent */ }
@@ -965,6 +968,8 @@ window._chatLoadAny = async (id) => {
 
   // History-only session (claude_cli or workflow): render entries read-only
   _sessionId = id;
+  // Restore phase for this session (from cache tags populated in _loadSessions)
+  _restoreTagBar(session.tags || {});
   const msgs = document.getElementById('chat-messages');
   if (!msgs) return;
   msgs.innerHTML = '';

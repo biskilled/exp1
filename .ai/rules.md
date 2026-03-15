@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 20:39 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 21:00 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -46,8 +46,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-15] Let me summersie and make sure all work properly - tags (per session) - can be added by Chat, tags (per prompts) can be 
-- [2026-03-15] Currently the commit tags in Chat are all on a session phase. I would like to linled each commit into the prompt (same a
 - [2026-03-15] let me summerise not. first run /memroy to update all sumeeries, db tagging and all new changes. and answer the followin
 - [2026-03-15] I would like to set that up , and also add that to new prokect as autoamted set up. when creating a project there is a f
 - [2026-03-15] The last commit was b255366 which suppose to be linked to the last prompt. it did worked before , but it seems that the 
+- [2026-03-15] When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem is that is not save p
+- [2026-03-15] There is still UI issue with updateting/ showing the correct phase per session. when ever app is loaded - phase in on re
