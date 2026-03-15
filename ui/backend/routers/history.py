@@ -45,24 +45,34 @@ def _project_dir(project: str | None = None) -> Path:
 
 
 def _load_unified_history(project: str | None, provider: str | None = None) -> list[dict]:
-    """Read workspace/{project}/_system/history.jsonl."""
-    hist_file = _project_dir(project) / "_system" / "history.jsonl"
-    if not hist_file.exists():
-        return []
+    """Read workspace/{project}/_system/history.jsonl + all archived history_*.jsonl files."""
+    sys_dir = _project_dir(project) / "_system"
+
+    # Collect all history files: current + archives (history_YYMMDDHHSS.jsonl)
+    files: list[Path] = []
+    main = sys_dir / "history.jsonl"
+    if main.exists():
+        files.append(main)
+    for arch in sorted(sys_dir.glob("history_*.jsonl")):
+        files.append(arch)
 
     entries = []
-    with open(hist_file) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                e = json.loads(line)
-                if provider and e.get("provider") != provider:
-                    continue
-                entries.append(e)
-            except json.JSONDecodeError:
-                pass
+    for hist_file in files:
+        try:
+            with open(hist_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        e = json.loads(line)
+                        if provider and e.get("provider") != provider:
+                            continue
+                        entries.append(e)
+                    except json.JSONDecodeError:
+                        pass
+        except OSError:
+            pass
     return entries
 
 

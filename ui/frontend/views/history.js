@@ -369,17 +369,17 @@ export class HistoryView {
     const totalPages = Math.ceil(total / _PAGE_SIZE);
     const end        = Math.min(start + _PAGE_SIZE, total);
 
-    const btnStyle = 'padding:2px 8px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px';
-    if (totalPages <= 1) {
-      nav.innerHTML = `<span style="color:var(--text);font-size:11px">${total} prompts</span>`;
-    } else {
-      nav.innerHTML = `
-        <button onclick="window._historyView._changePage(-1)" style="${btnStyle}"
-          ${page <= 1 ? 'disabled style="opacity:.4"' : ''}>◀</button>
-        <span style="color:var(--text);white-space:nowrap;font-size:11px">${start + 1}–${end} / ${total}</span>
-        <button onclick="window._historyView._changePage(1)" style="${btnStyle}"
-          ${page >= totalPages ? 'disabled style="opacity:.4"' : ''}>▶</button>`;
-    }
+    const btnStyle = 'padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:var(--surface);font-size:11px';
+    const atFirst = page <= 1;
+    const atLast  = page >= totalPages;
+    nav.innerHTML = `
+      <button onclick="window._historyView._changePage(-1)"
+        style="${btnStyle};cursor:${atFirst ? 'default' : 'pointer'};opacity:${atFirst ? '.35' : '1'}"
+        ${atFirst ? 'disabled' : ''}>◀</button>
+      <span style="color:var(--text);white-space:nowrap;font-size:11px">${start + 1}–${end} / ${total}</span>
+      <button onclick="window._historyView._changePage(1)"
+        style="${btnStyle};cursor:${atLast ? 'default' : 'pointer'};opacity:${atLast ? '.35' : '1'}"
+        ${atLast ? 'disabled' : ''}>▶</button>`;
   }
 
   _changePage(delta) {
@@ -542,20 +542,20 @@ export class HistoryView {
     const end         = Math.min(start + _PAGE_SIZE, commits.length);
     const pageCommits = commits.slice(start, end);
 
-    // Update top-right nav bar (same as chat pagination)
+    // Update top-right nav bar (same style as chat pagination)
     const nav = document.getElementById('hist-nav-bar');
     if (nav) {
-      const btnStyle = 'padding:2px 8px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px';
-      if (totalPages <= 1) {
-        nav.innerHTML = `<span style="color:var(--text);font-size:11px">${commits.length} commits</span>`;
-      } else {
-        nav.innerHTML = `
-          <button onclick="window._historyView._changeCommitPage(-1)" style="${btnStyle}"
-            ${this._commitPage <= 1 ? 'disabled style="opacity:.4"' : ''}>◀</button>
-          <span style="color:var(--text);white-space:nowrap;font-size:11px">${start + 1}–${end} / ${commits.length}</span>
-          <button onclick="window._historyView._changeCommitPage(1)" style="${btnStyle}"
-            ${this._commitPage >= totalPages ? 'disabled style="opacity:.4"' : ''}>▶</button>`;
-      }
+      const btnStyle = 'padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:var(--surface);font-size:11px';
+      const atFirst = this._commitPage <= 1;
+      const atLast  = this._commitPage >= totalPages;
+      nav.innerHTML = `
+        <button onclick="window._historyView._changeCommitPage(-1)"
+          style="${btnStyle};cursor:${atFirst ? 'default' : 'pointer'};opacity:${atFirst ? '.35' : '1'}"
+          ${atFirst ? 'disabled' : ''}>◀</button>
+        <span style="color:var(--text);white-space:nowrap;font-size:11px">${start + 1}–${end} / ${commits.length}</span>
+        <button onclick="window._historyView._changeCommitPage(1)"
+          style="${btnStyle};cursor:${atLast ? 'default' : 'pointer'};opacity:${atLast ? '.35' : '1'}"
+          ${atLast ? 'disabled' : ''}>▶</button>`;
     }
 
     if (!commits.length) {

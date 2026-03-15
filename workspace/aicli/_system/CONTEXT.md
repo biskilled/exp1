@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-14 21:28 UTC — do not edit manually.
+> Auto-generated 2026-03-15 16:41 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 83
-- **Last active**: 2026-03-14T21:22:16Z
+- **Sessions**: 84
+- **Last active**: 2026-03-14T21:55:13Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-14 21:36]** `claude_cli/claude`  
+→ Something wit hooks is not working now, as I do not see any new prompts / llm response adding into history.jsonl . also 
+← _Everything is working. Here's a summary of all fixes:  ---  **1. Hook fixed — noise filtered at write time** - The deployed hook (`workspace/aicli/_system/hooks/log_user_prompt.sh`) was the old versio_
+
 **[2026-03-14 19:08]** `claude_cli/claude`  
 →  I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would like to start rotate 
 ← _Everything works. Here's the summary of what was completed:  **History rotation — done:** - `_rotate_history()` was already in `projects.py`; added `log = logging.getLogger(__name__)` and wired up the_
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 02:00]** `claude_cli/claude`  
 → why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is attemp to bind address
 ← _Good. Here's what was fixed and why:  ---  ### Root causes & fixes  | Problem | Fix | |---|---| | **Port still busy at startup** — previous uvicorn didn't release port before new spawn | `freePort()` _
-
-**[2026-03-10 01:42]** `claude_cli/claude`  
-→ planner UI - it is almost imposible to see the action option as they are small, is there is a way to improve the visibil
-← _Only import resolution errors — no syntax errors. Let me do a final check that there are no stale references:_
