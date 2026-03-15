@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 21:52 UTC — do not edit manually.
+> Auto-generated 2026-03-15 22:35 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 95
-- **Last active**: 2026-03-15T21:51:05Z
+- **Sessions**: 96
+- **Last active**: 2026-03-15T22:30:50Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 22:22]** `claude_cli/claude`  
+→ Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct
+← _The endpoint is live (404 "Session not found" is the correct response for a non-existent test ID). The fix is complete.  **Summary of what changed:**  The phase change listener in `chat.js` no longer _
+
 **[2026-03-15 21:45]** `claude_cli/claude`  
 → Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the right phase now. and
 ← _Here's a summary of all fixes:  **Chat — phase change** (restored): - `_sessionId = null` is back → each phase gets its own new session → sessions have correct phase in metadata - `api.putSessionTags(_
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-14 13:59]** `claude_cli/claude`  
 → I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt 
 ← _It worked. "Links created: 0" means they already existed from the previous run (conflict). The sample shows 5 real links:  - `d0f14c21` → prompt "It is lookls like hooks are not working now..." - `951_
-
-**[2026-03-14 13:11]** `claude_cli/claude`  
-→ can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) pr
-← _`GET /graph/` returns `{"workflows":[]}` — the graph router is live and the tables are working. Everything is now aligned. Here's the full summary of what was done:  ---  ### Memory + Alignment Update_

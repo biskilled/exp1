@@ -441,17 +441,40 @@ class SessionTagsPatch(BaseModel):
 
 
 @router.patch("/sessions/{session_id}/tags")
-async def patch_session_tags(session_id: str, body: SessionTagsPatch):
-    """Update the phase/feature/bug_ref tags stored in a session's metadata."""
+async def patch_session_tags(
+    session_id: str,
+    body: SessionTagsPatch,
+    project: str | None = None,
+):
+    """Update the phase/feature/bug_ref tags stored in a session's metadata.
+
+    For UI sessions: writes to the session JSON file.
+    For CLI/workflow sessions: writes to _system/session_phases.json as a fallback.
+    """
     store = _get_store()
     session = store.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-    meta = session.setdefault("metadata", {})
-    tags = meta.setdefault("tags", {})
-    if body.phase   is not None: tags["phase"]   = body.phase or None
-    if body.feature is not None: tags["feature"] = body.feature or None
-    if body.bug_ref is not None: tags["bug_ref"] = body.bug_ref or None
-    session["updated_at"] = datetime.utcnow().isoformat()
-    store._save(session)
-    return {"ok": True, "tags": tags}
+    if session is not None:
+        # UI session — update metadata in the session file
+        meta = session.setdefault("metadata", {})
+        tags = meta.setdefault("tags", {})
+        if body.phase   is not None: tags["phase"]   = body.phase or None
+        if body.feature is not None: tags["feature"] = body.feature or None
+        if body.bug_ref is not None: tags["bug_ref"] = body.bug_ref or None
+        session["updated_at"] = datetime.utcnow().isoformat()
+        store._save(session)
+        return {"ok": True, "tags": tags}
+
+    # CLI / workflow session — persist in session_phases.json
+    p = project or settings.active_project or "default"
+    phases_path = Path(settings.workspace_dir) / p / "_system" / "session_phases.json"
+    phases_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing: dict = json.loads(phases_path.read_text()) if phases_path.exists() else {}
+    except Exception:
+        existing = {}
+    entry = existing.setdefault(session_id, {})
+    if body.phase   is not None: entry["phase"]   = body.phase or None
+    if body.feature is not None: entry["feature"] = body.feature or None
+    if body.bug_ref is not None: entry["bug_ref"] = body.bug_ref or None
+    phases_path.write_text(json.dumps(existing, indent=2))
+    return {"ok": True, "tags": entry}

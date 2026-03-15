@@ -102,5 +102,5 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-15T21:51:34Z"
+  "last_memory_run": "2026-03-15T22:31:20Z"
 }

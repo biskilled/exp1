@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-15 21:51 UTC by aicli /memory_
+_Generated: 2026-03-15 22:30 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -70,6 +70,10 @@ _Generated: 2026-03-15 21:51 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-15 22:22]** `claude_cli/claude`
+Q: Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct phase, also when I change from one session to another - I dont see that changed
+A: The endpoint is live (404 "Session not found" is the correct response for a non-existent test ID). The fix is complete.  **Summary of what changed:**  The phase change listener in `chat.js` no longer resets `_sessionId = null`. Now:  1. **Phase change on existing session** → calls `api.patchSessionT
+
 **[2026-03-15 21:45]** `claude_cli/claude`
 Q: Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the right phase now. and when I swtih from on chat to another - I do not see the phase update. In Histor
 A: Here's a summary of all fixes:  **Chat — phase change** (restored): - `_sessionId = null` is back → each phase gets its own new session → sessions have correct phase in metadata - `api.putSessionTags(project, {phase})` persists globally → restored on next app load - On init: `api.getSessionTags(proj
@@ -105,7 +109,3 @@ A: Good — the `/history/commits` endpoint already returns `prompt_source_id` i
 **[2026-03-15 17:44]** `claude_cli/claude`
 Q: Let me summersie and make sure all work properly - tags (per session) - can be added by Chat, tags (per prompts) can be menaged by Hitroy / prompts. commit - prompts tags are linked properly (so any t
 A: All the previous session's fixes are confirmed in place:  - `history.py`: `_load_unified_history` reads current + all `history_*.jsonl` archives ✓ - `history.js`: `data-ts` attribute on entries, `_jumpToPrompt` using `CSS.escape`, `_removeTag` with ✕ buttons ✓ - `entities.py`: `_propagate_tags_phase
-
-**[2026-03-15 17:28]** `claude_cli/claude`
-Q: Taggin - there is a wau to add tags in History, commit and chat - which is good. can you make sure all is aligned to the sabe data (there are no duplicate? ) . I would like also to add option to remov
-A: 149 tags, 0 duplicates. Everything is clean. Here's a summary of all changes:  ---  **No duplicates** — confirmed: 149 event tags, 0 duplicates. The backend uses `ON CONFLICT DO NOTHING` on every tag insert, and the frontend deduplicates in-memory before calling the API.  **New backend endpoints:** 

@@ -414,6 +414,21 @@ async def put_session_tags(body: SessionTagsUpdate, project: str | None = Query(
     return {"ok": True, **tags}
 
 
+@router.get("/session-phases")
+async def get_session_phases(project: str | None = Query(None)):
+    """Return per-session phase overrides stored in session_phases.json.
+    Used to persist phase for CLI / workflow sessions that have no JSON session file.
+    """
+    p = project or settings.active_project or "default"
+    phases_path = _project_dir(p) / "_system" / "session_phases.json"
+    if phases_path.exists():
+        try:
+            return json.loads(phases_path.read_text())
+        except Exception:
+            pass
+    return {}
+
+
 @router.get("/runs")
 async def workflow_runs(
     project: str | None = Query(None),

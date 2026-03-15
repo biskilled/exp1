@@ -298,8 +298,9 @@ function _setupTagBar() {
     if (project) api.putSessionTags(project, { phase: newPhase || null }).catch(() => {});
 
     // If a session is already loaded, update its metadata in-place
+    // patchSessionTags works for both UI sessions (session file) and CLI sessions (session_phases.json)
     if (_sessionId) {
-      api.patchSessionTags(_sessionId, { phase: newPhase || null })
+      api.patchSessionTags(_sessionId, { phase: newPhase || null }, project)
         .then(() => _loadSessions())
         .catch(() => _loadSessions());
     } else {
@@ -910,6 +911,20 @@ async function _loadSessions() {
     } catch { /* silent */ }
   }
 
+  // 3. Apply phase overrides from session_phases.json (for CLI/WF sessions without stored phase)
+  if (projectName) {
+    try {
+      const phases = await api.getSessionPhases(projectName);
+      for (const s of merged) {
+        const override = phases[s.id];
+        if (override?.phase) {
+          s.phase = override.phase;
+          s.tags = { ...(s.tags || {}), phase: override.phase };
+        }
+      }
+    } catch { /* silent */ }
+  }
+
   // Sort newest first (#1 = most recent)
   merged.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
   _sessionCache = merged;
@@ -923,16 +938,14 @@ async function _loadSessions() {
     const isActive  = s.id === _sessionId;
     const srcColor  = s.source === 'ui' ? 'var(--accent)' : s.source === 'claude_cli' ? 'var(--blue)' : 'var(--green)';
     const srcLabel  = s.source === 'ui' ? 'UI' : s.source === 'claude_cli' ? 'CLI' : 'WF';
-    // Tag status — UI sessions show phase; missing phase = red
+    // Show phase badge for all sessions; flag missing phase with red ⚠ for all sources
     const hasPhase  = !!(s.phase);
     const phaseTxt  = s.phase || null;
-    const tagDot    = s.source === 'ui'
-      ? (hasPhase
-          ? `<span style="font-size:0.5rem;background:var(--accent)22;color:var(--accent);padding:0 0.22rem;border-radius:2px;flex-shrink:0">${_esc(phaseTxt)}</span>`
-          : `<span style="font-size:0.5rem;color:#e74c3c;flex-shrink:0" title="Missing mandatory phase tag">⚠</span>`)
-      : '';
+    const tagDot    = hasPhase
+      ? `<span style="font-size:0.5rem;background:var(--accent)22;color:var(--accent);padding:0 0.22rem;border-radius:2px;flex-shrink:0">${_esc(phaseTxt)}</span>`
+      : `<span style="font-size:0.5rem;color:#e74c3c;flex-shrink:0" title="Missing phase — load session and set it">⚠</span>`;
     const featureTxt = s.feature ? `<span style="font-size:0.5rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px">#${_esc(s.feature)}</span>` : '';
-    const borderL   = (s.source === 'ui' && !hasPhase) ? '2px solid #e74c3c' : (isActive ? '2px solid var(--accent)' : '2px solid transparent');
+    const borderL   = !hasPhase ? '2px solid #e74c3c' : (isActive ? '2px solid var(--accent)' : '2px solid transparent');
     return `
       <div onclick="window._chatLoadAny('${_esc(s.id)}')"
         style="padding:0.32rem 0.45rem;border-radius:var(--radius);cursor:pointer;

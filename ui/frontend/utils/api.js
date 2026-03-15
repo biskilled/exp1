@@ -97,9 +97,10 @@ export const api = {
   // Chat session history
   chatSessions: ()    => _get('/chat/sessions'),
   chatSession:  (id)  => _get(`/chat/sessions/${encodeURIComponent(id)}`),
-  patchSessionTags: (id, body) => fetch(_base() + `/chat/sessions/${encodeURIComponent(id)}/tags`, {
-    method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
-  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  patchSessionTags: (id, body, project) => fetch(
+    _base() + `/chat/sessions/${encodeURIComponent(id)}/tags` + (project ? `?project=${encodeURIComponent(project)}` : ''),
+    { method: 'PATCH', headers: _headers(), body: JSON.stringify(body) },
+  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
 
   // Unified project history (all sources: ui, claude_cli, workflow)
   historyChat: (project, limit = 200) => _get(`/history/chat?project=${encodeURIComponent(project || '')}&limit=${limit}`),
@@ -112,7 +113,8 @@ export const api = {
   syncCommits: (project) => fetch(_base() + `/history/commits/sync?project=${encodeURIComponent(project || '')}`, {
     method: 'POST', headers: _headers(),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  getSessionTags: (project) => _get(`/history/session-tags?project=${encodeURIComponent(project || '')}`),
+  getSessionTags:   (project) => _get(`/history/session-tags?project=${encodeURIComponent(project || '')}`),
+  getSessionPhases: (project) => _get(`/history/session-phases?project=${encodeURIComponent(project || '')}`),
   putSessionTags: (project, body) => fetch(_base() + `/history/session-tags?project=${encodeURIComponent(project || '')}`, {
     method: 'PUT', headers: _headers(), body: JSON.stringify(body),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
