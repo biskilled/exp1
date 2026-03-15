@@ -250,12 +250,16 @@ export class HistoryView {
     const start       = (this._histPage - 1) * _PAGE_SIZE;
     const pageEntries = entries.slice(start, start + _PAGE_SIZE);
 
-    // Build session_id → commits map
-    const commitsBySession = {};
+    // Build prompt_source_id → commits map (per-prompt); fallback session map for unlinked commits
+    const commitsByPrompt   = {};
+    const commitsBySessionUnlinked = {};
     for (const c of (this._commitData?.commits || [])) {
-      if (c.session_id) {
-        if (!commitsBySession[c.session_id]) commitsBySession[c.session_id] = [];
-        commitsBySession[c.session_id].push(c);
+      if (c.prompt_source_id) {
+        if (!commitsByPrompt[c.prompt_source_id]) commitsByPrompt[c.prompt_source_id] = [];
+        commitsByPrompt[c.prompt_source_id].push(c);
+      } else if (c.session_id) {
+        if (!commitsBySessionUnlinked[c.session_id]) commitsBySessionUnlinked[c.session_id] = [];
+        commitsBySessionUnlinked[c.session_id].push(c);
       }
     }
 
@@ -269,26 +273,24 @@ export class HistoryView {
 
     const ghBase = this._chatGhBase || '';
     wrapper.innerHTML = groups.map(group => {
-      const sid     = group.session_id || '';
-      const commits = sid ? (commitsBySession[sid] || []) : [];
+      const sid = group.session_id || '';
 
-      const commitStrip = commits.length ? `
+      // Fallback strip: commits in this session with no prompt_source_id
+      const unlinked = sid ? (commitsBySessionUnlinked[sid] || []) : [];
+      const commitStrip = unlinked.length ? `
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;
                     padding:5px 8px;background:var(--surface2);border-radius:4px;margin-bottom:6px;font-size:11px">
-          <span style="color:var(--muted);font-weight:600;white-space:nowrap">⑂ ${commits.length} commit${commits.length > 1 ? 's' : ''}:</span>
-          ${commits.map(c => {
+          <span style="color:var(--muted);font-weight:600;white-space:nowrap">⑂ ${unlinked.length} unlinked:</span>
+          ${unlinked.map(c => {
             const hash = (c.commit_hash || '').slice(0, 8);
             const msg  = (c.commit_msg  || '').slice(0, 60);
             const date = (c.committed_at || '').slice(0, 10);
-            const pRef = c.prompt_source_id
-              ? ` <span title="Triggered by prompt at ${c.prompt_source_id}" style="color:var(--muted);font-size:9px">⊙${c.prompt_source_id.slice(11,16)}</span>`
-              : '';
             return ghBase && c.commit_hash
-              ? `<span style="white-space:nowrap"><a href="${ghBase}/commit/${this._escapeHtml(c.commit_hash)}" target="_blank"
-                    style="font-family:monospace;color:var(--accent);text-decoration:none"
-                    title="${this._escapeHtml(msg)} · ${date}">${hash} ↗</a>${pRef}</span>`
-              : `<span style="white-space:nowrap"><span style="font-family:monospace;color:var(--accent)"
-                       title="${this._escapeHtml(msg)} · ${date}">${hash}</span>${pRef}</span>`;
+              ? `<a href="${ghBase}/commit/${this._escapeHtml(c.commit_hash)}" target="_blank"
+                    style="font-family:monospace;color:var(--accent);text-decoration:none;white-space:nowrap"
+                    title="${this._escapeHtml(msg)} · ${date}">${hash} ↗</a>`
+              : `<span style="font-family:monospace;color:var(--accent);white-space:nowrap"
+                       title="${this._escapeHtml(msg)} · ${date}">${hash}</span>`;
           }).join('')}
         </div>` : '';
 
@@ -329,6 +331,26 @@ export class HistoryView {
             </div>`
           : '';
 
+        // Per-prompt linked commits (commits where prompt_source_id === this entry's ts)
+        const linkedCommits = commitsByPrompt[sourceId] || [];
+        const commitRow = linkedCommits.length ? `
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+                      margin-top:6px;padding:3px 6px;background:var(--surface2);
+                      border-radius:3px;border-left:2px solid var(--accent);font-size:10px">
+            <span style="color:var(--muted);font-weight:600;white-space:nowrap">⑂</span>
+            ${linkedCommits.map(c => {
+              const hash = (c.commit_hash || '').slice(0, 8);
+              const msg  = (c.commit_msg  || '').slice(0, 70);
+              const date = (c.committed_at || '').slice(0, 10);
+              return ghBase && c.commit_hash
+                ? `<a href="${ghBase}/commit/${this._escapeHtml(c.commit_hash)}" target="_blank"
+                      style="font-family:monospace;color:var(--accent);text-decoration:none;white-space:nowrap"
+                      title="${this._escapeHtml(msg)} · ${date}">${hash} ↗</a>`
+                : `<span style="font-family:monospace;color:var(--accent);white-space:nowrap"
+                         title="${this._escapeHtml(msg)} · ${date}">${hash}</span>`;
+            }).join('')}
+          </div>` : '';
+
         return `
         <div class="history-entry" data-ts="${this._escapeHtml(e.ts || '')}"
              style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
@@ -351,6 +373,7 @@ export class HistoryView {
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Prompt</div>
           <div style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word;font-size:13px">${this._escapeHtml(e.user_input || '')}</div>
           ${outputHtml}
+          ${commitRow}
         </div>`;
       }).join('');
 

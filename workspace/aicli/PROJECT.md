@@ -330,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Commit-to-prompt linking fully operational — source_id timestamp stored in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id; multiple commits per session linked to originating prompt (2026-03-14)
-- History rotation fully implemented — /memory triggers rotation at configurable row threshold (default 500); creates timestamped archive (history_YYMMDDHHSS), rotates original to history.jsonl (2026-03-14)
-- Tag cache persistence in history view — all categories/values loaded once on tab open; zero DB calls during tag picker; color preservation on save prevents thrashing (2026-03-14)
-- Project memory layers (PROJECT.md + CLAUDE.md) fully aligned to v2.2.0 — all features documented: nested tags, commit linking, session persistence, tag cache, graph workflows, history rotation (2026-03-14)
-- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; amber banner with suggestions between tag bar and messages; works without PostgreSQL via best-effort DB (2026-03-10)
-- Port stability and Electron restart resolved — freePort() kills stale uvicorn via lsof; before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
+- Tag management unified across Chat/History/Commits — all tags deduplicated (149 total, 0 dupes), color preservation on save, removal via ✕ buttons propagates across all views (2026-03-15)
+- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation on all three tabs (2026-03-15)
+- Commit-to-prompt linking verified end-to-end — source_id timestamp stored in commit_log.jsonl; tags per prompt auto-propagate to linked commits via tag-by-source-id endpoint (2026-03-14)
+- History rotation fully operational — /memory triggers rotation at configurable row threshold (default 500 rows); creates timestamped archives (history_YYMMDDHHSS); _load_unified_history() reads all archives on startup (2026-03-15)
+- Tag cache optimization in History tab — all categories/values loaded once on tab open; zero DB calls during tag picker operations; color persistence prevents thrashing (2026-03-14)
+- Hook noise filtering deployed — filters <task-notification>, <tool-use-id>, and <system-> entries; deployed hook matches template; real prompts/LLM responses now correctly logged to history.jsonl (2026-03-15)

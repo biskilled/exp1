@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 17:41 UTC — do not edit manually.
+> Auto-generated 2026-03-15 18:09 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 86
-- **Last active**: 2026-03-15T17:39:53Z
+- **Sessions**: 87
+- **Last active**: 2026-03-15T17:55:52Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -18,11 +18,11 @@
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
-- **storage_primary**: JSONL (history.jsonl with rotation support, commit_log.jsonl), JSON, CSV — flat file first
+- **storage_primary**: JSONL (history.jsonl with rotation, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for nested tags)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude (Anthropic), OpenAI, DeepSeek, Gemini, Grok — independent adapters
+- **llm_providers**: Claude, OpenAI, DeepSeek, Gemini, Grok — independent adapters
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config + loop-back support
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; always-on (DB best-effort)
@@ -33,30 +33,30 @@
 
 ## In Progress
 
-- Commit-to-prompt linking fully operational — source_id timestamp stored in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id; multiple commits per session linked to originating prompt (2026-03-14)
-- History rotation fully implemented — /memory triggers rotation at configurable row threshold (default 500); creates timestamped archive (history_YYMMDDHHSS), rotates original to history.jsonl (2026-03-14)
-- Tag cache persistence in history view — all categories/values loaded once on tab open; zero DB calls during tag picker; color preservation on save prevents thrashing (2026-03-14)
-- Project memory layers (PROJECT.md + CLAUDE.md) fully aligned to v2.2.0 — all features documented: nested tags, commit linking, session persistence, tag cache, graph workflows, history rotation (2026-03-14)
-- Session phase labeling and AI suggestions banner stable — 'Phase:' label in tag bar; amber banner with suggestions between tag bar and messages; works without PostgreSQL via best-effort DB (2026-03-10)
-- Port stability and Electron restart resolved — freePort() kills stale uvicorn via lsof; before-quit cleanup via process.exit() eliminates bind address conflicts (2026-03-10)
+- Tag management unified across Chat/History/Commits — all tags deduplicated (149 total, 0 dupes), color preservation on save, removal via ✕ buttons propagates across all views (2026-03-15)
+- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation on all three tabs (2026-03-15)
+- Commit-to-prompt linking verified end-to-end — source_id timestamp stored in commit_log.jsonl; tags per prompt auto-propagate to linked commits via tag-by-source-id endpoint (2026-03-14)
+- History rotation fully operational — /memory triggers rotation at configurable row threshold (default 500 rows); creates timestamped archives (history_YYMMDDHHSS); _load_unified_history() reads all archives on startup (2026-03-15)
+- Tag cache optimization in History tab — all categories/values loaded once on tab open; zero DB calls during tag picker operations; color persistence prevents thrashing (2026-03-14)
+- Hook noise filtering deployed — filters <task-notification>, <tool-use-id>, and <system-> entries; deployed hook matches template; real prompts/LLM responses now correctly logged to history.jsonl (2026-03-15)
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file storage (JSONL/JSON) primary; PostgreSQL + pgvector for semantic search; per-project DB tables via project_table()
-- Electron UI with xterm.js + Monaco; Vanilla JS frontend — no React/Vue/build step; Vite dev server only
-- JWT auth via python-jose + bcrypt; dev_mode toggle for local testing without login
+- Flat file storage primary (JSONL/JSON with rotation); PostgreSQL + pgvector for semantic search; per-project DB tables via project_table()
+- Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server only for local development
+- JWT auth via python-jose + bcrypt; dev_mode toggle for local testing; 3 roles: admin/paid/free
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
-- Tag cache loaded once on project tab open: zero DB calls during chat/planner; batch updates only on explicit save
-- History rotation on /memory call: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS), original becomes history.jsonl
-- Commit-to-prompt linking: source_id (history.jsonl timestamp) stored in commit_log.jsonl; bidirectional via POST /entities/events/tag-by-source-id
+- Tag cache loaded once per project tab open: zero DB calls during chat/planner; batch updates only on explicit save
+- History rotation on /memory call: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS)
+- Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- AI suggestions as dedicated amber banner between tag bar and messages; always-on (DB best-effort), synthesized by Claude Haiku from /memory
+- AI suggestions as dedicated amber banner between tag bar and messages; always-on (DB best-effort), synthesized by Claude Haiku
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
-- Session phase labeling: 'Phase:' tag bar selector; multiple commits per session each tagged to originating prompt via source_id
+- Session phase labeling via 'Phase:' tag bar selector; multiple commits per session each tagged to originating prompt via source_id
 
 ---
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 17:44]** `claude_cli/claude`  
+→ Let me summersie and make sure all work properly - tags (per session) - can be added by Chat, tags (per prompts) can be 
+← _All the previous session's fixes are confirmed in place:  - `history.py`: `_load_unified_history` reads current + all `history_*.jsonl` archives ✓ - `history.js`: `data-ts` attribute on entries, `_jum_
+
 **[2026-03-15 17:28]** `claude_cli/claude`  
 → Taggin - there is a wau to add tags in History, commit and chat - which is good. can you make sure all is aligned to the
 ← _149 tags, 0 duplicates. Everything is clean. Here's a summary of all changes:  ---  **No duplicates** — confirmed: 149 event tags, 0 duplicates. The backend uses `ON CONFLICT DO NOTHING` on every tag _
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 02:40]** `claude_cli/claude`  
 → can you run /memory, and make the UI more clear. add your sujjestion in a clear place where user can understand it is ai
 ← _Only the expected module resolution error (no syntax errors). Here's a summary of all changes:  **1. "Session:" → "Phase:"** in the tag bar label — it's the phase selector, not a session identifier.  _
-
-**[2026-03-10 02:33]** `claude_cli/claude`  
-→ Where do I click accept , is it in the Chat at the top ? I dont see that
-← _The tag bar is the **thin bar at the top of the chat area**, right below the title and above the messages. After running `/memory`:  1. The bar will show amber/gold italic chips like: `✦ auth-refactor_
