@@ -36,11 +36,11 @@ You are a senior Python software architect with deep expertise in:
 - History rotation on /memory call: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- AI suggestions as dedicated amber banner between tag bar and messages; always-on (DB best-effort), synthesized by Claude Haiku
-- Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
+- AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; always-on (DB best-effort)
+- Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
-- Each prompt has multiple linked commits; each commit tagged inherits session phase + prompt-level tags via source_id linking
+- Each prompt has multiple linked commits; each commit inherits session phase + prompt-level tags via source_id linking
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-15] `claude_cli`: let me summerise not. first run /memroy to update all sumeeries, db tagging and all new changes. and
 - [2026-03-15] `claude_cli`: I would like to set that up , and also add that to new prokect as autoamted set up. when creating a 
 - [2026-03-15] `claude_cli`: The last commit was b255366 which suppose to be linked to the last prompt. it did worked before , bu
 - [2026-03-15] `claude_cli`: When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem i
 - [2026-03-15] `claude_cli`: There is still UI issue with updateting/ showing the correct phase per session. when ever app is loa
+- [2026-03-15] `claude_cli`: The error still exists - When I change the phase (on chats) - I am not able to save. also when I swi
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

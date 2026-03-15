@@ -288,24 +288,22 @@ function _setupTagBar() {
 
   phaseSel.addEventListener('change', () => {
     const newPhase = phaseSel.value;
-    _sessionTags = { ..._sessionTags, phase: newPhase };
-
-    // Share current phase with History tab so its filter defaults to same phase
-    window.__currentPhase = newPhase;
-
-    const project = state.currentProject?.name;
-    // Persist globally (restored on next app load + used by CLI hooks)
-    if (project) api.putSessionTags(project, { phase: newPhase || null }).catch(() => {});
-    // Patch the current session's stored metadata so it shows correct phase on reload
-    if (_sessionId) {
-      api.patchSessionTags(_sessionId, { phase: newPhase || null })
-        .then(() => _loadSessions())   // refresh sidebar badges
-        .catch(() => {});
-    } else {
-      _loadSessions();
+    if (newPhase !== (_sessionTags.phase || '')) {
+      _sessionTags = { phase: newPhase };
+      _sessionId = null;       // each phase gets its own session
+      _appliedEntities = [];
+      _pendingEntities = [];
+      _suggestedTags = [];
+      _renderEntityChips();
+      _renderSuggestionsBar();
+      _updateSaveButton();
     }
-
+    window.__currentPhase = newPhase;
+    // Persist phase so it's restored on next app load
+    const project = state.currentProject?.name;
+    if (project) api.putSessionTags(project, { phase: newPhase || null }).catch(() => {});
     _updateTagBarStatus();
+    _loadSessions();
   });
 
   // Expose picker functions globally
