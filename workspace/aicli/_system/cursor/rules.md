@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 18:17 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 20:11 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -46,8 +46,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-15] Pagination - I do see now in the chat only 24 prompts (there are much more) can you add pagination < > 24/xxx on the top
 - [2026-03-15] Taggin - there is a wau to add tags in History, commit and chat - which is good. can you make sure all is aligned to the
 - [2026-03-15] Let me summersie and make sure all work properly - tags (per session) - can be added by Chat, tags (per prompts) can be 
 - [2026-03-15] Currently the commit tags in Chat are all on a session phase. I would like to linled each commit into the prompt (same a
 - [2026-03-15] let me summerise not. first run /memroy to update all sumeeries, db tagging and all new changes. and answer the followin
+- [2026-03-15] I would like to set that up , and also add that to new prokect as autoamted set up. when creating a project there is a f

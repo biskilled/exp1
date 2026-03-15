@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 19:43 UTC — do not edit manually.
+> Auto-generated 2026-03-15 20:11 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 89
-- **Last active**: 2026-03-15T18:17:47Z
+- **Sessions**: 90
+- **Last active**: 2026-03-15T20:06:06Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -152,6 +152,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-15 19:42]** `claude_cli/claude`  
 → I would like to set that up , and also add that to new prokect as autoamted set up. when creating a project there is a f
+← _All changes are in place. Here's a summary of everything done:  ---  ## What Changed  ### Fixed now (current aicli project)  | File | Change | |---|---| | `.mcp.json` | Fixed path typo (`/user/ /gdriv_
 
 **[2026-03-15 18:15]** `claude_cli/claude`  
 → let me summerise not. first run /memroy to update all sumeeries, db tagging and all new changes. and answer the followin

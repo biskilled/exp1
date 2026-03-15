@@ -110,7 +110,7 @@ if [ "$BACKEND_OK" = "yes" ]; then
         -X POST "${BACKEND_URL}/git/${ACTIVE_PROJECT}/commit-push" \
         -H "Content-Type: application/json" \
         -H "X-Anthropic-Key: ${CLAUDE_KEY}" \
-        -d "{\"message_hint\": \"${SESSION_HINT}\", \"provider\": \"claude\", \"skip_pull\": false}" \
+        -d "{\"message_hint\": \"${SESSION_HINT}\", \"provider\": \"claude\", \"skip_pull\": false, \"session_id\": \"${SESSION}\", \"source\": \"claude_cli\"}" \
         2>/dev/null)
     CURL_RC=$?
 

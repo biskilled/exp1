@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-15 18:17 UTC by aicli /memory_
+_Generated: 2026-03-15 20:11 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -68,6 +68,10 @@ _Generated: 2026-03-15 18:17 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-15 19:42]** `claude_cli/claude`
+Q: I would like to set that up , and also add that to new prokect as autoamted set up. when creating a project there is a flow that ask for IDE support - and MCP config must be supported. currently it is
+A: All changes are in place. Here's a summary of everything done:  ---  ## What Changed  ### Fixed now (current aicli project)  | File | Change | |---|---| | `.mcp.json` | Fixed path typo (`/user/ /gdrive` → `/user/Documents/gdrive`) | | `.cursor/mcp.json` | Unified to same format as `.mcp.json` (args-
+
 **[2026-03-15 18:15]** `claude_cli/claude`
 Q: let me summerise not. first run /memroy to update all sumeeries, db tagging and all new changes. and answer the following : if will open new session using claude cli or and other llm - how they will b
 A: Memory updated successfully. Now for your questions:  ---  ## `/memory` — What Just Happened  All 5 files generated and synced: - `CLAUDE.md` → project root (auto-loaded by Claude Code on every session start) - `MEMORY.md` → project root (LLM-synthesized digest of all recent changes) - `.cursor/rule
@@ -103,7 +107,3 @@ A: It worked. "Links created: 0" means they already existed from the previous ru
 **[2026-03-14 13:11]** `claude_cli/claude`
 Q: can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) properly and add all new feutre that was created
 A: `GET /graph/` returns `{"workflows":[]}` — the graph router is live and the tables are working. Everything is now aligned. Here's the full summary of what was done:  ---  ### Memory + Alignment Update — Complete  **`workspace/aicli/PROJECT.md`** — updated to v2.2.0 (2026-03-14): - Goal 9 changed fro
-
-**[2026-03-14 13:04]** `claude_cli/claude`
-Q: I do see the option to add tag in history - can you make sure all tags are loaded only once into mermory (to save db calls) as each time I am trying to ad tag, its looks like to loading all tags. also
-A: Everything looks correct. Here's a summary of all changes made:  ---  ### Changes  **`ui/frontend/views/history.js`**  1. **Tag cache loaded once on tab open** — `_renderChat` now includes `listCategories` in its initial `Promise.all` (4 parallel requests: history, commits, categories, config). A ne
