@@ -75,12 +75,15 @@ server = Server("aicli-memory")
 
 @server.list_tools()
 async def list_tools() -> list[mcp_types.Tool]:
+    _PHASES = ["discovery", "development", "testing", "review", "production", "maintenance", "bugfix"]
+
     return [
         mcp_types.Tool(
             name="search_memory",
             description=(
                 "Semantic search across the project's full knowledge base: "
                 "chat history, role prompts, commit summaries, code chunks, and design docs. "
+                "Optionally filter by phase or feature tag to scope the search. "
                 "Use this when you need to recall past decisions, understand a feature history, "
                 "or find relevant context before starting work."
             ),
@@ -94,23 +97,20 @@ async def list_tools() -> list[mcp_types.Tool]:
                         "items": {"type": "string"},
                         "description": "Filter by source: history, role, commit, doc, node_output",
                     },
-                    "language": {
-                        "type": "string",
-                        "description": "Filter by language: python, javascript, typescript, sql, …",
-                    },
-                    "doc_type": {
-                        "type": "string",
-                        "description": "Filter by doc type: role, commit, high-level-design, meeting, …",
-                    },
-                    "file_path": {
-                        "type": "string",
-                        "description": "Filter results to a specific file path (substring match)",
-                    },
+                    "language": {"type": "string", "description": "Filter by language: python, javascript, …"},
+                    "doc_type": {"type": "string", "description": "Filter by doc type: role, commit, …"},
+                    "file_path": {"type": "string", "description": "Filter to a specific file path (substring)"},
                     "chunk_types": {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Filter by chunk type: summary, function, class, section, file_diff, full",
                     },
+                    "phase": {
+                        "type": "string",
+                        "enum": _PHASES,
+                        "description": "Restrict results to history recorded during this phase",
+                    },
+                    "feature": {"type": "string", "description": "Restrict results to a specific feature tag"},
                     "project": {"type": "string"},
                 },
                 "required": ["query"],
@@ -124,22 +124,22 @@ async def list_tools() -> list[mcp_types.Tool]:
             ),
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "project": {"type": "string"},
-                },
+                "properties": {"project": {"type": "string"}},
             },
         ),
         mcp_types.Tool(
             name="get_recent_history",
             description=(
                 "Return the last N prompt/response entries from the project's unified history. "
-                "Includes entries from Claude CLI, aicli UI, and workflow runs."
+                "Filter by phase or feature to retrieve context for a specific area of work."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "limit": {"type": "integer", "default": 20, "description": "Max entries"},
                     "provider": {"type": "string", "description": "Filter by provider (claude, openai, …)"},
+                    "phase": {"type": "string", "enum": _PHASES, "description": "Filter by phase"},
+                    "feature": {"type": "string", "description": "Filter by feature tag"},
                     "project": {"type": "string"},
                 },
             },
@@ -149,21 +149,39 @@ async def list_tools() -> list[mcp_types.Tool]:
             description="List available AI role prompt files for the project (architect, developer, QA, etc.).",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "project": {"type": "string"},
-                },
+                "properties": {"project": {"type": "string"}},
             },
         ),
         mcp_types.Tool(
             name="get_commits",
             description=(
-                "List recent commits with metadata: phase (discovery/development/prod), "
-                "feature, bug_ref. Untagged commits (no phase) are marked as such. "
-                "Use to understand what changed and when for a given feature."
+                "List recent commits with phase, feature, bug_ref metadata. "
+                "Filter by phase or feature to see what changed for a specific area. "
+                "Untagged commits (no phase) are marked as red flags."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "limit": {"type": "integer", "default": 30},
+                    "phase": {"type": "string", "enum": _PHASES, "description": "Filter commits by phase"},
+                    "feature": {"type": "string", "description": "Filter commits by feature tag"},
+                    "project": {"type": "string"},
+                },
+            },
+        ),
+        mcp_types.Tool(
+            name="get_tagged_context",
+            description=(
+                "Return all events (prompts + commits) tagged with a specific phase or feature. "
+                "Use this to get a complete picture of everything that happened during a phase "
+                "or for a feature: decisions made, code committed, problems encountered. "
+                "More precise than search_memory when you know the exact tag."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "phase": {"type": "string", "enum": _PHASES, "description": "Phase to retrieve context for"},
+                    "feature": {"type": "string", "description": "Feature name to retrieve context for"},
                     "limit": {"type": "integer", "default": 30},
                     "project": {"type": "string"},
                 },
@@ -178,9 +196,7 @@ async def list_tools() -> list[mcp_types.Tool]:
             ),
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "project": {"type": "string"},
-                },
+                "properties": {"project": {"type": "string"}},
             },
         ),
         mcp_types.Tool(
@@ -194,7 +210,7 @@ async def list_tools() -> list[mcp_types.Tool]:
                 "properties": {
                     "phase": {
                         "type": "string",
-                        "enum": ["discovery", "development", "prod", ""],
+                        "enum": _PHASES,
                         "description": "Project phase",
                     },
                     "feature": {"type": "string", "description": "Feature name being worked on"},
@@ -246,6 +262,8 @@ async def _dispatch(name: str, args: dict) -> Any:
             "doc_type": args.get("doc_type"),
             "file_path": args.get("file_path"),
             "chunk_types": args.get("chunk_types"),
+            "phase": args.get("phase"),
+            "feature": args.get("feature"),
         })
 
     elif name == "get_project_state":
@@ -269,7 +287,11 @@ async def _dispatch(name: str, args: dict) -> Any:
             params["provider"] = args["provider"]
         data = await _get("/history/chat", params)
         entries = data.get("entries", [])
-        # Return compact view
+        # Apply phase/feature filters client-side (history API doesn't support them yet)
+        if args.get("phase"):
+            entries = [e for e in entries if e.get("phase") == args["phase"]]
+        if args.get("feature"):
+            entries = [e for e in entries if e.get("feature") == args["feature"]]
         return {
             "entries": [
                 {
@@ -283,7 +305,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                 }
                 for e in entries
             ],
-            "total": data.get("total", 0),
+            "total": len(entries),
         }
 
     elif name == "get_roles":
@@ -298,12 +320,25 @@ async def _dispatch(name: str, args: dict) -> Any:
             "limit": str(args.get("limit", 30)),
         })
         commits = data.get("commits", [])
+        # Apply phase/feature filters
+        if args.get("phase"):
+            commits = [c for c in commits if c.get("phase") == args["phase"]]
+        if args.get("feature"):
+            commits = [c for c in commits if c.get("feature") == args["feature"]]
         untagged = [c for c in commits if not c.get("phase")]
         return {
             "commits": commits,
             "untagged_count": len(untagged),
             "source": data.get("source", "file"),
         }
+
+    elif name == "get_tagged_context":
+        params: dict = {"project": project, "limit": str(args.get("limit", 30))}
+        if args.get("phase"):
+            params["phase"] = args["phase"]
+        if args.get("feature"):
+            params["feature"] = args["feature"]
+        return await _get("/search/tagged", params)
 
     elif name == "get_session_tags":
         return await _get("/history/session-tags", {"project": project})

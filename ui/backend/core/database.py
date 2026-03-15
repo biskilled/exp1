@@ -89,8 +89,6 @@ class _Database:
             UNIQUE(commit_hash)
         );
         CREATE INDEX IF NOT EXISTS idx_{c}_committed ON {c}(committed_at DESC);
-        ALTER TABLE {c} ADD COLUMN IF NOT EXISTS prompt_source_id VARCHAR(255);
-        ALTER TABLE {c} ADD COLUMN IF NOT EXISTS session_id VARCHAR(255);
 
         CREATE TABLE IF NOT EXISTS {e} (
             id         SERIAL         PRIMARY KEY,
@@ -98,6 +96,9 @@ class _Database:
             source_id  VARCHAR(255)   NOT NULL,
             title      TEXT           NOT NULL DEFAULT '',
             content    TEXT           NOT NULL DEFAULT '',
+            phase      VARCHAR(20),
+            feature    VARCHAR(255),
+            session_id VARCHAR(255),
             metadata   JSONB          NOT NULL DEFAULT '{{}}',
             created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
             UNIQUE(event_type, source_id)
@@ -148,6 +149,25 @@ class _Database:
             log.info(f"✅ Per-project schema ready for '{project}'")
         except Exception as exc:
             log.warning(f"ensure_project_schema({project}) failed: {exc}")
+
+        # Idempotent column migrations — run separately so a prior failure doesn't block these.
+        # Each ALTER runs in its own transaction; failures are silently ignored (column may exist).
+        _migrations = [
+            f"ALTER TABLE {c} ADD COLUMN IF NOT EXISTS prompt_source_id VARCHAR(255)",
+            f"ALTER TABLE {c} ADD COLUMN IF NOT EXISTS session_id        VARCHAR(255)",
+            f"ALTER TABLE {e} ADD COLUMN IF NOT EXISTS phase             VARCHAR(20)",
+            f"ALTER TABLE {e} ADD COLUMN IF NOT EXISTS feature           VARCHAR(255)",
+            f"ALTER TABLE {e} ADD COLUMN IF NOT EXISTS session_id        VARCHAR(255)",
+            f"CREATE INDEX IF NOT EXISTS idx_{e}_session ON {e}(session_id) WHERE session_id IS NOT NULL",
+            f"CREATE INDEX IF NOT EXISTS idx_{e}_phase   ON {e}(phase)      WHERE phase IS NOT NULL",
+        ]
+        for sql in _migrations:
+            try:
+                with self.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(sql)
+            except Exception:
+                pass  # already exists or unsupported — safe to ignore
 
     @contextmanager
     def conn(self) -> Generator:

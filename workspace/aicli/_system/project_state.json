@@ -27,16 +27,16 @@
     "Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server only for local development",
     "JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free",
     "All LLM providers as independent adapters; server holds API keys; client sends NO keys",
-    "Nested tags via parent_id FK: unlimited depth (category \u2192 tag \u2192 subtag) with tree UI in Planner",
-    "Tag cache loaded once per project tab open: zero DB calls during chat/planner; batch updates only on explicit save",
+    "Nested tags via parent_id FK: unlimited depth (category \u2192 tag \u2192 subtag) with tree UI in Planner; tag cache loaded once per project tab (zero DB calls during chat)",
     "History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)",
     "Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id",
     "Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()",
-    "AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session",
+    "AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session with category inheritance",
     "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
     "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization",
     "MCP server (stdio): 8 tools for integration with Claude CLI and external agents",
-    "Each prompt has multiple linked commits; each commit inherits session phase + prompt-level tags via source_id linking"
+    "Session phase (required field) fixed on init from DB; PATCH /chat/sessions/{id}/tags saves phase; backfill to history.jsonl on phase change",
+    "Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering the session list"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -65,12 +65,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Phase persistence per session \u2014 fixed on init to load from DB; PATCH /chat/sessions/{id}/tags saves phase; UI/CLI/WF all supported with red \u26a0 badge for missing phase (2026-03-15)",
-    "Session ordering by created_at instead of updated_at \u2014 prevents phase/tag updates from reordering session list; sessions stay in chronological order (2026-03-15)",
+    "Session phase persistence and UI consistency \u2014 phase now loads on app init, saves via PATCH endpoint, backfills history.jsonl, shows red \u26a0 badge for missing phase, and maintains chronological order (2026-03-15)",
     "Commit-per-prompt display in Chat \u2014 inline commits at bottom of each prompt entry with accent left-border, hash \u2197 link; shows only commits for that specific prompt (2026-03-15)",
     "Tag deduplication and cross-view synchronization \u2014 149 tags total (0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits simultaneously (2026-03-15)",
     "Pagination for Chat/History/Commits \u2014 displays offset ranges (e.g., '1\u2013100 / 204') with \u25c0 \u25b6 navigation; unified history loads all archives on startup (2026-03-15)",
-    "AI suggestions auto-save to session \u2014 suggestions create tags in proper category via _acceptSuggestedTag; tags appear in Planner; phase filter fully functional (2026-03-15)"
+    "AI suggestions auto-save to session \u2014 suggestions create tags in proper category via _acceptSuggestedTag; tags appear in Planner; phase filter fully functional (2026-03-15)",
+    "Commit phase filtering and backfill \u2014 commits now inherit session phase; history.jsonl backfilled when phase changes; commits filterable by phase in Commits tab (2026-03-15)"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -102,5 +102,5 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-15T22:52:14Z"
+  "last_memory_run": "2026-03-15T23:09:09Z"
 }

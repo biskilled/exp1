@@ -31,16 +31,16 @@ You are a senior Python software architect with deep expertise in:
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server only for local development
 - JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
-- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
-- Tag cache loaded once per project tab open: zero DB calls during chat/planner; batch updates only on explicit save
+- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; tag cache loaded once per project tab (zero DB calls during chat)
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session
+- AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session with category inheritance
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
-- Each prompt has multiple linked commits; each commit inherits session phase + prompt-level tags via source_id linking
+- Session phase (required field) fixed on init from DB; PATCH /chat/sessions/{id}/tags saves phase; backfill to history.jsonl on phase change
+- Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering the session list
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-15] `claude_cli`: The error still exists - When I change the phase (on chats) - I am not able to save. also when I swi
 - [2026-03-15] `claude_cli`: Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the 
 - [2026-03-15] `claude_cli`: Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do
 - [2026-03-15] `claude_cli`: I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked 
 - [2026-03-15] `claude_cli`: That looks better. the problem now is that on any change of the phase the session order is changed a
+- [2026-03-15] `claude_cli`: It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit.
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

@@ -397,25 +397,33 @@ def _do_sync_events(p: str) -> dict[str, int]:
                     if not sid:
                         continue
                     title = (e.get("user_input") or "")[:120] or "(no input)"
+                    e_phase      = e.get("phase") or None
+                    e_feature    = e.get("feature") or None
+                    e_session_id = e.get("session_id") or e.get("session") or None
                     meta = json.dumps({
                         "provider":   e.get("provider"),
                         "source":     e.get("source"),
-                        "phase":      e.get("phase"),
-                        "feature":    e.get("feature"),
-                        "session_id": e.get("session_id") or e.get("session") or None,
+                        "phase":      e_phase,
+                        "feature":    e_feature,
+                        "session_id": e_session_id,
                     })
                     cur.execute(
                         f"""INSERT INTO {ev_table}
-                               (event_type, source_id, title, content, metadata, created_at)
-                           VALUES ('prompt',%s,%s,%s,%s,%s::timestamptz)
-                           ON CONFLICT (event_type, source_id) DO NOTHING""",
-                        (sid, title, (e.get("user_input") or "")[:2000], meta, sid),
+                               (event_type, source_id, title, content,
+                                phase, feature, session_id, metadata, created_at)
+                           VALUES ('prompt',%s,%s,%s,%s,%s,%s,%s,%s::timestamptz)
+                           ON CONFLICT (event_type, source_id) DO UPDATE SET
+                               phase      = EXCLUDED.phase,
+                               feature    = EXCLUDED.feature,
+                               session_id = EXCLUDED.session_id,
+                               metadata   = EXCLUDED.metadata""",
+                        (sid, title, (e.get("user_input") or "")[:2000],
+                         e_phase, e_feature, e_session_id, meta, sid),
                     )
                     imported["prompt"] += cur.rowcount
 
             # 2. commits_{p} table → event_type="commit"
-            # Include session_id so we can propagate entity tags automatically.
-            # COALESCE guards against older schema rows that lack the column.
+            # session_id column may not exist on older DB — COALESCE guards.
             try:
                 cur.execute(
                     f"SELECT commit_hash, commit_msg, phase, feature, source, "
@@ -423,7 +431,6 @@ def _do_sync_events(p: str) -> dict[str, int]:
                     f"FROM {c_table}"
                 )
             except Exception:
-                # Fallback if session_id column doesn't exist yet
                 cur.execute(
                     f"SELECT commit_hash, commit_msg, phase, feature, source, "
                     f"       committed_at, '' FROM {c_table}"
@@ -435,27 +442,37 @@ def _do_sync_events(p: str) -> dict[str, int]:
                 })
                 cur.execute(
                     f"""INSERT INTO {ev_table}
-                           (event_type, source_id, title, content, metadata, created_at)
-                       VALUES ('commit',%s,%s,%s,%s,%s)
-                       ON CONFLICT (event_type, source_id) DO NOTHING""",
+                           (event_type, source_id, title, content,
+                            phase, feature, session_id, metadata, created_at)
+                       VALUES ('commit',%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (event_type, source_id) DO UPDATE SET
+                           phase      = EXCLUDED.phase,
+                           feature    = EXCLUDED.feature,
+                           session_id = EXCLUDED.session_id,
+                           metadata   = EXCLUDED.metadata""",
                     (commit_hash, (msg or "")[:120], msg or "",
+                     phase or None, feature or None, session_id or None,
                      meta, committed_at or "2026-01-01T00:00:00+00:00"),
                 )
                 imported["commit"] += cur.rowcount
 
-            # 3. Backfill session_id into existing commit events that were imported without it
+            # 3. Backfill session_id + phase into existing commit events imported without them
             try:
                 cur.execute(
                     f"""UPDATE {ev_table} ev
-                           SET metadata = ev.metadata || jsonb_build_object('session_id', c.session_id)
+                           SET session_id = c.session_id,
+                               phase      = COALESCE(ev.phase, c.phase),
+                               metadata   = ev.metadata
+                                            || jsonb_build_object('session_id', c.session_id)
+                                            || jsonb_build_object('phase', c.phase)
                           FROM {c_table} c
                          WHERE ev.source_id = c.commit_hash
                            AND ev.event_type = 'commit'
-                           AND (c.session_id IS NOT NULL AND c.session_id != '')
-                           AND (ev.metadata->>'session_id') IS NULL"""
+                           AND c.session_id IS NOT NULL AND c.session_id != ''
+                           AND (ev.session_id IS NULL OR ev.phase IS NULL)"""
                 )
             except Exception:
-                pass  # session_id column may not exist in old schemas
+                pass  # older schema without real columns — harmless
 
             # 3b. Backfill session_id into existing prompt events from history.jsonl.
             #     (older imports omitted this field — fix retroactively via batch update)
@@ -481,26 +498,27 @@ def _do_sync_events(p: str) -> dict[str, int]:
                     cur.executemany("INSERT INTO _hist_sid_map VALUES (%s,%s)", pairs)
                     cur.execute(
                         f"""UPDATE {ev_table} ev
-                               SET metadata = ev.metadata ||
-                                   jsonb_build_object('session_id', m.session_id)
+                               SET session_id = m.session_id,
+                                   metadata   = ev.metadata ||
+                                       jsonb_build_object('session_id', m.session_id)
                               FROM _hist_sid_map m
                              WHERE ev.event_type = 'prompt'
                                AND ev.source_id  = m.ts
-                               AND (ev.metadata->>'session_id') IS NULL"""
+                               AND ev.session_id IS NULL"""
                     )
                     imported["prompt_session_backfill"] = cur.rowcount
 
             # 4. Auto-propagate entity tags: prompt events → commit events in the same session
-            #    Any entity tags applied to prompts in a session are automatically inherited
-            #    by commits from that session. Runs after every sync — idempotent.
+            #    Uses real session_id column (fast index lookup) + JSONB fallback for old rows.
             cur.execute(
                 f"""INSERT INTO {et_table} (event_id, entity_value_id, auto_tagged)
                     SELECT DISTINCT commit_ev.id, pt.entity_value_id, TRUE
                     FROM {ev_table} commit_ev
                     JOIN {ev_table} prompt_ev
-                         ON prompt_ev.metadata->>'session_id' = commit_ev.metadata->>'session_id'
-                        AND commit_ev.metadata->>'session_id' IS NOT NULL
-                        AND commit_ev.metadata->>'session_id' NOT IN ('', 'null')
+                         ON COALESCE(prompt_ev.session_id, prompt_ev.metadata->>'session_id')
+                          = COALESCE(commit_ev.session_id, commit_ev.metadata->>'session_id')
+                        AND COALESCE(commit_ev.session_id, commit_ev.metadata->>'session_id') IS NOT NULL
+                        AND COALESCE(commit_ev.session_id, commit_ev.metadata->>'session_id') NOT IN ('', 'null')
                     JOIN {et_table} pt ON pt.event_id = prompt_ev.id
                     WHERE commit_ev.event_type = 'commit'
                       AND prompt_ev.event_type  = 'prompt'

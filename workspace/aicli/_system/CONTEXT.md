@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 22:52 UTC — do not edit manually.
+> Auto-generated 2026-03-15 23:10 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 98
-- **Last active**: 2026-03-15T22:51:48Z
+- **Sessions**: 99
+- **Last active**: 2026-03-15T23:08:41Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -33,12 +33,12 @@
 
 ## In Progress
 
-- Phase persistence per session — fixed on init to load from DB; PATCH /chat/sessions/{id}/tags saves phase; UI/CLI/WF all supported with red ⚠ badge for missing phase (2026-03-15)
-- Session ordering by created_at instead of updated_at — prevents phase/tag updates from reordering session list; sessions stay in chronological order (2026-03-15)
+- Session phase persistence and UI consistency — phase now loads on app init, saves via PATCH endpoint, backfills history.jsonl, shows red ⚠ badge for missing phase, and maintains chronological order (2026-03-15)
 - Commit-per-prompt display in Chat — inline commits at bottom of each prompt entry with accent left-border, hash ↗ link; shows only commits for that specific prompt (2026-03-15)
 - Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
 - Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup (2026-03-15)
 - AI suggestions auto-save to session — suggestions create tags in proper category via _acceptSuggestedTag; tags appear in Planner; phase filter fully functional (2026-03-15)
+- Commit phase filtering and backfill — commits now inherit session phase; history.jsonl backfilled when phase changes; commits filterable by phase in Commits tab (2026-03-15)
 
 ## Key Decisions
 
@@ -47,16 +47,16 @@
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server only for local development
 - JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
-- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
-- Tag cache loaded once per project tab open: zero DB calls during chat/planner; batch updates only on explicit save
+- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; tag cache loaded once per project tab (zero DB calls during chat)
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session
+- AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session with category inheritance
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
-- Each prompt has multiple linked commits; each commit inherits session phase + prompt-level tags via source_id linking
+- Session phase (required field) fixed on init from DB; PATCH /chat/sessions/{id}/tags saves phase; backfill to history.jsonl on phase change
+- Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering the session list
 
 ---
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 22:57]** `claude_cli/claude`  
+→ It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by
+← _Now the full flow works. Here's a summary of everything fixed:  **Root causes and fixes:**  1. **History chat filter shows nothing for a phase** — History.jsonl entries had no `phase` field if the ses_
+
 **[2026-03-15 22:51]** `claude_cli/claude`  
 → That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possi
 ← _Two changes:  1. **Backend** — `patch_session_tags` no longer updates `updated_at` when saving tags. The session's timestamp stays frozen at when it was last messaged.  2. **Frontend** — `_loadSession_
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 16:47]** `claude_cli/claude`  
 → Pagination - I do see now in the chat only 24 prompts (there are much more) can you add pagination < > 24/xxx on the top
 ← _All changes are working. Here's a summary:  **Backend — archive files included** - `_load_unified_history()` now reads `history.jsonl` + all `history_*.jsonl` archives - Result: **204 entries** (was 2_
-
-**[2026-03-14 21:36]** `claude_cli/claude`  
-→ Something wit hooks is not working now, as I do not see any new prompts / llm response adding into history.jsonl . also 
-← _Everything is working. Here's a summary of all fixes:  ---  **1. Hook fixed — noise filtered at write time** - The deployed hook (`workspace/aicli/_system/hooks/log_user_prompt.sh`) was the old versio_

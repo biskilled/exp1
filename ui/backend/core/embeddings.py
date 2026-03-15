@@ -364,10 +364,13 @@ async def semantic_search(
     doc_type: str | None = None,
     file_path: str | None = None,
     chunk_types: list[str] | None = None,
+    phase: str | None = None,
+    feature: str | None = None,
 ) -> list[dict]:
     """Search embeddings by cosine similarity. Returns empty list on any error.
 
-    Optional metadata filters: language, doc_type, file_path, chunk_types.
+    Optional metadata filters: language, doc_type, file_path, chunk_types, phase, feature.
+    phase/feature filter on metadata JSONB (embeddings store history context in metadata).
     """
     if not db.is_available():
         return []
@@ -400,6 +403,12 @@ async def semantic_search(
         if chunk_types:
             filters.append("chunk_type = ANY(%s)")
             params.append(chunk_types)
+        if phase:
+            filters.append("metadata->>'phase' = %s")
+            params.append(phase)
+        if feature:
+            filters.append("metadata->>'feature' = %s")
+            params.append(feature)
 
         where = " AND ".join(filters)
         params += [str(query_vec), limit]

@@ -29,6 +29,9 @@ class SearchRequest(BaseModel):
     doc_type: Optional[str] = None
     file_path: Optional[str] = None
     chunk_types: Optional[list[str]] = None
+    # Tag-aware filters — restrict results to events with this phase/feature
+    phase: Optional[str] = None
+    feature: Optional[str] = None
 
 
 @router.post("/semantic")
@@ -47,8 +50,84 @@ async def semantic_search(body: SearchRequest, user=Depends(get_optional_user)):
         doc_type=body.doc_type,
         file_path=body.file_path,
         chunk_types=body.chunk_types or None,
+        phase=body.phase,
+        feature=body.feature,
     )
     return {"results": results, "query": body.query, "total": len(results)}
+
+
+@router.get("/tagged")
+async def get_tagged_context(
+    project: str = Query(""),
+    phase: Optional[str] = Query(None),
+    feature: Optional[str] = Query(None),
+    entity_value_id: Optional[int] = Query(None),
+    limit: int = Query(20),
+    user=Depends(get_optional_user),
+):
+    """Return events (prompts + commits) filtered by phase, feature, or entity tag.
+
+    Used by MCP get_tagged_context tool to retrieve structured context for a feature/phase.
+    """
+    if not db.is_available():
+        raise HTTPException(503, "PostgreSQL required")
+
+    p = project or settings.active_project or "default"
+    ev_table = db.project_table("events",      p)
+    et_table = db.project_table("event_tags",  p)
+
+    filters: list[str] = []
+    params: list = []
+
+    if entity_value_id:
+        # Filter by applied entity tag — join through event_tags
+        filters.append(
+            f"ev.id IN (SELECT event_id FROM {et_table} WHERE entity_value_id = %s)"
+        )
+        params.append(entity_value_id)
+    else:
+        # Filter by phase / feature columns (fast indexed lookup)
+        if phase:
+            filters.append(
+                "COALESCE(ev.phase, ev.metadata->>'phase') = %s"
+            )
+            params.append(phase)
+        if feature:
+            filters.append(
+                "COALESCE(ev.feature, ev.metadata->>'feature') = %s"
+            )
+            params.append(feature)
+
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    params.append(limit)
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""SELECT ev.id, ev.event_type, ev.source_id, ev.title,
+                               ev.phase, ev.feature, ev.session_id,
+                               ev.created_at, ev.metadata
+                          FROM {ev_table} ev
+                          {where}
+                         ORDER BY ev.created_at DESC
+                         LIMIT %s""",
+                    params,
+                )
+                rows = cur.fetchall()
+        events = [
+            {
+                "id": r[0], "event_type": r[1], "source_id": r[2],
+                "title": r[3], "phase": r[4], "feature": r[5],
+                "session_id": r[6],
+                "created_at": r[7].isoformat() if r[7] else None,
+                "metadata": r[8] or {},
+            }
+            for r in rows
+        ]
+        return {"events": events, "total": len(events), "phase": phase, "feature": feature}
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
 
 
 @router.get("/ingest")
