@@ -3,8 +3,8 @@
     "aicli": {
       "command": "python3.12",
       "args": [
-        "/Users/user/Documents/gdrive_cellqlick/2026/aicli/ui/mcp_server.py",
-        "--project", "aicli",
+        "{{AICLI_DIR}}/ui/mcp_server.py",
+        "--project", "{{PROJECT_NAME}}",
         "--backend", "http://localhost:8000"
       ]
     }

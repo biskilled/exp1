@@ -277,48 +277,62 @@ function _step2Html(wizard) {
 
 function _step3Html(wizard) {
   const hasCodeDir = !!wizard.code_dir;
-  const disabledStyle = hasCodeDir ? '' : 'opacity:0.45;pointer-events:none';
+  const ds = hasCodeDir ? '' : 'opacity:0.45;pointer-events:none';
   const disabledNote = hasCodeDir ? '' :
     `<div style="font-size:0.68rem;color:var(--yellow);margin-top:0.5rem">
       ⚠ Set a Code folder in Step 1 to enable IDE integrations.
     </div>`;
 
-  return `
-    <div class="modal-title">AI IDE Support</div>
-    <div class="modal-subtitle">Integrate aicli memory with your editor.</div>
+  const cd = wizard.code_dir || '{code_dir}';
 
+  const _check = (id, key, label, detail) => `
+    <label style="display:flex;gap:0.75rem;align-items:flex-start;cursor:pointer;${ds}">
+      <input type="checkbox" id="np-${id}" style="margin-top:3px"
+        ${wizard[key] ? 'checked' : ''}
+        onchange="window._wizard.${key}=this.checked" />
+      <div>
+        <div style="font-size:0.82rem;font-weight:600">${label}</div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem">${detail}</div>
+      </div>
+    </label>`;
+
+  return `
+    <div class="modal-title">AI IDE &amp; Provider Support</div>
+    <div class="modal-subtitle">Choose how aicli memory is delivered to each tool.</div>
     ${disabledNote}
 
-    <div style="display:flex;flex-direction:column;gap:0.85rem;margin-top:0.75rem">
-      <label style="display:flex;gap:0.75rem;align-items:flex-start;cursor:pointer;${disabledStyle}">
-        <input type="checkbox" id="np-claude-cli" style="margin-top:3px"
-          ${wizard.claude_cli ? 'checked' : ''}
-          onchange="window._wizard.claude_cli=this.checked" />
-        <div>
-          <div style="font-size:0.82rem;font-weight:600">Claude CLI support</div>
-          <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem">
-            Copies hooks to <code>${wizard.code_dir||'{code_dir}'}/.aicli/scripts/</code><br>
-            Creates <code>.claude/settings.local.json</code><br>
-            Enables: session logging + auto-commit after each response
-          </div>
-        </div>
-      </label>
-
-      <label style="display:flex;gap:0.75rem;align-items:flex-start;cursor:pointer;${disabledStyle}">
-        <input type="checkbox" id="np-cursor" style="margin-top:3px"
-          ${wizard.cursor ? 'checked' : ''}
-          onchange="window._wizard.cursor=this.checked" />
-        <div>
-          <div style="font-size:0.82rem;font-weight:600">Cursor support</div>
-          <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem">
-            Creates <code>${wizard.code_dir||'{code_dir}'}/.cursor/rules/aicli.mdrules</code><br>
-            Injects project context into Cursor AI
-          </div>
-        </div>
-      </label>
+    <div style="font-size:0.7rem;color:var(--muted);margin:0.75rem 0 0.4rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px">
+      IDE / Desktop — MCP + file-based context
+    </div>
+    <div style="display:flex;flex-direction:column;gap:0.75rem">
+      ${_check('claude-cli', 'claude_cli',
+        'Claude CLI &amp; Claude Code',
+        `Creates <code>${cd}/.claude/settings.local.json</code> (hooks: session log + auto-commit)<br>
+         Creates <code>${cd}/.mcp.json</code> — MCP server gives Claude live memory tools:<br>
+         &nbsp;get_project_state · get_recent_history · search_memory · get_commits`
+      )}
+      ${_check('cursor', 'cursor',
+        'Cursor',
+        `Creates <code>${cd}/.cursor/rules/aicli.mdrules</code> (project context, refreshed on /memory)<br>
+         Creates <code>${cd}/.cursor/mcp.json</code> — same 8 MCP tools available in Cursor Composer`
+      )}
     </div>
 
-    <div class="modal-footer" style="margin-top:1.5rem">
+    <div style="font-size:0.7rem;color:var(--muted);margin:1rem 0 0.4rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px">
+      API providers — context injected by aicli before every prompt
+    </div>
+    <div style="font-size:0.68rem;color:var(--muted);margin-bottom:0.5rem">
+      When used via aicli CLI or UI, these providers automatically receive <code>context.md</code>
+      (project state + recent history) prepended to their system prompt. Set API keys in Admin → API Keys.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:0.6rem">
+      ${_check('openai',    'openai',    'OpenAI (GPT-4o, o1, …)',    'Injects context.md via system prompt. Uses OpenAI Chat API.')}
+      ${_check('deepseek',  'deepseek',  'DeepSeek',                  'OpenAI-compatible API. Context injected the same way.')}
+      ${_check('gemini',    'gemini',    'Gemini',                    'Injects context.md via Google Generative AI system instruction.')}
+      ${_check('grok',      'grok',      'Grok (xAI)',                'OpenAI-compatible API. Context injected the same way.')}
+    </div>
+
+    <div class="modal-footer" style="margin-top:1.25rem">
       <button class="btn btn-ghost" onclick="window._wizardBack()">← Back</button>
       <button class="btn btn-primary" onclick="window._wizardNext()">Next: Review →</button>
     </div>
@@ -330,8 +344,12 @@ function _step3Html(wizard) {
 function _step4Html(wizard) {
   const gitStatus = wizard.git?.token ? (wizard.git.method === 'oauth' ? 'OAuth configured' : 'Token saved') : 'Skipped';
   const ideStatus = [
-    wizard.claude_cli ? 'Claude CLI ✓' : null,
-    wizard.cursor ? 'Cursor ✓' : null,
+    wizard.claude_cli ? 'Claude CLI/Code ✓' : null,
+    wizard.cursor     ? 'Cursor ✓'          : null,
+    wizard.openai     ? 'OpenAI ✓'          : null,
+    wizard.deepseek   ? 'DeepSeek ✓'        : null,
+    wizard.gemini     ? 'Gemini ✓'          : null,
+    wizard.grok       ? 'Grok ✓'            : null,
   ].filter(Boolean).join(', ') || 'None';
 
   return `
@@ -392,7 +410,7 @@ function _wizardNext(wizard, overlay, render) {
 function _updateStep3CodeDirState(codeDir) {
   // Re-enable/disable checkboxes when code_dir is picked via Browse
   const hasDir = !!codeDir;
-  ['np-claude-cli', 'np-cursor'].forEach(id => {
+  ['np-claude-cli', 'np-cursor', 'np-openai', 'np-deepseek', 'np-gemini', 'np-grok'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.closest('label').style.cssText += hasDir
       ? 'opacity:1;pointer-events:auto' : 'opacity:0.45;pointer-events:none';
@@ -444,8 +462,12 @@ async function _wizardCreate(wizard, overlay) {
       code_dir: wizard.code_dir,
       description: wizard.description,
       default_provider: wizard.provider,
-      claude_cli_support: wizard.claude_cli,
-      cursor_support: wizard.cursor,
+      claude_cli_support: !!wizard.claude_cli,
+      cursor_support:     !!wizard.cursor,
+      openai_support:     !!wizard.openai,
+      deepseek_support:   !!wizard.deepseek,
+      gemini_support:     !!wizard.gemini,
+      grok_support:       !!wizard.grok,
     });
 
     // 2. Git setup

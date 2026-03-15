@@ -19,6 +19,9 @@ from core.database import db
 router = APIRouter()
 log = logging.getLogger(__name__)
 
+# Absolute path to the aicli root dir (ui/backend/routers/projects.py → 4 levels up)
+_AICLI_DIR = Path(__file__).parent.parent.parent.parent
+
 # ── History rotation ──────────────────────────────────────────────────────────
 
 def _rotate_history(sys_dir: Path, max_rows: int = 500) -> dict:
@@ -165,8 +168,14 @@ class NewProject(BaseModel):
     code_dir: str = ""
     description: str = ""
     default_provider: str = "claude"
-    claude_cli_support: bool = False
-    cursor_support: bool = False
+    # IDE / tool integrations
+    claude_cli_support: bool = False   # hooks + .mcp.json for Claude CLI / Claude Code
+    cursor_support: bool = False       # .cursor/rules + .cursor/mcp.json
+    # API-based providers (context injected via aicli CLI; saves to project.yaml)
+    openai_support: bool = False
+    deepseek_support: bool = False
+    gemini_support: bool = False
+    grok_support: bool = False
     git_config: dict = {}
 
 
@@ -226,6 +235,13 @@ async def create_project(body: NewProject):
         extra["claude_cli_support"] = True
     if body.cursor_support:
         extra["cursor_support"] = True
+    # Record enabled API providers
+    enabled_providers = [p for p, flag in [
+        ("openai", body.openai_support), ("deepseek", body.deepseek_support),
+        ("gemini", body.gemini_support), ("grok", body.grok_support),
+    ] if flag]
+    if enabled_providers:
+        extra["enabled_api_providers"] = enabled_providers
     if extra:
         proj_yaml = dest_dir / "project.yaml"
         existing: dict = {}
@@ -243,33 +259,47 @@ async def create_project(body: NewProject):
         code_path = Path(body.code_dir)
         hooks_src = ws / "_templates" / "hooks"
 
+        def _render_tpl(tpl_file: Path) -> str:
+            return (tpl_file.read_text()
+                    .replace("{{WORKSPACE_DIR}}", str(ws))
+                    .replace("{{PROJECT_NAME}}", body.name)
+                    .replace("{{AICLI_DIR}}", str(_AICLI_DIR)))
+
         if body.claude_cli_support and hooks_src.exists():
-            # Install hooks into _system/hooks/ (not .aicli/scripts/)
+            # Install hooks into _system/hooks/
             hooks_dest = sys_dir / "hooks"
             hooks_dest.mkdir(parents=True, exist_ok=True)
             for sh in hooks_src.glob("*.sh"):
                 shutil.copy2(str(sh), str(hooks_dest / sh.name))
             # Render settings.template.json → {code_dir}/.claude/settings.local.json
-            # Hooks point to workspace/{project}/_system/hooks/ (canonical location)
             tpl_file = hooks_src / "settings.template.json"
             if tpl_file.exists():
-                tpl_content = (tpl_file.read_text()
-                               .replace("{{WORKSPACE_DIR}}", str(ws))
-                               .replace("{{PROJECT_NAME}}", body.name))
                 settings_dir = code_path / ".claude"
                 settings_dir.mkdir(parents=True, exist_ok=True)
-                (settings_dir / "settings.local.json").write_text(tpl_content)
+                (settings_dir / "settings.local.json").write_text(_render_tpl(tpl_file))
+            # Render mcp.template.json → {code_dir}/.mcp.json  (Claude Code + Claude CLI)
+            mcp_tpl = hooks_src / "mcp.template.json"
+            if mcp_tpl.exists():
+                (code_path / ".mcp.json").write_text(_render_tpl(mcp_tpl))
             setup_results["claude_cli"] = str(hooks_dest)
+            setup_results["claude_mcp"] = str(code_path / ".mcp.json")
 
         if body.cursor_support:
             cursor_rules_dir = code_path / ".cursor" / "rules"
             cursor_rules_dir.mkdir(parents=True, exist_ok=True)
-            # Initial rules stub
+            # Initial rules stub (refreshed on every /memory call)
             proj_md = dest_dir / "PROJECT.md"
             proj_summary = proj_md.read_text()[:400] if proj_md.exists() else ""
             rules_content = f"# AI Rules — {body.name}\n> Managed by aicli. Re-run `/memory` to refresh.\n\n## Project\n{proj_summary}\n"
             (cursor_rules_dir / "aicli.mdrules").write_text(rules_content)
+            # Render mcp.template.json → {code_dir}/.cursor/mcp.json  (Cursor MCP)
+            mcp_tpl = hooks_src / "mcp.template.json"
+            if mcp_tpl.exists():
+                cursor_mcp_dir = code_path / ".cursor"
+                cursor_mcp_dir.mkdir(parents=True, exist_ok=True)
+                (cursor_mcp_dir / "mcp.json").write_text(_render_tpl(mcp_tpl))
             setup_results["cursor"] = str(cursor_rules_dir)
+            setup_results["cursor_mcp"] = str(code_path / ".cursor" / "mcp.json")
 
     # Ensure per-project DB tables exist (idempotent)
     if db.is_available():
