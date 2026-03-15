@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 21:38 UTC — do not edit manually.
+> Auto-generated 2026-03-15 21:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 94
-- **Last active**: 2026-03-15T21:20:08Z
+- **Sessions**: 95
+- **Last active**: 2026-03-15T21:51:05Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 21:45]** `claude_cli/claude`  
+→ Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the right phase now. and
+← _Here's a summary of all fixes:  **Chat — phase change** (restored): - `_sessionId = null` is back → each phase gets its own new session → sessions have correct phase in metadata - `api.putSessionTags(_
+
 **[2026-03-15 21:15]** `claude_cli/claude`  
 → The error still exists - When I change the phase (on chats) - I am not able to save. also when I switch between diffrent
 ← _All changes look good. Here's a summary of everything fixed:  **Issue 1 — Phase can't save** (root cause: `_sessionId = null` on phase change): - Removed `_sessionId = null` from phase change — phase _
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-14 13:11]** `claude_cli/claude`  
 → can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) pr
 ← _`GET /graph/` returns `{"workflows":[]}` — the graph router is live and the tables are working. Everything is now aligned. Here's the full summary of what was done:  ---  ### Memory + Alignment Update_
-
-**[2026-03-14 13:04]** `claude_cli/claude`  
-→ I do see the option to add tag in history - can you make sure all tags are loaded only once into mermory (to save db cal
-← _Everything looks correct. Here's a summary of all changes made:  ---  ### Changes  **`ui/frontend/views/history.js`**  1. **Tag cache loaded once on tab open** — `_renderChat` now includes `listCatego_

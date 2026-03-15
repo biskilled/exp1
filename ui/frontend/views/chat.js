@@ -288,22 +288,23 @@ function _setupTagBar() {
 
   phaseSel.addEventListener('change', () => {
     const newPhase = phaseSel.value;
-    if (newPhase !== (_sessionTags.phase || '')) {
-      _sessionTags = { phase: newPhase };
-      _sessionId = null;       // each phase gets its own session
-      _appliedEntities = [];
-      _pendingEntities = [];
-      _suggestedTags = [];
-      _renderEntityChips();
-      _renderSuggestionsBar();
-      _updateSaveButton();
-    }
+    _sessionTags = { ..._sessionTags, phase: newPhase };
     window.__currentPhase = newPhase;
-    // Persist phase so it's restored on next app load
+    _updateTagBarStatus();
+    _updateSaveButton();
+
+    // Persist phase globally (restored on next app load)
     const project = state.currentProject?.name;
     if (project) api.putSessionTags(project, { phase: newPhase || null }).catch(() => {});
-    _updateTagBarStatus();
-    _loadSessions();
+
+    // If a session is already loaded, update its metadata in-place
+    if (_sessionId) {
+      api.patchSessionTags(_sessionId, { phase: newPhase || null })
+        .then(() => _loadSessions())
+        .catch(() => _loadSessions());
+    } else {
+      _loadSessions();
+    }
   });
 
   // Expose picker functions globally
