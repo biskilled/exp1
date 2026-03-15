@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-15] `claude_cli`: Taggin - there is a wau to add tags in History, commit and chat - which is good. can you make sure a
 - [2026-03-15] `claude_cli`: Let me summersie and make sure all work properly - tags (per session) - can be added by Chat, tags (
 - [2026-03-15] `claude_cli`: Currently the commit tags in Chat are all on a session phase. I would like to linled each commit int
 - [2026-03-15] `claude_cli`: let me summerise not. first run /memroy to update all sumeeries, db tagging and all new changes. and
 - [2026-03-15] `claude_cli`: I would like to set that up , and also add that to new prokect as autoamted set up. when creating a 
+- [2026-03-15] `claude_cli`: The last commit was b255366 which suppose to be linked to the last prompt. it did worked before , bu
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

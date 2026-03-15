@@ -282,6 +282,8 @@ function _setupTagBar() {
       _renderSuggestionsBar();
       _updateSaveButton();
     }
+    // Share current phase with History tab so its filter defaults to same phase
+    window.__currentPhase = newPhase;
     _updateTagBarStatus();
     _loadSessions();
   });
@@ -610,7 +612,7 @@ function _renderSuggestionsBar() {
             ${project ? ` · ${_esc(project)}` : ''}
           </span>
           <span style="font-size:0.55rem;color:#b08000;font-style:italic">
-            Based on your recent history — click ✓ Accept, then 💾 Save to apply
+            Based on your recent history — click ✓ Accept to apply
           </span>
         </div>
         <div style="display:flex;gap:0.35rem;flex-wrap:wrap;align-items:center">${chipsHtml}</div>
@@ -622,7 +624,7 @@ function _renderSuggestionsBar() {
     </div>`;
 }
 
-window._acceptSuggestedTag = (idx) => {
+window._acceptSuggestedTag = async (idx) => {
   const s = _suggestedTags[idx];
   if (!s) return;
   // Resolve color/icon from cache categories or fallback
@@ -635,7 +637,14 @@ window._acceptSuggestedTag = (idx) => {
   _suggestedTags = _suggestedTags.filter((_, i) => i !== idx);
   _renderSuggestionsBar();
   _renderEntityChips();
-  _updateSaveButton();
+  // Auto-save immediately if we already have a session; otherwise pending tags
+  // are saved automatically when the first message is sent (_saveEntitiesToSession
+  // is called in the send handler after the session ID is returned).
+  if (_sessionId) {
+    await _saveEntitiesToSession();
+  } else {
+    _updateSaveButton();
+  }
 };
 
 window._dismissSuggestedTag = (idx) => {

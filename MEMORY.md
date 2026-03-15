@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-15 20:11 UTC by aicli /memory_
+_Generated: 2026-03-15 20:39 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -51,22 +51,28 @@ _Generated: 2026-03-15 20:11 UTC by aicli /memory_
 
 ## Active Features / Bugs
 
-- **[feature]** auth `(40 events)`
+- **[bug]** hooks `(86 events)`
+- **[feature]** pagination `(86 events)`
+- **[feature]** auth `(49 events)`
 - **[feature]** workflow-runner `(1 events)`
+- **[feature]** test-picker-feature `(0 events)`
+- **[feature]** graph-workflow `(0 events)`
+- **[feature]** shared-memory `(0 events)`
+- **[feature]** tagging `(0 events)`
+- **[feature]** dropbox `(0 events)`
+- **[feature]** UI `(0 events)`
 - **[feature]** billing `(0 events)`
 - **[feature]** embeddings `(0 events)`
-- **[feature]** tagging `(0 events)`
 - **[feature]** mcp `(0 events)`
-- **[feature]** test-picker-feature `(0 events)`
-- **[feature]** UI `(0 events)`
-- **[feature]** dropbox `(0 events)`
-- **[feature]** shared-memory `(0 events)`
-- **[feature]** graph-workflow `(0 events)`
 - **[phase]** discovery `(1 events)`
 - **[phase]** development `(0 events)`
 - **[phase]** prod `(0 events)`
 
 ## Recent Work (last 10 exchanges)
+
+**[2026-03-15 20:33]** `claude_cli/claude`
+Q: The last commit was b255366 which suppose to be linked to the last prompt. it did worked before , but it seems that the last 9 commits are not linked to any prompts
+A: All good. Here's what happened and what was fixed:  ---  ## Root Cause  **Phase 5 only ran on explicit `POST /entities/events/sync`.** The `auto_commit_push.sh` hook called `POST /git/{project}/commit-push`, which committed and wrote to `commit_log.jsonl` — but never triggered the DB sync or Phase 5
 
 **[2026-03-15 19:42]** `claude_cli/claude`
 Q: I would like to set that up , and also add that to new prokect as autoamted set up. when creating a project there is a flow that ask for IDE support - and MCP config must be supported. currently it is
@@ -103,7 +109,3 @@ A: Everything works. Here's the summary of what was completed:  **History rotati
 **[2026-03-14 13:59]** `claude_cli/claude`
 Q: I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt ID ? commit are created after prompt (in session there might be several commits,
 A: It worked. "Links created: 0" means they already existed from the previous run (conflict). The sample shows 5 real links:  - `d0f14c21` → prompt "It is lookls like hooks are not working now..." - `951768bc` → prompt "do I need the dev_runtime_state.json?..." - `0336f3e5` → prompt "I am thinking to a
-
-**[2026-03-14 13:11]** `claude_cli/claude`
-Q: can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) properly and add all new feutre that was created
-A: `GET /graph/` returns `{"workflows":[]}` — the graph router is live and the tables are working. Everything is now aligned. Here's the full summary of what was done:  ---  ### Memory + Alignment Update — Complete  **`workspace/aicli/PROJECT.md`** — updated to v2.2.0 (2026-03-14): - Goal 9 changed fro

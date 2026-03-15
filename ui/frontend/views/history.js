@@ -198,7 +198,15 @@ export class HistoryView {
     const srcEl = document.getElementById('hist-filter-source');
     const phEl  = document.getElementById('hist-filter-phase');
     if (srcEl && this._histFilter.source) srcEl.value = this._histFilter.source;
-    if (phEl  && this._histFilter.phase)  phEl.value  = this._histFilter.phase;
+    if (phEl) {
+      if (this._histFilter.phase) {
+        phEl.value = this._histFilter.phase;
+      } else if (window.__currentPhase) {
+        // Auto-populate from Chat's active phase so History shows same context
+        phEl.value = window.__currentPhase;
+        this._histFilter.phase = window.__currentPhase;
+      }
+    }
     const searchEl = document.getElementById('history-search');
     if (searchEl && this._histFilter.query) searchEl.value = this._histFilter.query;
 
@@ -656,8 +664,6 @@ export class HistoryView {
     const untagged   = !c.phase;
     const rowBorder  = untagged ? 'border-left:3px solid #e74c3c' : 'border-left:3px solid transparent';
     const dateStr    = c.committed_at ? c.committed_at.slice(0, 10) : '';
-    const canEdit    = !!c.id;
-    const PHASES     = ['', 'discovery', 'development', 'testing', 'review', 'production', 'maintenance', 'bugfix'];
     const ghBase     = this._ghBase || '';
     const hashFull   = c.commit_hash || '';
     const hashShort  = hashFull.slice(0, 8);
@@ -698,12 +704,9 @@ export class HistoryView {
         <td style="padding:4px 6px">${hashEl}</td>
         <td style="padding:4px 6px;color:var(--muted);white-space:nowrap">${dateStr}</td>
         <td style="padding:4px 4px">
-          ${canEdit
-            ? `<select onchange="window._historyView._saveField(${c.id},'phase',this.value)"
-                style="background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-size:11px;color:${untagged ? '#e74c3c' : 'var(--text)'}">
-                ${PHASES.map(ph => `<option value="${ph}" ${c.phase === ph ? 'selected' : ''}>${ph || '—'}</option>`).join('')}
-               </select>`
-            : `<span style="color:${untagged ? '#e74c3c' : 'var(--muted)'}">—</span>`}
+          <span style="font-size:11px;color:${untagged ? '#e74c3c' : 'var(--muted)'}">
+            ${c.phase || '—'}
+          </span>
         </td>
         <td style="padding:4px 6px">
           <span id="${anchorId}" style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
@@ -725,17 +728,11 @@ export class HistoryView {
   }
 
   async _saveField(commitId, field, value) {
+    // Phase is now read-only in the Commits table — set phase in Chat and it propagates.
+    // Method retained for any future commit field patching.
     if (!commitId) return;
     try {
       await api.patchCommit(commitId, { [field]: value || null });
-      const row = document.querySelector(`tr[data-commit-id="${commitId}"]`);
-      if (row) {
-        const phaseSelect = row.querySelector('select');
-        const hasPhase    = phaseSelect ? phaseSelect.value !== '' : false;
-        row.style.borderLeft = hasPhase ? '3px solid transparent' : '3px solid #e74c3c';
-        if (phaseSelect) phaseSelect.style.color = hasPhase ? 'var(--text)' : '#e74c3c';
-        this._refreshUntaggedCount();
-      }
     } catch (e) {
       console.warn('Commit patch failed:', e.message);
     }

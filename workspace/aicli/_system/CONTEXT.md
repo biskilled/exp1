@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 20:11 UTC — do not edit manually.
+> Auto-generated 2026-03-15 20:40 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 90
-- **Last active**: 2026-03-15T20:06:06Z
+- **Sessions**: 91
+- **Last active**: 2026-03-15T20:39:33Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 20:33]** `claude_cli/claude`  
+→ The last commit was b255366 which suppose to be linked to the last prompt. it did worked before , but it seems that the 
+← _All good. Here's what happened and what was fixed:  ---  ## Root Cause  **Phase 5 only ran on explicit `POST /entities/events/sync`.** The `auto_commit_push.sh` hook called `POST /git/{project}/commit_
+
 **[2026-03-15 19:42]** `claude_cli/claude`  
 → I would like to set that up , and also add that to new prokect as autoamted set up. when creating a project there is a f
 ← _All changes are in place. Here's a summary of everything done:  ---  ## What Changed  ### Fixed now (current aicli project)  | File | Change | |---|---| | `.mcp.json` | Fixed path typo (`/user/ /gdriv_
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 03:22]** `claude_cli/claude`  
 → I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks also managing the c
 ← _All clean. Here's the full picture:  ---  **No hook changes needed.** The `auto_commit_push.sh` hook already writes `session_id` to `commit_log.jsonl` on lines 181 and 294. The data connection exists._
-
-**[2026-03-10 03:16]** `ui/claude`  
-→ hellow, how are you ?
-← _Hello! I'm doing well, thanks for asking. Ready to help with the **aicli** project.  Looking at the context, it seems you've been making good progress — recent work includes AI suggestion banners, ses_
