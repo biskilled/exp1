@@ -1087,6 +1087,62 @@ async def tag_event_by_source_id(body: TagBySourceIdBody):
     return {"ok": True, "event_id": event_id, "source_id": body.source_id, "project": p}
 
 
+@router.delete("/events/tag-by-source-id")
+async def untag_event_by_source_id(
+    source_id: str = Query(...),
+    value_id:  int = Query(...),
+    project:   str | None = Query(None),
+):
+    """Remove a tag from an event identified by its source_id.
+
+    Used by the History tab and Commits tab ✕ button on tag chips.
+    """
+    _require_db()
+    p = _project(project)
+    ev_table = db.project_table("events", p)
+    et_table = db.project_table("event_tags", p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT id FROM {ev_table} WHERE source_id=%s LIMIT 1", (source_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(404, f"No event found for source_id={source_id!r}")
+            cur.execute(
+                f"DELETE FROM {et_table} WHERE event_id=%s AND entity_value_id=%s",
+                (row[0], value_id),
+            )
+    return {"ok": True, "source_id": source_id, "value_id": value_id}
+
+
+@router.delete("/session-tag")
+async def remove_session_tag(
+    session_id: str = Query(...),
+    value_id:   int = Query(...),
+    project:    str | None = Query(None),
+):
+    """Remove an entity tag from all events belonging to a session.
+
+    Used by the Chat tab ✕ button on applied entity chips.
+    """
+    _require_db()
+    p = _project(project)
+    ev_table = db.project_table("events", p)
+    et_table = db.project_table("event_tags", p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""DELETE FROM {et_table}
+                    WHERE entity_value_id = %s
+                      AND event_id IN (
+                          SELECT id FROM {ev_table}
+                          WHERE metadata->>'session_id' = %s
+                      )""",
+                (value_id, session_id),
+            )
+            deleted = cur.rowcount
+    return {"ok": True, "session_id": session_id, "value_id": value_id, "deleted": deleted}
+
+
 @router.get("/events/source-tags")
 async def get_events_source_tags(project: str | None = Query(None)):
     """Return a map of source_id → [tag list] for all tagged prompt events.

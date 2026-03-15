@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-14] `claude_cli`: I do see the option to add tag in history - can you make sure all tags are loaded only once into mer
 - [2026-03-14] `claude_cli`: can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.m
 - [2026-03-14] `claude_cli`: I do see that there is a link between commit and session ID. is it possible to have link between com
 - [2026-03-14] `claude_cli`:  I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would l
 - [2026-03-14] `claude_cli`: Something wit hooks is not working now, as I do not see any new prompts / llm response adding into h
+- [2026-03-15] `claude_cli`: Pagination - I do see now in the chat only 24 prompts (there are much more) can you add pagination <
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

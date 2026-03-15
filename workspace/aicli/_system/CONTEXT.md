@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 16:41 UTC — do not edit manually.
+> Auto-generated 2026-03-15 17:25 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 84
-- **Last active**: 2026-03-14T21:55:13Z
+- **Sessions**: 85
+- **Last active**: 2026-03-15T17:14:57Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 16:47]** `claude_cli/claude`  
+→ Pagination - I do see now in the chat only 24 prompts (there are much more) can you add pagination < > 24/xxx on the top
+← _All changes are working. Here's a summary:  **Backend — archive files included** - `_load_unified_history()` now reads `history.jsonl` + all `history_*.jsonl` archives - Result: **204 entries** (was 2_
+
 **[2026-03-14 21:36]** `claude_cli/claude`  
 → Something wit hooks is not working now, as I do not see any new prompts / llm response adding into history.jsonl . also 
 ← _Everything is working. Here's a summary of all fixes:  ---  **1. Hook fixed — noise filtered at write time** - The deployed hook (`workspace/aicli/_system/hooks/log_user_prompt.sh`) was the old versio_
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-10 02:12]** `claude_cli/claude`  
 → I do see the save button - and when I save I do see the tag, when I am checking another session and come back (at the ui
 ← _Only module resolution error (expected) — no syntax errors. The fix is complete.  Here's what was implemented:  **Backend** (`entities.py`): New `GET /entities/session-tags?session_id=X&project=Y` end_
-
-**[2026-03-10 02:00]** `claude_cli/claude`  
-→ why there is sometime problem to restart the app (I do see that beckend is exited (1) as there is attemp to bind address
-← _Good. Here's what was fixed and why:  ---  ### Root causes & fixes  | Problem | Fix | |---|---| | **Port still busy at startup** — previous uvicorn didn't release port before new spawn | `freePort()` _

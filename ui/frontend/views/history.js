@@ -302,7 +302,13 @@ export class HistoryView {
         // Pre-existing tag chips from DB + in-session tagging
         const existing = this._entryTags[sourceId] || [];
         const existingChips = existing.map(t =>
-          `<span style="font-size:10px;background:${t.color}22;color:${t.color};border:1px solid ${t.color}55;padding:1px 5px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px">${this._escapeHtml(t.icon || '⬡')} ${this._escapeHtml(t.name)}</span>`
+          `<span data-value-id="${t.value_id}"
+                 style="font-size:10px;background:${t.color}22;color:${t.color};border:1px solid ${t.color}55;padding:1px 4px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px">
+             ${this._escapeHtml(t.icon || '⬡')} ${this._escapeHtml(t.name)}
+             <button onclick="event.stopPropagation();window._historyView._removeTag('${this._escapeHtml(sourceId)}',${t.value_id},'${anchorId}')"
+               style="border:none;background:none;cursor:pointer;color:${t.color};font-size:9px;padding:0 1px;line-height:1;opacity:.7"
+               title="Remove tag">✕</button>
+           </span>`
         ).join('');
 
         const outputHtml = e.output
@@ -643,9 +649,15 @@ export class HistoryView {
       : `<span style="color:var(--muted);font-size:11px">—</span>`;
 
     // Tag chips from _entryTags keyed by commit_hash
-    const existing     = this._entryTags[hashFull] || [];
+    const existing      = this._entryTags[hashFull] || [];
     const existingChips = existing.map(t =>
-      `<span style="font-size:10px;background:${t.color}22;color:${t.color};border:1px solid ${t.color}55;padding:1px 5px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px">${this._escapeHtml(t.icon || '⬡')} ${this._escapeHtml(t.name)}</span>`
+      `<span data-value-id="${t.value_id}"
+             style="font-size:10px;background:${t.color}22;color:${t.color};border:1px solid ${t.color}55;padding:1px 4px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px">
+         ${this._escapeHtml(t.icon || '⬡')} ${this._escapeHtml(t.name)}
+         <button onclick="event.stopPropagation();window._historyView._removeTag('${this._escapeHtml(hashFull)}',${t.value_id},'${anchorId}')"
+           style="border:none;background:none;cursor:pointer;color:${t.color};font-size:9px;padding:0 1px;line-height:1;opacity:.7"
+           title="Remove tag">✕</button>
+       </span>`
     ).join('');
 
     return `
@@ -743,6 +755,38 @@ export class HistoryView {
         }
       }
     }, 100);
+  }
+
+  // ── Tag removal ────────────────────────────────────────────────────────────
+
+  async _removeTag(sourceId, valueId, anchorId) {
+    const project = state.currentProject?.name || '';
+
+    // Remove from in-memory state immediately (optimistic)
+    if (this._entryTags[sourceId]) {
+      this._entryTags[sourceId] = this._entryTags[sourceId].filter(t => t.value_id !== valueId);
+    }
+
+    // Remove chip from DOM
+    const anchor = document.getElementById(anchorId);
+    if (anchor) {
+      const chip = anchor.querySelector(`[data-value-id="${valueId}"]`);
+      if (chip) chip.remove();
+    }
+
+    // Persist to backend
+    try {
+      await api.entities.untagBySourceId(sourceId, valueId, project);
+    } catch (e) {
+      console.warn('Remove tag failed:', e.message);
+      // Re-fetch tags on failure so state stays consistent
+      try {
+        const fresh = await api.entities.getSourceTags(project);
+        for (const [sid, tags] of Object.entries(fresh || {})) {
+          this._entryTags[sid] = tags;
+        }
+      } catch (_) {}
+    }
   }
 
   _refreshUntaggedCount() {

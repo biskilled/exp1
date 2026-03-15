@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-14 21:22 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 17:15 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -46,8 +46,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-14] I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is currently works in my syst
-- [2026-03-14] I do see the option to add tag in history - can you make sure all tags are loaded only once into mermory (to save db cal
 - [2026-03-14] can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) pr
 - [2026-03-14] I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt 
 - [2026-03-14] I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would like to start rotate t
+- [2026-03-14] Something wit hooks is not working now, as I do not see any new prompts / llm response adding into history.jsonl . also 
+- [2026-03-15] Pagination - I do see now in the chat only 24 prompts (there are much more) can you add pagination < > 24/xxx on the top

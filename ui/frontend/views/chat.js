@@ -294,6 +294,7 @@ function _setupTagBar() {
   window._applyTagDirect        = _applyTagDirect;
   window._saveEntitiesToSession = _saveEntitiesToSession;
   window._removePendingTag      = _removePendingTag;
+  window._removeAppliedTag      = _removeAppliedTag;
 }
 
 function _updateSaveButton() {
@@ -466,6 +467,28 @@ function _removePendingTag(idx) {
   _updateSaveButton();
 }
 
+async function _removeAppliedTag(idx) {
+  const e = _appliedEntities[idx];
+  if (!e) return;
+
+  // Optimistic: remove from UI immediately
+  _appliedEntities.splice(idx, 1);
+  _renderEntityChips();
+
+  // Persist removal to backend (removes from all events in this session)
+  const project = state.currentProject?.name || '';
+  if (_sessionId && e.value_id) {
+    try {
+      await api.entities.untagSession(_sessionId, e.value_id, project);
+    } catch (err) {
+      console.warn('Remove applied tag failed:', err.message);
+      // Restore on failure
+      _appliedEntities.splice(idx, 0, e);
+      _renderEntityChips();
+    }
+  }
+}
+
 /** Save all pending tags to the current session (or queue them for auto-apply on first send). */
 async function _saveEntitiesToSession() {
   if (!_pendingEntities.length) return;
@@ -513,14 +536,17 @@ function _renderEntityChips() {
   const container = document.getElementById('chat-entity-chips');
   if (!container) return;
 
-  // Confirmed chips — solid colored style
-  const appliedHtml = _appliedEntities.map(e => `
+  // Confirmed chips — solid colored style, with ✕ to remove
+  const appliedHtml = _appliedEntities.map((e, idx) => `
     <span class="entity-chip user-tag"
           style="display:inline-flex;align-items:center;gap:0.18rem;
                  background:${e.color}22;border:1px solid ${e.color}55;color:${e.color};
                  border-radius:10px;padding:0.08rem 0.38rem;font-size:0.56rem;white-space:nowrap"
           title="Saved · ${_esc(e.category_name)}/${_esc(e.name)}">
       ${_esc(e.icon)} ${_esc(e.name)}
+      <button onclick="window._removeAppliedTag(${idx})"
+        style="border:none;background:none;cursor:pointer;color:${e.color};font-size:0.6rem;padding:0 1px;line-height:1;opacity:.7"
+        title="Remove tag">✕</button>
     </span>`).join('');
 
   // Pending chips — lighter border, ✕ to remove

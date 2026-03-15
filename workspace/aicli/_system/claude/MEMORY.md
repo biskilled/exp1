@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-14 21:22 UTC by aicli /memory_
+_Generated: 2026-03-15 17:15 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-**aicli** is a shared AI memory platform for developers that unifies history and decisions across multiple AI tools (Claude CLI, Cursor, ChatGPT, etc.). Current state (v2.2.0): all core features are stable — nested tag hierarchies with unlimited depth, commit-to-prompt linking via source_id, history rotation on /memory synthesis, tag caching to eliminate DB calls, session phase labeling, and AI suggestions banner. The system uses flat-file storage (JSONL) as primary with PostgreSQL+pgvector for semantic search, Electron desktop UI with Vanilla JS, FastAPI backend with JWT auth, and supports multi-agent workflows via async DAG executor with Cytoscape visualization.
 
 ## Tech Stack
 
@@ -70,4 +66,44 @@ _Generated: 2026-03-14 21:22 UTC by aicli /memory_
 - **[phase]** development `(0 events)`
 - **[phase]** prod `(0 events)`
 
-**[2026-03-14]** `POST /entities/events/tag-by-source-id` — implemented bidirectional commit-to-prompt linking using source_id (history.jsonl timestamp) stored in commit_log.jsonl; multiple commits per session now tagged to originating prompt. **[2026-03-14]** `_rotate_history()` — history rotation wired into `/memory` call with configurable max_rows (default 500); creates timestamped archives (history_YYMMDDHHSS) and rotates original to history.jsonl. **[2026-03-14]** Tag cache optimization — all categories/values loaded once on tab open into memory; tag picker now zero DB calls during chat/planner; color preservation on save prevents thrashing. **[2026-03-14]** PROJECT.md + CLAUDE.md alignment — updated to v2.2.0 with all new features (nested tags, commit linking, session persistence, tag cache, graph workflows, history rotation). **[2026-03-10]** AI suggestions banner — dedicated amber banner between tag bar and messages; synthesized by Claude Haiku from /memory; works without PostgreSQL via best-effort DB integration. **[2026-03-10]** Port stability fixes — freePort() kills stale uvicorn via lsof; Electron cleanup via process.exit() eliminates bind address 127.0.0.1:8000 conflicts on restart.
+## Recent Work (last 10 exchanges)
+
+**[2026-03-15 16:47]** `claude_cli/claude`
+Q: Pagination - I do see now in the chat only 24 prompts (there are much more) can you add pagination < > 24/xxx on the top right where filter tab exists. can you do the same for chats and commits ?
+A: All changes are working. Here's a summary:  **Backend — archive files included** - `_load_unified_history()` now reads `history.jsonl` + all `history_*.jsonl` archives - Result: **204 entries** (was 26) — includes the 380-entry archive from Feb 23 (deduped + noise filtered) - Data range: 2026-02-23 
+
+**[2026-03-14 21:36]** `claude_cli/claude`
+Q: Something wit hooks is not working now, as I do not see any new prompts / llm response adding into history.jsonl . also can you explain why they are session starting with <task-notification>\n<task-id
+A: Everything is working. Here's a summary of all fixes:  ---  **1. Hook fixed — noise filtered at write time** - The deployed hook (`workspace/aicli/_system/hooks/log_user_prompt.sh`) was the old version without noise filtering — real prompts were being written correctly but so were `<task-notificatio
+
+**[2026-03-14 19:08]** `claude_cli/claude`
+Q: I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would like to start rotate that (when user is doing /memory) - the current one will remain history.jsonl wbu
+A: Everything works. Here's the summary of what was completed:  **History rotation — done:** - `_rotate_history()` was already in `projects.py`; added `log = logging.getLogger(__name__)` and wired up the call inside `generate_memory()` - Triggered on every `/memory` call; reads `history_max_rows` from 
+
+**[2026-03-14 13:59]** `claude_cli/claude`
+Q: I do see that there is a link between commit and session ID. is it possible to have link between commit/push and prompt ID ? commit are created after prompt (in session there might be several commits,
+A: It worked. "Links created: 0" means they already existed from the previous run (conflict). The sample shows 5 real links:  - `d0f14c21` → prompt "It is lookls like hooks are not working now..." - `951768bc` → prompt "do I need the dev_runtime_state.json?..." - `0336f3e5` → prompt "I am thinking to a
+
+**[2026-03-14 13:11]** `claude_cli/claude`
+Q: can you run /memory, to make sure all updated. also can you check that system is aligned to CLAUDE.md (memroy layers) properly and add all new feutre that was created
+A: `GET /graph/` returns `{"workflows":[]}` — the graph router is live and the tables are working. Everything is now aligned. Here's the full summary of what was done:  ---  ### Memory + Alignment Update — Complete  **`workspace/aicli/PROJECT.md`** — updated to v2.2.0 (2026-03-14): - Goal 9 changed fro
+
+**[2026-03-14 13:04]** `claude_cli/claude`
+Q: I do see the option to add tag in history - can you make sure all tags are loaded only once into mermory (to save db calls) as each time I am trying to ad tag, its looks like to loading all tags. also
+A: Everything looks correct. Here's a summary of all changes made:  ---  ### Changes  **`ui/frontend/views/history.js`**  1. **Tag cache loaded once on tab open** — `_renderChat` now includes `listCategories` in its initial `Promise.all` (4 parallel requests: history, commits, categories, config). A ne
+
+**[2026-03-14 11:10]** `claude_cli/claude`
+Q: I do have some concern how commit/hash are linked to prompts/llm answers. also are tagging is currently works in my system. the goal is to be bale to use/memory in order to update all data (update sum
+A: All changes are done. Here's a summary of what was implemented:  ### Changes  **`ui/backend/routers/entities.py`** — new endpoint `POST /entities/events/tag-by-source-id`: - Accepts `{ source_id, entity_value_id, project }` - Looks up event by `source_id` (the timestamp from history.jsonl) - If not 
+
+**[2026-03-13 17:44]** `claude_cli/claude`
+Q: I am siting with my freid and try to explain him wha is this system is about ? can you explain that shortly ?
+A: **aicli** is a shared AI memory platform for developers.  The core problem it solves: when you use different AI tools (Claude CLI, Cursor, ChatGPT in the browser, etc.), each one starts from scratch — no memory of your project, your decisions, or your history.  **aicli gives all of them the same mem
+
+**[2026-03-10 03:22]** `claude_cli/claude`
+Q: I understand the issue. I am using your claude cli and hooks to store propts and llm response. hooks also managing the commit/push (as most communication is from calude CLI). I would like to have that
+A: All clean. Here's the full picture:  ---  **No hook changes needed.** The `auto_commit_push.sh` hook already writes `session_id` to `commit_log.jsonl` on lines 181 and 294. The data connection exists. What was missing was the UI to display it.  **How it works now:**  ``` Claude Code CLI starts   └─ 
+
+**[2026-03-10 03:16]** `ui/claude`
+Q: hellow, how are you ?
+A: Hello! I'm doing well, thanks for asking. Ready to help with the **aicli** project.  Looking at the context, it seems you've been making good progress — recent work includes AI suggestion banners, session tag persistence, planner UI improvements, and port binding fixes.  What would you like to work 
