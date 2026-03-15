@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 22:45 UTC — do not edit manually.
+> Auto-generated 2026-03-15 22:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 97
-- **Last active**: 2026-03-15T22:44:25Z
+- **Sessions**: 98
+- **Last active**: 2026-03-15T22:51:48Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -33,12 +33,12 @@
 
 ## In Progress
 
-- Phase synchronization across Chat tabs — fixed: phase now updates current session (not forcing new one); PATCH /chat/sessions/{id}/tags endpoint writes phase to session JSON; phase persists on session switch and loads correctly on app init for both UI and CLI sessions (2026-03-15)
-- Commit-per-prompt display in Chat tab — replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link); shows linked commits only for that prompt (2026-03-15)
-- Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); tag removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
-- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup; 204 total entries including Feb 23 archive (2026-03-15)
-- AI suggestions auto-save to session — suggestions immediately create tags in proper category via _acceptSuggestedTag async call; tags appear in Planner; phase filter fully functional (2026-03-15)
-- Commit phase filtering — added phase column to Commits table; filter by phase same as Chat tab; phase persists per commit in database; red ⚠ badge on sessions without phase (UI/CLI/WF all supported) (2026-03-15)
+- Phase persistence per session — fixed on init to load from DB; PATCH /chat/sessions/{id}/tags saves phase; UI/CLI/WF all supported with red ⚠ badge for missing phase (2026-03-15)
+- Session ordering by created_at instead of updated_at — prevents phase/tag updates from reordering session list; sessions stay in chronological order (2026-03-15)
+- Commit-per-prompt display in Chat — inline commits at bottom of each prompt entry with accent left-border, hash ↗ link; shows only commits for that specific prompt (2026-03-15)
+- Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
+- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup (2026-03-15)
+- AI suggestions auto-save to session — suggestions create tags in proper category via _acceptSuggestedTag; tags appear in Planner; phase filter fully functional (2026-03-15)
 
 ## Key Decisions
 
@@ -150,6 +150,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 22:51]** `claude_cli/claude`  
+→ That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possi
+← _Two changes:  1. **Backend** — `patch_session_tags` no longer updates `updated_at` when saving tags. The session's timestamp stays frozen at when it was last messaged.  2. **Frontend** — `_loadSession_
+
 **[2026-03-15 22:40]** `claude_cli/claude`  
 → I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently 
 ← _The full flow works. Here's what was changed and why:  **Root causes fixed:**  1. **Red `⚠` only on UI sessions** — removed the `s.source === 'ui'` condition. Now ALL sessions (UI, CLI, WF) without a _
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-14 21:36]** `claude_cli/claude`  
 → Something wit hooks is not working now, as I do not see any new prompts / llm response adding into history.jsonl . also 
 ← _Everything is working. Here's a summary of all fixes:  ---  **1. Hook fixed — noise filtered at write time** - The deployed hook (`workspace/aicli/_system/hooks/log_user_prompt.sh`) was the old versio_
-
-**[2026-03-14 19:08]** `claude_cli/claude`  
-→  I do see session_tags.json - is it used ? Also - history.jsonl start to be very large and I would like to start rotate 
-← _Everything works. Here's the summary of what was completed:  **History rotation — done:** - `_rotate_history()` was already in `projects.py`; added `log = logging.getLogger(__name__)` and wired up the_

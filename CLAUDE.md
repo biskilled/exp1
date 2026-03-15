@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-15] `claude_cli`: There is still UI issue with updateting/ showing the correct phase per session. when ever app is loa
 - [2026-03-15] `claude_cli`: The error still exists - When I change the phase (on chats) - I am not able to save. also when I swi
 - [2026-03-15] `claude_cli`: Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the 
 - [2026-03-15] `claude_cli`: Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do
 - [2026-03-15] `claude_cli`: I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked 
+- [2026-03-15] `claude_cli`: That looks better. the problem now is that on any change of the phase the session order is changed a
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

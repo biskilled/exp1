@@ -440,6 +440,54 @@ class SessionTagsPatch(BaseModel):
     bug_ref: Optional[str] = None
 
 
+def _backfill_session_phase(project: str, session_id: str, phase: Optional[str]) -> None:
+    """Retroactively set phase on all history.jsonl entries + DB rows for a session.
+
+    Called whenever a session's phase tag is changed so that all prompts and commits
+    linked to that session become filterable by the new phase.
+    """
+    # 1. Rewrite matching entries in history.jsonl
+    hist_path = Path(settings.workspace_dir) / project / "_system" / "history.jsonl"
+    if hist_path.exists():
+        try:
+            lines = hist_path.read_text().splitlines()
+            updated = []
+            for line in lines:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("session_id") == session_id:
+                        entry["phase"] = phase
+                    updated.append(json.dumps(entry, ensure_ascii=False))
+                except Exception:
+                    updated.append(line)
+            hist_path.write_text("\n".join(updated) + "\n")
+        except Exception:
+            pass  # read-only filesystem or concurrent write — best-effort
+
+    # 2. Update commits table phase (events table has no session_id column;
+    #    history.jsonl is the source of truth for the History chat filter)
+    if db.is_available():
+        import logging as _log
+        _logger = _log.getLogger(__name__)
+        c_table = db.project_table("commits", project)
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"UPDATE {c_table} SET phase=%s WHERE session_id=%s",
+                        (phase, session_id),
+                    )
+                    c_rows = cur.rowcount
+            _logger.info(
+                f"backfill_session_phase: project={project} session={session_id[:8]} "
+                f"phase={phase!r} → commits={c_rows}"
+            )
+        except Exception as exc:
+            _logger.warning(f"backfill_session_phase DB failed: {exc}")
+
+
 @router.patch("/sessions/{session_id}/tags")
 async def patch_session_tags(
     session_id: str,
@@ -450,7 +498,10 @@ async def patch_session_tags(
 
     For UI sessions: writes to the session JSON file.
     For CLI/workflow sessions: writes to _system/session_phases.json as a fallback.
+    In both cases, retroactively backfills phase onto all history.jsonl entries
+    and DB rows (events, commits) for this session.
     """
+    p = project or settings.active_project or "default"
     store = _get_store()
     session = store.get(session_id)
     if session is not None:
@@ -462,10 +513,11 @@ async def patch_session_tags(
         if body.bug_ref is not None: tags["bug_ref"] = body.bug_ref or None
         # Do NOT update updated_at — tag edits shouldn't change session sort order
         store._save(session)
+        if body.phase is not None:
+            _backfill_session_phase(p, session_id, body.phase or None)
         return {"ok": True, "tags": tags}
 
     # CLI / workflow session — persist in session_phases.json
-    p = project or settings.active_project or "default"
     phases_path = Path(settings.workspace_dir) / p / "_system" / "session_phases.json"
     phases_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -477,4 +529,6 @@ async def patch_session_tags(
     if body.feature is not None: entry["feature"] = body.feature or None
     if body.bug_ref is not None: entry["bug_ref"] = body.bug_ref or None
     phases_path.write_text(json.dumps(existing, indent=2))
+    if body.phase is not None:
+        _backfill_session_phase(p, session_id, body.phase or None)
     return {"ok": True, "tags": entry}

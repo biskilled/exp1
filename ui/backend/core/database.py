@@ -90,6 +90,7 @@ class _Database:
         );
         CREATE INDEX IF NOT EXISTS idx_{c}_committed ON {c}(committed_at DESC);
         ALTER TABLE {c} ADD COLUMN IF NOT EXISTS prompt_source_id VARCHAR(255);
+        ALTER TABLE {c} ADD COLUMN IF NOT EXISTS session_id VARCHAR(255);
 
         CREATE TABLE IF NOT EXISTS {e} (
             id         SERIAL         PRIMARY KEY,

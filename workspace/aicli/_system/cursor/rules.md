@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 22:44 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 22:51 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -46,8 +46,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-15] There is still UI issue with updateting/ showing the correct phase per session. when ever app is loaded - phase in on re
 - [2026-03-15] The error still exists - When I change the phase (on chats) - I am not able to save. also when I switch between diffrent
 - [2026-03-15] Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the right phase now. and
 - [2026-03-15] Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct
 - [2026-03-15] I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently 
+- [2026-03-15] That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possi
