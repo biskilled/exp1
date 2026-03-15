@@ -120,7 +120,8 @@ async def list_tools() -> list[mcp_types.Tool]:
             name="get_project_state",
             description=(
                 "Get the live project state: PROJECT.md, tech stack, in-progress items, "
-                "and current session tags. Call this at the start of a session to orient yourself."
+                "current session tags, and ALL active project entities (features, bugs, tasks, components). "
+                "Call this at the start of a session to orient yourself and understand what is being built."
             ),
             inputSchema={
                 "type": "object",
@@ -267,8 +268,32 @@ async def _dispatch(name: str, args: dict) -> Any:
         })
 
     elif name == "get_project_state":
-        proj = await _get(f"/projects/{project}")
-        tags = await _get("/history/session-tags", {"project": project})
+        proj, tags = await asyncio.gather(
+            _get(f"/projects/{project}"),
+            _get("/history/session-tags", {"project": project}),
+        )
+        # Load entity summary — best-effort (returns {} if DB unavailable)
+        entities: dict = {}
+        try:
+            entities = await _get("/entities/summary", {"project": project})
+        except Exception:
+            pass
+
+        # Build compact entity map: {category: [{name, status, event_count, commit_count, description, due_date}]}
+        entity_map: dict = {}
+        for cat in entities.get("summary", []):
+            entity_map[cat["name"]] = [
+                {
+                    "name": v["name"],
+                    "status": v["status"],
+                    "description": v["description"],
+                    "due_date": v["due_date"],
+                    "event_count": v["event_count"],
+                    "commit_count": v["commit_count"],
+                }
+                for v in cat.get("values", [])
+            ]
+
         return {
             "project": project,
             "project_md": (proj.get("project_md") or "")[:3000],
@@ -279,6 +304,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "feature": tags.get("feature"),
                 "bug_ref": tags.get("bug_ref"),
             },
+            "entities": entity_map,
         }
 
     elif name == "get_recent_history":

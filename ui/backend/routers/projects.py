@@ -654,6 +654,7 @@ async def _synthesize_with_llm(
     history: list[dict],
     state_data: dict,
     project_md: str,
+    entity_text: str = "",
 ) -> dict | None:
     """Use Claude Haiku to intelligently synthesize project history into structured memory.
 
@@ -691,10 +692,12 @@ async def _synthesize_with_llm(
         }, indent=2)
         proj_intro = (project_md.split("\n## ")[0].strip()[:600] if project_md else "")
 
+        entity_block = f"Active project entities (features/bugs/tasks):\n{entity_text}\n\n" if entity_text else ""
         prompt = (
             f'You are analyzing development history for project "{project_name}".\n\n'
             f"Current structured state:\n{current_state}\n\n"
             f"Project intro (from PROJECT.md):\n{proj_intro}\n\n"
+            f"{entity_block}"
             f"Development history ({len(history)} sessions, oldest→newest):\n{history_text}\n\n"
             "Return ONLY valid JSON (no markdown fences) with exactly these fields:\n"
             "{\n"
@@ -877,8 +880,50 @@ async def generate_memory(project_name: str):
 
     generated: list[str] = []
 
+    # ── Load entity summary (features/bugs/tasks) for synthesis + MEMORY.md ──
+    entity_groups: list[dict] = []
+    entity_text_for_llm = ""
+    if db.is_available():
+        try:
+            et_table = db.project_table("event_tags", project_name)
+            ev_table = db.project_table("events",     project_name)
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"""SELECT c.name AS category, c.icon,
+                                  v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
+                                  COUNT(DISTINCT et.event_id)                                          AS event_count,
+                                  COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
+                           FROM entity_categories c
+                           JOIN entity_values v ON v.category_id = c.id
+                           LEFT JOIN {et_table} et ON et.entity_value_id = v.id
+                           LEFT JOIN {ev_table} ev ON ev.id = et.event_id
+                           WHERE v.project=%s AND v.status != 'archived'
+                           GROUP BY c.name, c.icon, v.id, v.name, v.description, v.status, v.due_date, v.parent_id
+                           ORDER BY c.name, v.status, COUNT(DISTINCT et.event_id) DESC""",
+                        (project_name,),
+                    )
+                    entity_rows = cur.fetchall()
+            # Build per-category groups
+            _cats: dict[str, list] = {}
+            for (cat, icon, vid, vname, vdesc, vstatus, vdue, vparent, ec, cc) in entity_rows:
+                _cats.setdefault(cat, []).append((icon, vname, vdesc, vstatus, vdue, vparent, ec, cc))
+            entity_groups = [{"category": k, "values": v} for k, v in _cats.items()]
+            # Compact text for LLM prompt
+            lines_for_llm: list[str] = []
+            for g in entity_groups:
+                for (icon, vname, vdesc, vstatus, vdue, vparent, ec, cc) in g["values"]:
+                    due = f" due:{vdue.isoformat() if vdue else ''}" if vdue else ""
+                    desc = f" — {vdesc[:80]}" if vdesc else ""
+                    lines_for_llm.append(
+                        f"[{g['category']}] {vname} ({vstatus}){due}{desc} | {ec} events, {cc} commits"
+                    )
+            entity_text_for_llm = "\n".join(lines_for_llm[:40])
+        except Exception as _e:
+            log.warning("entity summary for /memory failed: %s", _e)
+
     # ── LLM synthesis (optional — degrades to mechanical approach if API unavailable) ──
-    synthesis = await _synthesize_with_llm(project_name, recent, state_data, project_md)
+    synthesis = await _synthesize_with_llm(project_name, recent, state_data, project_md, entity_text_for_llm)
     if synthesis:
         # Merge LLM-extracted structured data into state_data (LLM wins on new fields)
         if synthesis.get("tech_stack"):
@@ -925,37 +970,32 @@ async def generate_memory(project_name: str):
             memory_lines.append(f"- {item}")
         memory_lines.append("")
 
-    # ── Active Features from entity layer ─────────────────────────────────────
-    if db.is_available():
-        try:
-            et_table = db.project_table("event_tags", project_name)
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        f"""SELECT c.name AS category, v.name, v.description, v.status,
-                                  COUNT(et.event_id) AS event_count
-                           FROM entity_values v
-                           JOIN entity_categories c ON c.id = v.category_id
-                           LEFT JOIN {et_table} et ON et.entity_value_id = v.id
-                           WHERE v.project=%s AND v.status='active'
-                             AND c.name IN ('feature','bug','phase')
-                           GROUP BY c.name, v.id, v.name, v.description, v.status
-                           ORDER BY c.name, event_count DESC
-                           LIMIT 20""",
-                        (project_name,),
-                    )
-                    ev_rows = cur.fetchall()
-            if ev_rows:
-                memory_lines.append("## Active Features / Bugs\n")
-                for cat, name, desc, status, ec in ev_rows:
-                    label = f"- **[{cat}]** {name}"
-                    if desc:
-                        label += f" — {desc[:80]}"
-                    label += f" `({ec} events)`"
-                    memory_lines.append(label)
-                memory_lines.append("")
-        except Exception:
-            pass
+    # ── Active Features from entity layer (uses pre-loaded entity_groups) ──────
+    if entity_groups:
+        memory_lines.append("## Active Features / Bugs / Tasks\n")
+        for g in entity_groups:
+            cat = g["category"]
+            vals = g["values"]
+            if not vals:
+                continue
+            memory_lines.append(f"### {cat.capitalize()}\n")
+            for (icon, vname, vdesc, vstatus, vdue, vparent, ec, cc) in vals:
+                label = f"- **{vname}**"
+                if vstatus != "active":
+                    label += f" `[{vstatus}]`"
+                if vdue:
+                    label += f" | due: {vdue.isoformat() if hasattr(vdue, 'isoformat') else vdue}"
+                if vdesc:
+                    label += f" — {vdesc[:100]}"
+                meta = []
+                if ec:
+                    meta.append(f"{ec} events")
+                if cc:
+                    meta.append(f"{cc} commits")
+                if meta:
+                    label += f" `({', '.join(meta)})`"
+                memory_lines.append(label)
+            memory_lines.append("")
 
     if synthesis and synthesis.get("memory_digest"):
         # LLM-synthesized meaningful digest of recent work
@@ -1066,6 +1106,18 @@ async def generate_memory(project_name: str):
 
     if state_data.get("key_decisions"):
         aicli_lines.append("Decisions: " + "; ".join(state_data["key_decisions"][:3]))
+
+    if entity_groups:
+        # Compact entity summary — top active items per category
+        entity_parts: list[str] = []
+        for g in entity_groups:
+            top = [(vname, ec) for (_, vname, _, vstatus, _, _, ec, _) in g["values"]
+                   if vstatus == "active"][:3]
+            if top:
+                items = ", ".join(f"{n} ({e}ev)" for n, e in top)
+                entity_parts.append(f"[{g['category']}] {items}")
+        if entity_parts:
+            aicli_lines.append("Entities: " + " | ".join(entity_parts))
 
     if recent:
         last = recent[-1]

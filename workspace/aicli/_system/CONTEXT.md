@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 23:10 UTC — do not edit manually.
+> Auto-generated 2026-03-15 23:36 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 99
-- **Last active**: 2026-03-15T23:08:41Z
+- **Sessions**: 100
+- **Last active**: 2026-03-15T23:24:29Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,7 +20,7 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude, OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -33,12 +33,12 @@
 
 ## In Progress
 
-- Session phase persistence and UI consistency — phase now loads on app init, saves via PATCH endpoint, backfills history.jsonl, shows red ⚠ badge for missing phase, and maintains chronological order (2026-03-15)
-- Commit-per-prompt display in Chat — inline commits at bottom of each prompt entry with accent left-border, hash ↗ link; shows only commits for that specific prompt (2026-03-15)
+- Session phase persistence across Chat/History/Commits — phase now loads on app init from DB, saves via PATCH endpoint, backfills history.jsonl on change, shows red ⚠ badge for missing phase, maintains chronological order (2026-03-15)
+- Commit-per-prompt display in Chat — inline commits at bottom of each prompt entry with accent left-border, hash ↗ link; shows only commits for that specific prompt via prompt_source_id (2026-03-15)
 - Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
 - Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup (2026-03-15)
 - AI suggestions auto-save to session — suggestions create tags in proper category via _acceptSuggestedTag; tags appear in Planner; phase filter fully functional (2026-03-15)
-- Commit phase filtering and backfill — commits now inherit session phase; history.jsonl backfilled when phase changes; commits filterable by phase in Commits tab (2026-03-15)
+- Database schema alignment to 5-step memory — phase/feature/session_id as real indexed columns in events_{p}; MCP tools retrieve tagged data efficiently for project management (2026-03-15)
 
 ## Key Decisions
 
@@ -56,7 +56,7 @@
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
 - Session phase (required field) fixed on init from DB; PATCH /chat/sessions/{id}/tags saves phase; backfill to history.jsonl on phase change
-- Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering the session list
+- Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering the session list; real columns (phase, feature, session_id) in events_{p} with indexes
 
 ---
 
@@ -150,6 +150,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 23:29]** `claude_cli/claude`  
+→ is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details inform
+
+**[2026-03-15 23:13]** `claude_cli/claude`  
+→ now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly f
+← _Everything is working. Here's a summary of all changes made:  ---  ## What was changed and why  ### Schema (`core/database.py`) - Added `phase`, `feature`, `session_id` as **real columns** (not just J_
+
 **[2026-03-15 22:57]** `claude_cli/claude`  
 → It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by
 ← _Now the full flow works. Here's a summary of everything fixed:  **Root causes and fixes:**  1. **History chat filter shows nothing for a phase** — History.jsonl entries had no `phase` field if the ses_
@@ -201,11 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 17:44]** `claude_cli/claude`  
 → Let me summersie and make sure all work properly - tags (per session) - can be added by Chat, tags (per prompts) can be 
 ← _All the previous session's fixes are confirmed in place:  - `history.py`: `_load_unified_history` reads current + all `history_*.jsonl` archives ✓ - `history.js`: `data-ts` attribute on entries, `_jum_
-
-**[2026-03-15 17:28]** `claude_cli/claude`  
-→ Taggin - there is a wau to add tags in History, commit and chat - which is good. can you make sure all is aligned to the
-← _149 tags, 0 duplicates. Everything is clean. Here's a summary of all changes:  ---  **No duplicates** — confirmed: 149 event tags, 0 duplicates. The backend uses `ON CONFLICT DO NOTHING` on every tag _
-
-**[2026-03-15 16:47]** `claude_cli/claude`  
-→ Pagination - I do see now in the chat only 24 prompts (there are much more) can you add pagination < > 24/xxx on the top
-← _All changes are working. Here's a summary:  **Backend — archive files included** - `_load_unified_history()` now reads `history.jsonl` + all `history_*.jsonl` archives - Result: **204 entries** (was 2_

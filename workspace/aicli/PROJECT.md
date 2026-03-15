@@ -330,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Session phase persistence and UI consistency — phase now loads on app init, saves via PATCH endpoint, backfills history.jsonl, shows red ⚠ badge for missing phase, and maintains chronological order (2026-03-15)
-- Commit-per-prompt display in Chat — inline commits at bottom of each prompt entry with accent left-border, hash ↗ link; shows only commits for that specific prompt (2026-03-15)
+- Session phase persistence across Chat/History/Commits — phase now loads on app init from DB, saves via PATCH endpoint, backfills history.jsonl on change, shows red ⚠ badge for missing phase, maintains chronological order (2026-03-15)
+- Commit-per-prompt display in Chat — inline commits at bottom of each prompt entry with accent left-border, hash ↗ link; shows only commits for that specific prompt via prompt_source_id (2026-03-15)
 - Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
 - Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup (2026-03-15)
 - AI suggestions auto-save to session — suggestions create tags in proper category via _acceptSuggestedTag; tags appear in Planner; phase filter fully functional (2026-03-15)
-- Commit phase filtering and backfill — commits now inherit session phase; history.jsonl backfilled when phase changes; commits filterable by phase in Commits tab (2026-03-15)
+- Database schema alignment to 5-step memory — phase/feature/session_id as real indexed columns in events_{p}; MCP tools retrieve tagged data efficiently for project management (2026-03-15)

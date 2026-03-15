@@ -240,6 +240,60 @@ async def list_values(
             return {"values": rows, "project": p}
 
 
+@router.get("/summary")
+async def entity_summary(project: str | None = Query(None)):
+    """Structured project management view: all active entities grouped by category.
+
+    Returns features/bugs/tasks with descriptions, due dates, event counts and linked
+    commit counts. Used by /memory synthesis and MCP get_project_state.
+    """
+    _require_db()
+    p = _project(project)
+    _seed_defaults(p)
+
+    et_table = db.project_table("event_tags", p)
+    ev_table = db.project_table("events",     p)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT c.id AS cat_id, c.name AS category, c.color, c.icon,
+                          v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
+                          COUNT(DISTINCT et.event_id)                                          AS event_count,
+                          COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
+                   FROM entity_categories c
+                   JOIN entity_values v ON v.category_id = c.id
+                   LEFT JOIN {et_table} et ON et.entity_value_id = v.id
+                   LEFT JOIN {ev_table} ev ON ev.id = et.event_id
+                   WHERE v.project=%s AND v.status != 'archived'
+                   GROUP BY c.id, c.name, c.color, c.icon,
+                            v.id, v.name, v.description, v.status, v.due_date, v.parent_id
+                   ORDER BY c.name, v.status, COUNT(DISTINCT et.event_id) DESC""",
+                (p,),
+            )
+            rows = cur.fetchall()
+
+    # Group by category
+    cats: dict[str, dict] = {}
+    for (cat_id, cat_name, color, icon, vid, vname, vdesc, vstatus, vdue,
+         vparent, event_count, commit_count) in rows:
+        if cat_name not in cats:
+            cats[cat_name] = {"id": cat_id, "name": cat_name,
+                              "color": color, "icon": icon, "values": []}
+        cats[cat_name]["values"].append({
+            "id": vid,
+            "name": vname,
+            "description": vdesc or "",
+            "status": vstatus,
+            "due_date": vdue.isoformat() if vdue else None,
+            "parent_id": vparent,
+            "event_count": event_count,
+            "commit_count": commit_count,
+        })
+
+    return {"summary": list(cats.values()), "project": p}
+
+
 @router.post("/values", status_code=201)
 async def create_value(body: ValueCreate):
     _require_db()

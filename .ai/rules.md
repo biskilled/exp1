@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 23:08 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 23:35 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude, OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -42,12 +42,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
 - Session phase (required field) fixed on init from DB; PATCH /chat/sessions/{id}/tags saves phase; backfill to history.jsonl on phase change
-- Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering the session list
+- Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering the session list; real columns (phase, feature, session_id) in events_{p} with indexes
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-15] Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the right phase now. and
-- [2026-03-15] Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct
 - [2026-03-15] I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently 
 - [2026-03-15] That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possi
 - [2026-03-15] It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by
+- [2026-03-15] now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly f
+- [2026-03-15] is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details inform
