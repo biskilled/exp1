@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-15 17:55 UTC by aicli /memory_
+_Generated: 2026-03-15 18:15 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-**aicli** is a shared AI memory platform for developers that unifies history, commits, and AI interactions across multiple tools (Claude CLI, Cursor, ChatGPT, etc.) into a single queryable project workspace. Built with Python FastAPI backend, Electron UI with Vanilla JS, PostgreSQL + pgvector for semantic search, and flat-file JSONL storage with rotation; currently at v2.2.0 with stable features for nested tags, commit-to-prompt linking, history rotation, pagination, and tag synchronization across all views.
+**aicli** is a shared AI memory platform for developers that unifies history, tagging, and context across multiple AI tools (Claude CLI, Cursor, ChatGPT) via a FastAPI backend, PostgreSQL semantic search, flat-file JSONL storage, and an Electron UI. Current state (v2.2.0): fully functional with commit-to-prompt linking, nested tags, pagination across Chat/History/Commits, tag deduplication, hook noise filtering, and MCP server integration ready for external agent access.
 
 ## Tech Stack
 
@@ -13,7 +13,7 @@ _Generated: 2026-03-15 17:55 UTC by aicli /memory_
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
-- **storage_primary**: JSONL (history.jsonl with rotation, commit_log.jsonl), JSON, CSV — flat file first
+- **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV — flat file first
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for nested tags)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
@@ -35,23 +35,23 @@ _Generated: 2026-03-15 17:55 UTC by aicli /memory_
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
 - Tag cache loaded once per project tab open: zero DB calls during chat/planner; batch updates only on explicit save
-- History rotation on /memory call: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS)
+- History rotation on /memory call: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
 - AI suggestions as dedicated amber banner between tag bar and messages; always-on (DB best-effort), synthesized by Claude Haiku
 - Smart chunking: summary-level + per-class/function chunks with language/file_path/chunk_type metadata
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
-- Session phase labeling via 'Phase:' tag bar selector; multiple commits per session each tagged to originating prompt via source_id
+- Each prompt has multiple linked commits; each commit tagged inherits session phase + prompt-level tags via source_id linking
 
 ## In Progress
 
-- Tag management unified across Chat/History/Commits — all tags deduplicated (149 total, 0 dupes), color preservation on save, removal via ✕ buttons propagates across all views (2026-03-15)
-- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation on all three tabs (2026-03-15)
+- Commit-per-prompt display in Chat tab — each prompt entry shows linked commits inline at bottom with accent left-border; replaced session-level commit strip (2026-03-15)
+- Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); tag removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
+- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup (2026-03-15)
+- Hook noise filtering fully deployed — filters <task-notification>, <tool-use-id>, <system-> entries; real prompts/LLM responses correctly logged to history.jsonl; pagination now accurate (2026-03-15)
+- Tag cache optimization in History tab — all categories/values loaded once on tab open; zero DB calls during tag picker; color persistence on save prevents thrashing (2026-03-14)
 - Commit-to-prompt linking verified end-to-end — source_id timestamp stored in commit_log.jsonl; tags per prompt auto-propagate to linked commits via tag-by-source-id endpoint (2026-03-14)
-- History rotation fully operational — /memory triggers rotation at configurable row threshold (default 500 rows); creates timestamped archives (history_YYMMDDHHSS); _load_unified_history() reads all archives on startup (2026-03-15)
-- Tag cache optimization in History tab — all categories/values loaded once on tab open; zero DB calls during tag picker operations; color persistence prevents thrashing (2026-03-14)
-- Hook noise filtering deployed — filters <task-notification>, <tool-use-id>, and <system-> entries; deployed hook matches template; real prompts/LLM responses now correctly logged to history.jsonl (2026-03-15)
 
 ## Active Features / Bugs
 
@@ -70,4 +70,9 @@ _Generated: 2026-03-15 17:55 UTC by aicli /memory_
 - **[phase]** development `(0 events)`
 - **[phase]** prod `(0 events)`
 
-**[2026-03-15]** `history.js + entities.py` — Tag management unified across Chat/History/Commits views with deduplication (149 total, 0 duplicates) and color preservation on save. Removal via ✕ buttons propagates across all three tabs. **[2026-03-15]** `history.js` — Pagination added to Chat, History, and Commits tabs displaying offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation controls. **[2026-03-15]** `auto_commit_push.sh` — Hook noise filtering deployed to remove `<task-notification>`, `<tool-use-id>`, and `<system->` entries; real prompts and LLM responses now correctly logged to history.jsonl. **[2026-03-15]** `history.py` — History rotation fully operational: `/memory` triggers rotation at configurable max_rows (default 500); creates timestamped archives; `_load_unified_history()` reads all archives on startup yielding 204+ entries. **[2026-03-14]** `entities.py + history.js` — Commit-to-prompt linking verified end-to-end: source_id timestamp in commit_log.jsonl; tags per prompt auto-propagate to linked commits via POST /entities/events/tag-by-source-id. **[2026-03-14]** `history.js` — Tag cache optimization: all categories/values loaded once on tab open via `_buildTagCache()`; zero DB calls during tag picker operations; color preservation prevents thrashing.
+**[2026-03-15]** `chat.js` — Commit-per-prompt display: each prompt now shows linked commits inline at bottom with accent left-border styling; replaced old session-level commit strip for clearer prompt↔commit relationship.
+**[2026-03-15]** `entities.js`, `history.js`, `chat.js` — Tag deduplication verified: 149 unique tags, 0 duplicates; ✕ button removes tags simultaneously across Chat/History/Commits tabs via DELETE /entities/events/tag-by-source-id.
+**[2026-03-15]** `history.js`, `chat.js`, `commits.js` — Pagination added to all three tabs: displays range (e.g., '1–100 / 204') with ◀ ▶ controls; backend unified history loads current + all `history_*.jsonl` archives on startup.
+**[2026-03-15]** `auto_commit_push.sh` hook — Noise filtering deployed: filters <task-notification>, <tool-use-id>, <system-> entries at write time; only real prompts/LLM responses logged to history.jsonl; pagination counts now accurate.
+**[2026-03-14]** `history.js` — Tag cache optimization: all categories/values loaded once on tab open via Promise.all; zero DB calls during tag picker UI; color persistence on save prevents color thrashing.
+**[2026-03-14]** `entities.py` — Commit-to-prompt linking verified: source_id timestamp from history.jsonl stored in commit_log.jsonl; tags added to prompt auto-propagate to all linked commits via tag-by-source-id endpoint.

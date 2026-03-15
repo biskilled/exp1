@@ -330,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Tag management unified across Chat/History/Commits — all tags deduplicated (149 total, 0 dupes), color preservation on save, removal via ✕ buttons propagates across all views (2026-03-15)
-- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation on all three tabs (2026-03-15)
+- Commit-per-prompt display in Chat tab — each prompt entry shows linked commits inline at bottom with accent left-border; replaced session-level commit strip (2026-03-15)
+- Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); tag removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
+- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup (2026-03-15)
+- Hook noise filtering fully deployed — filters <task-notification>, <tool-use-id>, <system-> entries; real prompts/LLM responses correctly logged to history.jsonl; pagination now accurate (2026-03-15)
+- Tag cache optimization in History tab — all categories/values loaded once on tab open; zero DB calls during tag picker; color persistence on save prevents thrashing (2026-03-14)
 - Commit-to-prompt linking verified end-to-end — source_id timestamp stored in commit_log.jsonl; tags per prompt auto-propagate to linked commits via tag-by-source-id endpoint (2026-03-14)
-- History rotation fully operational — /memory triggers rotation at configurable row threshold (default 500 rows); creates timestamped archives (history_YYMMDDHHSS); _load_unified_history() reads all archives on startup (2026-03-15)
-- Tag cache optimization in History tab — all categories/values loaded once on tab open; zero DB calls during tag picker operations; color persistence prevents thrashing (2026-03-14)
-- Hook noise filtering deployed — filters <task-notification>, <tool-use-id>, and <system-> entries; deployed hook matches template; real prompts/LLM responses now correctly logged to history.jsonl (2026-03-15)
