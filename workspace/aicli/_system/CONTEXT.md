@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-16 18:53 UTC — do not edit manually.
+> Auto-generated 2026-03-16 19:02 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 113
-- **Last active**: 2026-03-16T18:53:02Z
+- **Sessions**: 114
+- **Last active**: 2026-03-16T19:01:42Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-16 19:00]** `claude_cli/claude`  
+→ I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over t
+← _Good design direction. Here's how this maps cleanly to what's already planned:  ---  ## Design: Agent Roles in Database  ### Schema (`agent_roles` + `agent_role_versions`)  ```sql -- Live role definit_
+
 **[2026-03-16 18:52]** `claude_cli/claude`  
 → I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline config
 ← _Now I have the full picture. Let me answer all three questions clearly.  ---  ## Answers to your questions  ### 1. Where is the "Run Pipeline" configured?  It's in `ui/backend/core/work_item_pipeline._
@@ -204,7 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 22:57]** `claude_cli/claude`  
 → It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by
 ← _Now the full flow works. Here's a summary of everything fixed:  **Root causes and fixes:**  1. **History chat filter shows nothing for a phase** — History.jsonl entries had no `phase` field if the ses_
-
-**[2026-03-15 22:51]** `claude_cli/claude`  
-→ That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possi
-← _Two changes:  1. **Backend** — `patch_session_tags` no longer updates `updated_at` when saving tags. The session's timestamp stays frozen at when it was last messaged.  2. **Frontend** — `_loadSession_

@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 18:53 UTC by aicli /memory_
+_Generated: 2026-03-16 19:01 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -91,6 +91,10 @@ _Generated: 2026-03-16 18:53 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-16 19:00]** `claude_cli/claude`
+Q: I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over time (or stored that as local md files linked ..) I do want to store the prompts 
+A: Good design direction. Here's how this maps cleanly to what's already planned:  ---  ## Design: Agent Roles in Database  ### Schema (`agent_roles` + `agent_role_versions`)  ```sql -- Live role definitions CREATE TABLE agent_roles (     id        SERIAL PRIMARY KEY,     project   TEXT NOT NULL DEFAUL
+
 **[2026-03-16 18:52]** `claude_cli/claude`
 Q: I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline configure ? also there used to be parent - child support (for example UI -> dropbox) w
 A: Now I have the full picture. Let me answer all three questions clearly.  ---  ## Answers to your questions  ### 1. Where is the "Run Pipeline" configured?  It's in `ui/backend/core/work_item_pipeline.py` — **completely hardcoded**. 4 stages are Python-coded directly: PM → Architect → Developer → Rev
@@ -125,6 +129,3 @@ Q: I have started to look in some other solution like https://github.com/danshap
 **[2026-03-16 00:19]** `claude_cli/claude`
 Q: I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure that there are no text string that need to be in config file. for example backen u
 A: All clean. Here's a summary of everything fixed:  ---  ## Optimization fixes applied  | Issue | File | Fix | |---|---|---| | `haiku_model` hardcoded in 6 places | `config.py` | Added `haiku_model: str = "claude-haiku-4-5-20251001"` | | `backend_url` hardcoded | `config.py` | Added `backend_url: str 
-
-**[2026-03-15 23:49]** `claude_cli/claude`
-Q: 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and prompt the user (in using the aicli that /memory is running. also it will run on uploading the porjec

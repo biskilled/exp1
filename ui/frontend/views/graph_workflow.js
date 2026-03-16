@@ -86,7 +86,8 @@ let _connectMode = false;
 let _connectSourceId = null;
 let _pollInterval = null;
 let _currentRunId = null;
-let _roles = [];  // cached role file paths for dropdown
+let _roles = [];       // cached DB agent roles [{id, name, description, provider, model}]
+let _rolesIsAdmin = false;  // whether current user can see system_prompt
 
 // ── Main render ───────────────────────────────────────────────────────────────
 
@@ -207,12 +208,13 @@ async function _loadYamlList(project) {
 }
 
 async function _loadRoles(project) {
-  if (!project) return;
   try {
-    const { prompts } = await api.listPrompts(project);
-    _roles = (prompts || []).filter(p => p.startsWith('roles/'));
+    const data = await api.agentRoles.list(project || '_global');
+    _roles = data.roles || [];
+    _rolesIsAdmin = data.is_admin || false;
   } catch {
     _roles = [];
+    _rolesIsAdmin = false;
   }
 }
 
@@ -340,37 +342,62 @@ function _openNodeConfig(nodeData) {
   title.textContent = 'Node: ' + (nodeData?.name || 'New');
 
   const n = nodeData || {};
-  const hasRole = !!n.role_file;
+  // role_id takes priority; fall back to role_file for legacy nodes
+  const hasDbRole   = !!n.role_id;
+  const hasFileRole = !hasDbRole && !!n.role_file;
 
-  const roleOpts = _roles.map(r =>
-    `<option value="${_esc(r)}" ${n.role_file === r ? 'selected' : ''}>${_esc(r.replace('roles/', '').replace('.md', ''))}</option>`
-  ).join('');
+  // Build role dropdown options from DB roles
+  const PROV_COL = { claude: '#e67e22', openai: '#27ae60', deepseek: '#2980b9', gemini: '#16a085', grok: '#8e44ad' };
+  const roleOpts = _roles.map(r => {
+    const sel = hasDbRole && String(n.role_id) === String(r.id);
+    return `<option value="${r.id}" ${sel ? 'selected' : ''}
+      data-provider="${_esc(r.provider)}" data-model="${_esc(r.model || '')}"
+      title="${_esc(r.description)}">${_esc(r.name)} [${_esc(r.provider)}]</option>`;
+  }).join('');
+
+  // Find currently selected role for description display
+  const selRole = hasDbRole ? _roles.find(r => String(r.id) === String(n.role_id)) : null;
 
   body.innerHTML = `
     <div class="gw-config-form">
       <label>Name</label>
       <input class="field-input" id="cfg-name" value="${_esc(n.name || '')}" />
 
-      <label>Provider</label>
+      <label>Agent Role <span style="font-size:0.6rem;color:var(--muted)">(prompt loaded from role library)</span></label>
+      <select class="field-input" id="cfg-role-select" onchange="window._gwOnRoleChange(this.value)">
+        <option value="" ${!hasDbRole ? 'selected' : ''}>— inline / custom prompt —</option>
+        ${roleOpts}
+      </select>
+      <div id="cfg-role-desc" style="font-size:0.62rem;color:var(--muted);margin-top:0.15rem;min-height:0.9rem">
+        ${selRole ? _esc(selRole.description) : ''}
+      </div>
+
+      <label>Provider <span style="font-size:0.6rem;color:var(--muted)">(role default used when blank)</span></label>
       <select class="field-input" id="cfg-provider">
         ${['claude','openai','deepseek','gemini','grok'].map(p =>
           `<option value="${p}" ${n.provider === p ? 'selected' : ''}>${p}</option>`
         ).join('')}
       </select>
 
-      <label>Model (blank = default)</label>
+      <label>Model (blank = provider default)</label>
       <input class="field-input" id="cfg-model" value="${_esc(n.model || '')}" />
 
-      <label>Agent Role</label>
-      <select class="field-input" id="cfg-role-select" onchange="window._gwOnRoleChange(this.value)">
-        <option value="" ${!hasRole ? 'selected' : ''}>— write inline prompt —</option>
-        ${roleOpts}
-      </select>
-
-      <div id="cfg-prompt-wrap" style="${hasRole ? 'display:none' : ''}">
-        <label>Inline system prompt</label>
-        <textarea class="field-input" id="cfg-role-prompt" rows="5" style="font-size:0.75rem">${_esc(n.role_prompt || '')}</textarea>
+      <div id="cfg-prompt-wrap" style="${hasDbRole ? 'display:none' : ''}">
+        <label>Inline system prompt ${hasFileRole ? `<span style="font-size:0.6rem;color:var(--muted)">(from ${_esc(n.role_file)})</span>` : ''}</label>
+        <textarea class="field-input" id="cfg-role-prompt" rows="5" style="font-size:0.72rem;font-family:monospace">${_esc(n.role_prompt || '')}</textarea>
       </div>
+
+      ${_rolesIsAdmin ? `
+      <div id="cfg-role-prompt-preview"
+           style="font-size:0.62rem;color:var(--muted);background:var(--surface2);
+                  border:1px solid var(--border);border-radius:var(--radius);padding:0.4rem 0.5rem;
+                  font-family:monospace;white-space:pre-wrap;max-height:80px;overflow:hidden;cursor:pointer;
+                  ${selRole ? '' : 'display:none'}"
+           title="Click to view full prompt"
+           onclick="this.style.maxHeight=this.style.maxHeight==='none'?'80px':'none'">
+        ${selRole ? _esc((selRole.system_prompt||'').slice(0,300)) + ((selRole.system_prompt||'').length>300?'…':'') : ''}
+      </div>` : ''}
+
 
       <label style="display:flex;align-items:center;gap:0.4rem;margin-top:0.35rem">
         <input type="checkbox" id="cfg-inject" ${n.inject_context !== false ? 'checked' : ''} />
@@ -400,6 +427,28 @@ function _openNodeConfig(nodeData) {
   window._gwOnRoleChange = (val) => {
     const wrap = document.getElementById('cfg-prompt-wrap');
     if (wrap) wrap.style.display = val ? 'none' : '';
+    const descEl = document.getElementById('cfg-role-desc');
+    const previewEl = document.getElementById('cfg-role-prompt-preview');
+    if (val) {
+      const role = _roles.find(r => String(r.id) === String(val));
+      if (role) {
+        if (descEl) descEl.textContent = role.description || '';
+        // Auto-populate provider/model from role defaults
+        const provEl = document.getElementById('cfg-provider');
+        const modEl  = document.getElementById('cfg-model');
+        if (provEl && role.provider) provEl.value = role.provider;
+        if (modEl)  modEl.value = role.model || '';
+        // Update admin prompt preview
+        if (previewEl) {
+          const txt = role.system_prompt || '';
+          previewEl.textContent = txt.slice(0, 300) + (txt.length > 300 ? '…' : '');
+          previewEl.style.display = '';
+        }
+      }
+    } else {
+      if (descEl) descEl.textContent = '';
+      if (previewEl) previewEl.style.display = 'none';
+    }
   };
   window._gwOnApprovalToggle = (checked) => {
     const wrap = document.getElementById('cfg-approval-wrap');
@@ -415,16 +464,18 @@ async function _saveNodeConfig(nodeId, existingData) {
   const name          = document.getElementById('cfg-name')?.value.trim() || '';
   const provider      = document.getElementById('cfg-provider')?.value || 'claude';
   const model         = document.getElementById('cfg-model')?.value.trim() || '';
-  const roleFile      = document.getElementById('cfg-role-select')?.value || null;
-  const rolePrompt    = document.getElementById('cfg-role-prompt')?.value || '';
+  const roleIdRaw     = document.getElementById('cfg-role-select')?.value || '';
+  const roleId        = roleIdRaw ? parseInt(roleIdRaw, 10) : null;
+  const rolePrompt    = roleId ? '' : (document.getElementById('cfg-role-prompt')?.value || '');
   const injectContext = document.getElementById('cfg-inject')?.checked !== false;
   const reqApproval   = document.getElementById('cfg-approval')?.checked || false;
   const approvalMsg   = document.getElementById('cfg-approval-msg')?.value.trim() || '';
 
   const body = {
     name, provider, model,
-    role_file: roleFile || null,
-    role_prompt: roleFile ? '' : rolePrompt,
+    role_id: roleId,
+    role_file: null,
+    role_prompt: rolePrompt,
     inject_context: injectContext,
     require_approval: reqApproval,
     approval_msg: approvalMsg,

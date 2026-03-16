@@ -42,6 +42,9 @@ export function renderSettings(container) {
           <div class="settings-nav-item" onclick="window._settingsSection('security')" id="snav-security">
             <span>🔐</span> Security
           </div>
+          <div class="settings-nav-item" onclick="window._settingsSection('roles')" id="snav-roles">
+            <span>◉</span> Agent Roles
+          </div>
         </div>
 
         <div id="settings-content"></div>
@@ -73,6 +76,7 @@ function renderSettingsSection(section) {
     backend:   renderBackend,
     billing:   renderBilling,
     security:  renderSecurity,
+    roles:     renderAgentRoles,
   };
 
   (sections[section] || renderApiKeys)(content);
@@ -1264,4 +1268,219 @@ function renderSecurity(content) {
       toast('Settings cleared', 'info');
     } catch (e) { toast(`Error: ${e}`, 'error'); }
   };
+}
+
+// ── Agent Roles ───────────────────────────────────────────────────────────────
+
+function _jwtIsAdmin() {
+  try {
+    const tok = localStorage.getItem('aicli_token');
+    if (!tok) return false;
+    const b64 = tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(b64));
+    return payload.is_admin === true || payload.role === 'admin';
+  } catch { return false; }
+}
+
+async function renderAgentRoles(content) {
+  const isAdmin = _jwtIsAdmin();
+  content.innerHTML = `<div style="color:var(--muted);font-size:0.72rem">Loading roles…</div>`;
+
+  let roles = [], adminFlag = false;
+  try {
+    const data = await api.agentRoles.list();
+    roles = data.roles || [];
+    adminFlag = data.is_admin || isAdmin;
+  } catch (e) {
+    content.innerHTML = `<div style="color:var(--red);font-size:0.72rem">Error: ${_esc(e.message)}</div>`;
+    return;
+  }
+
+  const PROVIDER_BADGE = { claude: '#e67', openai: '#0a0', deepseek: '#08f', gemini: '#090', grok: '#a70' };
+
+  content.innerHTML = `
+    <div>
+      <div class="settings-section-title">Agent Roles</div>
+      <div class="settings-section-desc">
+        Reusable LLM personas used in workflow nodes.
+        ${adminFlag ? 'As admin you can view and edit system prompts.' : 'Role names and descriptions are shown. System prompts are admin-only.'}
+      </div>
+
+      ${adminFlag ? `
+      <div style="margin-bottom:1rem">
+        <button class="btn btn-primary btn-sm" onclick="window._rolesShowCreate()">+ New Role</button>
+      </div>
+      <div id="roles-create-form" style="display:none;margin-bottom:1rem;padding:0.75rem;
+           background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="font-size:0.72rem;font-weight:600;margin-bottom:0.5rem">New Role</div>
+        <div class="field-group"><div class="field-label">Name</div>
+          <input class="field-input" id="nr-name" placeholder="e.g. Data Engineer" /></div>
+        <div class="field-group"><div class="field-label">Description (shown to all users)</div>
+          <input class="field-input" id="nr-desc" placeholder="Short description of what this role does" /></div>
+        <div class="field-group"><div class="field-label">Provider</div>
+          <select class="field-input" id="nr-provider">
+            ${['claude','openai','deepseek','gemini','grok'].map(p => `<option value="${p}">${p}</option>`).join('')}
+          </select></div>
+        <div class="field-group"><div class="field-label">Model (blank = default)</div>
+          <input class="field-input" id="nr-model" placeholder="" /></div>
+        <div class="field-group"><div class="field-label">System Prompt</div>
+          <textarea class="field-input" id="nr-prompt" rows="5"
+            style="font-family:var(--font);font-size:0.72rem;resize:vertical"
+            placeholder="You are a…"></textarea></div>
+        <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+          <button class="btn btn-primary btn-sm" onclick="window._rolesSaveCreate()">Create</button>
+          <button class="btn btn-ghost btn-sm" onclick="window._rolesHideCreate()">Cancel</button>
+        </div>
+      </div>` : ''}
+
+      <div id="roles-list">
+        ${roles.length === 0
+          ? '<div style="color:var(--muted);font-size:0.72rem;padding:1rem">No roles found.</div>'
+          : roles.map(r => _renderRoleRow(r, adminFlag)).join('')}
+      </div>
+    </div>
+  `;
+
+  // Wire create form
+  window._rolesShowCreate = () => {
+    document.getElementById('roles-create-form').style.display = '';
+  };
+  window._rolesHideCreate = () => {
+    document.getElementById('roles-create-form').style.display = 'none';
+  };
+  window._rolesSaveCreate = async () => {
+    const name   = document.getElementById('nr-name')?.value.trim();
+    const desc   = document.getElementById('nr-desc')?.value.trim() || '';
+    const prov   = document.getElementById('nr-provider')?.value || 'claude';
+    const model  = document.getElementById('nr-model')?.value.trim() || '';
+    const prompt = document.getElementById('nr-prompt')?.value || '';
+    if (!name) { toast('Name required', 'error'); return; }
+    try {
+      await api.agentRoles.create({ name, description: desc, provider: prov, model, system_prompt: prompt });
+      toast(`Role "${name}" created`, 'success');
+      renderAgentRoles(content);
+    } catch (e) { toast('Create failed: ' + e.message, 'error'); }
+  };
+  window._rolesDelete = async (id, name) => {
+    if (!confirm(`Delete role "${name}"?`)) return;
+    try {
+      await api.agentRoles.delete(id);
+      toast('Role deleted', 'success');
+      renderAgentRoles(content);
+    } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
+  };
+  window._rolesToggleEdit = (id) => {
+    const el = document.getElementById(`role-edit-${id}`);
+    if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+  };
+  window._rolesSaveEdit = async (id) => {
+    const desc   = document.getElementById(`re-desc-${id}`)?.value.trim() || '';
+    const prov   = document.getElementById(`re-prov-${id}`)?.value || 'claude';
+    const model  = document.getElementById(`re-model-${id}`)?.value.trim() || '';
+    const prompt = document.getElementById(`re-prompt-${id}`)?.value || '';
+    const note   = document.getElementById(`re-note-${id}`)?.value.trim() || '';
+    try {
+      await api.agentRoles.patch(id, { description: desc, provider: prov, model, system_prompt: prompt, note });
+      toast('Role updated', 'success');
+      renderAgentRoles(content);
+    } catch (e) { toast('Update failed: ' + e.message, 'error'); }
+  };
+  window._rolesShowVersions = async (id, name) => {
+    const el = document.getElementById(`role-versions-${id}`);
+    if (!el) return;
+    if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.65rem;padding:0.5rem">Loading…</div>';
+    el.style.display = '';
+    try {
+      const data = await api.agentRoles.versions(id);
+      const vers = data.versions || [];
+      if (!vers.length) { el.innerHTML = '<div style="color:var(--muted);font-size:0.65rem;padding:0.5rem">No version history.</div>'; return; }
+      el.innerHTML = vers.map(v => `
+        <div style="border-bottom:1px solid var(--border);padding:0.4rem 0;font-size:0.65rem">
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span style="color:var(--muted)">${(v.changed_at||'').slice(0,16)}</span>
+            <span style="color:var(--text2)">${_esc(v.changed_by||'?')}</span>
+            ${v.note ? `<span style="color:var(--muted);font-style:italic">${_esc(v.note)}</span>` : ''}
+            <button onclick="window._rolesRestore(${id},${v.id},'${_esc(name)}')"
+              style="margin-left:auto;font-size:0.6rem;padding:0.1rem 0.4rem;background:var(--surface2);
+                     border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+                     color:var(--text2);font-family:var(--font)">Restore</button>
+          </div>
+          <div style="color:var(--muted);font-size:0.62rem;margin-top:0.2rem;
+                      white-space:pre-wrap;max-height:60px;overflow:hidden;font-family:monospace">${_esc((v.system_prompt||'').slice(0,200))}</div>
+        </div>`).join('');
+    } catch (e) { el.innerHTML = `<div style="color:var(--red);font-size:0.65rem;padding:0.5rem">${_esc(e.message)}</div>`; }
+  };
+  window._rolesRestore = async (roleId, versionId, name) => {
+    if (!confirm(`Restore role "${name}" to this version?`)) return;
+    try {
+      await api.agentRoles.restore(roleId, versionId);
+      toast('Role restored', 'success');
+      renderAgentRoles(content);
+    } catch (e) { toast('Restore failed: ' + e.message, 'error'); }
+  };
+}
+
+function _renderRoleRow(r, isAdmin) {
+  const PROVIDER_COLORS = { claude: '#e67e22', openai: '#27ae60', deepseek: '#2980b9', gemini: '#16a085', grok: '#8e44ad' };
+  const col = PROVIDER_COLORS[r.provider] || '#888';
+  return `
+    <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:0.5rem;
+                background:var(--surface)">
+      <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem">
+        <span style="font-size:0.75rem;font-weight:600;color:var(--text);flex:1">${_esc(r.name)}</span>
+        <span style="font-size:0.6rem;color:#fff;background:${col};padding:0.1rem 0.45rem;
+                     border-radius:8px;white-space:nowrap">${_esc(r.provider)}${r.model ? ' · '+_esc(r.model.split('-').slice(0,3).join('-')) : ''}</span>
+        ${isAdmin ? `
+          <button onclick="window._rolesToggleEdit(${r.id})"
+            style="font-size:0.6rem;padding:0.15rem 0.45rem;background:var(--surface2);
+                   border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+                   color:var(--text2);font-family:var(--font)">Edit</button>
+          <button onclick="window._rolesShowVersions(${r.id},'${_esc(r.name)}')"
+            style="font-size:0.6rem;padding:0.15rem 0.45rem;background:var(--surface2);
+                   border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+                   color:var(--text2);font-family:var(--font)">History</button>
+          <button onclick="window._rolesDelete(${r.id},'${_esc(r.name)}')"
+            style="font-size:0.6rem;padding:0.15rem 0.45rem;background:none;
+                   border:1px solid var(--red,#e74c3c);border-radius:var(--radius);cursor:pointer;
+                   color:var(--red,#e74c3c);font-family:var(--font)">✕</button>` : ''}
+      </div>
+      <div style="padding:0 0.75rem 0.5rem;font-size:0.67rem;color:var(--muted)">${_esc(r.description)}</div>
+
+      ${isAdmin ? `
+      <!-- Edit form (hidden by default) -->
+      <div id="role-edit-${r.id}" style="display:none;border-top:1px solid var(--border);
+           padding:0.75rem;background:var(--surface2)">
+        <div class="field-group">
+          <div class="field-label" style="font-size:0.6rem">Description</div>
+          <input class="field-input" id="re-desc-${r.id}" value="${_esc(r.description)}" /></div>
+        <div style="display:flex;gap:0.5rem">
+          <div class="field-group" style="flex:1">
+            <div class="field-label" style="font-size:0.6rem">Provider</div>
+            <select class="field-input" id="re-prov-${r.id}">
+              ${['claude','openai','deepseek','gemini','grok'].map(p =>
+                `<option value="${p}" ${r.provider===p?'selected':''}>${p}</option>`).join('')}
+            </select></div>
+          <div class="field-group" style="flex:1">
+            <div class="field-label" style="font-size:0.6rem">Model</div>
+            <input class="field-input" id="re-model-${r.id}" value="${_esc(r.model||'')}" /></div>
+        </div>
+        <div class="field-group">
+          <div class="field-label" style="font-size:0.6rem">System Prompt</div>
+          <textarea class="field-input" id="re-prompt-${r.id}" rows="6"
+            style="font-family:monospace;font-size:0.68rem;resize:vertical">${_esc(r.system_prompt||'')}</textarea></div>
+        <div class="field-group">
+          <div class="field-label" style="font-size:0.6rem">Change note (optional)</div>
+          <input class="field-input" id="re-note-${r.id}" placeholder="What changed and why?" /></div>
+        <div style="display:flex;gap:0.5rem;margin-top:0.25rem">
+          <button class="btn btn-primary btn-sm" onclick="window._rolesSaveEdit(${r.id})">Save</button>
+          <button class="btn btn-ghost btn-sm" onclick="window._rolesToggleEdit(${r.id})">Cancel</button>
+        </div>
+      </div>
+      <!-- Version history panel -->
+      <div id="role-versions-${r.id}" style="display:none;border-top:1px solid var(--border);
+           padding:0.5rem 0.75rem;background:var(--bg);max-height:180px;overflow-y:auto"></div>
+      ` : ''}
+    </div>
+  `;
 }

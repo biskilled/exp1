@@ -63,6 +63,7 @@ class WorkflowUpdate(BaseModel):
 
 class NodeCreate(BaseModel):
     name: str
+    role_id: Optional[int] = None
     role_file: Optional[str] = None
     role_prompt: str = ""
     provider: str = "claude"
@@ -77,6 +78,7 @@ class NodeCreate(BaseModel):
 
 class NodeUpdate(BaseModel):
     name: Optional[str] = None
+    role_id: Optional[int] = None
     role_file: Optional[str] = None
     role_prompt: Optional[str] = None
     provider: Optional[str] = None
@@ -125,6 +127,7 @@ def _row_to_node(row) -> dict:
         "created_at": row[11].isoformat() if row[11] else None,
         "require_approval": row[12] if len(row) > 12 else False,
         "approval_msg": row[13] if len(row) > 13 else "",
+        "role_id": row[14] if len(row) > 14 else None,
     }
 
 
@@ -248,7 +251,7 @@ async def get_workflow(workflow_id: str, user=Depends(get_optional_user)):
             cur.execute(
                 """SELECT id, workflow_id, name, role_file, role_prompt, provider, model,
                           output_schema, inject_context, position_x, position_y, created_at,
-                          require_approval, approval_msg
+                          require_approval, approval_msg, role_id
                    FROM graph_nodes WHERE workflow_id=%s ORDER BY created_at""",
                 (workflow_id,),
             )
@@ -314,16 +317,16 @@ async def create_node(
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO graph_nodes
-                   (id, workflow_id, name, role_file, role_prompt, provider, model,
+                   (id, workflow_id, name, role_id, role_file, role_prompt, provider, model,
                     output_schema, inject_context, require_approval, approval_msg,
                     position_x, position_y)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    RETURNING id, workflow_id, name, role_file, role_prompt, provider, model,
                              output_schema, inject_context, position_x, position_y, created_at,
-                             require_approval, approval_msg""",
+                             require_approval, approval_msg, role_id""",
                 (
-                    node_id, workflow_id, body.name, body.role_file, body.role_prompt,
-                    body.provider, body.model,
+                    node_id, workflow_id, body.name, body.role_id, body.role_file,
+                    body.role_prompt, body.provider, body.model,
                     json.dumps(body.output_schema) if body.output_schema else None,
                     body.inject_context, body.require_approval, body.approval_msg,
                     body.position_x, body.position_y,
@@ -344,7 +347,8 @@ async def update_node(
     fields = []
     values: list[Any] = []
     mapping = {
-        "name": body.name, "role_file": body.role_file, "role_prompt": body.role_prompt,
+        "name": body.name, "role_id": body.role_id,
+        "role_file": body.role_file, "role_prompt": body.role_prompt,
         "provider": body.provider, "model": body.model,
         "inject_context": body.inject_context,
         "require_approval": body.require_approval,

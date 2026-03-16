@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-16] `claude_cli`: Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ve
 - [2026-03-16] `claude_cli`: Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_K
 - [2026-03-16] `claude_cli`: are you using the mcp now? 
 - [2026-03-16] `claude_cli`: I would like to start working on the workflows - the goal is to be able to be similar to https://www
 - [2026-03-16] `claude_cli`: I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is 
+- [2026-03-16] `claude_cli`: I do mention to sotre the prompts in database, would there be a way to change the prompts as it migh
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

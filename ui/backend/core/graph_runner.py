@@ -85,13 +85,27 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
     inject_context = node.get("inject_context", True)
     output_schema = node.get("output_schema")
 
-    # Build system prompt
-    if role_file:
+    # Build system prompt — precedence: inline > role_file > agent_roles DB
+    if role_file and not role_prompt:
         role_path = Path(settings.workspace_dir) / project / "prompts" / role_file
         if role_path.exists():
             role_prompt = role_path.read_text()
         else:
             log.warning(f"role_file not found: {role_path}")
+
+    if not role_prompt and node.get("role_id") and db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT system_prompt FROM agent_roles WHERE id=%s AND is_active=TRUE",
+                        (node["role_id"],),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        role_prompt = row[0]
+        except Exception as _re:
+            log.warning(f"Could not load role {node['role_id']}: {_re}")
 
     # Build user message
     user_parts = []
@@ -260,7 +274,7 @@ async def run_graph_workflow(
 
             cur.execute(
                 """SELECT id, name, role_file, role_prompt, provider, model,
-                          output_schema, inject_context, require_approval, approval_msg
+                          output_schema, inject_context, require_approval, approval_msg, role_id
                    FROM graph_nodes WHERE workflow_id=%s""",
                 (workflow_id,),
             )
@@ -271,6 +285,7 @@ async def run_graph_workflow(
                     "output_schema": r[6], "inject_context": r[7],
                     "require_approval": r[8] if len(r) > 8 else False,
                     "approval_msg": r[9] if len(r) > 9 else "",
+                    "role_id": r[10] if len(r) > 10 else None,
                 }
 
             cur.execute(
@@ -477,7 +492,7 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
 
             cur.execute(
                 """SELECT id, name, role_file, role_prompt, provider, model,
-                          output_schema, inject_context, require_approval, approval_msg
+                          output_schema, inject_context, require_approval, approval_msg, role_id
                    FROM graph_nodes WHERE workflow_id=%s""",
                 (workflow_id,),
             )
@@ -488,6 +503,7 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
                     "output_schema": r[6], "inject_context": r[7],
                     "require_approval": r[8] if len(r) > 8 else False,
                     "approval_msg": r[9] if len(r) > 9 else "",
+                    "role_id": r[10] if len(r) > 10 else None,
                 }
 
             cur.execute(

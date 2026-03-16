@@ -496,12 +496,49 @@ class _Database:
         CREATE UNIQUE INDEX IF NOT EXISTS idx_pf_current ON project_facts(project_id, fact_key)  WHERE valid_until IS NULL;
         """
 
+        _DDL_AGENT_ROLES = """
+        -- Agent role library: reusable LLM personas for workflow nodes.
+        -- All users see name/description; system_prompt is admin-only via the API.
+        CREATE TABLE IF NOT EXISTS agent_roles (
+            id            SERIAL         PRIMARY KEY,
+            project       TEXT           NOT NULL DEFAULT '_global',
+            name          TEXT           NOT NULL,
+            description   TEXT           NOT NULL DEFAULT '',
+            system_prompt TEXT           NOT NULL DEFAULT '',
+            provider      TEXT           NOT NULL DEFAULT 'claude',
+            model         TEXT           NOT NULL DEFAULT '',
+            tags          TEXT[]         NOT NULL DEFAULT '{}',
+            is_active     BOOLEAN        NOT NULL DEFAULT TRUE,
+            created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            updated_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(project, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ar_project ON agent_roles(project);
+
+        -- Version history: written on every PATCH to system_prompt/provider/model.
+        CREATE TABLE IF NOT EXISTS agent_role_versions (
+            id            SERIAL         PRIMARY KEY,
+            role_id       INT            NOT NULL REFERENCES agent_roles(id) ON DELETE CASCADE,
+            system_prompt TEXT           NOT NULL,
+            provider      TEXT           NOT NULL,
+            model         TEXT           NOT NULL,
+            changed_by    TEXT,
+            changed_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            note          TEXT           NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_arv_role ON agent_role_versions(role_id);
+
+        -- Link graph_nodes to a reusable role (prompt loaded from agent_roles at run time).
+        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS role_id INT REFERENCES agent_roles(id) ON DELETE SET NULL;
+        """
+
         for label, sql in [
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
             ("Tagging (commits + session_tags)", _DDL_TAGGING),
             ("Entities (categories + values + events + links)", _DDL_ENTITIES),
             ("Graph workflows (nodes, edges, runs, results)", _DDL_GRAPH),
             ("Memory layers (work_items, interactions, memory_items, project_facts)", _DDL_MEMORY_LAYERS),
+            ("Agent roles (library + version history)", _DDL_AGENT_ROLES),
         ]:
             try:
                 with conn.cursor() as cur:
@@ -513,6 +550,124 @@ class _Database:
                 log.warning(f"{label} DDL skipped: {e}")
 
         # ivfflat indexes on per-project embeddings tables are added manually after rows exist
+
+        # Seed default global roles (idempotent — skips on conflict)
+        _Database._seed_agent_roles(conn)
+
+    @staticmethod
+    def _seed_agent_roles(conn) -> None:
+        """Insert the 10 built-in global roles. Safe to call repeatedly."""
+        _ROLES = [
+            (
+                "Product Manager",
+                "Translates feature descriptions into acceptance criteria and user stories.",
+                "You are a senior product manager. Given a feature description, write 3-8 "
+                "acceptance criteria as bullet points starting with '- [ ]'. Each must be "
+                "specific, measurable, and testable. Also identify 2-3 user stories in "
+                "'As a [user], I want [goal]' format. Respond in plain text.",
+                "claude", "claude-haiku-4-5-20251001",
+            ),
+            (
+                "Sr. Architect",
+                "Designs technical architecture and numbered implementation plans.",
+                "You are a senior software architect. Given a feature and acceptance criteria, "
+                "write a numbered technical implementation plan. Include: specific files to "
+                "create or modify, functions/methods to add, database schema changes, and "
+                "integration points. Be precise about HOW to implement, not just WHAT.",
+                "claude", "claude-sonnet-4-6",
+            ),
+            (
+                "Web Developer",
+                "Implements full-stack features against a technical plan.",
+                "You are a senior full-stack developer. Given an implementation plan and "
+                "acceptance criteria, write the actual code. Include complete file contents "
+                "or clear code diffs. Cover both frontend and backend changes. Add inline "
+                "comments for non-obvious logic. Ensure all acceptance criteria are met.",
+                "claude", "claude-sonnet-4-6",
+            ),
+            (
+                "Backend Developer",
+                "Writes server-side code: APIs, DB schemas, business logic.",
+                "You are a senior backend developer. Implement server-side code including: "
+                "REST API endpoints, database migrations, business logic, error handling, "
+                "and input validation. Use the project's existing stack and patterns. "
+                "Write complete, production-ready code with proper error handling.",
+                "deepseek", "deepseek-chat",
+            ),
+            (
+                "Frontend Developer",
+                "Writes client-side code: UI components, styles, interactions.",
+                "You are a senior frontend developer. Implement client-side code including: "
+                "HTML structure, CSS styles, JavaScript logic, user interactions, and API "
+                "integration. Match the existing design system and patterns. Ensure "
+                "accessibility and responsiveness.",
+                "openai", "gpt-4o",
+            ),
+            (
+                "DevOps Engineer",
+                "Writes CI/CD configs, Dockerfiles, and deployment infrastructure.",
+                "You are a senior DevOps engineer. Write: Dockerfiles, CI/CD pipeline configs "
+                "(GitHub Actions/GitLab CI), deployment scripts, environment configs, and "
+                "monitoring setup. Use best practices for security, scalability, and "
+                "reliability. Include health checks and rollback strategies.",
+                "claude", "claude-haiku-4-5-20251001",
+            ),
+            (
+                "Code Reviewer",
+                "Reviews code quality and returns score + issues as JSON.",
+                "You are a senior code reviewer. Review the provided implementation against "
+                "the acceptance criteria. Evaluate: correctness, code quality, edge cases, "
+                "error handling, and test coverage.\n\nReturn ONLY valid JSON:\n"
+                '{"score": 1-10, "passed": true/false, "issues": ["..."], '
+                '"suggestions": ["..."]}\n\nScore >= 7 means passed. Be specific.',
+                "claude", "claude-sonnet-4-6",
+            ),
+            (
+                "Security Reviewer",
+                "Audits code for OWASP Top 10 vulnerabilities.",
+                "You are a senior application security engineer. Review code for OWASP Top 10: "
+                "injection, broken auth, sensitive data exposure, XXE, broken access control, "
+                "security misconfigs, XSS, insecure deserialization, known vulnerabilities.\n\n"
+                "Return ONLY valid JSON:\n"
+                '{"score": 1-10, "passed": true/false, "vulnerabilities": ["..."], '
+                '"recommendations": ["..."]}',
+                "claude", "claude-haiku-4-5-20251001",
+            ),
+            (
+                "QA Engineer",
+                "Writes comprehensive test cases including edge cases and boundary conditions.",
+                "You are a senior QA engineer. Given a feature and acceptance criteria, write "
+                "a comprehensive test plan including: happy path tests, boundary conditions, "
+                "error cases, edge cases, and performance considerations. For each test "
+                "provide: test name, preconditions, steps, expected result.",
+                "openai", "gpt-4o",
+            ),
+            (
+                "AWS Architect",
+                "Designs AWS infrastructure using CDK/CloudFormation with security best practices.",
+                "You are a senior AWS solutions architect. Design and implement AWS "
+                "infrastructure using CDK (TypeScript) or CloudFormation. Include: compute "
+                "(ECS/Lambda/EC2), storage (S3/RDS/DynamoDB), networking (VPC/ALB/Route53), "
+                "IAM roles with least-privilege, security groups, auto-scaling, and cost "
+                "optimization notes.",
+                "claude", "claude-sonnet-4-6",
+            ),
+        ]
+        try:
+            with conn.cursor() as cur:
+                for name, desc, prompt, provider, model in _ROLES:
+                    cur.execute(
+                        """INSERT INTO agent_roles
+                               (project, name, description, system_prompt, provider, model)
+                           VALUES ('_global', %s, %s, %s, %s, %s)
+                           ON CONFLICT (project, name) DO NOTHING""",
+                        (name, desc, prompt, provider, model),
+                    )
+            conn.commit()
+            log.info("✅ Agent roles seeded")
+        except Exception as e:
+            conn.rollback()
+            log.warning(f"Agent roles seed skipped: {e}")
 
 
 # Singleton used everywhere

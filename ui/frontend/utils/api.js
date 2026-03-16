@@ -309,7 +309,39 @@ api.workItems = {
   },
 };
 
-// ── Recent projects (localStorage) ───────────────────────────────────────────
+// ── Agent Roles API ───────────────────────────────────────────────────────────
+
+api.agentRoles = {
+  list:    (project = '_global') => _get(`/agent-roles/?project=${enc(project)}`),
+  create:  (body)                => _post('/agent-roles/', body),
+  patch:   (id, body)            => fetch(_base() + `/agent-roles/${id}`, {
+    method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  delete:  (id)                  => _del(`/agent-roles/${id}`),
+  versions:(id)                  => _get(`/agent-roles/${id}/versions`),
+  restore: (id, versionId)       => _post(`/agent-roles/${id}/restore/${versionId}`, {}),
+};
+
+// ── Graph Workflows API ───────────────────────────────────────────────────────
+
+api.graphWorkflows = {
+  list:       (project)           => _get(`/graph/?project=${enc(project)}`),
+  create:     (body)              => _post('/graph/', body),
+  get:        (id)                => _get(`/graph/${id}`),
+  update:     (id, body)          => fetch(_base() + `/graph/${id}`, { method: 'PUT',    headers: _headers(), body: JSON.stringify(body) }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  delete:     (id)                => _del(`/graph/${id}`),
+  createNode: (wfId, body)        => _post(`/graph/${wfId}/nodes`, body),
+  updateNode: (wfId, nId, body)   => fetch(_base() + `/graph/${wfId}/nodes/${nId}`, { method: 'PATCH',  headers: _headers(), body: JSON.stringify(body) }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  deleteNode: (wfId, nId)         => _del(`/graph/${wfId}/nodes/${nId}`),
+  createEdge: (wfId, body)        => _post(`/graph/${wfId}/edges`, body),
+  updateEdge: (wfId, eId, body)   => fetch(_base() + `/graph/${wfId}/edges/${eId}`, { method: 'PATCH',  headers: _headers(), body: JSON.stringify(body) }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  deleteEdge: (wfId, eId)         => _del(`/graph/${wfId}/edges/${eId}`),
+  startRun:   (wfId, body)        => _post(`/graph/${wfId}/runs`, body),
+  getRun:     (runId)             => _get(`/graph/runs/${runId}`),
+  listRuns:   (wfId)              => _get(`/graph/${wfId}/runs`),
+  cancelRun:  (runId)             => _del(`/graph/runs/${runId}`),
+  decide:     (runId, body)       => _post(`/graph/runs/${runId}/decision`, body),
+};
 
 const RECENT_KEY = 'aicli_recent_projects';
 
