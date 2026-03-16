@@ -279,7 +279,7 @@ async def _call_llm(provider: str, model: str | None,
         msgs = ([{"role": "system", "content": system}] if system else []) + messages
         r = await asyncio.to_thread(
             lambda: client.chat.completions.create(
-                model=model or "gpt-4o", messages=msgs, max_tokens=4096
+                model=model or settings.openai_model, messages=msgs, max_tokens=4096
             )
         )
         usage = r.usage

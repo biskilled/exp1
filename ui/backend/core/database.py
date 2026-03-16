@@ -41,7 +41,7 @@ class _Database:
             log.info("DATABASE_URL not set — using file-based storage")
             return
         try:
-            self._pool = psycopg2.pool.ThreadedConnectionPool(1, 10, url)
+            self._pool = psycopg2.pool.ThreadedConnectionPool(1, settings.db_pool_max, url)
             # Verify connection and create tables
             with self.conn() as conn:
                 self._ensure_schema(conn)
@@ -160,6 +160,9 @@ class _Database:
             f"ALTER TABLE {e} ADD COLUMN IF NOT EXISTS session_id        VARCHAR(255)",
             f"CREATE INDEX IF NOT EXISTS idx_{e}_session ON {e}(session_id) WHERE session_id IS NOT NULL",
             f"CREATE INDEX IF NOT EXISTS idx_{e}_phase   ON {e}(phase)      WHERE phase IS NOT NULL",
+            f"CREATE INDEX IF NOT EXISTS idx_{el}_to     ON {el}(to_event_id)",
+            f"CREATE INDEX IF NOT EXISTS idx_{c}_session ON {c}(session_id) WHERE session_id IS NOT NULL",
+            f"CREATE INDEX IF NOT EXISTS idx_{emb}_src   ON {emb}(source_type, source_id)",
             # entity_values migrations (shared table — idempotent ALTERs)
             "ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea'",
             # entity_value_links table
@@ -366,16 +369,19 @@ class _Database:
 
         -- Workflow run instances
         CREATE TABLE IF NOT EXISTS graph_runs (
-            id           SERIAL         PRIMARY KEY,
-            workflow_id  INT            NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
-            project      VARCHAR(255)   NOT NULL,
-            status       VARCHAR(50)    NOT NULL DEFAULT 'pending',
-            started_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-            finished_at  TIMESTAMPTZ,
-            total_cost   NUMERIC(12, 8) NOT NULL DEFAULT 0,
-            input        TEXT           NOT NULL DEFAULT '',
-            output       TEXT           NOT NULL DEFAULT ''
+            id              SERIAL         PRIMARY KEY,
+            workflow_id     INT            NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
+            project         VARCHAR(255)   NOT NULL,
+            status          VARCHAR(50)    NOT NULL DEFAULT 'pending',
+            started_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            finished_at     TIMESTAMPTZ,
+            total_cost_usd  NUMERIC(12, 8) NOT NULL DEFAULT 0,
+            context         JSONB          NOT NULL DEFAULT '{}',
+            input           TEXT           NOT NULL DEFAULT '',
+            output          TEXT           NOT NULL DEFAULT ''
         );
+        ALTER TABLE graph_runs ADD COLUMN IF NOT EXISTS total_cost_usd NUMERIC(12, 8) NOT NULL DEFAULT 0;
+        ALTER TABLE graph_runs ADD COLUMN IF NOT EXISTS context        JSONB          NOT NULL DEFAULT '{}';
         CREATE INDEX IF NOT EXISTS idx_gr_workflow ON graph_runs(workflow_id);
         CREATE INDEX IF NOT EXISTS idx_gr_project  ON graph_runs(project);
 

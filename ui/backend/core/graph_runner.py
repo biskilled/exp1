@@ -426,7 +426,7 @@ async def run_graph_workflow(
         import httpx
         async def _refresh_memory():
             async with httpx.AsyncClient() as client:
-                await client.post(f"http://localhost:8000/projects/{project}/memory")
+                await client.post(f"{settings.backend_url}/projects/{project}/memory")
         asyncio.create_task(_refresh_memory())
     except Exception:
         pass

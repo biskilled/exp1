@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 23:40 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-16 00:15 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -46,8 +46,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-15] That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possi
 - [2026-03-15] It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by
 - [2026-03-15] now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly f
 - [2026-03-15] is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details inform
 - [2026-03-15] Is there is any addiotnal improvement that I can implemet for having full memroy , and project management lifecycle ?
+- [2026-03-15] 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and prompt the user (in u

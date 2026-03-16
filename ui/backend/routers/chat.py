@@ -376,7 +376,7 @@ async def _auto_detect_session_feature(
         )
         client = anthropic.AsyncAnthropic(api_key=key)
         resp = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=settings.haiku_model,
             max_tokens=60,
             messages=[{"role": "user", "content": prompt}],
         )

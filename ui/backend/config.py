@@ -38,6 +38,7 @@ class Settings(BaseSettings):
 
     # Models
     claude_model: str = "claude-sonnet-4-6"
+    haiku_model: str = "claude-haiku-4-5-20251001"
     openai_model: str = "gpt-4.1"
     deepseek_model: str = "deepseek-chat"
     deepseek_reasoner_model: str = "deepseek-reasoner"
@@ -69,6 +70,8 @@ class Settings(BaseSettings):
 
     # App
     cors_origins: str = "*"
+    backend_url: str = "http://localhost:8000"
+    db_pool_max: int = 10
 
     class Config:
         env_file = str(_ENGINE_ROOT / ".env")

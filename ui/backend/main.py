@@ -45,9 +45,10 @@ app = FastAPI(
     version="2.0.0",
 )
 
+_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()] or ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -116,7 +117,7 @@ async def startup():
                 updated = True
     if updated:
         save_keys(keys)
-    print(f"✅ aicli backend ready — http://localhost:8000")
+    print(f"✅ aicli backend ready — {settings.backend_url}")
     print(f"   workspace: {settings.workspace_dir}")
     print(f"   project:   {settings.active_project}")
     print(f"   db:        {'PostgreSQL' if db.is_available() else 'file-based'}")

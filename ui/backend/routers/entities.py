@@ -750,7 +750,7 @@ async def _auto_suggest_tags(event_id: int, project: str, content: str) -> None:
         return
     try:
         from core.api_keys import get_key
-        key = get_key("anthropic")
+        key = get_key("claude") or get_key("anthropic")
 
         # Get all active entity values for this project
         with db.conn() as conn:
@@ -825,7 +825,7 @@ async def _auto_suggest_tags(event_id: int, project: str, content: str) -> None:
             import anthropic
             client = anthropic.AsyncAnthropic(api_key=key)
             resp = await client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model=settings.haiku_model,
                 max_tokens=80,
                 messages=[{"role": "user", "content": prompt}],
             )

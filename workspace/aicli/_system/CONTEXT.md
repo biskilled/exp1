@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-15 23:41 UTC — do not edit manually.
+> Auto-generated 2026-03-16 00:16 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 102
-- **Last active**: 2026-03-15T23:40:53Z
+- **Sessions**: 103
+- **Last active**: 2026-03-16T00:15:55Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -150,6 +150,9 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-15 23:49]** `claude_cli/claude`  
+→ 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and prompt the user (in u
+
 **[2026-03-15 23:38]** `claude_cli/claude`  
 → Is there is any addiotnal improvement that I can implemet for having full memroy , and project management lifecycle ? 
 ← _Based on the audit, here are the gaps and a prioritized roadmap:  ---  ## What's Missing — Prioritized  ### Quick Wins (low effort, high value)  **1. MCP `create_entity` tool** Claude CLI / Cursor can_
@@ -205,7 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 18:15]** `claude_cli/claude`  
 → let me summerise not. first run /memroy to update all sumeeries, db tagging and all new changes. and answer the followin
 ← _Memory updated successfully. Now for your questions:  ---  ## `/memory` — What Just Happened  All 5 files generated and synced: - `CLAUDE.md` → project root (auto-loaded by Claude Code on every sessio_
-
-**[2026-03-15 18:11]** `claude_cli/claude`  
-→ Currently the commit tags in Chat are all on a session phase. I would like to linled each commit into the prompt (same a
-← _Good — the `/history/commits` endpoint already returns `prompt_source_id` in every commit row. The frontend `_commitData.commits` will have it.  Done. Here's what changed:  **Before:** All commits in _

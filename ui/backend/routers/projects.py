@@ -733,7 +733,7 @@ async def _synthesize_with_llm(
 
         client = anthropic.AsyncAnthropic(api_key=key)
         response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=settings.haiku_model,
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -797,7 +797,7 @@ async def _suggest_tags(
         _log.info("[suggest_tags] Calling Haiku for project=%s, entries=%d", project, len(entries))
         client = anthropic.AsyncAnthropic(api_key=key)
         response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=settings.haiku_model,
             max_tokens=150,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -1398,7 +1398,7 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
 
     try:
         from core.api_keys import get_key
-        key = get_key("anthropic")
+        key = get_key("claude") or get_key("anthropic")
         if not key:
             return
 
@@ -1451,7 +1451,7 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=key)
         response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=settings.haiku_model,
             max_tokens=600,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -1556,7 +1556,7 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
 
         # Strategy 2: LLM-based relationship suggestion (only if Anthropic key available)
         from core.api_keys import get_key
-        key = get_key("anthropic")
+        key = get_key("claude") or get_key("anthropic")
         if not key or len(new_events) < 2:
             return
 
@@ -1576,7 +1576,7 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=key)
         response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=settings.haiku_model,
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}],
         )
