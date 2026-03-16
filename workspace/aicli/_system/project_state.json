@@ -15,7 +15,7 @@
     "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)",
     "workflow_engine": "Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config",
     "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization",
-    "memory_synthesis": "Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)",
+    "memory_synthesis": "Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
     "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
     "mcp": "Standalone stdio MCP server with 12+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity, update_entity, list_entities, get_feature_status)",
     "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
@@ -24,20 +24,20 @@
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state",
-    "Flat file storage primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables",
-    "Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server for local dev only",
+    "Flat file primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables with real indexed columns (phase/feature/session_id)",
+    "Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server for local dev",
     "JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free",
     "All LLM providers as independent adapters; server holds API keys; client sends NO keys",
-    "Nested tags via parent_id FK: unlimited depth (category \u2192 tag \u2192 subtag) with tree UI in Planner",
+    "Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits",
     "History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)",
-    "Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id",
+    "Commit-to-prompt linking via source_id timestamp; bidirectional tagging via POST /entities/events/tag-by-source-id",
     "Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()",
-    "AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session with category inheritance",
+    "Dual-layer memory synthesis: raw JSONL \u2192 interaction_tags \u2192 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)",
     "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
-    "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization",
-    "MCP server (stdio): 8+ tools for integration with Claude CLI and external agents",
-    "Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at",
-    "Real DB columns for phase, feature, session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)"
+    "Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at",
+    "Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)",
+    "MCP server (stdio): 12+ tools (search_memory, get_project_state, get_recent_history, create_entity, update_entity, list_entities, get_feature_status, etc.)",
+    "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -69,9 +69,9 @@
     "Config externalization and optimization (2026-03-16) \u2014 backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; added /health check for MCP readiness",
     "Memory distillation pipeline refinement (2026-03-16) \u2014 dual-layer summarization (raw JSONL \u2192 interaction_tags \u2192 memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags",
     "MCP tool expansion for project management (2026-03-16) \u2014 implemented create_entity, update_entity, list_entities, get_feature_status tools; verified all return accurate JSON",
-    "Work item lifecycle tracking (2026-03-15/16) \u2014 phase/feature/session_id now real indexed columns in events_{p}; status + due_date tracked in entity_values; backfill on session phase change works",
+    "Session phase persistence and backfill (2026-03-15) \u2014 phase now loads from DB on init, saves via PATCH /chat/sessions/{id}/tags, backfills all matching history.jsonl entries, preserves session order by created_at",
     "Tag deduplication and cross-view synchronization (2026-03-15) \u2014 149 tags with 0 duplicates; removal via \u2715 buttons propagates across Chat/History/Commits; inline commit display per prompt",
-    "Pagination and filtering across all views (2026-03-15) \u2014 Chat/History/Commits show offset ranges (e.g., '1\u2013100 / 204') with \u25c0 \u25b6 navigation; unified history loads all archives; phase filter respects backfilled entries"
+    "Pagination and filtering across all views (2026-03-15) \u2014 Chat/History/Commits show offset ranges (1\u2013100 / 204) with \u25c0 \u25b6 navigation; unified history loads all archives; phase filter respects backfilled entries"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -103,32 +103,32 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-16T17:57:02Z",
+  "last_memory_run": "2026-03-16T18:14:19Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state",
-      "Flat file storage primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables",
-      "Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server for local dev only",
+      "Flat file primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables with real indexed columns (phase/feature/session_id)",
+      "Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server for local dev",
       "JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free",
       "All LLM providers as independent adapters; server holds API keys; client sends NO keys",
-      "Nested tags via parent_id FK: unlimited depth (category \u2192 tag \u2192 subtag) with tree UI in Planner",
+      "Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits",
       "History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)",
-      "Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id",
+      "Commit-to-prompt linking via source_id timestamp; bidirectional tagging via POST /entities/events/tag-by-source-id",
       "Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()",
-      "AI suggestions as dedicated amber banner between tag bar and messages; Claude Haiku synthesis; auto-save to session with category inheritance",
+      "Dual-layer memory synthesis: raw JSONL \u2192 interaction_tags \u2192 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)",
       "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
-      "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization",
-      "MCP server (stdio): 8+ tools for integration with Claude CLI and external agents",
-      "Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at",
-      "Real DB columns for phase, feature, session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)"
+      "Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at",
+      "Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)",
+      "MCP server (stdio): 12+ tools (search_memory, get_project_state, get_recent_history, create_entity, update_entity, list_entities, get_feature_status, etc.)",
+      "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization"
     ],
     "in_progress": [
       "Config externalization and optimization (2026-03-16) \u2014 backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; added /health check for MCP readiness",
       "Memory distillation pipeline refinement (2026-03-16) \u2014 dual-layer summarization (raw JSONL \u2192 interaction_tags \u2192 memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags",
       "MCP tool expansion for project management (2026-03-16) \u2014 implemented create_entity, update_entity, list_entities, get_feature_status tools; verified all return accurate JSON",
-      "Work item lifecycle tracking (2026-03-15/16) \u2014 phase/feature/session_id now real indexed columns in events_{p}; status + due_date tracked in entity_values; backfill on session phase change works",
+      "Session phase persistence and backfill (2026-03-15) \u2014 phase now loads from DB on init, saves via PATCH /chat/sessions/{id}/tags, backfills all matching history.jsonl entries, preserves session order by created_at",
       "Tag deduplication and cross-view synchronization (2026-03-15) \u2014 149 tags with 0 duplicates; removal via \u2715 buttons propagates across Chat/History/Commits; inline commit display per prompt",
-      "Pagination and filtering across all views (2026-03-15) \u2014 Chat/History/Commits show offset ranges (e.g., '1\u2013100 / 204') with \u25c0 \u25b6 navigation; unified history loads all archives; phase filter respects backfilled entries"
+      "Pagination and filtering across all views (2026-03-15) \u2014 Chat/History/Commits show offset ranges (1\u2013100 / 204) with \u25c0 \u25b6 navigation; unified history loads all archives; phase filter respects backfilled entries"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -137,15 +137,15 @@
       "ui_components": "xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)",
       "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database_schema": "Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)",
       "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)",
       "workflow_engine": "Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization",
       "mcp": "Standalone stdio MCP server with 12+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity, update_entity, list_entities, get_feature_status)",
       "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
       "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, and MCP integration settings"
     },
-    "project_summary": "aicli is a shared AI memory platform for developers that unifies history, tagging, and project management across Claude CLI, Cursor, ChatGPT, and other LLM tools. It uses a dual-layer distillation pipeline (raw JSONL \u2192 interaction tags \u2192 synthesized memory) with a FastAPI backend, PostgreSQL semantic search, and an Electron UI. The system now supports full project lifecycle management with work items (features/bugs/tasks), phase tracking, commit linking, and MCP integration for external agent access.",
-    "memory_digest": "**[2026-03-16]** `claude_cli` \u2014 Config externalization completed: backend_url, haiku_model, db_pool_max moved to config.py for portability; /health check added for MCP readiness verification. **[2026-03-16]** `claude_cli` \u2014 Memory distillation pipeline refined with dual-layer summarization (raw JSONL \u2192 interaction_tags \u2192 5 output files); session_bulk_tag() now writes to both event_tags and interaction_tags for memory consistency. **[2026-03-16]** `claude_cli` \u2014 MCP tool expansion: create_entity, update_entity, list_entities, get_feature_status implemented and verified; enables Claude CLI to create/manage work items directly. **[2026-03-15/16]** `claude_cli` \u2014 Work item lifecycle tracking: phase/feature/session_id as real indexed columns in events_{p}; status + due_date in entity_values; phase changes backfill history.jsonl automatically. **[2026-03-15]** `claude_cli` \u2014 Tag deduplication verified (149 tags, 0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits views; inline commit display per prompt implemented. **[2026-03-15]** `claude_cli` \u2014 Pagination and filtering: Chat/History/Commits show offset ranges with navigation; unified history loads all archives on startup; phase filter respects backfilled entries; commit phase filter added."
+    "project_summary": "aicli is a shared AI memory platform that combines a Python CLI, FastAPI backend, and Electron desktop UI to provide persistent, searchable memory across LLM interactions. It uses a dual-layer storage approach (JSONL + PostgreSQL with pgvector), supports nested project hierarchies with per-project event tracking and tagging, and integrates an MCP server for advanced project management and memory retrieval. The system is currently focused on stabilizing session phase persistence, memory distillation pipelines, and cross-view tag synchronization.",
+    "memory_digest": "**[2026-03-16]** `config.py` \u2014 Externalized backend_url, haiku_model, db_pool_max to config.py; removed unused methods; added /health check for MCP readiness and system initialization verification. **[2026-03-16]** `memory_distillation` \u2014 Implemented dual-layer memory synthesis pipeline (raw JSONL \u2192 interaction_tags \u2192 5 output files: CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules); fixed session_bulk_tag() to write to both event_tags and interaction_tags tables for consistency. **[2026-03-16]** `mcp_tools` \u2014 Expanded MCP tool set with create_entity, update_entity, list_entities, get_feature_status; all tools verified to return accurate JSON for project management queries via MCP stdio interface. **[2026-03-15]** `session_phase_persistence` \u2014 Implemented phase field as required DB column; phase now loads from events_{p} on session init, persists via PATCH /chat/sessions/{id}/tags, and backfills all matching history.jsonl entries ordered by created_at. **[2026-03-15]** `tag_synchronization` \u2014 Achieved 149 tags with 0 duplicates; tag removal via \u2715 buttons propagates across Chat/History/Commits views; inline commit display per prompt enabled for immediate visibility. **[2026-03-15]** `pagination_filtering` \u2014 Implemented offset-based pagination across Chat/History/Commits views with range indicators (1\u2013100 / 204); unified history loader merges all JSONL archives; phase filter respects backfilled entries."
   }
 }

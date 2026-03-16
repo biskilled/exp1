@@ -913,6 +913,15 @@ async def _summarize_session_memory(project: str) -> int:
                     pass
 
                 # Store in memory_items
+                # interaction_ids from ARRAY_AGG may come back as a PG array string
+                # like '{uuid1,uuid2}' — normalise to a proper uuid[] literal
+                if isinstance(interaction_ids, str):
+                    _raw = interaction_ids.strip('{}')
+                    _ids = [x.strip() for x in _raw.split(',') if x.strip()]
+                else:
+                    _ids = [str(i) for i in (interaction_ids or [])]
+                source_ids_pg = '{' + ','.join(_ids) + '}'
+
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
@@ -923,8 +932,7 @@ async def _summarize_session_memory(project: str) -> int:
                                ON CONFLICT DO NOTHING
                                RETURNING id""",
                             (project, session_id, final_summary,
-                             [str(i) for i in (interaction_ids or [])],
-                             score, critique or None),
+                             source_ids_pg, score, critique or None),
                         )
                         if cur.fetchone():
                             created += 1
