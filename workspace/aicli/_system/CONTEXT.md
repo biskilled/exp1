@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-16 18:44 UTC — do not edit manually.
+> Auto-generated 2026-03-16 18:53 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 112
-- **Last active**: 2026-03-16T18:44:11Z
+- **Sessions**: 113
+- **Last active**: 2026-03-16T18:53:02Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-16 18:52]** `claude_cli/claude`  
+→ I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline config
+← _Now I have the full picture. Let me answer all three questions clearly.  ---  ## Answers to your questions  ### 1. Where is the "Run Pipeline" configured?  It's in `ui/backend/core/work_item_pipeline._
+
 **[2026-03-16 18:34]** `claude_cli/claude`  
 → I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/
 ← _Now I have everything I need. Let me write the comprehensive comparison and design proposal.  ---  ## Workflow System Design: Comparison & Proposal  ### What the two external systems do  **specrails**_
@@ -204,7 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 22:51]** `claude_cli/claude`  
 → That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possi
 ← _Two changes:  1. **Backend** — `patch_session_tags` no longer updates `updated_at` when saving tags. The session's timestamp stays frozen at when it was last messaged.  2. **Frontend** — `_loadSession_
-
-**[2026-03-15 22:40]** `claude_cli/claude`  
-→ I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently 
-← _The full flow works. Here's what was changed and why:  **Root causes fixed:**  1. **Red `⚠` only on UI sessions** — removed the `s.source === 'ui'` condition. Now ALL sessions (UI, CLI, WF) without a _

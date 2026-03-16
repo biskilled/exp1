@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 18:44 UTC by aicli /memory_
+_Generated: 2026-03-16 18:53 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform that combines a Python CLI, FastAPI backend, and Electron/Vanilla JS frontend to provide persistent, semantically-searchable project context across LLM interactions. It features nested tagging, multi-provider LLM support, dual-layer memory synthesis via Claude Haiku, PostgreSQL+pgvector semantic search, and an MCP server for Claude integration—currently refining workflow automation with async DAG execution and Cytoscape.js graph visualization.
 
 ## Tech Stack
 
@@ -63,8 +59,8 @@ aicli is a shared AI memory platform that combines a Python CLI, FastAPI backend
 ### Doc_type
 
 - **customer-meeting** — dsds `(54 events, 51 commits)`
-- **retrospective** `(52 events, 51 commits)`
 - **high-level-design** `(52 events, 51 commits)`
+- **retrospective** `(52 events, 51 commits)`
 - **low-level-design**
 
 ### Feature
@@ -73,18 +69,18 @@ aicli is a shared AI memory platform that combines a Python CLI, FastAPI backend
 - **auth** `(58 events, 51 commits)`
 - **shared-memory** `(3 events)`
 - **mcp** `(1 events)`
+- **graph-workflow** `(1 events)`
 - **workflow-runner** `(1 events)`
-- **embeddings**
-- **billing**
+- **tagging**
 - **test-picker-feature**
 - **UI**
 - **dropbox**
-- **graph-workflow**
-- **tagging**
+- **billing**
+- **embeddings**
 
 ### Phase
 
-- **discovery** `(1 events)`
+- **discovery** `(2 events)`
 - **development** `(1 events)`
 - **prod**
 
@@ -93,4 +89,42 @@ aicli is a shared AI memory platform that combines a Python CLI, FastAPI backend
 - **memory** `(96 events, 51 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
-**[2026-03-16]** `config.py` — Externalized backend configuration (backend_url, haiku_model, db_pool_max); added /health endpoint for MCP readiness validation. **[2026-03-16]** `workflow-design` — Analyzed specrails (12-prompt Claude Code agent pattern) and external tools; proposed node-based async DAG executor with YAML config and Cytoscape.js visualization for multi-agent workflows. **[2026-03-16]** `memory-pipeline` — Implemented dual-layer memory synthesis (raw JSONL → interaction_tags → 5 output files: CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules); unified session_bulk_tag() to persist across event_tags and interaction_tags. **[2026-03-16]** `mcp-tools` — Expanded MCP server with create_entity, update_entity, list_entities, get_feature_status tools; verified JSON output correctness for project management queries. **[2026-03-15]** `session-phase` — Phase field now loads from DB on project init, persists via PATCH /chat/sessions/{id}/tags, backfills all matching history.jsonl entries ordered by created_at. **[2026-03-15]** `tag-sync` — Achieved 149 tags with 0 duplicates; cross-view removal via ✕ buttons propagates across Chat/History/Commits; added inline commit display per prompt.
+## Recent Work (last 10 exchanges)
+
+**[2026-03-16 18:52]** `claude_cli/claude`
+Q: I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline configure ? also there used to be parent - child support (for example UI -> dropbox) w
+A: Now I have the full picture. Let me answer all three questions clearly.  ---  ## Answers to your questions  ### 1. Where is the "Run Pipeline" configured?  It's in `ui/backend/core/work_item_pipeline.py` — **completely hardcoded**. 4 stages are Python-coded directly: PM → Architect → Developer → Rev
+
+**[2026-03-16 18:34]** `claude_cli/claude`
+Q: I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/workflows, you can check also the github - https://github.com/fjpulidop/specrail
+A: Now I have everything I need. Let me write the comprehensive comparison and design proposal.  ---  ## Workflow System Design: Comparison & Proposal  ### What the two external systems do  **specrails** is essentially a **Claude Code agent system** — 12 specialized prompt files (`.md` role definitions
+
+**[2026-03-16 18:26]** `claude_cli/claude`
+Q: are you using the mcp now?
+A: ---  **To answer your question directly:**  No, I'm not using the MCP in this session. Everything I did was via direct HTTP calls (`curl`, Python `urllib`).  **What changes:**  - `.mcp.json` is now at the project root — Claude Code will pick it up **on next session start** - `enableAllProjectMcpServ
+
+**[2026-03-16 18:02]** `claude_cli/claude`
+Q: Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai the key is under OPENAI_API_KEY
+A: Everything is working end-to-end. Here's the full picture:  ---  ## Full Pipeline — Now Working  ### What just happened in sequence: 1. **Bug found and fixed** — `ARRAY_AGG(uuid[])` came back from psycopg2 as a raw string `'{uuid1,uuid2}'`, causing `[str(i) for i in ids]` to iterate over characters 
+
+**[2026-03-16 17:42]** `claude_cli/claude`
+Q: Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. and check that tagging are working properly and helping to embed/retrive data by
+A: Now I have a complete picture. Let me give you a clear, honest assessment.  ---  ## `/memory` Run Results  **Ran successfully** — generated 5 files at 17:43 UTC. Result: `"synthesized": false` because it used a cached synthesis (last full synthesis was at 01:35 today, less than 20 prompts ago — with
+
+**[2026-03-16 01:34]** `claude_cli/claude`
+Q: Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can provide more accurate answer in order to manage work item , create workflow bas
+A: ## Complete System Improvement Summary  ---  ### What Was Built (7 Parts)  **Before:** Every LLM call got either 40 raw JSONL entries (noisy, expensive) or a CLAUDE.md (too coarse). Tags lived in per-project tables. Work items were just entity values with no intelligence. MCP had read-only project s
+
+**[2026-03-16 01:26]** `claude_cli/claude`
+Q: After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can be improved answering and storing data related to the project and will I be abl
+A: Here's a complete answer to your questions:  ---  ## Audit Results + What Was Fixed  ### Tags — mostly good, one gap fixed The old `event_tags_{project}` system is fully wired: chat, history sync, and the tag-by-source-id UI all write to it. The new `interaction_tags` table (for the memory pipeline)
+
+**[2026-03-16 00:48]** `claude_cli/claude`
+Q: I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/workflows (github page - https://github.com/fjpulidop/specrails/tree/main) and got 
+
+**[2026-03-16 00:19]** `claude_cli/claude`
+Q: I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure that there are no text string that need to be in config file. for example backen u
+A: All clean. Here's a summary of everything fixed:  ---  ## Optimization fixes applied  | Issue | File | Fix | |---|---|---| | `haiku_model` hardcoded in 6 places | `config.py` | Added `haiku_model: str = "claude-haiku-4-5-20251001"` | | `backend_url` hardcoded | `config.py` | Added `backend_url: str 
+
+**[2026-03-15 23:49]** `claude_cli/claude`
+Q: 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and prompt the user (in using the aicli that /memory is running. also it will run on uploading the porjec

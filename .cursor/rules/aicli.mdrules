@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-16 18:44 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-16 18:53 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-16] Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can
 - [2026-03-16] Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. 
 - [2026-03-16] Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai th
 - [2026-03-16] are you using the mcp now?
 - [2026-03-16] I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/
+- [2026-03-16] I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline config
