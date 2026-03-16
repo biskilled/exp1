@@ -655,13 +655,16 @@ async def _synthesize_with_llm(
     state_data: dict,
     project_md: str,
     entity_text: str = "",
+    prior_synthesis: dict | None = None,
 ) -> dict | None:
     """Use Claude Haiku to intelligently synthesize project history into structured memory.
 
-    Reads the last 40 history entries and produces a dict with:
-      key_decisions, in_progress, tech_stack, memory_digest, project_summary.
-    Returns None silently if the API key is missing or any error occurs — callers
-    fall back to mechanical string-slicing in that case.
+    Accepts prior_synthesis (cached from last run) to support incremental mode:
+    when only a few new entries exist, Haiku merges them into the prior synthesis
+    instead of re-processing the full history — reducing token cost ~8× on repeat runs.
+
+    Returns a dict with: key_decisions, in_progress, tech_stack, memory_digest, project_summary.
+    Returns None silently if the API key is missing or any error occurs.
     """
     try:
         import anthropic
@@ -671,9 +674,9 @@ async def _synthesize_with_llm(
         if not key:
             return None
 
-        # Build history text (oldest first, last 40 entries with user_input)
+        # Build history text (oldest first, entries passed in by caller — already filtered)
         history_lines: list[str] = []
-        for e in history[-40:]:
+        for e in history:
             ts = (e.get("ts") or "")[:16].replace("T", " ")
             src = e.get("source", "?")
             q = (e.get("user_input") or "").strip()[:300].replace("\n", " ")
@@ -693,12 +696,24 @@ async def _synthesize_with_llm(
         proj_intro = (project_md.split("\n## ")[0].strip()[:600] if project_md else "")
 
         entity_block = f"Active project entities (features/bugs/tasks):\n{entity_text}\n\n" if entity_text else ""
+
+        # Include prior synthesis so Haiku merges rather than discards stable context
+        prior_block = ""
+        if prior_synthesis:
+            prior_json = json.dumps({
+                k: prior_synthesis.get(k)
+                for k in ("key_decisions", "in_progress", "tech_stack", "project_summary")
+                if prior_synthesis.get(k)
+            }, indent=2)[:800]
+            prior_block = f"Prior synthesis (merge, do not discard stable decisions):\n{prior_json}\n\n"
+
         prompt = (
             f'You are analyzing development history for project "{project_name}".\n\n'
             f"Current structured state:\n{current_state}\n\n"
+            f"{prior_block}"
             f"Project intro (from PROJECT.md):\n{proj_intro}\n\n"
             f"{entity_block}"
-            f"Development history ({len(history)} sessions, oldest→newest):\n{history_text}\n\n"
+            f"Development history ({len(history)} entries, oldest→newest):\n{history_text}\n\n"
             "Return ONLY valid JSON (no markdown fences) with exactly these fields:\n"
             "{\n"
             '  "key_decisions": ["up to 15 stable architectural/technical decisions any LLM must know"],\n'
@@ -923,15 +938,32 @@ async def generate_memory(project_name: str):
             log.warning("entity summary for /memory failed: %s", _e)
 
     # ── LLM synthesis (optional — degrades to mechanical approach if API unavailable) ──
-    synthesis = await _synthesize_with_llm(project_name, recent, state_data, project_md, entity_text_for_llm)
+    # Incremental: only send new entries to Haiku when ≥3 exist since last run.
+    prior_synthesis: dict = state_data.get("_synthesis_cache", {})
+    new_entries = [e for e in recent if (e.get("ts") or "") > (last_memory_run or "")]
+    entries_for_llm = new_entries if len(new_entries) >= 3 else recent  # fallback if too few
+
+    synthesis = await _synthesize_with_llm(
+        project_name, entries_for_llm, state_data, project_md, entity_text_for_llm,
+        prior_synthesis=prior_synthesis if new_entries else None,
+    )
     if synthesis:
         # Merge LLM-extracted structured data into state_data (LLM wins on new fields)
         if synthesis.get("tech_stack"):
             state_data.setdefault("tech_stack", {}).update(synthesis["tech_stack"])
         if synthesis.get("key_decisions"):
-            state_data["key_decisions"] = synthesis["key_decisions"]
+            # Deduplicate: LLM wins on new entries; preserve prior unique decisions
+            existing = set(state_data.get("key_decisions", []))
+            new_kd = synthesis["key_decisions"]
+            state_data["key_decisions"] = new_kd + [d for d in existing if d not in set(new_kd)]
+            state_data["key_decisions"] = state_data["key_decisions"][:15]
         if synthesis.get("in_progress"):
-            state_data["in_progress"] = synthesis["in_progress"]
+            state_data["in_progress"] = synthesis["in_progress"][:6]
+        # Save synthesis as cache for next incremental run
+        state_data["_synthesis_cache"] = {
+            k: synthesis.get(k)
+            for k in ("key_decisions", "in_progress", "tech_stack", "project_summary", "memory_digest")
+        }
         # Persist updated project_state.json so get_project_context() reads fresh data below
         _save_project_state(sys_dir, state_data)
         # Refresh PROJECT.md "Recent Work" section with LLM-extracted items
@@ -1249,6 +1281,80 @@ async def generate_memory(project_name: str):
         "run_ts": run_ts,
         "suggested_tags": suggested_tags,
         "history_rotation": rotation,
+    }
+
+
+@router.get("/{project_name}/memory-status")
+async def memory_status(project_name: str):
+    """Return memory health: how many new prompts since last /memory run.
+
+    Reads project_state.json for last_memory_run, counts new history.jsonl entries,
+    compares against configurable threshold (project.yaml memory_threshold, default 20).
+    Used by the UI amber banner and summary Memory Health card.
+    """
+    proj_dir = _workspace() / project_name
+    if not proj_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    sys_dir = proj_dir / "_system"
+
+    # Load project_state.json for last_memory_run
+    state_data: dict = {}
+    for sp in [sys_dir / "project_state.json", proj_dir / "project_state.json"]:
+        if sp.exists():
+            try:
+                state_data = json.loads(sp.read_text())
+                break
+            except Exception:
+                pass
+    last_memory_run: str | None = state_data.get("last_memory_run")
+
+    # Load threshold from project.yaml
+    threshold = 20
+    proj_yaml = proj_dir / "project.yaml"
+    if proj_yaml.exists():
+        try:
+            cfg = yaml.safe_load(proj_yaml.read_text()) or {}
+            threshold = int(cfg.get("memory_threshold", 20))
+        except Exception:
+            pass
+
+    # Count prompts in history.jsonl since last_memory_run
+    total_prompts = 0
+    prompts_since = 0
+    hist_file = sys_dir / "history.jsonl"
+    if hist_file.exists():
+        for line in hist_file.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                e = json.loads(line)
+            except Exception:
+                continue
+            if not e.get("user_input"):
+                continue
+            total_prompts += 1
+            ts = e.get("ts") or ""
+            if last_memory_run is None or ts > last_memory_run:
+                prompts_since += 1
+
+    # Days since last run
+    days_since: int | None = None
+    if last_memory_run:
+        try:
+            last_dt = datetime.fromisoformat(last_memory_run.replace("Z", "+00:00"))
+            days_since = (datetime.utcnow().replace(tzinfo=last_dt.tzinfo) - last_dt).days
+        except Exception:
+            pass
+
+    return {
+        "last_memory_run": last_memory_run,
+        "prompts_since_last_memory": prompts_since,
+        "total_prompts": total_prompts,
+        "needs_memory": prompts_since >= threshold,
+        "threshold": threshold,
+        "days_since_last_memory": days_since,
+        "project": project_name,
     }
 
 

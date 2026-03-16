@@ -561,6 +561,75 @@ def main():
 
     aicli_context = _load_aicli_context()
 
+    def _warn_if_memory_stale() -> None:
+        """Print a one-time yellow warning if too many prompts have accumulated since last /memory."""
+        if not active_project:
+            return
+        proj_dir = workspace_dir / active_project
+        sys_dir  = proj_dir / "_system"
+
+        # Load last_memory_run from project_state.json
+        last_memory_run: str | None = None
+        for sp in [sys_dir / "project_state.json", proj_dir / "project_state.json"]:
+            if sp.exists():
+                try:
+                    import json as _json
+                    sd = _json.loads(sp.read_text())
+                    last_memory_run = sd.get("last_memory_run")
+                    threshold = int(sd.get("_memory_threshold", 20))
+                    break
+                except Exception:
+                    pass
+        else:
+            threshold = 20
+
+        # Load threshold from project.yaml if not in state
+        yaml_path = proj_dir / "project.yaml"
+        if yaml_path.exists():
+            try:
+                import yaml as _yaml
+                cfg = _yaml.safe_load(yaml_path.read_text()) or {}
+                threshold = int(cfg.get("memory_threshold", threshold))
+            except Exception:
+                pass
+
+        # Count prompts since last_memory_run
+        hist = sys_dir / "history.jsonl"
+        if not hist.exists():
+            return
+        count = 0
+        try:
+            import json as _json
+            for line in hist.read_text().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    e = _json.loads(line)
+                except Exception:
+                    continue
+                if not e.get("user_input"):
+                    continue
+                ts = e.get("ts") or ""
+                if last_memory_run is None or ts > last_memory_run:
+                    count += 1
+        except Exception:
+            return
+
+        if count < threshold:
+            return
+
+        date_str = (last_memory_run or "never")[:10]
+        console.print(
+            f"\n[yellow]⚠  {count} new prompts since last /memory ({date_str}).[/yellow]"
+            "\n[dim]   Run [bold]/memory[/bold] to refresh AI context files.[/dim]\n"
+        )
+
+    # Show warning once at startup (not blocking)
+    try:
+        _warn_if_memory_stale()
+    except Exception:
+        pass
+
     def _make_runner() -> WorkflowRunner | None:
         if not active_project:
             return None

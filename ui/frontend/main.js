@@ -444,6 +444,11 @@ export async function openProject(name) {
 
     navigateTo('summary');
 
+    // Memory health check — show amber banner if too many prompts since last /memory
+    api.getMemoryStatus(name).then(s => {
+      if (s.needs_memory) _showMemoryBanner(s, name);
+    }).catch(() => {});
+
     // Background context refresh — regenerates CLAUDE.md + CONTEXT.md, copies to code dir.
     // Runs after navigation so it doesn't block the UI opening.
     api.getProjectContext(name, true).then(data => {
@@ -456,6 +461,67 @@ export async function openProject(name) {
   } catch (e) {
     toast(`Could not open project: ${e.message}`, 'error');
   }
+}
+
+// ── Memory health banner ──────────────────────────────────────────────────────
+
+function _showMemoryBanner(status, projectName) {
+  const key = `memory-banner-dismissed-${projectName}`;
+  if (sessionStorage.getItem(key)) return;
+
+  // Remove any existing banner
+  document.getElementById('memory-health-banner')?.remove();
+
+  const n = status.prompts_since_last_memory || 0;
+  const days = status.days_since_last_memory;
+  const ageStr = days != null ? ` (${days} day${days !== 1 ? 's' : ''} ago)` : '';
+
+  const banner = document.createElement('div');
+  banner.id = 'memory-health-banner';
+  banner.style.cssText = [
+    'display:flex;align-items:center;gap:0.75rem;padding:0.5rem 1rem',
+    'background:#fff3cd;border-bottom:1px solid #ffc107;font-size:0.72rem;',
+    'color:#856404;flex-shrink:0;z-index:10',
+  ].join(';');
+  banner.innerHTML = `
+    <span style="font-size:0.95rem">⚠</span>
+    <span style="flex:1">
+      <strong>${n} new prompts</strong> since last /memory${ageStr}.
+      Refresh AI context files to keep Claude, Cursor and Copilot in sync.
+    </span>
+    <button id="memory-banner-run"
+      style="background:#ffc107;border:none;color:#000;font-size:0.65rem;
+             padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;font-family:inherit;
+             font-weight:600;white-space:nowrap">
+      Run /memory
+    </button>
+    <button id="memory-banner-dismiss"
+      style="background:none;border:none;color:#856404;font-size:0.9rem;
+             cursor:pointer;padding:0;line-height:1;flex-shrink:0">✕</button>
+  `;
+
+  // Insert before main content
+  const main = document.getElementById('main-content');
+  if (main) main.prepend(banner);
+
+  document.getElementById('memory-banner-run')?.addEventListener('click', async () => {
+    const btn = document.getElementById('memory-banner-run');
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+      await api.generateMemory(projectName);
+      banner.remove();
+      sessionStorage.setItem(key, '1');
+      toast('Memory files refreshed', 'success');
+    } catch (e) {
+      toast(`/memory failed: ${e.message}`, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Run /memory'; }
+    }
+  });
+
+  document.getElementById('memory-banner-dismiss')?.addEventListener('click', () => {
+    banner.remove();
+    sessionStorage.setItem(key, '1');
+  });
 }
 
 window._openProject = openProject;

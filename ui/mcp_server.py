@@ -235,6 +235,50 @@ async def list_tools() -> list[mcp_types.Tool]:
                 },
             },
         ),
+        mcp_types.Tool(
+            name="create_entity",
+            description=(
+                "Create a new entity value (feature, bug, task, etc.) in the project's knowledge graph. "
+                "Use this to track a new feature you are about to implement, a bug you discovered, "
+                "or a task that needs to be done. The entity will appear in the Planner tab."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "description": "Category name: 'feature', 'bug', 'task', 'component', etc.",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Short name for this entity (e.g. 'auth-refactor', 'login-500-error')",
+                    },
+                    "description": {"type": "string", "description": "Optional description"},
+                    "due_date":    {"type": "string", "description": "Optional due date (YYYY-MM-DD)"},
+                    "project":     {"type": "string"},
+                },
+                "required": ["category", "name"],
+            },
+        ),
+        mcp_types.Tool(
+            name="sync_github_issues",
+            description=(
+                "Import GitHub issues as entity values into the project's Planner. "
+                "Bug-labelled issues → bug category; enhancement/feature → feature; others → task. "
+                "Idempotent: safe to run repeatedly."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner":   {"type": "string", "description": "GitHub repo owner (org or user)"},
+                    "repo":    {"type": "string", "description": "GitHub repository name"},
+                    "token":   {"type": "string", "description": "Optional GitHub personal access token"},
+                    "state":   {"type": "string", "default": "open", "description": "Issue state: open, closed, all"},
+                    "project": {"type": "string"},
+                },
+                "required": ["owner", "repo"],
+            },
+        ),
     ]
 
 
@@ -384,6 +428,49 @@ async def _dispatch(name: str, args: dict) -> Any:
             "skip_pull": False,
             "source": "cursor_mcp",
         })
+
+    elif name == "create_entity":
+        # Resolve category name → id via the categories list
+        cats_data = await _get("/entities/categories", {"project": project})
+        cat_name = args["category"]
+        cat = next(
+            (c for c in cats_data.get("categories", []) if c["name"] == cat_name),
+            None,
+        )
+        if not cat:
+            raise ValueError(
+                f"Unknown category: '{cat_name}'. "
+                f"Available: {[c['name'] for c in cats_data.get('categories', [])]}"
+            )
+        body: dict = {
+            "category_id": cat["id"],
+            "project": project,
+            "name": args["name"],
+            "description": args.get("description", ""),
+        }
+        if args.get("due_date"):
+            body["due_date"] = args["due_date"]
+        result = await _post("/entities/values", body)
+        return {
+            "id": result.get("id"),
+            "name": result.get("name"),
+            "category": cat_name,
+            "project": project,
+        }
+
+    elif name == "sync_github_issues":
+        import urllib.parse
+        params = {
+            "project": project,
+            "owner": args["owner"],
+            "repo": args["repo"],
+        }
+        if args.get("token"):
+            params["token"] = args["token"]
+        if args.get("state"):
+            params["state"] = args["state"]
+        qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
+        return await _post(f"/entities/github-sync?{qs}", {})
 
     else:
         raise ValueError(f"Unknown tool: {name}")

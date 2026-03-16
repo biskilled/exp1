@@ -266,7 +266,7 @@ async def _stream_response(
         _append_history(project, provider, message, content, session_id, user_id, user_email, ts=_ts, tags=tags)
         _update_runtime_state(project, provider, message, session_id, user_id)
 
-        # Fire-and-forget: embed + auto-tag suggestions
+        # Fire-and-forget: embed + auto-tag suggestions + proactive feature detection
         try:
             from core.embeddings import embed_and_store as _embed
             asyncio.create_task(_embed(
@@ -278,6 +278,10 @@ async def _stream_response(
             if db.is_available():
                 from routers.entities import _auto_suggest_tags
                 asyncio.create_task(_auto_suggest_tags_for_event(_ts, project, message))
+                # Proactive feature auto-detection (first prompt in new session only)
+                asyncio.create_task(
+                    _auto_detect_session_feature(session_id, project, message, messages)
+                )
         except Exception:
             pass
 
@@ -305,6 +309,106 @@ async def _auto_suggest_tags_for_event(ts: str, project: str, user_msg: str) -> 
         if row:
             from routers.entities import _auto_suggest_tags
             await _auto_suggest_tags(row[0], project, user_msg)
+    except Exception:
+        pass
+
+
+async def _auto_detect_session_feature(
+    session_id: str, project: str, user_msg: str, messages: list[dict]
+) -> None:
+    """Auto-detect and apply the most relevant feature tag for a new session's first prompt.
+
+    Guards:
+    - Only runs on the first user message in a session.
+    - Skips if the session already has a feature tag in session_tags.
+    - Calls Haiku with the prompt + list of existing feature names.
+    - Applies the matched feature to session_tags and session JSON if confident.
+    Silent on any error.
+    """
+    if not db.is_available():
+        return
+    try:
+        # Guard: only on first user message
+        user_msgs = [m for m in messages if m.get("role") == "user"]
+        if len(user_msgs) != 1:
+            return
+
+        # Guard: skip if session already has a feature tag
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT feature FROM session_tags WHERE project=%s",
+                    (project,),
+                )
+                row = cur.fetchone()
+        if row and row[0]:
+            return
+
+        from core.api_keys import get_key
+        key = get_key("claude") or get_key("anthropic")
+        if not key:
+            return
+
+        # Load existing feature names
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT v.name FROM entity_values v
+                       JOIN entity_categories c ON c.id = v.category_id
+                       WHERE v.project=%s AND c.name='feature' AND v.status='active'
+                       ORDER BY v.name""",
+                    (project,),
+                )
+                features = [r[0] for r in cur.fetchall()]
+
+        if not features:
+            return
+
+        import anthropic
+        feat_list = ", ".join(f'"{f}"' for f in features[:30])
+        prompt = (
+            f"Existing features: [{feat_list}]\n\n"
+            f"New developer prompt:\n{user_msg[:400]}\n\n"
+            'Does this prompt clearly relate to one of the existing features? '
+            'If yes, return {"feature": "exact-feature-name"}. '
+            'If not a confident match, return {"feature": null}. '
+            'Return ONLY valid JSON, nothing else.'
+        )
+        client = anthropic.AsyncAnthropic(api_key=key)
+        resp = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=60,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = (resp.content[0].text if resp.content else "").strip()
+        import re as _re
+        m = _re.search(r'\{.*?\}', text, _re.DOTALL)
+        if not m:
+            return
+        parsed = json.loads(m.group())
+        feature_name = parsed.get("feature")
+        if not feature_name or feature_name not in features:
+            return
+
+        # Apply feature to session_tags
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO session_tags (project, feature) VALUES (%s,%s)
+                       ON CONFLICT (project) DO UPDATE SET feature=%s, updated_at=NOW()""",
+                    (project, feature_name, feature_name),
+                )
+
+        # Also update the session JSON file's feature field
+        store = SessionStore(
+            workspace_dir=Path(settings.workspace_dir),
+            project=project,
+        )
+        sess = store.get(session_id)
+        if sess is not None:
+            sess.setdefault("metadata", {}).setdefault("tags", {})["feature"] = feature_name
+            store._save(sess)
+
     except Exception:
         pass
 

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 23:37 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-15 23:40 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -29,11 +29,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file storage primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables via project_table()
-- Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server only for local development
+- Flat file storage primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables
+- Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server for local dev only
 - JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
-- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner; tag cache loaded once per project tab (zero DB calls during chat)
+- Nested tags via parent_id FK: unlimited depth (category → tag → subtag) with tree UI in Planner
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Commit-to-prompt linking via source_id timestamp in commit_log.jsonl; bidirectional tagging via POST /entities/events/tag-by-source-id
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
@@ -41,13 +41,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8 tools for integration with Claude CLI and external agents
-- Session phase (required field) fixed on init from DB; PATCH /chat/sessions/{id}/tags saves phase; backfill to history.jsonl on phase change
-- Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering the session list; real columns (phase, feature, session_id) in events_{p} with indexes
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at (not updated_at)
+- Real DB columns for phase, feature, session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-15] I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently 
 - [2026-03-15] That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possi
 - [2026-03-15] It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by
 - [2026-03-15] now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly f
 - [2026-03-15] is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details inform
+- [2026-03-15] Is there is any addiotnal improvement that I can implemet for having full memroy , and project management lifecycle ?

@@ -104,6 +104,9 @@ export function renderEntities(container) {
   window._plannerDrawerSaveRemarks = _plannerDrawerSaveRemarks;
   window._plannerDrawerSaveDue    = _plannerDrawerSaveDue;
   window._plannerDrawerAddChild   = _plannerDrawerAddChild;
+  window._plannerCycleLifecycle   = _plannerCycleLifecycle;
+  window._plannerDrawerAddLink    = _plannerDrawerAddLink;
+  window._plannerDrawerRemoveLink = _plannerDrawerRemoveLink;
 
   if (!project) {
     document.getElementById('planner-tags-pane').innerHTML =
@@ -165,6 +168,39 @@ async function _plannerSelectCat(catId, catName) {
   _renderTagTableFromCache();
 }
 
+// ── Lifecycle badge helpers ───────────────────────────────────────────────────
+
+const _LIFECYCLE_ORDER = ['idea', 'design', 'development', 'testing', 'review', 'done'];
+const _LIFECYCLE_COLORS = {
+  idea:        '#95a5a6',
+  design:      '#8e44ad',
+  development: '#2980b9',
+  testing:     '#e67e22',
+  review:      '#16a085',
+  done:        '#27ae60',
+};
+
+function _lifecycleBadge(lc, valId) {
+  const label = lc || 'idea';
+  const color = _LIFECYCLE_COLORS[label] || '#95a5a6';
+  return `<span onclick="event.stopPropagation();window._plannerCycleLifecycle(${valId},'${label}')"
+                title="Click to advance lifecycle"
+                style="font-size:0.58rem;color:#fff;background:${color};padding:0.1rem 0.4rem;
+                       border-radius:10px;white-space:nowrap;cursor:pointer;user-select:none">
+            ${label}
+          </span>`;
+}
+
+function _plannerCycleLifecycle(valId, current) {
+  const idx  = _LIFECYCLE_ORDER.indexOf(current);
+  const next = _LIFECYCLE_ORDER[(idx + 1) % _LIFECYCLE_ORDER.length];
+  updateCachedValue(valId, { lifecycle_status: next });
+  _renderTagTableFromCache();
+  if (_drawerValId === valId) _renderDrawer();
+  api.entities.patchValue(valId, { lifecycle_status: next })
+    .catch(e => toast('Lifecycle sync error: ' + e.message, 'error'));
+}
+
 // ── Tag table ─────────────────────────────────────────────────────────────────
 
 // Which parent rows are collapsed (set of value IDs whose children are hidden)
@@ -210,6 +246,9 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
             ${toggleBtn}
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(v.name)}</span>
           </div>
+        </td>
+        <td style="padding:0.5rem 0.4rem;white-space:nowrap" onclick="event.stopPropagation()">
+          ${_lifecycleBadge(v.lifecycle_status, v.id)}
         </td>
         <td style="padding:0.5rem 0.5rem;white-space:nowrap" onclick="event.stopPropagation()">
           <span style="font-size:0.6rem;color:${sc};background:${sc}22;
@@ -275,6 +314,7 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
       <thead>
         <tr style="border-bottom:2px solid var(--border)">
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:90px">Lifecycle</th>
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500;width:75px">Status</th>
           <th style="width:44px"></th>
         </tr>
@@ -314,6 +354,8 @@ function _plannerOpenDrawer(catId, valId) {
     drawer.style.borderLeftWidth = '1px';
   }
   _renderDrawer();
+  // Async: load value links after drawer renders
+  _loadDrawerLinks(valId);
 }
 
 function _plannerCloseDrawer() {
@@ -383,6 +425,25 @@ function _renderDrawer() {
         </div>
       </div>
 
+      <!-- Lifecycle -->
+      <div>
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">Lifecycle</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${_LIFECYCLE_ORDER.map(lc => {
+            const col = _LIFECYCLE_COLORS[lc] || '#888';
+            const active = (v.lifecycle_status || 'idea') === lc;
+            return `<button
+              onclick="window._plannerCycleLifecycle(${v.id},'${(v.lifecycle_status || 'idea')}')"
+              style="font-size:0.6rem;padding:0.18rem 0.5rem;border-radius:10px;cursor:pointer;
+                     font-family:var(--font);outline:none;white-space:nowrap;border:1px solid ${col};
+                     background:${active ? col : 'transparent'};color:${active ? '#fff' : col};
+                     transition:all 0.12s"
+              title="Advance lifecycle">${lc}</button>`;
+          }).join('')}
+        </div>
+      </div>
+
       <!-- Remarks -->
       <div>
         <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
@@ -404,6 +465,30 @@ function _renderDrawer() {
           style="background:var(--bg);border:1px solid var(--border);color:var(--text);
                  font-family:var(--font);font-size:0.68rem;padding:0.25rem 0.4rem;
                  border-radius:var(--radius);outline:none;width:100%;box-sizing:border-box" />
+      </div>
+
+      <!-- Dependencies (Blocks) -->
+      <div id="drawer-links-section">
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">Dependencies (Blocks)</div>
+        <div id="drawer-links-chips" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:0.4rem">
+          <span style="font-size:0.62rem;color:var(--muted)">Loading…</span>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center">
+          <input id="drawer-link-inp" type="text" placeholder="Value name to block…"
+            list="drawer-link-datalist"
+            style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+                   font-family:var(--font);font-size:0.65rem;padding:0.2rem 0.4rem;
+                   border-radius:var(--radius);outline:none" />
+          <datalist id="drawer-link-datalist">
+            ${getCacheValues(catId).map(vv => `<option value="${_esc(vv.name)}"></option>`).join('')}
+          </datalist>
+          <button onclick="window._plannerDrawerAddLink(${v.id},${catId})"
+            style="background:var(--accent);border:none;color:#fff;font-size:0.6rem;
+                   padding:0.2rem 0.5rem;border-radius:var(--radius);cursor:pointer;
+                   font-family:var(--font);outline:none;white-space:nowrap">+ Link</button>
+        </div>
+        <div id="drawer-link-msg" style="font-size:0.6rem;color:var(--muted);margin-top:0.2rem;min-height:0.8rem"></div>
       </div>
 
       <!-- Meta -->
@@ -589,6 +674,65 @@ async function _plannerSync() {
     _renderCategoryList();
     if (selectedCat) _renderTagTableFromCache();
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Value-link helpers ────────────────────────────────────────────────────────
+
+async function _loadDrawerLinks(valId) {
+  const chipsEl = document.getElementById('drawer-links-chips');
+  if (!chipsEl) return;
+  try {
+    const data = await api.entities.getValueLinks(valId);
+    _renderLinkChips(valId, data.outgoing || []);
+  } catch {
+    if (chipsEl) chipsEl.innerHTML = '<span style="font-size:0.62rem;color:var(--muted)">—</span>';
+  }
+}
+
+function _renderLinkChips(fromValId, links) {
+  const chipsEl = document.getElementById('drawer-links-chips');
+  if (!chipsEl) return;
+  if (!links.length) {
+    chipsEl.innerHTML = '<span style="font-size:0.62rem;color:var(--muted)">None</span>';
+    return;
+  }
+  chipsEl.innerHTML = links.map(lk => `
+    <span style="display:inline-flex;align-items:center;gap:3px;font-size:0.62rem;
+                 background:${lk.color || 'var(--accent)'}22;color:${lk.color || 'var(--accent)'};
+                 border:1px solid ${lk.color || 'var(--accent)'}44;
+                 padding:0.1rem 0.35rem;border-radius:10px">
+      ${_esc(lk.name)}
+      <span onclick="window._plannerDrawerRemoveLink(${fromValId},${lk.to_value_id})"
+            style="cursor:pointer;color:var(--muted);font-size:0.75rem;margin-left:1px">×</span>
+    </span>`).join('');
+}
+
+async function _plannerDrawerAddLink(fromValId, catId) {
+  const inp = document.getElementById('drawer-link-inp');
+  const msg = document.getElementById('drawer-link-msg');
+  const name = (inp?.value || '').trim();
+  if (!name) { if (msg) msg.textContent = 'Enter a value name'; return; }
+  const allVals = getCacheValues(catId);
+  const target = allVals.find(v => v.name === name && v.id !== fromValId);
+  if (!target) { if (msg) msg.textContent = `"${name}" not found in this category`; return; }
+  if (msg) msg.textContent = 'Linking…';
+  try {
+    await api.entities.createValueLink(fromValId, { to_value_id: target.id, link_type: 'blocks' });
+    if (inp) inp.value = '';
+    if (msg) msg.textContent = '✓ Linked';
+    await _loadDrawerLinks(fromValId);
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function _plannerDrawerRemoveLink(fromValId, toValId) {
+  try {
+    await api.entities.deleteValueLink(fromValId, toValId);
+    await _loadDrawerLinks(fromValId);
+  } catch (e) {
+    toast('Remove link failed: ' + e.message, 'error');
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

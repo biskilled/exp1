@@ -66,6 +66,7 @@ export const api = {
   updateProjectSummary:(name, content) => _put(`/projects/${encodeURIComponent(name)}/summary`, { content }),
   getProjectContext:   (name, save = false) => _get(`/projects/${encodeURIComponent(name)}/context?save=${save}`),
   generateMemory:      (name)       => _post(`/projects/${encodeURIComponent(name)}/memory`, {}),
+  getMemoryStatus:     (name)       => _get(`/projects/${encodeURIComponent(name)}/memory-status`),
   runCommand:          (name, cmd)  => _post(`/projects/${encodeURIComponent(name)}/run-command`, { command: cmd }),
 
   // Prompts
@@ -261,6 +262,19 @@ api.entities = {
     `/entities/suggestions?${_pq(project)}${sourceId ? `&source_id=${encodeURIComponent(sourceId)}` : ''}`
   ),
   dismissSuggestions: (eventId) => _post(`/entities/suggestions/${eventId}/dismiss`, {}),
+
+  // Value-to-value dependency links (Planner dependencies UI)
+  getValueLinks:    (valId)         => _get(`/entities/values/${valId}/links`),
+  createValueLink:  (valId, body)   => _post(`/entities/values/${valId}/links`, body),
+  deleteValueLink:  (valId, toId, linkType = 'blocks') =>
+    _del(`/entities/values/${valId}/links/${toId}?link_type=${encodeURIComponent(linkType)}`),
+
+  // GitHub issue sync
+  githubSync: (project, owner, repo, token = '', state = 'open') => {
+    const q = new URLSearchParams({ project: project || '', owner, repo, state });
+    if (token) q.set('token', token);
+    return _post(`/entities/github-sync?${q}`, {});
+  },
 };
 
 

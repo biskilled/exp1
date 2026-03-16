@@ -170,20 +170,25 @@ async def delete_category(cat_id: int):
 
 # ── Values ─────────────────────────────────────────────────────────────────────
 
+_LIFECYCLE_STATES = ["idea", "design", "development", "testing", "review", "done"]
+
 class ValueCreate(BaseModel):
-    category_id: int
-    name:        str
-    description: str = ""
-    project:     Optional[str] = None
-    due_date:    Optional[str] = None
-    parent_id:   Optional[int] = None
+    category_id:      int
+    name:             str
+    description:      str = ""
+    project:          Optional[str] = None
+    due_date:         Optional[str] = None
+    parent_id:        Optional[int] = None
+    category_name:    Optional[str] = None   # alternative to category_id for MCP callers
+    lifecycle_status: Optional[str] = None
 
 class ValuePatch(BaseModel):
-    name:        Optional[str] = None
-    description: Optional[str] = None
-    status:      Optional[str] = None
-    due_date:    Optional[str] = None
-    parent_id:   Optional[int] = None
+    name:             Optional[str] = None
+    description:      Optional[str] = None
+    status:           Optional[str] = None
+    due_date:         Optional[str] = None
+    parent_id:        Optional[int] = None
+    lifecycle_status: Optional[str] = None
 
 
 @router.get("/values")
@@ -218,7 +223,7 @@ async def list_values(
             et_table = db.project_table("event_tags", p)
             cur.execute(
                 f"""SELECT v.id, v.category_id, v.name, v.description, v.status,
-                          v.created_at, v.due_date, v.parent_id,
+                          v.created_at, v.due_date, v.parent_id, v.lifecycle_status,
                           (SELECT COUNT(*) FROM {et_table} et
                            WHERE et.entity_value_id = v.id) AS event_count,
                           c.name AS category_name, c.color, c.icon
@@ -259,6 +264,7 @@ async def entity_summary(project: str | None = Query(None)):
             cur.execute(
                 f"""SELECT c.id AS cat_id, c.name AS category, c.color, c.icon,
                           v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
+                          v.lifecycle_status,
                           COUNT(DISTINCT et.event_id)                                          AS event_count,
                           COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
                    FROM entity_categories c
@@ -267,7 +273,7 @@ async def entity_summary(project: str | None = Query(None)):
                    LEFT JOIN {ev_table} ev ON ev.id = et.event_id
                    WHERE v.project=%s AND v.status != 'archived'
                    GROUP BY c.id, c.name, c.color, c.icon,
-                            v.id, v.name, v.description, v.status, v.due_date, v.parent_id
+                            v.id, v.name, v.description, v.status, v.due_date, v.parent_id, v.lifecycle_status
                    ORDER BY c.name, v.status, COUNT(DISTINCT et.event_id) DESC""",
                 (p,),
             )
@@ -276,7 +282,7 @@ async def entity_summary(project: str | None = Query(None)):
     # Group by category
     cats: dict[str, dict] = {}
     for (cat_id, cat_name, color, icon, vid, vname, vdesc, vstatus, vdue,
-         vparent, event_count, commit_count) in rows:
+         vparent, lc_status, event_count, commit_count) in rows:
         if cat_name not in cats:
             cats[cat_name] = {"id": cat_id, "name": cat_name,
                               "color": color, "icon": icon, "values": []}
@@ -287,6 +293,7 @@ async def entity_summary(project: str | None = Query(None)):
             "status": vstatus,
             "due_date": vdue.isoformat() if vdue else None,
             "parent_id": vparent,
+            "lifecycle_status": lc_status or "idea",
             "event_count": event_count,
             "commit_count": commit_count,
         })
@@ -300,29 +307,45 @@ async def create_value(body: ValueCreate):
     p = _project(body.project)
     with db.conn() as conn:
         with conn.cursor() as cur:
+            # Resolve category_name → category_id (for MCP callers that pass name)
+            cat_id = body.category_id
+            if (not cat_id or cat_id == 0) and body.category_name:
+                cur.execute(
+                    "SELECT id FROM entity_categories WHERE project=%s AND name=%s",
+                    (p, body.category_name),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(404, f"Category '{body.category_name}' not found")
+                cat_id = row[0]
+            else:
+                cur.execute(
+                    "SELECT id FROM entity_categories WHERE id=%s AND project=%s",
+                    (cat_id, p),
+                )
+                if not cur.fetchone():
+                    raise HTTPException(404, "Category not found")
+            lc = body.lifecycle_status or "idea"
             cur.execute(
-                "SELECT id FROM entity_categories WHERE id=%s AND project=%s",
-                (body.category_id, p),
+                "INSERT INTO entity_values (category_id,project,name,description,due_date,parent_id,lifecycle_status) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                (cat_id, p, body.name, body.description, body.due_date or None,
+                 body.parent_id or None, lc),
             )
-            if not cur.fetchone():
-                raise HTTPException(404, "Category not found")
-            cur.execute(
-                "INSERT INTO entity_values (category_id,project,name,description,due_date,parent_id) "
-                "VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
-                (body.category_id, p, body.name, body.description, body.due_date or None, body.parent_id or None),
-            )
-            return {"id": cur.fetchone()[0], "name": body.name, "project": p}
+            new_id = cur.fetchone()[0]
+            return {"id": new_id, "name": body.name, "project": p, "category_id": cat_id}
 
 
 @router.patch("/values/{val_id}")
 async def patch_value(val_id: int, body: ValuePatch):
     _require_db()
     fields, params = [], []
-    if body.name        is not None: fields.append("name=%s");        params.append(body.name)
-    if body.description is not None: fields.append("description=%s"); params.append(body.description)
-    if body.status      is not None: fields.append("status=%s");      params.append(body.status)
-    if body.due_date    is not None: fields.append("due_date=%s");    params.append(body.due_date or None)
-    if body.parent_id   is not None: fields.append("parent_id=%s");   params.append(body.parent_id or None)
+    if body.name             is not None: fields.append("name=%s");             params.append(body.name)
+    if body.description      is not None: fields.append("description=%s");      params.append(body.description)
+    if body.status           is not None: fields.append("status=%s");           params.append(body.status)
+    if body.due_date         is not None: fields.append("due_date=%s");         params.append(body.due_date or None)
+    if body.parent_id        is not None: fields.append("parent_id=%s");        params.append(body.parent_id or None)
+    if body.lifecycle_status is not None: fields.append("lifecycle_status=%s"); params.append(body.lifecycle_status)
     if not fields:
         raise HTTPException(400, "Nothing to update")
     params.append(val_id)
@@ -1324,6 +1347,164 @@ async def get_events_source_tags(project: str | None = Query(None)):
             "cat_name": cat_name,
         })
     return result
+
+
+# ── Value-to-value dependency links ────────────────────────────────────────────
+
+class ValueLinkCreate(BaseModel):
+    to_value_id: int
+    link_type:   str = "blocks"
+
+
+@router.post("/values/{val_id}/links", status_code=201)
+async def add_value_link(val_id: int, body: ValueLinkCreate, project: str | None = Query(None)):
+    """Create a dependency link between two entity values (e.g. 'blocks')."""
+    _require_db()
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO entity_value_links (from_value_id, to_value_id, link_type)
+                   VALUES (%s,%s,%s) ON CONFLICT DO NOTHING""",
+                (val_id, body.to_value_id, body.link_type),
+            )
+    return {"ok": True, "from_value_id": val_id, "to_value_id": body.to_value_id, "link_type": body.link_type}
+
+
+@router.delete("/values/{val_id}/links/{to_id}")
+async def remove_value_link(val_id: int, to_id: int, link_type: str = Query("blocks")):
+    """Remove a dependency link between two entity values."""
+    _require_db()
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM entity_value_links WHERE from_value_id=%s AND to_value_id=%s AND link_type=%s",
+                (val_id, to_id, link_type),
+            )
+    return {"ok": True}
+
+
+@router.get("/values/{val_id}/links")
+async def get_value_links(val_id: int):
+    """Return outgoing + incoming dependency links for an entity value."""
+    _require_db()
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT evl.to_value_id, evl.link_type, v.name, c.name AS category, c.color
+                   FROM entity_value_links evl
+                   JOIN entity_values v ON v.id = evl.to_value_id
+                   JOIN entity_categories c ON c.id = v.category_id
+                   WHERE evl.from_value_id=%s""",
+                (val_id,),
+            )
+            outgoing = [
+                {"to_value_id": r[0], "link_type": r[1], "name": r[2], "category": r[3], "color": r[4]}
+                for r in cur.fetchall()
+            ]
+            cur.execute(
+                """SELECT evl.from_value_id, evl.link_type, v.name, c.name AS category, c.color
+                   FROM entity_value_links evl
+                   JOIN entity_values v ON v.id = evl.from_value_id
+                   JOIN entity_categories c ON c.id = v.category_id
+                   WHERE evl.to_value_id=%s""",
+                (val_id,),
+            )
+            incoming = [
+                {"from_value_id": r[0], "link_type": r[1], "name": r[2], "category": r[3], "color": r[4]}
+                for r in cur.fetchall()
+            ]
+    return {"outgoing": outgoing, "incoming": incoming, "value_id": val_id}
+
+
+# ── GitHub Issue Sync ───────────────────────────────────────────────────────────
+
+@router.post("/github-sync")
+async def github_sync(
+    project:  str | None = Query(None),
+    owner:    str = Query(...),
+    repo:     str = Query(...),
+    token:    str = Query(""),
+    state:    str = Query("open"),
+):
+    """Import GitHub issues as entity values.
+
+    Label mapping: 'bug' → bug category; 'enhancement'/'feature' → feature; else → task.
+    Idempotent: re-running updates description/due_date without duplicating.
+    Returns counts of created/updated/skipped issues.
+    """
+    _require_db()
+    import httpx
+
+    p = _project(project)
+    _seed_defaults(p)
+
+    headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}/issues",
+            params={"state": state, "per_page": 100},
+            headers=headers,
+        )
+        resp.raise_for_status()
+        issues = resp.json()
+
+    def _label_to_category(labels: list) -> str:
+        names = {lbl["name"].lower() for lbl in labels}
+        if "bug" in names:
+            return "bug"
+        if names & {"enhancement", "feature"}:
+            return "feature"
+        return "task"
+
+    created = updated = skipped = 0
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            for issue in issues:
+                if issue.get("pull_request"):
+                    skipped += 1
+                    continue
+                cat_name = _label_to_category(issue.get("labels", []))
+                cur.execute(
+                    "SELECT id FROM entity_categories WHERE project=%s AND name=%s",
+                    (p, cat_name),
+                )
+                cat_row = cur.fetchone()
+                if not cat_row:
+                    skipped += 1
+                    continue
+                cat_id = cat_row[0]
+                name = f"#{issue['number']}: {issue['title'][:200]}"
+                desc = (issue.get("body") or "")[:500]
+                due = None
+                if issue.get("milestone") and issue["milestone"].get("due_on"):
+                    due = issue["milestone"]["due_on"][:10]
+
+                cur.execute(
+                    """INSERT INTO entity_values (project, category_id, name, description, due_date)
+                       VALUES (%s,%s,%s,%s,%s)
+                       ON CONFLICT (project, category_id, name)
+                       DO UPDATE SET description=EXCLUDED.description,
+                                     due_date=COALESCE(EXCLUDED.due_date, entity_values.due_date)
+                       RETURNING (xmax = 0) AS was_inserted""",
+                    (p, cat_id, name, desc, due),
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    created += 1
+                else:
+                    updated += 1
+
+    return {
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "total": len(issues),
+        "project": p,
+    }
 
 
 @router.get("/session-tags")

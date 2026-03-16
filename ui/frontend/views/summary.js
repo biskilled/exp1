@@ -103,19 +103,89 @@ export async function renderSummary(container, projectName) {
     }
   };
 
+  // ── Memory Health card (rendered above PROJECT.md) ───────────────────────────
+  let _memCardEl = null;
+  async function _renderMemoryCard() {
+    if (!_memCardEl) {
+      _memCardEl = document.createElement('div');
+      _memCardEl.id = 'summary-memory-card';
+      _memCardEl.style.cssText = 'margin:0.75rem 0;';
+    }
+    try {
+      const s = await api.getMemoryStatus(projectName);
+      const needs = s.needs_memory;
+      const n     = s.prompts_since_last_memory || 0;
+      const total = s.total_prompts || 0;
+      const days  = s.days_since_last_memory;
+      const last  = s.last_memory_run
+        ? s.last_memory_run.slice(0, 10) + (days != null ? ` (${days}d ago)` : '')
+        : 'Never';
+      const border = needs ? '#ffc107' : '#27ae60';
+      const bg     = needs ? '#fff8e1' : '#f0faf4';
+      const icon   = needs ? '⚠️' : '✅';
+
+      _memCardEl.innerHTML = `
+        <div style="border:1px solid ${border};border-radius:8px;background:${bg};
+                    padding:0.75rem 1rem;font-size:0.72rem;color:var(--text)">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem">
+            <span style="font-size:1rem">${icon}</span>
+            <strong style="font-size:0.78rem">Memory Health</strong>
+            <span style="margin-left:auto;color:var(--muted);font-size:0.65rem">
+              Last run: ${last}
+            </span>
+          </div>
+          <div style="display:flex;align-items:center;gap:1rem">
+            <span>New prompts: <strong>${n}</strong>${needs ? ` ⚠ (threshold: ${s.threshold})` : ` / ${s.threshold}`}</span>
+            <span style="color:var(--muted)">Total: ${total}</span>
+            ${needs ? `<button id="summary-run-memory"
+              style="margin-left:auto;background:#ffc107;border:none;color:#000;font-size:0.62rem;
+                     padding:0.2rem 0.65rem;border-radius:4px;cursor:pointer;font-family:inherit;
+                     font-weight:600">Run /memory Now</button>` : ''}
+          </div>
+        </div>
+      `;
+
+      document.getElementById('summary-run-memory')?.addEventListener('click', async () => {
+        const btn = document.getElementById('summary-run-memory');
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+        try {
+          await api.generateMemory(projectName);
+          toast('/memory completed — memory files refreshed', 'success');
+          await _renderMemoryCard();
+        } catch (e) {
+          toast(`/memory failed: ${e.message}`, 'error');
+          if (btn) { btn.disabled = false; btn.textContent = 'Run /memory Now'; }
+        }
+      });
+    } catch {
+      _memCardEl.innerHTML = '';  // hide if endpoint unavailable
+    }
+  }
+
   // Load PROJECT.md via dedicated summary endpoint
   try {
     const data = await api.getProjectSummary(projectName);
     _original = data.content || '';
     body.className = 'summary-content';
-    body.innerHTML = `<div class="summary-md">${renderMd(_original)}</div>`;
+    body.innerHTML = '';
+    await _renderMemoryCard();
+    body.appendChild(_memCardEl);
+    const mdDiv = document.createElement('div');
+    mdDiv.className = 'summary-md';
+    mdDiv.innerHTML = renderMd(_original);
+    body.appendChild(mdDiv);
   } catch {
     // File might not exist yet — show default template
     _original = `# ${projectName}\n\nProject description goes here.\n`;
     body.className = 'summary-content';
-    body.innerHTML = `<div class="summary-md">${renderMd(_original)}</div>
+    body.innerHTML = '';
+    await _renderMemoryCard();
+    body.appendChild(_memCardEl);
+    const mdDiv = document.createElement('div');
+    mdDiv.innerHTML = `<div class="summary-md">${renderMd(_original)}</div>
       <p style="font-size:0.68rem;color:var(--muted);margin-top:1rem">
         No PROJECT.md found. Click <strong>Edit</strong> to create one.
       </p>`;
+    body.appendChild(mdDiv);
   }
 }

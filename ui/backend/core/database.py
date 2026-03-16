@@ -160,6 +160,18 @@ class _Database:
             f"ALTER TABLE {e} ADD COLUMN IF NOT EXISTS session_id        VARCHAR(255)",
             f"CREATE INDEX IF NOT EXISTS idx_{e}_session ON {e}(session_id) WHERE session_id IS NOT NULL",
             f"CREATE INDEX IF NOT EXISTS idx_{e}_phase   ON {e}(phase)      WHERE phase IS NOT NULL",
+            # entity_values migrations (shared table — idempotent ALTERs)
+            "ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea'",
+            # entity_value_links table
+            """CREATE TABLE IF NOT EXISTS entity_value_links (
+                from_value_id INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+                to_value_id   INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+                link_type     VARCHAR(50) NOT NULL DEFAULT 'blocks',
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY(from_value_id, to_value_id, link_type)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_evl_from ON entity_value_links(from_value_id)",
+            "CREATE INDEX IF NOT EXISTS idx_evl_to   ON entity_value_links(to_value_id)",
         ]
         for sql in _migrations:
             try:
@@ -298,7 +310,19 @@ class _Database:
         CREATE INDEX IF NOT EXISTS idx_ev_project  ON entity_values(project);
         ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS due_date DATE;
         ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES entity_values(id) ON DELETE SET NULL;
+        ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea';
         CREATE INDEX IF NOT EXISTS idx_ev_parent ON entity_values(parent_id);
+
+        -- Value-to-value dependency links (blocks, related_to, etc.)
+        CREATE TABLE IF NOT EXISTS entity_value_links (
+            from_value_id INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+            to_value_id   INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+            link_type     VARCHAR(50) NOT NULL DEFAULT 'blocks',
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY(from_value_id, to_value_id, link_type)
+        );
+        CREATE INDEX IF NOT EXISTS idx_evl_from ON entity_value_links(from_value_id);
+        CREATE INDEX IF NOT EXISTS idx_evl_to   ON entity_value_links(to_value_id);
         -- events, event_tags, event_links are now per-project tables (see ensure_project_schema)
         """
 
