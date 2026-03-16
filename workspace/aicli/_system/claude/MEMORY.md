@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 17:43 UTC by aicli /memory_
+_Generated: 2026-03-16 17:56 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -50,10 +50,50 @@ _Generated: 2026-03-16 17:43 UTC by aicli /memory_
 - Tag deduplication and cross-view synchronization (2026-03-15) — 149 tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits; inline commit display per prompt
 - Pagination and filtering across all views (2026-03-15) — Chat/History/Commits show offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives; phase filter respects backfilled entries
 
+## Active Features / Bugs / Tasks
+
+### Bug
+
+- **hooks** `(94 events, 51 commits)`
+
+### Doc_type
+
+- **customer-meeting** — dsds `(54 events, 51 commits)`
+- **retrospective** `(52 events, 51 commits)`
+- **high-level-design** `(52 events, 51 commits)`
+- **low-level-design**
+
+### Feature
+
+- **pagination** `(94 events, 51 commits)`
+- **auth** `(57 events, 51 commits)`
+- **shared-memory** `(3 events)`
+- **workflow-runner** `(1 events)`
+- **mcp**
+- **graph-workflow**
+- **billing**
+- **embeddings**
+- **tagging**
+- **test-picker-feature**
+- **UI**
+- **dropbox**
+
+### Phase
+
+- **discovery** `(1 events)`
+- **development** `(1 events)`
+- **prod**
+
+### Task
+
+- **memory** `(96 events, 51 commits)`
+- **implement-projects-tab** — Build the UI for managing features/tasks/bugs
+
 ## Recent Work (last 10 exchanges)
 
 **[2026-03-16 17:42]** `claude_cli/claude`
 Q: Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. and check that tagging are working properly and helping to embed/retrive data by
+A: Now I have a complete picture. Let me give you a clear, honest assessment.  ---  ## `/memory` Run Results  **Ran successfully** — generated 5 files at 17:43 UTC. Result: `"synthesized": false` because it used a cached synthesis (last full synthesis was at 01:35 today, less than 20 prompts ago — with
 
 **[2026-03-16 01:34]** `claude_cli/claude`
 Q: Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can provide more accurate answer in order to manage work item , create workflow bas
