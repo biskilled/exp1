@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-16 01:28 UTC — do not edit manually.
+> Auto-generated 2026-03-16 01:33 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 105
-- **Last active**: 2026-03-16T01:25:34Z
+- **Sessions**: 106
+- **Last active**: 2026-03-16T01:31:52Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -153,6 +153,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-16 01:26]** `claude_cli/claude`  
 → After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can
+← _Here's a complete answer to your questions:  ---  ## Audit Results + What Was Fixed  ### Tags — mostly good, one gap fixed The old `event_tags_{project}` system is fully wired: chat, history sync, and_
 
 **[2026-03-16 00:48]** `claude_cli/claude`  
 → I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/wor

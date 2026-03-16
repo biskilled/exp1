@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 01:25 UTC by aicli /memory_
+_Generated: 2026-03-16 01:32 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -91,6 +91,10 @@ _Generated: 2026-03-16 01:25 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-16 01:26]** `claude_cli/claude`
+Q: After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can be improved answering and storing data related to the project and will I be abl
+A: Here's a complete answer to your questions:  ---  ## Audit Results + What Was Fixed  ### Tags — mostly good, one gap fixed The old `event_tags_{project}` system is fully wired: chat, history sync, and the tag-by-source-id UI all write to it. The new `interaction_tags` table (for the memory pipeline)
+
 **[2026-03-16 00:48]** `claude_cli/claude`
 Q: I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/workflows (github page - https://github.com/fjpulidop/specrails/tree/main) and got 
 
@@ -124,7 +128,3 @@ A: Two changes:  1. **Backend** — `patch_session_tags` no longer updates `upda
 **[2026-03-15 22:40]** `claude_cli/claude`
 Q: I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently I do see some session marked in red (on the left of the sesscio name), but this 
 A: The full flow works. Here's what was changed and why:  **Root causes fixed:**  1. **Red `⚠` only on UI sessions** — removed the `s.source === 'ui'` condition. Now ALL sessions (UI, CLI, WF) without a phase show the red `⚠` badge and red left border.  2. **Phase not saving for CLI sessions** — `PATCH
-
-**[2026-03-15 22:22]** `claude_cli/claude`
-Q: Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct phase, also when I change from one session to another - I dont see that changed
-A: The endpoint is live (404 "Session not found" is the correct response for a non-existent test ID). The fix is complete.  **Summary of what changed:**  The phase change listener in `chat.js` no longer resets `_sessionId = null`. Now:  1. **Phase change on existing session** → calls `api.patchSessionT
