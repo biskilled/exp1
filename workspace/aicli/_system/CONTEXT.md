@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-16 18:25 UTC — do not edit manually.
+> Auto-generated 2026-03-16 18:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 110
-- **Last active**: 2026-03-16T18:16:25Z
+- **Sessions**: 111
+- **Last active**: 2026-03-16T18:27:35Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-16 18:26]** `claude_cli/claude`  
+→ are you using the mcp now? 
+← _---  **To answer your question directly:**  No, I'm not using the MCP in this session. Everything I did was via direct HTTP calls (`curl`, Python `urllib`).  **What changes:**  - `.mcp.json` is now at_
+
 **[2026-03-16 18:02]** `claude_cli/claude`  
 → Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai th
 ← _Everything is working end-to-end. Here's the full picture:  ---  ## Full Pipeline — Now Working  ### What just happened in sequence: 1. **Bug found and fixed** — `ARRAY_AGG(uuid[])` came back from psy_
@@ -204,7 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 22:22]** `claude_cli/claude`  
 → Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct
 ← _The endpoint is live (404 "Session not found" is the correct response for a non-existent test ID). The fix is complete.  **Summary of what changed:**  The phase change listener in `chat.js` no longer _
-
-**[2026-03-15 21:45]** `claude_cli/claude`  
-→ Issue is not fixed - In Chat - I cannot change/update phase. also most chat session do not have the right phase now. and
-← _Here's a summary of all fixes:  **Chat — phase change** (restored): - `_sessionId = null` is back → each phase gets its own new session → sessions have correct phase in metadata - `api.putSessionTags(_

@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 18:16 UTC by aicli /memory_
+_Generated: 2026-03-16 18:27 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -91,6 +91,10 @@ _Generated: 2026-03-16 18:16 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-16 18:26]** `claude_cli/claude`
+Q: are you using the mcp now?
+A: ---  **To answer your question directly:**  No, I'm not using the MCP in this session. Everything I did was via direct HTTP calls (`curl`, Python `urllib`).  **What changes:**  - `.mcp.json` is now at the project root — Claude Code will pick it up **on next session start** - `enableAllProjectMcpServ
+
 **[2026-03-16 18:02]** `claude_cli/claude`
 Q: Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai the key is under OPENAI_API_KEY
 A: Everything is working end-to-end. Here's the full picture:  ---  ## Full Pipeline — Now Working  ### What just happened in sequence: 1. **Bug found and fixed** — `ARRAY_AGG(uuid[])` came back from psycopg2 as a raw string `'{uuid1,uuid2}'`, causing `[str(i) for i in ids]` to iterate over characters 
@@ -124,7 +128,3 @@ A: Based on the audit, here are the gaps and a prioritized roadmap:  ---  ## Wha
 **[2026-03-15 23:29]** `claude_cli/claude`
 Q: is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details information about the project? I remind that the goal is the have ability to manage pr
 A: All three enhancements are implemented and working. Here's a summary of what was done:  ---  **Three changes implemented:**  **1. `GET /entities/summary` — new endpoint in `entities.py`** Returns all non-archived entity values grouped by category, with `description`, `status`, `due_date`, `event_cou
-
-**[2026-03-15 23:13]** `claude_cli/claude`
-Q: now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly for retirive data using mcp tool. tagging was done in order to manage memery effi
-A: Everything is working. Here's a summary of all changes made:  ---  ## What was changed and why  ### Schema (`core/database.py`) - Added `phase`, `feature`, `session_id` as **real columns** (not just JSONB) to `events_{p}` table - Added indexes: `idx_{e}_session` and `idx_{e}_phase` — fast filtered q
