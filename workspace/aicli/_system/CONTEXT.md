@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-16 18:28 UTC — do not edit manually.
+> Auto-generated 2026-03-16 18:44 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 111
-- **Last active**: 2026-03-16T18:27:35Z
+- **Sessions**: 112
+- **Last active**: 2026-03-16T18:44:11Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -17,7 +17,7 @@
 - **cli**: Python 3.12 + prompt_toolkit + rich
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
-- **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows)
+- **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
@@ -34,12 +34,12 @@
 
 ## In Progress
 
-- Config externalization and optimization (2026-03-16) — backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; added /health check for MCP readiness
-- Memory distillation pipeline refinement (2026-03-16) — dual-layer summarization (raw JSONL → interaction_tags → memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags
-- MCP tool expansion for project management (2026-03-16) — implemented create_entity, update_entity, list_entities, get_feature_status tools; verified all return accurate JSON
-- Session phase persistence and backfill (2026-03-15) — phase now loads from DB on init, saves via PATCH /chat/sessions/{id}/tags, backfills all matching history.jsonl entries, preserves session order by created_at
-- Tag deduplication and cross-view synchronization (2026-03-15) — 149 tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits; inline commit display per prompt
-- Pagination and filtering across all views (2026-03-15) — Chat/History/Commits show offset ranges (1–100 / 204) with ◀ ▶ navigation; unified history loads all archives; phase filter respects backfilled entries
+- Workflow system design (2026-03-16) — Analyzed specrails pattern (Claude Code agent with 12 prompt roles) and external workflow tooling; evaluating integration approach for node-based async DAG executor with YAML config and Cytoscape.js UI
+- Config externalization and optimization (2026-03-16) — Moved backend_url, haiku_model, db_pool_max to config.py; removed unused methods; added /health check for MCP readiness
+- Memory distillation pipeline refinement (2026-03-16) — Implemented dual-layer summarization (raw JSONL → interaction_tags → 5 memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags tables
+- MCP tool expansion for project management (2026-03-16) — Implemented create_entity, update_entity, list_entities, get_feature_status tools; verified JSON output accuracy
+- Session phase persistence and backfill (2026-03-15) — Phase now loads from DB on init, saves via PATCH /chat/sessions/{id}/tags, backfills all matching history.jsonl entries preserving session order
+- Tag deduplication and cross-view synchronization (2026-03-15) — 149 tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits views; inline commit display per prompt
 
 ## Key Decisions
 
@@ -56,8 +56,8 @@
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
 - Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)
-- MCP server (stdio): 12+ tools (search_memory, get_project_state, get_recent_history, create_entity, update_entity, list_entities, get_feature_status, etc.)
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
+- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 
 ---
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-16 18:34]** `claude_cli/claude`  
+→ I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/
+← _Now I have everything I need. Let me write the comprehensive comparison and design proposal.  ---  ## Workflow System Design: Comparison & Proposal  ### What the two external systems do  **specrails**_
+
 **[2026-03-16 18:26]** `claude_cli/claude`  
 → are you using the mcp now? 
 ← _---  **To answer your question directly:**  No, I'm not using the MCP in this session. Everything I did was via direct HTTP calls (`curl`, Python `urllib`).  **What changes:**  - `.mcp.json` is now at_
@@ -204,7 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 22:40]** `claude_cli/claude`  
 → I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently 
 ← _The full flow works. Here's what was changed and why:  **Root causes fixed:**  1. **Red `⚠` only on UI sessions** — removed the `s.source === 'ui'` condition. Now ALL sessions (UI, CLI, WF) without a _
-
-**[2026-03-15 22:22]** `claude_cli/claude`  
-→ Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct
-← _The endpoint is live (404 "Session not found" is the correct response for a non-existent test ID). The fix is complete.  **Summary of what changed:**  The phase change listener in `chat.js` no longer _

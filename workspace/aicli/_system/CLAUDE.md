@@ -39,8 +39,8 @@ You are a senior Python software architect with deep expertise in:
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
 - Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)
-- MCP server (stdio): 12+ tools (search_memory, get_project_state, get_recent_history, create_entity, update_entity, list_entities, get_feature_status, etc.)
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
+- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-16] `claude_cli`: After this refactor - can you check if tags are well used ? is memroy improved by new summersation p
 - [2026-03-16] `claude_cli`: Can you summersie all improvement - would that make the systme better perfromed , would memroy work 
 - [2026-03-16] `claude_cli`: Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ve
 - [2026-03-16] `claude_cli`: Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_K
 - [2026-03-16] `claude_cli`: are you using the mcp now? 
+- [2026-03-16] `claude_cli`: I would like to start working on the workflows - the goal is to be able to be similar to https://www
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

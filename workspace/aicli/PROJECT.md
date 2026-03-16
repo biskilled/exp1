@@ -330,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Config externalization and optimization (2026-03-16) — backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; added /health check for MCP readiness
-- Memory distillation pipeline refinement (2026-03-16) — dual-layer summarization (raw JSONL → interaction_tags → memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags
-- MCP tool expansion for project management (2026-03-16) — implemented create_entity, update_entity, list_entities, get_feature_status tools; verified all return accurate JSON
-- Session phase persistence and backfill (2026-03-15) — phase now loads from DB on init, saves via PATCH /chat/sessions/{id}/tags, backfills all matching history.jsonl entries, preserves session order by created_at
-- Tag deduplication and cross-view synchronization (2026-03-15) — 149 tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits; inline commit display per prompt
-- Pagination and filtering across all views (2026-03-15) — Chat/History/Commits show offset ranges (1–100 / 204) with ◀ ▶ navigation; unified history loads all archives; phase filter respects backfilled entries
+- Workflow system design (2026-03-16) — Analyzed specrails pattern (Claude Code agent with 12 prompt roles) and external workflow tooling; evaluating integration approach for node-based async DAG executor with YAML config and Cytoscape.js UI
+- Config externalization and optimization (2026-03-16) — Moved backend_url, haiku_model, db_pool_max to config.py; removed unused methods; added /health check for MCP readiness
+- Memory distillation pipeline refinement (2026-03-16) — Implemented dual-layer summarization (raw JSONL → interaction_tags → 5 memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags tables
+- MCP tool expansion for project management (2026-03-16) — Implemented create_entity, update_entity, list_entities, get_feature_status tools; verified JSON output accuracy
+- Session phase persistence and backfill (2026-03-15) — Phase now loads from DB on init, saves via PATCH /chat/sessions/{id}/tags, backfills all matching history.jsonl entries preserving session order
+- Tag deduplication and cross-view synchronization (2026-03-15) — 149 tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits views; inline commit display per prompt
