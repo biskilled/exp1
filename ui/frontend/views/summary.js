@@ -103,6 +103,42 @@ export async function renderSummary(container, projectName) {
     }
   };
 
+  // ── Project Facts card (rendered above Memory Health) ────────────────────────
+  let _factsCardEl = null;
+  async function _renderFactsCard() {
+    if (!_factsCardEl) {
+      _factsCardEl = document.createElement('div');
+      _factsCardEl.id = 'summary-facts-card';
+      _factsCardEl.style.cssText = 'margin:0.75rem 0 0.4rem 0;';
+    }
+    try {
+      const data = await api.workItems.facts(projectName);
+      const facts = data.facts || [];
+      if (!facts.length) { _factsCardEl.innerHTML = ''; return; }
+      const rows = facts.map(f =>
+        `<tr>
+          <td style="padding:0.18rem 0.6rem 0.18rem 0;font-weight:500;white-space:nowrap;
+                     font-size:0.67rem;color:var(--text)">${f.fact_key}</td>
+          <td style="padding:0.18rem 0;font-size:0.67rem;color:var(--text2)">${f.fact_value}</td>
+         </tr>`
+      ).join('');
+      const updatedAt = facts[0]?.valid_from?.slice(0, 10) || '';
+      _factsCardEl.innerHTML = `
+        <div style="border:1px solid var(--border);border-radius:8px;background:var(--surface);
+                    padding:0.65rem 1rem;font-size:0.72rem">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem">
+            <span style="font-size:0.95rem">📌</span>
+            <strong style="font-size:0.75rem">Project Facts</strong>
+            ${updatedAt ? `<span style="margin-left:auto;color:var(--muted);font-size:0.62rem">updated: ${updatedAt}</span>` : ''}
+          </div>
+          <table style="border-collapse:collapse;width:100%">${rows}</table>
+        </div>
+      `;
+    } catch {
+      _factsCardEl.innerHTML = '';  // hide if endpoint unavailable
+    }
+  }
+
   // ── Memory Health card (rendered above PROJECT.md) ───────────────────────────
   let _memCardEl = null;
   async function _renderMemoryCard() {
@@ -168,7 +204,8 @@ export async function renderSummary(container, projectName) {
     _original = data.content || '';
     body.className = 'summary-content';
     body.innerHTML = '';
-    await _renderMemoryCard();
+    await Promise.all([_renderFactsCard(), _renderMemoryCard()]);
+    body.appendChild(_factsCardEl);
     body.appendChild(_memCardEl);
     const mdDiv = document.createElement('div');
     mdDiv.className = 'summary-md';
@@ -179,7 +216,8 @@ export async function renderSummary(container, projectName) {
     _original = `# ${projectName}\n\nProject description goes here.\n`;
     body.className = 'summary-content';
     body.innerHTML = '';
-    await _renderMemoryCard();
+    await Promise.all([_renderFactsCard(), _renderMemoryCard()]);
+    body.appendChild(_factsCardEl);
     body.appendChild(_memCardEl);
     const mdDiv = document.createElement('div');
     mdDiv.innerHTML = `<div class="summary-md">${renderMd(_original)}</div>

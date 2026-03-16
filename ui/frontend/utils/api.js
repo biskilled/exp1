@@ -278,6 +278,37 @@ api.entities = {
 };
 
 
+// ── Work Items API ────────────────────────────────────────────────────────────
+
+function enc(v) { return encodeURIComponent(v || ''); }
+
+api.workItems = {
+  list:            (project, category, status) => {
+    const q = new URLSearchParams({ project: project || '' });
+    if (category) q.set('category', category);
+    if (status)   q.set('status',   status);
+    return _get(`/work-items?${q}`);
+  },
+  create:          (project, body) => _post(`/work-items?project=${enc(project)}`, body),
+  patch:           (id, project, body) => fetch(
+    _base() + `/work-items/${enc(id)}?project=${enc(project)}`,
+    { method: 'PATCH', headers: _headers(), body: JSON.stringify(body) }
+  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  delete:          (id, project) => fetch(
+    _base() + `/work-items/${enc(id)}?project=${enc(project)}`,
+    { method: 'DELETE', headers: _headers() }
+  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  runPipeline:     (id, project) => _post(`/work-items/${enc(id)}/run-pipeline?project=${enc(project)}`, {}),
+  interactions:    (id, project, limit = 20) => _get(`/work-items/${enc(id)}/interactions?project=${enc(project)}&limit=${limit}`),
+  migrateFromTags: (project)     => _post(`/work-items/migrate-from-tags?project=${enc(project)}`, {}),
+  facts:           (project)     => _get(`/work-items/facts?project=${enc(project)}`),
+  memoryItems:     (project, scope) => {
+    const q = new URLSearchParams({ project: project || '' });
+    if (scope) q.set('scope', scope);
+    return _get(`/work-items/memory-items?${q}`);
+  },
+};
+
 // ── Recent projects (localStorage) ───────────────────────────────────────────
 
 const RECENT_KEY = 'aicli_recent_projects';

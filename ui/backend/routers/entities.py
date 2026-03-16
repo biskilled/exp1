@@ -298,6 +298,33 @@ async def entity_summary(project: str | None = Query(None)):
             "commit_count": commit_count,
         })
 
+    # Augment feature/bug/task categories with work_item agent_status if available
+    _WORK_ITEM_CATS = {"feature", "bug", "task"}
+    for cat_name, cat_data in cats.items():
+        if cat_name not in _WORK_ITEM_CATS:
+            continue
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT name, agent_status, acceptance_criteria,
+                                  implementation_plan, lifecycle_status
+                           FROM work_items
+                           WHERE project=%s AND category_name=%s AND status != 'archived'""",
+                        (p, cat_name),
+                    )
+                    wi_map = {r[0]: r for r in cur.fetchall()}
+            for val in cat_data["values"]:
+                wi = wi_map.get(val["name"])
+                if wi:
+                    _, agent_status, ac, impl, lc = wi
+                    val["agent_status"]        = agent_status
+                    val["has_acceptance"]      = bool(ac)
+                    val["has_implementation"]  = bool(impl)
+                    val["lifecycle_status"]    = lc or val.get("lifecycle_status", "idea")
+        except Exception as _we:
+            log.debug(f"work_items augment for {cat_name}: {_we}")
+
     return {"summary": list(cats.values()), "project": p}
 
 
@@ -1250,6 +1277,34 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
 
     # Background: propagate prompt tags → commit events in same session
     background.add_task(_propagate_tags_phase4, p)
+
+    # Also write to interaction_tags (new memory layer) — best-effort
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Find interaction by source_id
+                cur.execute(
+                    "SELECT id FROM interactions WHERE project_id=%s AND source_id=%s LIMIT 1",
+                    (p, body.source_id),
+                )
+                int_row = cur.fetchone()
+                if int_row:
+                    # Find work_item by entity_value id (via entity_values name + work_items name match)
+                    cur.execute(
+                        """SELECT w.id FROM work_items w
+                           JOIN entity_values v ON v.project=w.project AND v.name=w.name
+                           WHERE v.id=%s AND w.project=%s LIMIT 1""",
+                        (body.entity_value_id, p),
+                    )
+                    wi_row = cur.fetchone()
+                    if wi_row:
+                        cur.execute(
+                            """INSERT INTO interaction_tags (interaction_id, work_item_id, auto_tagged)
+                               VALUES (%s::uuid, %s::uuid, false) ON CONFLICT DO NOTHING""",
+                            (str(int_row[0]), str(wi_row[0])),
+                        )
+    except Exception as _ite:
+        log.debug(f"interaction_tags insert failed: {_ite}")
 
     return {"ok": True, "event_id": event_id, "source_id": body.source_id, "project": p}
 

@@ -764,3 +764,21 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
                 migrated[project] = counts
 
     return {"migrated": migrated, "projects": list(migrated.keys())}
+
+
+# ── Memory Layer Migration ────────────────────────────────────────────────────
+
+@router.post("/migrate-to-memory-layers")
+async def migrate_to_memory_layers(project: str, _: dict = Depends(_require_admin)):
+    """Migrate per-project event/tag tables to shared interactions/work_items tables.
+
+    Runs in the background — returns immediately with status.
+    Safe to call multiple times (idempotent).
+    """
+    import asyncio
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+
+    from core.migrations.migrate_to_memory_layers import run_migration
+    asyncio.create_task(run_migration(project))
+    return {"status": "migration started", "project": project}

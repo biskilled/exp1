@@ -548,16 +548,38 @@ def main():
     active_project = config.get("active_project", "")
 
     def _load_aicli_context() -> str:
-        """Read _system/aicli/context.md for the active project."""
+        """Read _system/aicli/context.md for the active project, prepend project_facts."""
         if not active_project:
             return ""
+
+        # Prepend project facts from backend (best-effort, timeout=2s)
+        facts_block = ""
+        try:
+            import urllib.request as _urlreq
+            import json as _json
+            _bu = config.get("backend_url", "http://localhost:8000")
+            _req = _urlreq.Request(
+                f"{_bu}/work-items/facts?project={active_project}",
+                headers={"Accept": "application/json"},
+            )
+            with _urlreq.urlopen(_req, timeout=2) as _resp:
+                _data = _json.loads(_resp.read())
+            facts = _data.get("facts", [])
+            if facts:
+                facts_block = "[Project Facts]\n" + "\n".join(
+                    f"{f['fact_key']}: {f['fact_value']}" for f in facts
+                ) + "\n\n"
+        except Exception:
+            pass
+
         ctx_file = workspace_dir / active_project / "_system" / "aicli" / "context.md"
         if ctx_file.exists():
             try:
-                return ctx_file.read_text(encoding="utf-8").strip()
+                ctx_text = ctx_file.read_text(encoding="utf-8").strip()
+                return facts_block + ctx_text if facts_block else ctx_text
             except Exception:
                 pass
-        return ""
+        return facts_block.strip()
 
     aicli_context = _load_aicli_context()
 

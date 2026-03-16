@@ -400,11 +400,108 @@ class _Database:
         CREATE INDEX IF NOT EXISTS idx_gnr_node ON graph_node_results(node_id);
         """
 
+        _DDL_MEMORY_LAYERS = """
+        -- Work items: replaces entity_values for feature/bug/task categories.
+        -- Adds acceptance_criteria, implementation_plan, and agent pipeline tracking.
+        CREATE TABLE IF NOT EXISTS work_items (
+            id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+            project             TEXT          NOT NULL,
+            category_name       TEXT          NOT NULL,
+            category_id         INT           REFERENCES entity_categories(id) ON DELETE SET NULL,
+            name                TEXT          NOT NULL,
+            description         TEXT          NOT NULL DEFAULT '',
+            status              VARCHAR(20)   NOT NULL DEFAULT 'active',
+            lifecycle_status    VARCHAR(20)   NOT NULL DEFAULT 'idea',
+            due_date            DATE,
+            parent_id           UUID          REFERENCES work_items(id) ON DELETE SET NULL,
+            acceptance_criteria TEXT          NOT NULL DEFAULT '',
+            implementation_plan TEXT          NOT NULL DEFAULT '',
+            agent_run_id        INT           REFERENCES graph_runs(id) ON DELETE SET NULL,
+            agent_status        VARCHAR(20),
+            tags                TEXT[]        NOT NULL DEFAULT '{}',
+            created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            UNIQUE(project, category_name, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_wi_project  ON work_items(project);
+        CREATE INDEX IF NOT EXISTS idx_wi_category ON work_items(category_name);
+        CREATE INDEX IF NOT EXISTS idx_wi_status   ON work_items(status);
+
+        -- Interactions: unified shared table replacing per-project events_{p}.
+        -- project_id is TEXT so no per-project schema migration is needed.
+        CREATE TABLE IF NOT EXISTS interactions (
+            id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id          TEXT          NOT NULL,
+            work_item_id        UUID          REFERENCES work_items(id) ON DELETE SET NULL,
+            session_id          TEXT,
+            llm_source          TEXT,
+            event_type          TEXT          NOT NULL DEFAULT 'prompt',
+            source_id           TEXT,
+            prompt              TEXT          NOT NULL DEFAULT '',
+            response            TEXT          NOT NULL DEFAULT '',
+            prompt_embedding    VECTOR(1536),
+            response_embedding  VECTOR(1536),
+            phase               TEXT,
+            tags                TEXT[]        NOT NULL DEFAULT '{}',
+            metadata            JSONB         NOT NULL DEFAULT '{}',
+            created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_int_project  ON interactions(project_id);
+        CREATE INDEX IF NOT EXISTS idx_int_session  ON interactions(session_id)   WHERE session_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_int_source   ON interactions(project_id, source_id);
+        CREATE INDEX IF NOT EXISTS idx_int_created  ON interactions(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_int_workitem ON interactions(work_item_id) WHERE work_item_id IS NOT NULL;
+
+        -- Interaction tags: replaces per-project event_tags_{p}.
+        CREATE TABLE IF NOT EXISTS interaction_tags (
+            interaction_id  UUID          NOT NULL REFERENCES interactions(id)  ON DELETE CASCADE,
+            work_item_id    UUID          NOT NULL REFERENCES work_items(id)    ON DELETE CASCADE,
+            auto_tagged     BOOLEAN       NOT NULL DEFAULT FALSE,
+            created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            PRIMARY KEY(interaction_id, work_item_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_itag_work ON interaction_tags(work_item_id);
+
+        -- Memory items: Trycycle-reviewed session/feature summaries (distilled memory layer).
+        CREATE TABLE IF NOT EXISTS memory_items (
+            id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id      TEXT          NOT NULL,
+            scope           TEXT          NOT NULL,
+            scope_ref       TEXT,
+            content         TEXT          NOT NULL,
+            embedding       VECTOR(1536),
+            source_ids      UUID[]        NOT NULL DEFAULT '{}',
+            tags            TEXT[]        NOT NULL DEFAULT '{}',
+            reviewer_score  INT,
+            reviewer_critique TEXT,
+            created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_mi_project ON memory_items(project_id);
+        CREATE INDEX IF NOT EXISTS idx_mi_scope   ON memory_items(project_id, scope);
+        CREATE INDEX IF NOT EXISTS idx_mi_created ON memory_items(created_at DESC);
+
+        -- Project facts: durable single facts extracted from memory ("we use pgvector", etc.).
+        -- valid_until IS NULL = currently valid; set to NOW() to invalidate on conflict.
+        CREATE TABLE IF NOT EXISTS project_facts (
+            id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id       TEXT          NOT NULL,
+            fact_key         TEXT          NOT NULL,
+            fact_value       TEXT          NOT NULL,
+            valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            valid_until      TIMESTAMPTZ,
+            source_memory_id UUID          REFERENCES memory_items(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS        idx_pf_project ON project_facts(project_id)            WHERE valid_until IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pf_current ON project_facts(project_id, fact_key)  WHERE valid_until IS NULL;
+        """
+
         for label, sql in [
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
             ("Tagging (commits + session_tags)", _DDL_TAGGING),
             ("Entities (categories + values + events + links)", _DDL_ENTITIES),
             ("Graph workflows (nodes, edges, runs, results)", _DDL_GRAPH),
+            ("Memory layers (work_items, interactions, memory_items, project_facts)", _DDL_MEMORY_LAYERS),
         ]:
             try:
                 with conn.cursor() as cur:

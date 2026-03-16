@@ -817,6 +817,333 @@ async def _suggest_tags(
         return []
 
 
+# ── Memory distillation pipeline ─────────────────────────────────────────────
+
+async def _summarize_session_memory(project: str) -> int:
+    """Layer 1: Summarize unsummarized sessions into memory_items (Trycycle pattern).
+
+    Queries interactions for sessions with >= 3 prompts not yet summarized.
+    Each session gets two Haiku calls: summarize + rate/improve. Result stored
+    in memory_items(scope='session').
+    Returns count of new memory_items created.
+    """
+    if not db.is_available():
+        return 0
+    try:
+        from core.api_keys import get_key
+        import anthropic
+
+        key = get_key("claude") or get_key("anthropic")
+        if not key:
+            return 0
+
+        # Find sessions with >= 3 interactions not yet in memory_items
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT i.session_id, COUNT(*) AS cnt,
+                              ARRAY_AGG(i.id ORDER BY i.created_at) AS ids,
+                              STRING_AGG(
+                                  '[' || LEFT(i.created_at::text, 16) || '] Q: '
+                                  || LEFT(COALESCE(i.prompt,''),300)
+                                  || CASE WHEN i.response != '' THEN E'\n A: ' || LEFT(i.response,200) ELSE '' END,
+                                  E'\n\n' ORDER BY i.created_at
+                              ) AS history_text
+                       FROM interactions i
+                       WHERE i.project_id=%s
+                         AND i.event_type='prompt'
+                         AND i.session_id IS NOT NULL
+                         AND NOT EXISTS (
+                             SELECT 1 FROM memory_items m
+                             WHERE m.project_id=i.project_id
+                               AND m.scope='session'
+                               AND m.scope_ref=i.session_id
+                         )
+                       GROUP BY i.session_id
+                       HAVING COUNT(*) >= 3
+                       LIMIT 10""",
+                    (project,),
+                )
+                sessions = cur.fetchall()
+
+        if not sessions:
+            return 0
+
+        client = anthropic.AsyncAnthropic(api_key=key)
+        created = 0
+
+        for (session_id, cnt, interaction_ids, history_text) in sessions:
+            try:
+                # Haiku call 1: summarize
+                r1 = await client.messages.create(
+                    model=settings.haiku_model,
+                    max_tokens=800,
+                    messages=[{"role": "user", "content":
+                        f"Summarize this development session — focus on decisions and code changes "
+                        f"(3-8 bullet points max, be specific):\n\n{history_text[:3000]}"}],
+                )
+                summary1 = (r1.content[0].text if r1.content else "").strip()
+                if not summary1:
+                    continue
+
+                # Haiku call 2: Trycycle review (fresh context)
+                r2 = await client.messages.create(
+                    model=settings.haiku_model,
+                    max_tokens=600,
+                    messages=[{"role": "user", "content":
+                        f"Rate this session summary 1-10 for completeness and accuracy. "
+                        f"Return ONLY valid JSON: {{\"score\": N, \"critique\": \"...\", \"improved_summary\": \"...\"}}.\n\n"
+                        f"Original session:\n{history_text[:2000]}\n\nSummary to rate:\n{summary1}"}],
+                )
+                r2_text = (r2.content[0].text if r2.content else "").strip()
+                score, critique, final_summary = 8, "", summary1
+                try:
+                    if "```" in r2_text:
+                        for part in r2_text.split("```"):
+                            s = part.strip().lstrip("json").strip()
+                            if s.startswith("{"):
+                                r2_text = s
+                                break
+                    parsed = json.loads(r2_text)
+                    score    = int(parsed.get("score", 8))
+                    critique = parsed.get("critique", "")
+                    if score < 7 and parsed.get("improved_summary"):
+                        final_summary = parsed["improved_summary"]
+                except Exception:
+                    pass
+
+                # Store in memory_items
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """INSERT INTO memory_items
+                                   (project_id, scope, scope_ref, content, source_ids,
+                                    reviewer_score, reviewer_critique)
+                               VALUES (%s,'session',%s,%s,%s::uuid[],%s,%s)
+                               ON CONFLICT DO NOTHING
+                               RETURNING id""",
+                            (project, session_id, final_summary,
+                             [str(i) for i in (interaction_ids or [])],
+                             score, critique or None),
+                        )
+                        if cur.fetchone():
+                            created += 1
+            except Exception as e:
+                log.debug(f"_summarize_session_memory: session {session_id} failed: {e}")
+
+        return created
+    except Exception as e:
+        log.debug(f"_summarize_session_memory failed: {e}")
+        return 0
+
+
+async def _summarize_feature_memory(project: str, work_item_id: str) -> str | None:
+    """Layer 2: Summarize a completed feature/bug/task into a memory_item.
+
+    Called when a work_item lifecycle_status → 'done'.
+    Collects session summaries whose source_ids overlap with this work_item's interactions,
+    then uses Haiku + Trycycle to create a feature-level memory.
+    Returns the new memory_item UUID or None.
+    """
+    if not db.is_available():
+        return None
+    try:
+        from core.api_keys import get_key
+        import anthropic
+
+        key = get_key("claude") or get_key("anthropic")
+        if not key:
+            return None
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Get work item details
+                cur.execute(
+                    "SELECT name, description FROM work_items WHERE id=%s::uuid AND project=%s",
+                    (work_item_id, project),
+                )
+                wi_row = cur.fetchone()
+                if not wi_row:
+                    return None
+                wi_name, wi_desc = wi_row
+
+                # Find memory_items whose source_ids overlap with this work_item's interactions
+                cur.execute(
+                    """SELECT m.content
+                       FROM memory_items m
+                       WHERE m.project_id=%s AND m.scope='session'
+                         AND EXISTS (
+                             SELECT 1 FROM interaction_tags it
+                             WHERE it.work_item_id=%s::uuid
+                               AND it.interaction_id = ANY(m.source_ids)
+                         )
+                       ORDER BY m.created_at
+                       LIMIT 10""",
+                    (project, work_item_id),
+                )
+                session_summaries = [r[0] for r in cur.fetchall()]
+
+        if not session_summaries:
+            return None
+
+        context = "\n\n---\n\n".join(session_summaries)
+        client = anthropic.AsyncAnthropic(api_key=key)
+
+        # Haiku call 1: feature summary
+        r1 = await client.messages.create(
+            model=settings.haiku_model,
+            max_tokens=600,
+            messages=[{"role": "user", "content":
+                f"Summarize the complete development history for feature '{wi_name}': {wi_desc}.\n\n"
+                f"Session summaries:\n{context[:2500]}\n\n"
+                f"Write a concise feature postmortem (decisions, implementation approach, outcome)."}],
+        )
+        summary1 = (r1.content[0].text if r1.content else "").strip()
+        if not summary1:
+            return None
+
+        # Haiku call 2: Trycycle
+        r2 = await client.messages.create(
+            model=settings.haiku_model,
+            max_tokens=500,
+            messages=[{"role": "user", "content":
+                f"Rate this feature summary 1-10. Return ONLY JSON: "
+                f"{{\"score\": N, \"critique\": \"...\", \"improved_summary\": \"...\"}}.\n\nSummary:\n{summary1}"}],
+        )
+        r2_text = (r2.content[0].text if r2.content else "").strip()
+        final_summary = summary1
+        score, critique = 8, ""
+        try:
+            if "```" in r2_text:
+                for part in r2_text.split("```"):
+                    s = part.strip().lstrip("json").strip()
+                    if s.startswith("{"):
+                        r2_text = s
+                        break
+            parsed = json.loads(r2_text)
+            score = int(parsed.get("score", 8))
+            critique = parsed.get("critique", "")
+            if score < 7 and parsed.get("improved_summary"):
+                final_summary = parsed["improved_summary"]
+        except Exception:
+            pass
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO memory_items
+                           (project_id, scope, scope_ref, content, reviewer_score, reviewer_critique)
+                       VALUES (%s,'feature',%s,%s,%s,%s)
+                       RETURNING id""",
+                    (project, wi_name, final_summary, score, critique or None),
+                )
+                row = cur.fetchone()
+                return str(row[0]) if row else None
+    except Exception as e:
+        log.debug(f"_summarize_feature_memory failed: {e}")
+        return None
+
+
+async def _extract_project_facts(project: str, memory_item_id: str | None = None) -> int:
+    """Layer 3: Extract durable facts from recent memory and store in project_facts.
+
+    Haiku extracts 3-8 key-value facts (e.g. auth_pattern=JWT).
+    Conflicts are invalidated (valid_until=NOW()) before inserting new facts.
+    Returns count of new facts inserted.
+    """
+    if not db.is_available():
+        return 0
+    try:
+        from core.api_keys import get_key
+        import anthropic
+
+        key = get_key("claude") or get_key("anthropic")
+        if not key:
+            return 0
+
+        # Collect recent memory_items as context
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT content FROM memory_items
+                       WHERE project_id=%s
+                       ORDER BY created_at DESC LIMIT 5""",
+                    (project,),
+                )
+                mem_texts = [r[0] for r in cur.fetchall()]
+                # Also include existing facts for context
+                cur.execute(
+                    """SELECT fact_key, fact_value FROM project_facts
+                       WHERE project_id=%s AND valid_until IS NULL
+                       ORDER BY fact_key""",
+                    (project,),
+                )
+                existing_facts = {r[0]: r[1] for r in cur.fetchall()}
+
+        if not mem_texts:
+            return 0
+
+        context = "\n\n".join(mem_texts[:3])
+        existing_block = (
+            "Existing facts (update if changed, skip if unchanged):\n"
+            + "\n".join(f"  {k}: {v}" for k, v in list(existing_facts.items())[:15])
+            if existing_facts else ""
+        )
+
+        client = anthropic.AsyncAnthropic(api_key=key)
+        resp = await client.messages.create(
+            model=settings.haiku_model,
+            max_tokens=400,
+            messages=[{"role": "user", "content":
+                f"Extract 3-8 durable technical facts from this project memory. "
+                f"Return ONLY valid JSON object: {{\"fact_key\": \"fact_value\", ...}}\n"
+                f"fact_key examples: auth_pattern, ui_library, db_engine, deployment_target\n\n"
+                f"{existing_block}\n\nRecent memory:\n{context[:2000]}"}],
+        )
+        text = (resp.content[0].text if resp.content else "").strip()
+        if "```" in text:
+            for part in text.split("```"):
+                s = part.strip().lstrip("json").strip()
+                if s.startswith("{"):
+                    text = s
+                    break
+        facts: dict = json.loads(text)
+        if not isinstance(facts, dict):
+            return 0
+
+        inserted = 0
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for k, v in facts.items():
+                    if not isinstance(k, str) or not isinstance(v, str):
+                        continue
+                    # Invalidate conflicting current fact
+                    cur.execute(
+                        """UPDATE project_facts SET valid_until=NOW()
+                           WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL
+                             AND fact_value != %s""",
+                        (project, k, v),
+                    )
+                    # Insert new fact (unique index prevents duplicates)
+                    try:
+                        cur.execute(
+                            """INSERT INTO project_facts
+                                   (project_id, fact_key, fact_value, source_memory_id)
+                               VALUES (%s,%s,%s,%s::uuid)
+                               ON CONFLICT (project_id, fact_key) WHERE valid_until IS NULL
+                               DO NOTHING""",
+                            (project, k, v, memory_item_id),
+                        )
+                        inserted += cur.rowcount
+                    except Exception:
+                        pass
+
+        return inserted
+    except Exception as e:
+        log.debug(f"_extract_project_facts failed: {e}")
+        return 0
+
+
 @router.post("/{project_name}/memory")
 async def generate_memory(project_name: str):
     """Generate per-LLM memory files and copy to code_dir.
@@ -937,14 +1264,63 @@ async def generate_memory(project_name: str):
         except Exception as _e:
             log.warning("entity summary for /memory failed: %s", _e)
 
+    # ── Layer 1: summarize new sessions into memory_items (fire-and-forget) ──────
+    if db.is_available():
+        try:
+            asyncio.create_task(_summarize_session_memory(project_name))
+        except Exception:
+            pass
+
+    # ── Load distilled context: project_facts + recent memory_items ──────────
+    distilled_facts: list[dict] = []
+    distilled_memory_items: list[str] = []
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT fact_key, fact_value FROM project_facts
+                           WHERE project_id=%s AND valid_until IS NULL
+                           ORDER BY fact_key""",
+                        (project_name,),
+                    )
+                    distilled_facts = [{"key": r[0], "value": r[1]} for r in cur.fetchall()]
+                    cur.execute(
+                        """SELECT content FROM memory_items
+                           WHERE project_id=%s
+                           ORDER BY created_at DESC LIMIT 5""",
+                        (project_name,),
+                    )
+                    distilled_memory_items = [r[0] for r in cur.fetchall()]
+        except Exception as _df_err:
+            log.debug(f"distilled context load failed: {_df_err}")
+
+    # Build distilled entity/memory text for synthesis
+    distilled_text = ""
+    if distilled_facts:
+        facts_lines = "\n".join(f"  {f['key']}: {f['value']}" for f in distilled_facts[:12])
+        distilled_text += f"[Project Facts]\n{facts_lines}\n\n"
+    if distilled_memory_items:
+        distilled_text += "[Recent Memory Summaries]\n" + "\n---\n".join(distilled_memory_items[:3])
+
+    # Merge with entity text for LLM
+    combined_entity_text = "\n\n".join(filter(None, [entity_text_for_llm, distilled_text]))
+
     # ── LLM synthesis (optional — degrades to mechanical approach if API unavailable) ──
     # Incremental: only send new entries to Haiku when ≥3 exist since last run.
+    # When distilled memory_items exist, use those instead of raw history to reduce tokens.
     prior_synthesis: dict = state_data.get("_synthesis_cache", {})
     new_entries = [e for e in recent if (e.get("ts") or "") > (last_memory_run or "")]
-    entries_for_llm = new_entries if len(new_entries) >= 3 else recent  # fallback if too few
+    # If we have distilled memory, send fewer raw entries (just the newest)
+    if distilled_memory_items and len(new_entries) < 10:
+        entries_for_llm = new_entries  # distilled context covers the rest
+    elif len(new_entries) >= 3:
+        entries_for_llm = new_entries
+    else:
+        entries_for_llm = recent  # fallback: no distilled context yet
 
     synthesis = await _synthesize_with_llm(
-        project_name, entries_for_llm, state_data, project_md, entity_text_for_llm,
+        project_name, entries_for_llm, state_data, project_md, combined_entity_text,
         prior_synthesis=prior_synthesis if new_entries else None,
     )
     if synthesis:
@@ -1124,6 +1500,11 @@ async def generate_memory(project_name: str):
     aicli_lines = [
         f"[PROJECT CONTEXT: {project_name}]",
     ]
+    # Prepend project facts block (high-value stable context)
+    if distilled_facts:
+        facts_compact = "; ".join(f"{f['key']}={f['value']}" for f in distilled_facts[:6])
+        aicli_lines.insert(0, f"[Project Facts] {facts_compact}")
+        aicli_lines.insert(1, "")  # blank line separator
     if synthesis and synthesis.get("project_summary"):
         aicli_lines.append(synthesis["project_summary"])
     elif cfg.get("description"):
@@ -1218,6 +1599,13 @@ async def generate_memory(project_name: str):
         state_path.write_text(json.dumps(state_data, indent=2))
     except Exception:
         pass
+
+    # ── Layer 3: extract project facts in background after synthesis ─────────
+    if db.is_available() and synthesis:
+        try:
+            asyncio.create_task(_extract_project_facts(project_name))
+        except Exception:
+            pass
 
     # ── Fire-and-forget background tasks (incremental — only process new data) ─
     try:
@@ -1346,6 +1734,33 @@ async def memory_status(project_name: str):
             days_since = (datetime.utcnow().replace(tzinfo=last_dt.tzinfo) - last_dt).days
         except Exception:
             pass
+
+    # Also count from interactions table (new storage)
+    interactions_total = 0
+    interactions_since = 0
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM interactions WHERE project_id=%s AND event_type='prompt'",
+                        (project_name,),
+                    )
+                    interactions_total = (cur.fetchone() or (0,))[0]
+                    if last_memory_run:
+                        cur.execute(
+                            "SELECT COUNT(*) FROM interactions WHERE project_id=%s AND event_type='prompt' AND created_at > %s::timestamptz",
+                            (project_name, last_memory_run),
+                        )
+                        interactions_since = (cur.fetchone() or (0,))[0]
+                    else:
+                        interactions_since = interactions_total
+        except Exception:
+            pass
+
+    # Use whichever count is higher (both sources may have data)
+    total_prompts  = max(total_prompts, interactions_total)
+    prompts_since  = max(prompts_since, interactions_since)
 
     return {
         "last_memory_run": last_memory_run,

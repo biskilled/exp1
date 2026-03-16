@@ -316,12 +316,21 @@ async def _dispatch(name: str, args: dict) -> Any:
             _get(f"/projects/{project}"),
             _get("/history/session-tags", {"project": project}),
         )
-        # Load entity summary — best-effort (returns {} if DB unavailable)
+        # Load entity summary, project facts, recent memory — all best-effort
         entities: dict = {}
+        facts_data: dict = {}
+        memory_data: dict = {}
         try:
-            entities = await _get("/entities/summary", {"project": project})
+            entities, facts_data, memory_data = await asyncio.gather(
+                _get("/entities/summary", {"project": project}),
+                _get("/work-items/facts", {"project": project}),
+                _get("/work-items/memory-items", {"project": project, "scope": "session"}),
+            )
         except Exception:
-            pass
+            try:
+                entities = await _get("/entities/summary", {"project": project})
+            except Exception:
+                pass
 
         # Build compact entity map: {category: [{name, status, event_count, commit_count, description, due_date}]}
         entity_map: dict = {}
@@ -349,6 +358,18 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "bug_ref": tags.get("bug_ref"),
             },
             "entities": entity_map,
+            "project_facts": {
+                f["fact_key"]: f["fact_value"]
+                for f in facts_data.get("facts", [])
+            },
+            "recent_memory": [
+                {
+                    "scope": m["scope"],
+                    "ref": m.get("scope_ref"),
+                    "summary": (m.get("content") or "")[:500],
+                }
+                for m in memory_data.get("memory_items", [])[:3]
+            ],
         }
 
     elif name == "get_recent_history":
