@@ -1100,6 +1100,34 @@ async def session_bulk_tag(body: SessionTagBody):
                 )
                 tagged += cur.rowcount
 
+    # Also link interactions → interaction_tags for matching work_item (best-effort)
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Resolve entity_value name to a work_item in the same project
+                cur.execute(
+                    "SELECT ev.name FROM entity_values ev WHERE ev.id=%s", (value_id,)
+                )
+                ev_row = cur.fetchone()
+                if ev_row:
+                    cur.execute(
+                        "SELECT id FROM work_items WHERE project=%s AND name=%s LIMIT 1",
+                        (p, ev_row[0]),
+                    )
+                    wi_row = cur.fetchone()
+                    if wi_row:
+                        work_item_id = str(wi_row[0])
+                        cur.execute(
+                            """INSERT INTO interaction_tags (interaction_id, work_item_id, auto_tagged)
+                               SELECT i.id, %s::uuid, false
+                               FROM interactions i
+                               WHERE i.project_id=%s AND i.session_id=%s
+                               ON CONFLICT DO NOTHING""",
+                            (work_item_id, p, body.session_id),
+                        )
+    except Exception as _ite:
+        log.debug(f"session_bulk_tag interaction_tags failed: {_ite}")
+
     return {
         "ok": True,
         "value_id": value_id,

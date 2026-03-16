@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-16 00:30 UTC — do not edit manually.
+> Auto-generated 2026-03-16 01:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 104
-- **Last active**: 2026-03-16T00:29:44Z
+- **Sessions**: 105
+- **Last active**: 2026-03-16T01:25:34Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,12 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-16 01:26]** `claude_cli/claude`  
+→ After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can
+
+**[2026-03-16 00:48]** `claude_cli/claude`  
+→ I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/wor
+
 **[2026-03-16 00:19]** `claude_cli/claude`  
 → I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure th
 ← _All clean. Here's a summary of everything fixed:  ---  ## Optimization fixes applied  | Issue | File | Fix | |---|---|---| | `haiku_model` hardcoded in 6 places | `config.py` | Added `haiku_model: str_
@@ -201,11 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 20:44]** `claude_cli/claude`  
 → When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem is that is not save p
 ← _All three changes are done:  **1. AI suggestions auto-save** (`chat.js:625`): - `_acceptSuggestedTag` is now `async` - After pushing to `_pendingEntities`, if `_sessionId` exists it immediately calls _
-
-**[2026-03-15 20:33]** `claude_cli/claude`  
-→ The last commit was b255366 which suppose to be linked to the last prompt. it did worked before , but it seems that the 
-← _All good. Here's what happened and what was fixed:  ---  ## Root Cause  **Phase 5 only ran on explicit `POST /entities/events/sync`.** The `auto_commit_push.sh` hook called `POST /git/{project}/commit_
-
-**[2026-03-15 19:42]** `claude_cli/claude`  
-→ I would like to set that up , and also add that to new prokect as autoamted set up. when creating a project there is a f
-← _All changes are in place. Here's a summary of everything done:  ---  ## What Changed  ### Fixed now (current aicli project)  | File | Change | |---|---| | `.mcp.json` | Fixed path typo (`/user/ /gdriv_

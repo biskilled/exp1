@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 00:29 UTC by aicli /memory_
+_Generated: 2026-03-16 01:25 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-**aicli** is a shared AI memory platform that unifies prompt/response history, commits, and project metadata across multiple AI tools (Claude CLI, Cursor, ChatGPT, etc.). It uses JSONL for primary storage + PostgreSQL for semantic search, with per-project tagging (nested via parent_id), phase-based session management, and an MCP server for external agent integration. Currently v2.2.0 (2026-03-16): all core features (history rotation, commit linking, tag deduplication, pagination, phase persistence) are implemented and operational.
 
 ## Tech Stack
 
@@ -93,4 +89,42 @@ _Generated: 2026-03-16 00:29 UTC by aicli /memory_
 - **memory** `(94 events, 51 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
-**[2026-03-10]** `claude_cli` — Tag cache optimization: loaded once on project tab open, zero DB calls during chat; nested tags via parent_id FK in entity_values (unlimited depth). **[2026-03-14]** `claude_cli` — Commit-to-prompt linking via source_id timestamps; tag deduplication confirmed (149 tags, 0 duplicates); history rotation on /memory with configurable max_rows (default 500). **[2026-03-15 morning]** `claude_cli` — Phase persistence: loads from session JSON on app init, persists via PATCH endpoint, backfills history.jsonl on change, maintains chronological order by created_at. **[2026-03-15 afternoon]** `claude_cli` — Commit-per-prompt display in Chat with inline commits at bottom of each prompt entry; pagination UI for Chat/History/Commits showing offset ranges (1–204 unified history). **[2026-03-15 evening]** `claude_cli` — Database schema alignment: phase/feature/session_id as real indexed columns in events_{p}; MCP tools enhanced for project lifecycle management (get_commits, get_session_tags, create_entity). **[2026-03-16]** `claude_cli` — Code optimization: backend_url, haiku_model, db_pool_max externalized to config.py; removed unused methods; eliminated hardcoded strings; added /health endpoint for MCP readiness checks.
+## Recent Work (last 10 exchanges)
+
+**[2026-03-16 00:48]** `claude_cli/claude`
+Q: I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/workflows (github page - https://github.com/fjpulidop/specrails/tree/main) and got 
+
+**[2026-03-16 00:19]** `claude_cli/claude`
+Q: I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure that there are no text string that need to be in config file. for example backen u
+A: All clean. Here's a summary of everything fixed:  ---  ## Optimization fixes applied  | Issue | File | Fix | |---|---|---| | `haiku_model` hardcoded in 6 places | `config.py` | Added `haiku_model: str = "claude-haiku-4-5-20251001"` | | `backend_url` hardcoded | `config.py` | Added `backend_url: str 
+
+**[2026-03-15 23:49]** `claude_cli/claude`
+Q: 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and prompt the user (in using the aicli that /memory is running. also it will run on uploading the porjec
+
+**[2026-03-15 23:38]** `claude_cli/claude`
+Q: Is there is any addiotnal improvement that I can implemet for having full memroy , and project management lifecycle ?
+A: Based on the audit, here are the gaps and a prioritized roadmap:  ---  ## What's Missing — Prioritized  ### Quick Wins (low effort, high value)  **1. MCP `create_entity` tool** Claude CLI / Cursor can read project entities but can't create features/bugs/tasks. Just one new MCP tool + backend endpoin
+
+**[2026-03-15 23:29]** `claude_cli/claude`
+Q: is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details information about the project? I remind that the goal is the have ability to manage pr
+A: All three enhancements are implemented and working. Here's a summary of what was done:  ---  **Three changes implemented:**  **1. `GET /entities/summary` — new endpoint in `entities.py`** Returns all non-archived entity values grouped by category, with `description`, `status`, `due_date`, `event_cou
+
+**[2026-03-15 23:13]** `claude_cli/claude`
+Q: now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly for retirive data using mcp tool. tagging was done in order to manage memery effi
+A: Everything is working. Here's a summary of all changes made:  ---  ## What was changed and why  ### Schema (`core/database.py`) - Added `phase`, `feature`, `session_id` as **real columns** (not just JSONB) to `events_{p}` table - Added indexes: `idx_{e}_session` and `idx_{e}_phase` — fast filtered q
+
+**[2026-03-15 22:57]** `claude_cli/claude`
+Q: It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by session - it suppose to be linked to all prompts in that session and all commit
+A: Now the full flow works. Here's a summary of everything fixed:  **Root causes and fixes:**  1. **History chat filter shows nothing for a phase** — History.jsonl entries had no `phase` field if the session was tagged after-the-fact. Fix: `_backfill_session_phase()` now rewrites all matching `session_
+
+**[2026-03-15 22:51]** `claude_cli/claude`
+Q: That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possible to remain the same order (by prompt or session date)
+A: Two changes:  1. **Backend** — `patch_session_tags` no longer updates `updated_at` when saving tags. The session's timestamp stays frozen at when it was last messaged.  2. **Frontend** — `_loadSessions` now sorts by `created_at` instead of `updated_at`, so the session order is always by when the ses
+
+**[2026-03-15 22:40]** `claude_cli/claude`
+Q: I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently I do see some session marked in red (on the left of the sesscio name), but this 
+A: The full flow works. Here's what was changed and why:  **Root causes fixed:**  1. **Red `⚠` only on UI sessions** — removed the `s.source === 'ui'` condition. Now ALL sessions (UI, CLI, WF) without a phase show the red `⚠` badge and red left border.  2. **Phase not saving for CLI sessions** — `PATCH
+
+**[2026-03-15 22:22]** `claude_cli/claude`
+Q: Lets try to fix the first bug in the Chat session as it is not fixed. when I upload a session - I do not see the correct phase, also when I change from one session to another - I dont see that changed
+A: The endpoint is live (404 "Session not found" is the correct response for a non-existent test ID). The fix is complete.  **Summary of what changed:**  The phase change listener in `chat.js` no longer resets `_sessionId = null`. Now:  1. **Phase change on existing session** → calls `api.patchSessionT

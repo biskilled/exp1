@@ -103,6 +103,28 @@ def _append_history(
         except Exception:
             pass
 
+        # Mirror to shared interactions table (feeds memory distillation pipeline)
+        try:
+            phase = (tags or {}).get("phase") or None
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """INSERT INTO interactions
+                               (project_id, session_id, llm_source, event_type, source_id,
+                                prompt, response, phase, metadata, created_at)
+                           VALUES (%s,%s,%s,'prompt',%s,%s,%s,%s,%s::jsonb,%s::timestamptz)
+                           ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL DO NOTHING""",
+                        (
+                            project, session_id, provider, ts,
+                            (user_msg or "")[:4000], (response or "")[:8000],
+                            phase,
+                            json.dumps({"user": user_email or user_id, "source": "ui"}),
+                            ts,
+                        ),
+                    )
+        except Exception:
+            pass  # interactions table may not exist yet (pre-migration)
+
     return ts
 
 

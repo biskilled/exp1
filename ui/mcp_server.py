@@ -279,6 +279,40 @@ async def list_tools() -> list[mcp_types.Tool]:
                 "required": ["owner", "repo"],
             },
         ),
+        mcp_types.Tool(
+            name="list_work_items",
+            description=(
+                "List work items (features, bugs, tasks) for the project. "
+                "Returns name, lifecycle_status, agent_status, acceptance_criteria preview, and due_date. "
+                "Filter by category (feature/bug/task) and status (active/done/archived)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "description": "Filter by category: feature, bug, task"},
+                    "status":   {"type": "string", "default": "active", "description": "active, done, or archived"},
+                    "project":  {"type": "string"},
+                },
+            },
+        ),
+        mcp_types.Tool(
+            name="run_work_item_pipeline",
+            description=(
+                "Trigger the 4-agent pipeline (PM → Architect → Developer → Reviewer) for a work item. "
+                "The pipeline writes acceptance_criteria and implementation_plan to the work item. "
+                "Provide either work_item_id (UUID) or work_item_name + category to look it up. "
+                "Returns the agent_status after triggering (pipeline runs in background)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "work_item_id":   {"type": "string", "description": "UUID of the work item"},
+                    "work_item_name": {"type": "string", "description": "Name of the work item (alternative to ID)"},
+                    "category":       {"type": "string", "description": "Category needed if using work_item_name"},
+                    "project":        {"type": "string"},
+                },
+            },
+        ),
     ]
 
 
@@ -316,21 +350,22 @@ async def _dispatch(name: str, args: dict) -> Any:
             _get(f"/projects/{project}"),
             _get("/history/session-tags", {"project": project}),
         )
-        # Load entity summary, project facts, recent memory — all best-effort
+        # Load entity summary, project facts, recent memory — each best-effort
         entities: dict = {}
         facts_data: dict = {}
         memory_data: dict = {}
         try:
-            entities, facts_data, memory_data = await asyncio.gather(
-                _get("/entities/summary", {"project": project}),
-                _get("/work-items/facts", {"project": project}),
-                _get("/work-items/memory-items", {"project": project, "scope": "session"}),
-            )
+            entities = await _get("/entities/summary", {"project": project})
         except Exception:
-            try:
-                entities = await _get("/entities/summary", {"project": project})
-            except Exception:
-                pass
+            pass
+        try:
+            facts_data = await _get("/work-items/facts", {"project": project})
+        except Exception:
+            pass
+        try:
+            memory_data = await _get("/work-items/memory-items", {"project": project, "scope": "session"})
+        except Exception:
+            pass
 
         # Build compact entity map: {category: [{name, status, event_count, commit_count, description, due_date}]}
         entity_map: dict = {}
@@ -492,6 +527,50 @@ async def _dispatch(name: str, args: dict) -> Any:
             params["state"] = args["state"]
         qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
         return await _post(f"/entities/github-sync?{qs}", {})
+
+    elif name == "list_work_items":
+        import urllib.parse as _up
+        params: dict = {"project": project}
+        if args.get("category"):
+            params["category"] = args["category"]
+        if args.get("status"):
+            params["status"] = args["status"]
+        qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
+        data = await _get(f"/work-items?{qs}")
+        items = data.get("work_items", [])
+        return {
+            "count": len(items),
+            "work_items": [
+                {
+                    "id": wi["id"],
+                    "name": wi["name"],
+                    "category": wi.get("category_name"),
+                    "lifecycle": wi.get("lifecycle_status", "idea"),
+                    "status": wi.get("status", "active"),
+                    "agent_status": wi.get("agent_status"),
+                    "due_date": wi.get("due_date"),
+                    "criteria_preview": (wi.get("acceptance_criteria") or "")[:120],
+                }
+                for wi in items
+            ],
+        }
+
+    elif name == "run_work_item_pipeline":
+        import urllib.parse as _up
+        wi_id = args.get("work_item_id")
+        if not wi_id:
+            # Look up by name + category
+            cat = args.get("category", "feature")
+            wname = args.get("work_item_name", "")
+            if not wname:
+                raise ValueError("Provide work_item_id or work_item_name + category")
+            data = await _get(f"/work-items?project={_up.quote(project)}&category={_up.quote(cat)}")
+            matches = [w for w in data.get("work_items", []) if w["name"].lower() == wname.lower()]
+            if not matches:
+                raise ValueError(f"Work item '{wname}' not found in {cat}")
+            wi_id = matches[0]["id"]
+        result = await _post(f"/work-items/{wi_id}/run-pipeline?project={_up.quote(project)}", {})
+        return {"work_item_id": wi_id, "status": result.get("status"), "project": project}
 
     else:
         raise ValueError(f"Unknown tool: {name}")

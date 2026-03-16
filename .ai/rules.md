@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-16 00:29 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-16 01:25 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-15] now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly f
 - [2026-03-15] is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details inform
 - [2026-03-15] Is there is any addiotnal improvement that I can implemet for having full memroy , and project management lifecycle ?
 - [2026-03-15] 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and prompt the user (in u
 - [2026-03-16] I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure th
+- [2026-03-16] I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/wor

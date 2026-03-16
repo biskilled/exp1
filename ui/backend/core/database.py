@@ -448,7 +448,7 @@ class _Database:
         );
         CREATE INDEX IF NOT EXISTS idx_int_project  ON interactions(project_id);
         CREATE INDEX IF NOT EXISTS idx_int_session  ON interactions(session_id)   WHERE session_id IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS idx_int_source   ON interactions(project_id, source_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_int_source ON interactions(project_id, source_id) WHERE source_id IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_int_created  ON interactions(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_int_workitem ON interactions(work_item_id) WHERE work_item_id IS NOT NULL;
 
