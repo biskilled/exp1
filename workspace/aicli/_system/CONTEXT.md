@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-16 18:14 UTC — do not edit manually.
+> Auto-generated 2026-03-16 18:25 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 109
-- **Last active**: 2026-03-16T17:59:14Z
+- **Sessions**: 110
+- **Last active**: 2026-03-16T18:16:25Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -153,6 +153,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-16 18:02]** `claude_cli/claude`  
 → Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai th
+← _Everything is working end-to-end. Here's the full picture:  ---  ## Full Pipeline — Now Working  ### What just happened in sequence: 1. **Bug found and fixed** — `ARRAY_AGG(uuid[])` came back from psy_
 
 **[2026-03-16 17:42]** `claude_cli/claude`  
 → Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. 

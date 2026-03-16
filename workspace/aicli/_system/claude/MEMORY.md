@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 18:13 UTC by aicli /memory_
+_Generated: 2026-03-16 18:16 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform that combines a Python CLI, FastAPI backend, and Electron desktop UI to provide persistent, searchable memory across LLM interactions. It uses a dual-layer storage approach (JSONL + PostgreSQL with pgvector), supports nested project hierarchies with per-project event tracking and tagging, and integrates an MCP server for advanced project management and memory retrieval. The system is currently focused on stabilizing session phase persistence, memory distillation pipelines, and cross-view tag synchronization.
 
 ## Tech Stack
 
@@ -93,4 +89,42 @@ aicli is a shared AI memory platform that combines a Python CLI, FastAPI backend
 - **memory** `(96 events, 51 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
-**[2026-03-16]** `config.py` — Externalized backend_url, haiku_model, db_pool_max to config.py; removed unused methods; added /health check for MCP readiness and system initialization verification. **[2026-03-16]** `memory_distillation` — Implemented dual-layer memory synthesis pipeline (raw JSONL → interaction_tags → 5 output files: CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules); fixed session_bulk_tag() to write to both event_tags and interaction_tags tables for consistency. **[2026-03-16]** `mcp_tools` — Expanded MCP tool set with create_entity, update_entity, list_entities, get_feature_status; all tools verified to return accurate JSON for project management queries via MCP stdio interface. **[2026-03-15]** `session_phase_persistence` — Implemented phase field as required DB column; phase now loads from events_{p} on session init, persists via PATCH /chat/sessions/{id}/tags, and backfills all matching history.jsonl entries ordered by created_at. **[2026-03-15]** `tag_synchronization` — Achieved 149 tags with 0 duplicates; tag removal via ✕ buttons propagates across Chat/History/Commits views; inline commit display per prompt enabled for immediate visibility. **[2026-03-15]** `pagination_filtering` — Implemented offset-based pagination across Chat/History/Commits views with range indicators (1–100 / 204); unified history loader merges all JSONL archives; phase filter respects backfilled entries.
+## Recent Work (last 10 exchanges)
+
+**[2026-03-16 18:02]** `claude_cli/claude`
+Q: Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai the key is under OPENAI_API_KEY
+A: Everything is working end-to-end. Here's the full picture:  ---  ## Full Pipeline — Now Working  ### What just happened in sequence: 1. **Bug found and fixed** — `ARRAY_AGG(uuid[])` came back from psycopg2 as a raw string `'{uuid1,uuid2}'`, causing `[str(i) for i in ids]` to iterate over characters 
+
+**[2026-03-16 17:42]** `claude_cli/claude`
+Q: Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. and check that tagging are working properly and helping to embed/retrive data by
+A: Now I have a complete picture. Let me give you a clear, honest assessment.  ---  ## `/memory` Run Results  **Ran successfully** — generated 5 files at 17:43 UTC. Result: `"synthesized": false` because it used a cached synthesis (last full synthesis was at 01:35 today, less than 20 prompts ago — with
+
+**[2026-03-16 01:34]** `claude_cli/claude`
+Q: Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can provide more accurate answer in order to manage work item , create workflow bas
+A: ## Complete System Improvement Summary  ---  ### What Was Built (7 Parts)  **Before:** Every LLM call got either 40 raw JSONL entries (noisy, expensive) or a CLAUDE.md (too coarse). Tags lived in per-project tables. Work items were just entity values with no intelligence. MCP had read-only project s
+
+**[2026-03-16 01:26]** `claude_cli/claude`
+Q: After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can be improved answering and storing data related to the project and will I be abl
+A: Here's a complete answer to your questions:  ---  ## Audit Results + What Was Fixed  ### Tags — mostly good, one gap fixed The old `event_tags_{project}` system is fully wired: chat, history sync, and the tag-by-source-id UI all write to it. The new `interaction_tags` table (for the memory pipeline)
+
+**[2026-03-16 00:48]** `claude_cli/claude`
+Q: I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/workflows (github page - https://github.com/fjpulidop/specrails/tree/main) and got 
+
+**[2026-03-16 00:19]** `claude_cli/claude`
+Q: I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure that there are no text string that need to be in config file. for example backen u
+A: All clean. Here's a summary of everything fixed:  ---  ## Optimization fixes applied  | Issue | File | Fix | |---|---|---| | `haiku_model` hardcoded in 6 places | `config.py` | Added `haiku_model: str = "claude-haiku-4-5-20251001"` | | `backend_url` hardcoded | `config.py` | Added `backend_url: str 
+
+**[2026-03-15 23:49]** `claude_cli/claude`
+Q: 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and prompt the user (in using the aicli that /memory is running. also it will run on uploading the porjec
+
+**[2026-03-15 23:38]** `claude_cli/claude`
+Q: Is there is any addiotnal improvement that I can implemet for having full memroy , and project management lifecycle ?
+A: Based on the audit, here are the gaps and a prioritized roadmap:  ---  ## What's Missing — Prioritized  ### Quick Wins (low effort, high value)  **1. MCP `create_entity` tool** Claude CLI / Cursor can read project entities but can't create features/bugs/tasks. Just one new MCP tool + backend endpoin
+
+**[2026-03-15 23:29]** `claude_cli/claude`
+Q: is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details information about the project? I remind that the goal is the have ability to manage pr
+A: All three enhancements are implemented and working. Here's a summary of what was done:  ---  **Three changes implemented:**  **1. `GET /entities/summary` — new endpoint in `entities.py`** Returns all non-archived entity values grouped by category, with `description`, `status`, `due_date`, `event_cou
+
+**[2026-03-15 23:13]** `claude_cli/claude`
+Q: now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly for retirive data using mcp tool. tagging was done in order to manage memery effi
+A: Everything is working. Here's a summary of all changes made:  ---  ## What was changed and why  ### Schema (`core/database.py`) - Added `phase`, `feature`, `session_id` as **real columns** (not just JSONB) to `events_{p}` table - Added indexes: `idx_{e}_session` and `idx_{e}_phase` — fast filtered q
