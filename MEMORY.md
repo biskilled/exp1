@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 01:32 UTC by aicli /memory_
+_Generated: 2026-03-16 17:43 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -13,12 +13,12 @@ _Generated: 2026-03-16 01:32 UTC by aicli /memory_
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude, OpenAI, DeepSeek, Gemini, Grok (independent adapters; configurable haiku_model in config.py)
+- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- **mcp**: Standalone stdio MCP server with 8+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity)
+- **mcp**: Standalone stdio MCP server with 12+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity, update_entity, list_entities, get_feature_status)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, and MCP integration settings
@@ -38,58 +38,26 @@ _Generated: 2026-03-16 01:32 UTC by aicli /memory_
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8+ tools for integration with Claude CLI and external agents
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at (not updated_at)
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at
 - Real DB columns for phase, feature, session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)
 
 ## In Progress
 
-- Phase persistence and per-session display — phase loads on app init from session JSON, persists via PATCH endpoint, backfills history.jsonl on change, shows red ⚠ badge for missing phase, maintains chronological order by created_at (2026-03-15)
-- Commit-per-prompt linking and display in Chat — inline commits at bottom of each prompt entry with accent left-border and hash ↗ link; shows only commits linked to that specific prompt via prompt_source_id (2026-03-15)
-- Tag deduplication and cross-view synchronization — 149 tags, 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
-- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup; default filter = all phases (2026-03-15)
-- Database schema alignment for project lifecycle management — phase/feature/session_id as real indexed columns in events_{p}; MCP tools (get_commits, get_session_tags) retrieve tagged data efficiently for feature/bug/task management (2026-03-15)
-- Code optimization and config externalization — backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; hardcoded strings replaced; added /health check for MCP readiness (2026-03-16)
-
-## Active Features / Bugs / Tasks
-
-### Bug
-
-- **hooks** `(94 events, 51 commits)`
-
-### Doc_type
-
-- **customer-meeting** — dsds `(54 events, 51 commits)`
-- **retrospective** `(52 events, 51 commits)`
-- **high-level-design** `(52 events, 51 commits)`
-- **low-level-design**
-
-### Feature
-
-- **pagination** `(94 events, 51 commits)`
-- **auth** `(57 events, 51 commits)`
-- **workflow-runner** `(1 events)`
-- **dropbox**
-- **mcp**
-- **shared-memory**
-- **graph-workflow**
-- **billing**
-- **embeddings**
-- **tagging**
-- **test-picker-feature**
-- **UI**
-
-### Phase
-
-- **discovery** `(1 events)`
-- **development**
-- **prod**
-
-### Task
-
-- **memory** `(94 events, 51 commits)`
-- **implement-projects-tab** — Build the UI for managing features/tasks/bugs
+- Config externalization and optimization (2026-03-16) — backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; added /health check for MCP readiness
+- Memory distillation pipeline refinement (2026-03-16) — dual-layer summarization (raw JSONL → interaction_tags → memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags
+- MCP tool expansion for project management (2026-03-16) — implemented create_entity, update_entity, list_entities, get_feature_status tools; verified all return accurate JSON
+- Work item lifecycle tracking (2026-03-15/16) — phase/feature/session_id now real indexed columns in events_{p}; status + due_date tracked in entity_values; backfill on session phase change works
+- Tag deduplication and cross-view synchronization (2026-03-15) — 149 tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits; inline commit display per prompt
+- Pagination and filtering across all views (2026-03-15) — Chat/History/Commits show offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives; phase filter respects backfilled entries
 
 ## Recent Work (last 10 exchanges)
+
+**[2026-03-16 17:42]** `claude_cli/claude`
+Q: Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. and check that tagging are working properly and helping to embed/retrive data by
+
+**[2026-03-16 01:34]** `claude_cli/claude`
+Q: Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can provide more accurate answer in order to manage work item , create workflow bas
+A: ## Complete System Improvement Summary  ---  ### What Was Built (7 Parts)  **Before:** Every LLM call got either 40 raw JSONL entries (noisy, expensive) or a CLAUDE.md (too coarse). Tags lived in per-project tables. Work items were just entity values with no intelligence. MCP had read-only project s
 
 **[2026-03-16 01:26]** `claude_cli/claude`
 Q: After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can be improved answering and storing data related to the project and will I be abl
@@ -120,11 +88,3 @@ A: Everything is working. Here's a summary of all changes made:  ---  ## What wa
 **[2026-03-15 22:57]** `claude_cli/claude`
 Q: It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by session - it suppose to be linked to all prompts in that session and all commit
 A: Now the full flow works. Here's a summary of everything fixed:  **Root causes and fixes:**  1. **History chat filter shows nothing for a phase** — History.jsonl entries had no `phase` field if the session was tagged after-the-fact. Fix: `_backfill_session_phase()` now rewrites all matching `session_
-
-**[2026-03-15 22:51]** `claude_cli/claude`
-Q: That looks better. the problem now is that on any change of the phase the session order is changed as well . is it possible to remain the same order (by prompt or session date)
-A: Two changes:  1. **Backend** — `patch_session_tags` no longer updates `updated_at` when saving tags. The session's timestamp stays frozen at when it was last messaged.  2. **Frontend** — `_loadSessions` now sorts by `created_at` instead of `updated_at`, so the session order is always by when the ses
-
-**[2026-03-15 22:40]** `claude_cli/claude`
-Q: I still do not see that fixed. the session that mandtory fields are not updates suppose to be maked with red. currently I do see some session marked in red (on the left of the sesscio name), but this 
-A: The full flow works. Here's what was changed and why:  **Root causes fixed:**  1. **Red `⚠` only on UI sessions** — removed the `s.source === 'ui'` condition. Now ALL sessions (UI, CLI, WF) without a phase show the red `⚠` badge and red left border.  2. **Phase not saving for CLI sessions** — `PATCH

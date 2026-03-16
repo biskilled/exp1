@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-16 01:33 UTC — do not edit manually.
+> Auto-generated 2026-03-16 17:43 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 106
-- **Last active**: 2026-03-16T01:31:52Z
+- **Sessions**: 107
+- **Last active**: 2026-03-16T01:35:18Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -22,24 +22,24 @@
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude, OpenAI, DeepSeek, Gemini, Grok (independent adapters; configurable haiku_model in config.py)
+- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- **mcp**: Standalone stdio MCP server with 8+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity)
+- **mcp**: Standalone stdio MCP server with 12+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity, update_entity, list_entities, get_feature_status)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, and MCP integration settings
 
 ## In Progress
 
-- Phase persistence and per-session display — phase loads on app init from session JSON, persists via PATCH endpoint, backfills history.jsonl on change, shows red ⚠ badge for missing phase, maintains chronological order by created_at (2026-03-15)
-- Commit-per-prompt linking and display in Chat — inline commits at bottom of each prompt entry with accent left-border and hash ↗ link; shows only commits linked to that specific prompt via prompt_source_id (2026-03-15)
-- Tag deduplication and cross-view synchronization — 149 tags, 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
-- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup; default filter = all phases (2026-03-15)
-- Database schema alignment for project lifecycle management — phase/feature/session_id as real indexed columns in events_{p}; MCP tools (get_commits, get_session_tags) retrieve tagged data efficiently for feature/bug/task management (2026-03-15)
-- Code optimization and config externalization — backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; hardcoded strings replaced; added /health check for MCP readiness (2026-03-16)
+- Config externalization and optimization (2026-03-16) — backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; added /health check for MCP readiness
+- Memory distillation pipeline refinement (2026-03-16) — dual-layer summarization (raw JSONL → interaction_tags → memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags
+- MCP tool expansion for project management (2026-03-16) — implemented create_entity, update_entity, list_entities, get_feature_status tools; verified all return accurate JSON
+- Work item lifecycle tracking (2026-03-15/16) — phase/feature/session_id now real indexed columns in events_{p}; status + due_date tracked in entity_values; backfill on session phase change works
+- Tag deduplication and cross-view synchronization (2026-03-15) — 149 tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits; inline commit display per prompt
+- Pagination and filtering across all views (2026-03-15) — Chat/History/Commits show offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives; phase filter respects backfilled entries
 
 ## Key Decisions
 
@@ -56,7 +56,7 @@
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8+ tools for integration with Claude CLI and external agents
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at (not updated_at)
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at
 - Real DB columns for phase, feature, session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)
 
 ---
@@ -151,6 +151,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-16 17:42]** `claude_cli/claude`  
+→ Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. 
+
+**[2026-03-16 01:34]** `claude_cli/claude`  
+→ Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can
+← _## Complete System Improvement Summary  ---  ### What Was Built (7 Parts)  **Before:** Every LLM call got either 40 raw JSONL entries (noisy, expensive) or a CLAUDE.md (too coarse). Tags lived in per-_
+
 **[2026-03-16 01:26]** `claude_cli/claude`  
 → After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can
 ← _Here's a complete answer to your questions:  ---  ## Audit Results + What Was Fixed  ### Tags — mostly good, one gap fixed The old `event_tags_{project}` system is fully wired: chat, history sync, and_
@@ -200,11 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 21:15]** `claude_cli/claude`  
 → The error still exists - When I change the phase (on chats) - I am not able to save. also when I switch between diffrent
 ← _All changes look good. Here's a summary of everything fixed:  **Issue 1 — Phase can't save** (root cause: `_sessionId = null` on phase change): - Removed `_sessionId = null` from phase change — phase _
-
-**[2026-03-15 20:56]** `claude_cli/claude`  
-→ There is still UI issue with updateting/ showing the correct phase per session. when ever app is loaded - phase in on re
-← _All changes look correct. Here's a summary of what was fixed:  **Root causes:** 1. **App load shows "required"**: No code ever loaded the last phase from DB on startup 2. **Session switch doesn't upda_
-
-**[2026-03-15 20:44]** `claude_cli/claude`  
-→ When I run memory through the aiCli - I did see some usefull suggestion that appered - the problem is that is not save p
-← _All three changes are done:  **1. AI suggestions auto-save** (`chat.js:625`): - `_acceptSuggestedTag` is now `async` - After pushing to `_pendingEntities`, if `_sessionId` exists it immediately calls _

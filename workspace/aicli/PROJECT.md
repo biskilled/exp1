@@ -330,9 +330,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Phase persistence and per-session display — phase loads on app init from session JSON, persists via PATCH endpoint, backfills history.jsonl on change, shows red ⚠ badge for missing phase, maintains chronological order by created_at (2026-03-15)
-- Commit-per-prompt linking and display in Chat — inline commits at bottom of each prompt entry with accent left-border and hash ↗ link; shows only commits linked to that specific prompt via prompt_source_id (2026-03-15)
-- Tag deduplication and cross-view synchronization — 149 tags, 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
-- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup; default filter = all phases (2026-03-15)
-- Database schema alignment for project lifecycle management — phase/feature/session_id as real indexed columns in events_{p}; MCP tools (get_commits, get_session_tags) retrieve tagged data efficiently for feature/bug/task management (2026-03-15)
-- Code optimization and config externalization — backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; hardcoded strings replaced; added /health check for MCP readiness (2026-03-16)
+- Config externalization and optimization (2026-03-16) — backend_url, haiku_model, db_pool_max moved to config.py; removed unused methods; added /health check for MCP readiness
+- Memory distillation pipeline refinement (2026-03-16) — dual-layer summarization (raw JSONL → interaction_tags → memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags
+- MCP tool expansion for project management (2026-03-16) — implemented create_entity, update_entity, list_entities, get_feature_status tools; verified all return accurate JSON
+- Work item lifecycle tracking (2026-03-15/16) — phase/feature/session_id now real indexed columns in events_{p}; status + due_date tracked in entity_values; backfill on session phase change works
+- Tag deduplication and cross-view synchronization (2026-03-15) — 149 tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits; inline commit display per prompt
+- Pagination and filtering across all views (2026-03-15) — Chat/History/Commits show offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives; phase filter respects backfilled entries

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-16 01:32 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-16 17:43 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -17,12 +17,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude, OpenAI, DeepSeek, Gemini, Grok (independent adapters; configurable haiku_model in config.py)
+- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- **mcp**: Standalone stdio MCP server with 8+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity)
+- **mcp**: Standalone stdio MCP server with 12+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity, update_entity, list_entities, get_feature_status)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, and MCP integration settings
@@ -42,13 +42,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8+ tools for integration with Claude CLI and external agents
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at (not updated_at)
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at
 - Real DB columns for phase, feature, session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-15] Is there is any addiotnal improvement that I can implemet for having full memroy , and project management lifecycle ?
-- [2026-03-15] 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and prompt the user (in u
 - [2026-03-16] I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure th
 - [2026-03-16] I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/wor
 - [2026-03-16] After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can
+- [2026-03-16] Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can
+- [2026-03-16] Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. 

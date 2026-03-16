@@ -39,7 +39,7 @@ You are a senior Python software architect with deep expertise in:
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - MCP server (stdio): 8+ tools for integration with Claude CLI and external agents
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at (not updated_at)
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl; ordered by created_at
 - Real DB columns for phase, feature, session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)
 
 ---
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-15] `claude_cli`: Is there is any addiotnal improvement that I can implemet for having full memroy , and project manag
-- [2026-03-15] `claude_cli`: 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and p
 - [2026-03-16] `claude_cli`: I would like to optimise the code : check each file, make sure code is in used and all method are re
 - [2026-03-16] `claude_cli`: I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.sp
 - [2026-03-16] `claude_cli`: After this refactor - can you check if tags are well used ? is memroy improved by new summersation p
+- [2026-03-16] `claude_cli`: Can you summersie all improvement - would that make the systme better perfromed , would memroy work 
+- [2026-03-16] `claude_cli`: Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ve
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
