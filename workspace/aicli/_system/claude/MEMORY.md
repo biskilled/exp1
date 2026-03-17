@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-17 14:03 UTC by aicli /memory_
+_Generated: 2026-03-17 14:40 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform that provides Claude, OpenAI, and other LLMs with persistent access to development project state via an MCP server. It combines a Python CLI backend (FastAPI + PostgreSQL + pgvector for semantic search) with an Electron UI (Vanilla JS + xterm.js + Monaco editor) to enable cross-session memory synthesis, multi-agent workflows, and real-time project tracking. Current focus is optimizing PROJECT.md load performance on Railway free tier and investigating project visibility regressions.
 
 ## Tech Stack
 
@@ -32,23 +36,23 @@ _Generated: 2026-03-17 14:03 UTC by aicli /memory_
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
-- Commit-to-prompt linking via source_id timestamp; bidirectional tagging via POST /entities/events/tag-by-source-id
-- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)
+- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
+- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
+- Performance: load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
 
 ## In Progress
 
-- Workflow system design (2026-03-16) — Analyzed specrails pattern (Claude Code agent with 12 prompt roles) and external workflow tooling; evaluating integration approach for node-based async DAG executor with YAML config and Cytoscape.js UI
-- Config externalization and optimization (2026-03-16) — Moved backend_url, haiku_model, db_pool_max to config.py; removed unused methods; added /health check for MCP readiness
-- Memory distillation pipeline refinement (2026-03-16) — Implemented dual-layer summarization (raw JSONL → interaction_tags → 5 memory files); fixed session_bulk_tag() to write to both event_tags and interaction_tags tables
-- MCP tool expansion for project management (2026-03-16) — Implemented create_entity, update_entity, list_entities, get_feature_status tools; verified JSON output accuracy
-- Session phase persistence and backfill (2026-03-15) — Phase now loads from DB on init, saves via PATCH /chat/sessions/{id}/tags, backfills all matching history.jsonl entries preserving session order
-- Tag deduplication and cross-view synchronization (2026-03-15) — 149 tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits views; inline commit display per prompt
+- PROJECT.md load performance optimization (2026-03-17) — User reported >1 minute load time on free Railway tier when opening aiCli project; investigating if root cause is DB query latency or file I/O bottleneck; considering pagination/lazy-loading for project initialization
+- Project visibility issue (2026-03-17) — aiCli project disappeared from recent projects list; unclear if UI state bug or DB query regression; requires verification of openProject() function and project listing logic
+- Multi-agent workflow system (2026-03-16) — Analyzed specrails pattern (Claude Code agent with 12 prompt roles) and evaluated async DAG executor integration with Cytoscape.js visualization + YAML config
+- Config externalization and MCP readiness (2026-03-16) — Moved backend_url, haiku_model, db_pool_max to config.py; added /health check for MCP server initialization verification
+- Dual-layer memory distillation (2026-03-16) — Implemented raw JSONL → interaction_tags → 5 memory files pipeline; fixed session_bulk_tag() to write to both event_tags and interaction_tags for consistency
+- Session phase persistence and tag deduplication (2026-03-15) — Phase now loads from DB on init and saves via PATCH; 149 tags with 0 duplicates; removal via UI buttons propagates across Chat/History/Commits views
 
 ## Active Features / Bugs / Tasks
 
@@ -59,8 +63,8 @@ _Generated: 2026-03-17 14:03 UTC by aicli /memory_
 ### Doc_type
 
 - **customer-meeting** — dsds `(54 events, 51 commits)`
-- **high-level-design** `(52 events, 51 commits)`
 - **retrospective** `(52 events, 51 commits)`
+- **high-level-design** `(52 events, 51 commits)`
 - **low-level-design**
 
 ### Feature
@@ -68,15 +72,15 @@ _Generated: 2026-03-17 14:03 UTC by aicli /memory_
 - **pagination** `(94 events, 51 commits)`
 - **auth** `(58 events, 51 commits)`
 - **shared-memory** `(4 events)`
-- **mcp** `(1 events)`
-- **graph-workflow** `(1 events)`
+- **mcp** `(2 events)`
+- **UI** `(1 events)`
 - **workflow-runner** `(1 events)`
-- **tagging**
+- **graph-workflow** `(1 events)`
 - **test-picker-feature**
-- **UI**
 - **dropbox**
-- **billing**
 - **embeddings**
+- **tagging**
+- **billing**
 
 ### Phase
 
@@ -89,43 +93,4 @@ _Generated: 2026-03-17 14:03 UTC by aicli /memory_
 - **memory** `(97 events, 51 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
-## Recent Work (last 10 exchanges)
-
-**[2026-03-17 13:33]** `claude_cli/claude`
-Q: Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it takes quite long time to load summery and History. can check why is that? and add some flow to explain
-A: Now let's verify the key changes are correct with a quick sanity check:
-
-**[2026-03-17 13:30]** `claude_cli/claude`
-Q: can you use the mcp tool and explain what the prject is about ?
-
-**[2026-03-16 19:02]** `claude_cli/claude`
-Q: yes
-A: All changes look correct. The Agent Roles implementation in `graph_workflow.js` is now complete. Here's a summary of what was done in this session:  **`graph_workflow.js` — completed:** - `_gwOnRoleChange(val)`: now auto-populates `cfg-provider` / `cfg-model` from the selected role's defaults, updat
-
-**[2026-03-16 19:00]** `claude_cli/claude`
-Q: I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over time (or stored that as local md files linked ..) I do want to store the prompts 
-A: Good design direction. Here's how this maps cleanly to what's already planned:  ---  ## Design: Agent Roles in Database  ### Schema (`agent_roles` + `agent_role_versions`)  ```sql -- Live role definitions CREATE TABLE agent_roles (     id        SERIAL PRIMARY KEY,     project   TEXT NOT NULL DEFAUL
-
-**[2026-03-16 18:52]** `claude_cli/claude`
-Q: I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline configure ? also there used to be parent - child support (for example UI -> dropbox) w
-A: Now I have the full picture. Let me answer all three questions clearly.  ---  ## Answers to your questions  ### 1. Where is the "Run Pipeline" configured?  It's in `ui/backend/core/work_item_pipeline.py` — **completely hardcoded**. 4 stages are Python-coded directly: PM → Architect → Developer → Rev
-
-**[2026-03-16 18:34]** `claude_cli/claude`
-Q: I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/workflows, you can check also the github - https://github.com/fjpulidop/specrail
-A: Now I have everything I need. Let me write the comprehensive comparison and design proposal.  ---  ## Workflow System Design: Comparison & Proposal  ### What the two external systems do  **specrails** is essentially a **Claude Code agent system** — 12 specialized prompt files (`.md` role definitions
-
-**[2026-03-16 18:26]** `claude_cli/claude`
-Q: are you using the mcp now?
-A: ---  **To answer your question directly:**  No, I'm not using the MCP in this session. Everything I did was via direct HTTP calls (`curl`, Python `urllib`).  **What changes:**  - `.mcp.json` is now at the project root — Claude Code will pick it up **on next session start** - `enableAllProjectMcpServ
-
-**[2026-03-16 18:02]** `claude_cli/claude`
-Q: Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai the key is under OPENAI_API_KEY
-A: Everything is working end-to-end. Here's the full picture:  ---  ## Full Pipeline — Now Working  ### What just happened in sequence: 1. **Bug found and fixed** — `ARRAY_AGG(uuid[])` came back from psycopg2 as a raw string `'{uuid1,uuid2}'`, causing `[str(i) for i in ids]` to iterate over characters 
-
-**[2026-03-16 17:42]** `claude_cli/claude`
-Q: Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. and check that tagging are working properly and helping to embed/retrive data by
-A: Now I have a complete picture. Let me give you a clear, honest assessment.  ---  ## `/memory` Run Results  **Ran successfully** — generated 5 files at 17:43 UTC. Result: `"synthesized": false` because it used a cached synthesis (last full synthesis was at 01:35 today, less than 20 prompts ago — with
-
-**[2026-03-16 01:34]** `claude_cli/claude`
-Q: Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can provide more accurate answer in order to manage work item , create workflow bas
-A: ## Complete System Improvement Summary  ---  ### What Was Built (7 Parts)  **Before:** Every LLM call got either 40 raw JSONL entries (noisy, expensive) or a CLAUDE.md (too coarse). Tags lived in per-project tables. Work items were just entity values with no intelligence. MCP had read-only project s
+**[2026-03-17]** `user_report` — aiCli project disappeared from recent projects list and PROJECT.md takes >1 minute to load on free Railway tier; suspected DB query latency or file I/O bottleneck affecting project initialization flow. **[2026-03-16]** `architecture` — Multi-agent workflow system designed with async DAG executor, asyncio.gather for parallel node execution, Cytoscape.js visualization, and YAML configuration; specrails pattern evaluated for Claude Code agent with 12 prompt roles. **[2026-03-16]** `config` — Backend configuration externalized (backend_url, haiku_model, db_pool_max to config.py); /health check endpoint added for MCP server readiness verification. **[2026-03-16]** `memory` — Dual-layer memory synthesis pipeline completed: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules); session_bulk_tag() fixed to persist to both event_tags and interaction_tags tables. **[2026-03-15]** `persistence` — Session phase field now loads from DB on init and saves via PATCH /chat/sessions/{id}/tags; backfill logic preserves history.jsonl order by created_at. **[2026-03-15]** `tagging` — Tag deduplication completed (149 tags, 0 duplicates); removal propagates across Chat/History/Commits views via UI buttons; load-once-on-access pattern eliminates redundant SQL calls.

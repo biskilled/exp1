@@ -33,14 +33,14 @@ You are a senior Python software architect with deep expertise in:
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
-- Commit-to-prompt linking via source_id timestamp; bidirectional tagging via POST /entities/events/tag-by-source-id
-- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero DB calls during chat)
+- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
+- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
+- Performance: load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-16] `claude_cli`: I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is 
 - [2026-03-16] `claude_cli`: I do mention to sotre the prompts in database, would there be a way to change the prompts as it migh
 - [2026-03-16] `claude_cli`: yes
 - [2026-03-17] `claude_cli`: can you use the mcp tool and explain what the prject is about ?
 - [2026-03-17] `claude_cli`: Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it ta
+- [2026-03-17] `claude_cli`: In the project I used to see the aiCli project, and I do not see that now. also when I press in my r
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
