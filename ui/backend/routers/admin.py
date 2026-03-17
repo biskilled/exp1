@@ -133,7 +133,7 @@ async def get_stats(_: dict = Depends(_require_admin)):
                             SUM(amount_usd)::float           AS charged,
                             SUM(COALESCE(base_cost_usd, amount_usd))::float AS real_cost,
                             COUNT(*)::int                    AS calls
-                        FROM transactions
+                        FROM mng_transactions
                         WHERE type = 'usage_debit'
                         GROUP BY SPLIT_PART(description, ' ', 1)
                     """)
@@ -391,7 +391,7 @@ async def get_usage_table(_: dict = Depends(_require_admin)):
                             SUM(output_tokens)::int       AS tokens_output,
                             SUM(cost_usd)::float          AS cost,
                             SUM(charged_usd)::float       AS revenue
-                        FROM usage_logs
+                        FROM mng_usage_logs
                         WHERE user_id IS NOT NULL
                         GROUP BY DATE(created_at), user_id, provider
                         ORDER BY DATE(created_at) DESC, user_id, provider
@@ -405,7 +405,7 @@ async def get_usage_table(_: dict = Depends(_require_admin)):
                             type,
                             SUM(amount_usd)::float AS total_amount,
                             COUNT(*)::int          AS cnt
-                        FROM transactions
+                        FROM mng_transactions
                         WHERE type IN ('coupon_credit', 'admin_credit', 'stripe_payment')
                           AND user_id IS NOT NULL
                         GROUP BY DATE(created_at), user_id, type

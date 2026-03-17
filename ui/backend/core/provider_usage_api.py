@@ -8,7 +8,7 @@ Supported providers & their API constraints:
 
 Results are stored as JSONL in {DATA_DIR}/provider_usage/{provider}.jsonl.
 
-A "local recalculate" mode re-estimates cost from our own usage_logs + provider_costs.json,
+A "local recalculate" mode re-estimates cost from our own mng_usage_logs + provider_costs.json,
 which works without any special key permissions.
 """
 
@@ -390,7 +390,7 @@ async def fetch_anthropic_usage(
 
 # ── Local recalculation ────────────────────────────────────────────────────────
 #
-# Reads usage_logs (JSONL files or PostgreSQL) and re-estimates cost using
+# Reads mng_usage_logs (JSONL files or PostgreSQL) and re-estimates cost using
 # the current provider_costs.json. Does not require any provider API key.
 
 async def recalculate_local_costs(start_date: str, end_date: str) -> dict:
@@ -422,7 +422,7 @@ async def recalculate_local_costs(start_date: str, end_date: str) -> dict:
                     cur.execute(
                         """
                         SELECT user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd
-                        FROM usage_logs
+                        FROM mng_usage_logs
                         WHERE DATE(created_at) BETWEEN %s AND %s
                           AND user_id IS NOT NULL
                         """,

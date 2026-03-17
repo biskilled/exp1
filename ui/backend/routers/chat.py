@@ -109,7 +109,7 @@ def _append_history(
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO interactions
+                        """INSERT INTO mng_interactions
                                (project_id, session_id, llm_source, event_type, source_id,
                                 prompt, response, phase, metadata, created_at)
                            VALUES (%s,%s,%s,'prompt',%s,%s,%s,%s,%s::jsonb,%s::timestamptz)
@@ -172,7 +172,7 @@ def _append_transaction(
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            """INSERT INTO transactions
+                            """INSERT INTO mng_transactions
                                (user_id, type, amount_usd, base_cost_usd, description, ref)
                                VALUES (%s, %s, %s, %s, %s, %s)""",
                             (user_id, tx_type, amount_usd, base_cost_usd, description, ref or ""),
@@ -359,7 +359,7 @@ async def _auto_detect_session_feature(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT feature FROM session_tags WHERE project=%s",
+                    "SELECT feature FROM mng_session_tags WHERE project=%s",
                     (project,),
                 )
                 row = cur.fetchone()
@@ -375,8 +375,8 @@ async def _auto_detect_session_feature(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT v.name FROM entity_values v
-                       JOIN entity_categories c ON c.id = v.category_id
+                    """SELECT v.name FROM mng_entity_values v
+                       JOIN mng_entity_categories c ON c.id = v.category_id
                        WHERE v.project=%s AND c.name='feature' AND v.status='active'
                        ORDER BY v.name""",
                     (project,),
@@ -416,7 +416,7 @@ async def _auto_detect_session_feature(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO session_tags (project, feature) VALUES (%s,%s)
+                    """INSERT INTO mng_session_tags (project, feature) VALUES (%s,%s)
                        ON CONFLICT (project) DO UPDATE SET feature=%s, updated_at=NOW()""",
                     (project, feature_name, feature_name),
                 )

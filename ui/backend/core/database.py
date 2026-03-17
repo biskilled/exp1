@@ -47,6 +47,7 @@ class _Database:
             self._pool = psycopg2.pool.ThreadedConnectionPool(1, settings.db_pool_max, url)
             # Verify connection and create tables
             with self.conn() as conn:
+                self._rename_legacy_tables(conn)
                 self._ensure_schema(conn)
             self._available = True
             log.info("✅ PostgreSQL connected — user store: database")
@@ -59,10 +60,10 @@ class _Database:
         return self._available
 
     @staticmethod
-    def project_table(base: str, project: str) -> str:
-        """Return per-project table name, e.g. commits_myproject."""
+    def project_table(base: str, project: str, client: str = "local") -> str:
+        """Return per-project table name, e.g. pr_local_aicli_commits."""
         safe = re.sub(r'[^a-z0-9]', '_', project.lower())[:40].strip('_')
-        return f"{base}_{safe}"
+        return f"pr_{client}_{safe}_{base}"
 
     def ensure_project_schema(self, project: str) -> None:
         """Create per-project tables if they don't exist. Safe to call repeatedly.
@@ -134,7 +135,7 @@ class _Database:
 
         CREATE TABLE IF NOT EXISTS {et} (
             event_id        INT         NOT NULL,
-            entity_value_id INT         NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+            entity_value_id INT         NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
             auto_tagged     BOOLEAN     NOT NULL DEFAULT FALSE,
             created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY(event_id, entity_value_id)
@@ -165,16 +166,16 @@ class _Database:
             f"CREATE INDEX IF NOT EXISTS idx_{el}_to     ON {el}(to_event_id)",
             f"CREATE INDEX IF NOT EXISTS idx_{c}_session ON {c}(session_id) WHERE session_id IS NOT NULL",
             f"CREATE INDEX IF NOT EXISTS idx_{emb}_src   ON {emb}(source_type, source_id)",
-            "ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea'",
-            """CREATE TABLE IF NOT EXISTS entity_value_links (
-                from_value_id INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
-                to_value_id   INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+            "ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea'",
+            """CREATE TABLE IF NOT EXISTS mng_entity_value_links (
+                from_value_id INT NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
+                to_value_id   INT NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
                 link_type     VARCHAR(50) NOT NULL DEFAULT 'blocks',
                 created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY(from_value_id, to_value_id, link_type)
             )""",
-            "CREATE INDEX IF NOT EXISTS idx_evl_from ON entity_value_links(from_value_id)",
-            "CREATE INDEX IF NOT EXISTS idx_evl_to   ON entity_value_links(to_value_id)",
+            "CREATE INDEX IF NOT EXISTS idx_evl_from ON mng_entity_value_links(from_value_id)",
+            "CREATE INDEX IF NOT EXISTS idx_evl_to   ON mng_entity_value_links(to_value_id)",
         ]
         try:
             with self.conn() as conn:
@@ -210,6 +211,84 @@ class _Database:
             self._pool.putconn(connection)
 
     @staticmethod
+    def _rename_legacy_tables(conn) -> None:
+        """One-time migration: rename old table names to new mng_/pr_ convention.
+
+        Idempotent — uses ALTER TABLE IF EXISTS so it's safe to run on every startup.
+        Tables that have already been renamed are silently skipped.
+        """
+        # Global shared tables: old_name → new_name
+        _GLOBAL_RENAMES = [
+            ("users",               "mng_users"),
+            ("usage_logs",          "mng_usage_logs"),
+            ("transactions",        "mng_transactions"),
+            ("session_tags",        "mng_session_tags"),
+            ("entity_categories",   "mng_entity_categories"),
+            ("entity_values",       "mng_entity_values"),
+            ("entity_value_links",  "mng_entity_value_links"),
+            ("graph_workflows",     "mng_graph_workflows"),
+            ("graph_nodes",         "mng_graph_nodes"),
+            ("graph_edges",         "mng_graph_edges"),
+            ("graph_runs",          "mng_graph_runs"),
+            ("graph_node_results",  "mng_graph_node_results"),
+            ("work_items",          "mng_work_items"),
+            ("interactions",        "mng_interactions"),
+            ("interaction_tags",    "mng_interaction_tags"),
+            ("memory_items",        "mng_memory_items"),
+            ("project_facts",       "mng_project_facts"),
+            ("agent_roles",         "mng_agent_roles"),
+            ("agent_role_versions", "mng_agent_role_versions"),
+        ]
+
+        # Per-project table patterns: old suffix → new base name (client fixed to "local")
+        # e.g. commits_aicli → pr_local_aicli_commits
+        _PROJECT_BASES = ["commits", "events", "embeddings", "event_tags", "event_links"]
+
+        renamed_count = 0
+        try:
+            with conn.cursor() as cur:
+                # Rename global tables
+                for old, new in _GLOBAL_RENAMES:
+                    try:
+                        cur.execute(f"ALTER TABLE IF EXISTS {old} RENAME TO {new}")
+                        conn.commit()
+                        renamed_count += 1
+                    except Exception:
+                        conn.rollback()
+
+                # Discover and rename per-project tables
+                for base in _PROJECT_BASES:
+                    try:
+                        cur.execute(
+                            "SELECT tablename FROM pg_tables WHERE schemaname='public' "
+                            "AND tablename LIKE %s AND tablename NOT LIKE 'pr_%'",
+                            (f"{base}_%",),
+                        )
+                        rows = cur.fetchall()
+                        conn.commit()
+                        for (tname,) in rows:
+                            # Extract project suffix: "commits_aicli" → "aicli"
+                            project_suffix = tname[len(base) + 1:]
+                            new_name = f"pr_local_{project_suffix}_{base}"
+                            try:
+                                cur.execute(f"ALTER TABLE {tname} RENAME TO {new_name}")
+                                conn.commit()
+                                renamed_count += 1
+                                log.info(f"  Renamed {tname} → {new_name}")
+                            except Exception as e:
+                                conn.rollback()
+                                log.debug(f"  Skip rename {tname}: {e}")
+                    except Exception as e:
+                        conn.rollback()
+                        log.debug(f"  Skip base {base}: {e}")
+
+            if renamed_count:
+                log.info(f"✅ Legacy table rename: {renamed_count} tables renamed to mng_/pr_ convention")
+        except Exception as e:
+            conn.rollback()
+            log.warning(f"_rename_legacy_tables skipped: {e}")
+
+    @staticmethod
     def _ensure_schema(conn) -> None:
         """Create tables and migrate missing columns — safe to run repeatedly."""
 
@@ -218,10 +297,9 @@ class _Database:
         CREATE EXTENSION IF NOT EXISTS vector;
         """
 
-
         ddl = """
         -- Users table (full schema including monetization fields)
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE IF NOT EXISTS mng_users (
             id                 VARCHAR(36)    PRIMARY KEY,
             email              VARCHAR(255)   UNIQUE NOT NULL,
             password_hash      TEXT           NOT NULL,
@@ -236,17 +314,17 @@ class _Database:
             stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT ''
         );
         -- Migrate: add monetization columns if table already exists without them
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS role               VARCHAR(20)    NOT NULL DEFAULT 'free';
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_added_usd  NUMERIC(14, 8) NOT NULL DEFAULT 0;
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_used_usd   NUMERIC(14, 8) NOT NULL DEFAULT 0;
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS coupons_used       TEXT[]         NOT NULL DEFAULT '{}';
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT '';
-        CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+        ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS role               VARCHAR(20)    NOT NULL DEFAULT 'free';
+        ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS balance_added_usd  NUMERIC(14, 8) NOT NULL DEFAULT 0;
+        ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS balance_used_usd   NUMERIC(14, 8) NOT NULL DEFAULT 0;
+        ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS coupons_used       TEXT[]         NOT NULL DEFAULT '{}';
+        ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT '';
+        CREATE INDEX IF NOT EXISTS idx_users_email ON mng_users (email);
 
         -- Usage logs (real cost + charged cost)
-        CREATE TABLE IF NOT EXISTS usage_logs (
+        CREATE TABLE IF NOT EXISTS mng_usage_logs (
             id            SERIAL         PRIMARY KEY,
-            user_id       VARCHAR(36)    REFERENCES users(id) ON DELETE SET NULL,
+            user_id       VARCHAR(36)    REFERENCES mng_users(id) ON DELETE SET NULL,
             provider      VARCHAR(50),
             model         VARCHAR(100),
             input_tokens  INTEGER        NOT NULL DEFAULT 0,
@@ -255,15 +333,15 @@ class _Database:
             charged_usd   NUMERIC(12, 8) NOT NULL DEFAULT 0,
             created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
         );
-        ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS charged_usd NUMERIC(12, 8) NOT NULL DEFAULT 0;
-        CREATE INDEX IF NOT EXISTS idx_usage_user_id    ON usage_logs (user_id);
-        CREATE INDEX IF NOT EXISTS idx_usage_created_at ON usage_logs (created_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_usage_provider   ON usage_logs (provider);
+        ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS charged_usd NUMERIC(12, 8) NOT NULL DEFAULT 0;
+        CREATE INDEX IF NOT EXISTS idx_usage_user_id    ON mng_usage_logs (user_id);
+        CREATE INDEX IF NOT EXISTS idx_usage_created_at ON mng_usage_logs (created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_usage_provider   ON mng_usage_logs (provider);
 
         -- Transactions (credits, debits, coupons)
-        CREATE TABLE IF NOT EXISTS transactions (
+        CREATE TABLE IF NOT EXISTS mng_transactions (
             id            SERIAL         PRIMARY KEY,
-            user_id       VARCHAR(36)    REFERENCES users(id) ON DELETE SET NULL,
+            user_id       VARCHAR(36)    REFERENCES mng_users(id) ON DELETE SET NULL,
             type          VARCHAR(50)    NOT NULL,
             amount_usd    NUMERIC(12, 8) NOT NULL DEFAULT 0,
             base_cost_usd NUMERIC(12, 8),
@@ -271,9 +349,9 @@ class _Database:
             ref           VARCHAR(255)   NOT NULL DEFAULT '',
             created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_tx_user_id    ON transactions (user_id);
-        CREATE INDEX IF NOT EXISTS idx_tx_created_at ON transactions (created_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_tx_type       ON transactions (type);
+        CREATE INDEX IF NOT EXISTS idx_tx_user_id    ON mng_transactions (user_id);
+        CREATE INDEX IF NOT EXISTS idx_tx_created_at ON mng_transactions (created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_tx_type       ON mng_transactions (type);
         """
         # Core tables — always required; commit first so other blocks don't roll this back
         with conn.cursor() as cur:
@@ -282,7 +360,7 @@ class _Database:
 
         _DDL_TAGGING = """
         -- Active session tags per project (shared; commits are now per-project tables)
-        CREATE TABLE IF NOT EXISTS session_tags (
+        CREATE TABLE IF NOT EXISTS mng_session_tags (
             id         SERIAL         PRIMARY KEY,
             project    VARCHAR(255)   NOT NULL UNIQUE,
             phase      VARCHAR(20),
@@ -291,14 +369,14 @@ class _Database:
             extra      JSONB          NOT NULL DEFAULT '{}',
             updated_at TIMESTAMPTZ    NOT NULL DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_session_tags_project ON session_tags(project);
+        CREATE INDEX IF NOT EXISTS idx_session_tags_project ON mng_session_tags(project);
         """
 
         # Each optional block uses its own cursor + commit so a failure in one
         # does NOT roll back other blocks (psycopg2 shares one transaction by default).
         _DDL_ENTITIES = """
         -- Tag categories per project (feature, bug, component, doc_type, …)
-        CREATE TABLE IF NOT EXISTS entity_categories (
+        CREATE TABLE IF NOT EXISTS mng_entity_categories (
             id         SERIAL         PRIMARY KEY,
             project    VARCHAR(255)   NOT NULL,
             name       VARCHAR(100)   NOT NULL,
@@ -307,12 +385,12 @@ class _Database:
             created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
             UNIQUE(project, name)
         );
-        CREATE INDEX IF NOT EXISTS idx_ec_project ON entity_categories(project);
+        CREATE INDEX IF NOT EXISTS idx_ec_project ON mng_entity_categories(project);
 
         -- Tag values (specific instances per category)
-        CREATE TABLE IF NOT EXISTS entity_values (
+        CREATE TABLE IF NOT EXISTS mng_entity_values (
             id          SERIAL         PRIMARY KEY,
-            category_id INT            NOT NULL REFERENCES entity_categories(id) ON DELETE CASCADE,
+            category_id INT            NOT NULL REFERENCES mng_entity_categories(id) ON DELETE CASCADE,
             project     VARCHAR(255)   NOT NULL,
             name        VARCHAR(255)   NOT NULL,
             description TEXT           NOT NULL DEFAULT '',
@@ -320,29 +398,29 @@ class _Database:
             created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
             UNIQUE(project, category_id, name)
         );
-        CREATE INDEX IF NOT EXISTS idx_ev_category ON entity_values(category_id);
-        CREATE INDEX IF NOT EXISTS idx_ev_project  ON entity_values(project);
-        ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS due_date DATE;
-        ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES entity_values(id) ON DELETE SET NULL;
-        ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea';
-        CREATE INDEX IF NOT EXISTS idx_ev_parent ON entity_values(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_ev_category ON mng_entity_values(category_id);
+        CREATE INDEX IF NOT EXISTS idx_ev_project  ON mng_entity_values(project);
+        ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS due_date DATE;
+        ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES mng_entity_values(id) ON DELETE SET NULL;
+        ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea';
+        CREATE INDEX IF NOT EXISTS idx_ev_parent ON mng_entity_values(parent_id);
 
         -- Value-to-value dependency links (blocks, related_to, etc.)
-        CREATE TABLE IF NOT EXISTS entity_value_links (
-            from_value_id INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
-            to_value_id   INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
+        CREATE TABLE IF NOT EXISTS mng_entity_value_links (
+            from_value_id INT NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
+            to_value_id   INT NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
             link_type     VARCHAR(50) NOT NULL DEFAULT 'blocks',
             created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY(from_value_id, to_value_id, link_type)
         );
-        CREATE INDEX IF NOT EXISTS idx_evl_from ON entity_value_links(from_value_id);
-        CREATE INDEX IF NOT EXISTS idx_evl_to   ON entity_value_links(to_value_id);
+        CREATE INDEX IF NOT EXISTS idx_evl_from ON mng_entity_value_links(from_value_id);
+        CREATE INDEX IF NOT EXISTS idx_evl_to   ON mng_entity_value_links(to_value_id);
         -- events, event_tags, event_links are now per-project tables (see ensure_project_schema)
         """
 
         _DDL_GRAPH = """
         -- Graph workflow definitions
-        CREATE TABLE IF NOT EXISTS graph_workflows (
+        CREATE TABLE IF NOT EXISTS mng_graph_workflows (
             id             SERIAL         PRIMARY KEY,
             project        VARCHAR(255)   NOT NULL,
             name           VARCHAR(255)   NOT NULL,
@@ -351,12 +429,12 @@ class _Database:
             created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
             UNIQUE(project, name)
         );
-        CREATE INDEX IF NOT EXISTS idx_gw_project ON graph_workflows(project);
+        CREATE INDEX IF NOT EXISTS idx_gw_project ON mng_graph_workflows(project);
 
         -- Graph nodes (steps within a workflow)
-        CREATE TABLE IF NOT EXISTS graph_nodes (
+        CREATE TABLE IF NOT EXISTS mng_graph_nodes (
             id          SERIAL         PRIMARY KEY,
-            workflow_id INT            NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
+            workflow_id INT            NOT NULL REFERENCES mng_graph_workflows(id) ON DELETE CASCADE,
             name        VARCHAR(255)   NOT NULL,
             node_type   VARCHAR(50)    NOT NULL DEFAULT 'llm',
             prompt      TEXT           NOT NULL DEFAULT '',
@@ -366,22 +444,22 @@ class _Database:
             pos_y       REAL           NOT NULL DEFAULT 0,
             config      JSONB          NOT NULL DEFAULT '{}'
         );
-        CREATE INDEX IF NOT EXISTS idx_gn_workflow ON graph_nodes(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_gn_workflow ON mng_graph_nodes(workflow_id);
 
         -- Graph edges (connections between nodes)
-        CREATE TABLE IF NOT EXISTS graph_edges (
+        CREATE TABLE IF NOT EXISTS mng_graph_edges (
             id            SERIAL       PRIMARY KEY,
-            workflow_id   INT          NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
-            source_node   INT          NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-            target_node   INT          NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            workflow_id   INT          NOT NULL REFERENCES mng_graph_workflows(id) ON DELETE CASCADE,
+            source_node   INT          NOT NULL REFERENCES mng_graph_nodes(id) ON DELETE CASCADE,
+            target_node   INT          NOT NULL REFERENCES mng_graph_nodes(id) ON DELETE CASCADE,
             edge_type     VARCHAR(50)  NOT NULL DEFAULT 'default',
             UNIQUE(workflow_id, source_node, target_node, edge_type)
         );
 
         -- Workflow run instances
-        CREATE TABLE IF NOT EXISTS graph_runs (
+        CREATE TABLE IF NOT EXISTS mng_graph_runs (
             id              SERIAL         PRIMARY KEY,
-            workflow_id     INT            NOT NULL REFERENCES graph_workflows(id) ON DELETE CASCADE,
+            workflow_id     INT            NOT NULL REFERENCES mng_graph_workflows(id) ON DELETE CASCADE,
             project         VARCHAR(255)   NOT NULL,
             status          VARCHAR(50)    NOT NULL DEFAULT 'pending',
             started_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
@@ -391,59 +469,59 @@ class _Database:
             input           TEXT           NOT NULL DEFAULT '',
             output          TEXT           NOT NULL DEFAULT ''
         );
-        ALTER TABLE graph_runs ADD COLUMN IF NOT EXISTS total_cost_usd NUMERIC(12, 8) NOT NULL DEFAULT 0;
-        ALTER TABLE graph_runs ADD COLUMN IF NOT EXISTS context        JSONB          NOT NULL DEFAULT '{}';
-        CREATE INDEX IF NOT EXISTS idx_gr_workflow ON graph_runs(workflow_id);
-        CREATE INDEX IF NOT EXISTS idx_gr_project  ON graph_runs(project);
+        ALTER TABLE mng_graph_runs ADD COLUMN IF NOT EXISTS total_cost_usd NUMERIC(12, 8) NOT NULL DEFAULT 0;
+        ALTER TABLE mng_graph_runs ADD COLUMN IF NOT EXISTS context        JSONB          NOT NULL DEFAULT '{}';
+        CREATE INDEX IF NOT EXISTS idx_gr_workflow ON mng_graph_runs(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_gr_project  ON mng_graph_runs(project);
 
         -- Results per node per run
-        CREATE TABLE IF NOT EXISTS graph_node_results (
+        CREATE TABLE IF NOT EXISTS mng_graph_node_results (
             id        SERIAL         PRIMARY KEY,
-            run_id    INT            NOT NULL REFERENCES graph_runs(id) ON DELETE CASCADE,
-            node_id   INT            NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            run_id    INT            NOT NULL REFERENCES mng_graph_runs(id) ON DELETE CASCADE,
+            node_id   INT            NOT NULL REFERENCES mng_graph_nodes(id) ON DELETE CASCADE,
             status    VARCHAR(50)    NOT NULL DEFAULT 'pending',
             output    TEXT           NOT NULL DEFAULT '',
             cost      NUMERIC(12, 8) NOT NULL DEFAULT 0,
             started_at  TIMESTAMPTZ,
             finished_at TIMESTAMPTZ
         );
-        CREATE INDEX IF NOT EXISTS idx_gnr_run  ON graph_node_results(run_id);
-        CREATE INDEX IF NOT EXISTS idx_gnr_node ON graph_node_results(node_id);
+        CREATE INDEX IF NOT EXISTS idx_gnr_run  ON mng_graph_node_results(run_id);
+        CREATE INDEX IF NOT EXISTS idx_gnr_node ON mng_graph_node_results(node_id);
         """
 
         _DDL_MEMORY_LAYERS = """
         -- Work items: replaces entity_values for feature/bug/task categories.
         -- Adds acceptance_criteria, implementation_plan, and agent pipeline tracking.
-        CREATE TABLE IF NOT EXISTS work_items (
+        CREATE TABLE IF NOT EXISTS mng_work_items (
             id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
             project             TEXT          NOT NULL,
             category_name       TEXT          NOT NULL,
-            category_id         INT           REFERENCES entity_categories(id) ON DELETE SET NULL,
+            category_id         INT           REFERENCES mng_entity_categories(id) ON DELETE SET NULL,
             name                TEXT          NOT NULL,
             description         TEXT          NOT NULL DEFAULT '',
             status              VARCHAR(20)   NOT NULL DEFAULT 'active',
             lifecycle_status    VARCHAR(20)   NOT NULL DEFAULT 'idea',
             due_date            DATE,
-            parent_id           UUID          REFERENCES work_items(id) ON DELETE SET NULL,
+            parent_id           UUID          REFERENCES mng_work_items(id) ON DELETE SET NULL,
             acceptance_criteria TEXT          NOT NULL DEFAULT '',
             implementation_plan TEXT          NOT NULL DEFAULT '',
-            agent_run_id        INT           REFERENCES graph_runs(id) ON DELETE SET NULL,
+            agent_run_id        INT           REFERENCES mng_graph_runs(id) ON DELETE SET NULL,
             agent_status        VARCHAR(20),
             tags                TEXT[]        NOT NULL DEFAULT '{}',
             created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
             updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
             UNIQUE(project, category_name, name)
         );
-        CREATE INDEX IF NOT EXISTS idx_wi_project  ON work_items(project);
-        CREATE INDEX IF NOT EXISTS idx_wi_category ON work_items(category_name);
-        CREATE INDEX IF NOT EXISTS idx_wi_status   ON work_items(status);
+        CREATE INDEX IF NOT EXISTS idx_wi_project  ON mng_work_items(project);
+        CREATE INDEX IF NOT EXISTS idx_wi_category ON mng_work_items(category_name);
+        CREATE INDEX IF NOT EXISTS idx_wi_status   ON mng_work_items(status);
 
         -- Interactions: unified shared table replacing per-project events_{p}.
         -- project_id is TEXT so no per-project schema migration is needed.
-        CREATE TABLE IF NOT EXISTS interactions (
+        CREATE TABLE IF NOT EXISTS mng_interactions (
             id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
             project_id          TEXT          NOT NULL,
-            work_item_id        UUID          REFERENCES work_items(id) ON DELETE SET NULL,
+            work_item_id        UUID          REFERENCES mng_work_items(id) ON DELETE SET NULL,
             session_id          TEXT,
             llm_source          TEXT,
             event_type          TEXT          NOT NULL DEFAULT 'prompt',
@@ -457,24 +535,24 @@ class _Database:
             metadata            JSONB         NOT NULL DEFAULT '{}',
             created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_int_project  ON interactions(project_id);
-        CREATE INDEX IF NOT EXISTS idx_int_session  ON interactions(session_id)   WHERE session_id IS NOT NULL;
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_int_source ON interactions(project_id, source_id) WHERE source_id IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS idx_int_created  ON interactions(created_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_int_workitem ON interactions(work_item_id) WHERE work_item_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_int_project  ON mng_interactions(project_id);
+        CREATE INDEX IF NOT EXISTS idx_int_session  ON mng_interactions(session_id)   WHERE session_id IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_int_source ON mng_interactions(project_id, source_id) WHERE source_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_int_created  ON mng_interactions(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_int_workitem ON mng_interactions(work_item_id) WHERE work_item_id IS NOT NULL;
 
         -- Interaction tags: replaces per-project event_tags_{p}.
-        CREATE TABLE IF NOT EXISTS interaction_tags (
-            interaction_id  UUID          NOT NULL REFERENCES interactions(id)  ON DELETE CASCADE,
-            work_item_id    UUID          NOT NULL REFERENCES work_items(id)    ON DELETE CASCADE,
+        CREATE TABLE IF NOT EXISTS mng_interaction_tags (
+            interaction_id  UUID          NOT NULL REFERENCES mng_interactions(id)  ON DELETE CASCADE,
+            work_item_id    UUID          NOT NULL REFERENCES mng_work_items(id)    ON DELETE CASCADE,
             auto_tagged     BOOLEAN       NOT NULL DEFAULT FALSE,
             created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
             PRIMARY KEY(interaction_id, work_item_id)
         );
-        CREATE INDEX IF NOT EXISTS idx_itag_work ON interaction_tags(work_item_id);
+        CREATE INDEX IF NOT EXISTS idx_itag_work ON mng_interaction_tags(work_item_id);
 
         -- Memory items: Trycycle-reviewed session/feature summaries (distilled memory layer).
-        CREATE TABLE IF NOT EXISTS memory_items (
+        CREATE TABLE IF NOT EXISTS mng_memory_items (
             id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
             project_id      TEXT          NOT NULL,
             scope           TEXT          NOT NULL,
@@ -488,29 +566,29 @@ class _Database:
             created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
             updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_mi_project ON memory_items(project_id);
-        CREATE INDEX IF NOT EXISTS idx_mi_scope   ON memory_items(project_id, scope);
-        CREATE INDEX IF NOT EXISTS idx_mi_created ON memory_items(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_mi_project ON mng_memory_items(project_id);
+        CREATE INDEX IF NOT EXISTS idx_mi_scope   ON mng_memory_items(project_id, scope);
+        CREATE INDEX IF NOT EXISTS idx_mi_created ON mng_memory_items(created_at DESC);
 
         -- Project facts: durable single facts extracted from memory ("we use pgvector", etc.).
         -- valid_until IS NULL = currently valid; set to NOW() to invalidate on conflict.
-        CREATE TABLE IF NOT EXISTS project_facts (
+        CREATE TABLE IF NOT EXISTS mng_project_facts (
             id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
             project_id       TEXT          NOT NULL,
             fact_key         TEXT          NOT NULL,
             fact_value       TEXT          NOT NULL,
             valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
             valid_until      TIMESTAMPTZ,
-            source_memory_id UUID          REFERENCES memory_items(id) ON DELETE SET NULL
+            source_memory_id UUID          REFERENCES mng_memory_items(id) ON DELETE SET NULL
         );
-        CREATE INDEX IF NOT EXISTS        idx_pf_project ON project_facts(project_id)            WHERE valid_until IS NULL;
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_pf_current ON project_facts(project_id, fact_key)  WHERE valid_until IS NULL;
+        CREATE INDEX IF NOT EXISTS        idx_pf_project ON mng_project_facts(project_id)            WHERE valid_until IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pf_current ON mng_project_facts(project_id, fact_key)  WHERE valid_until IS NULL;
         """
 
         _DDL_AGENT_ROLES = """
         -- Agent role library: reusable LLM personas for workflow nodes.
         -- All users see name/description; system_prompt is admin-only via the API.
-        CREATE TABLE IF NOT EXISTS agent_roles (
+        CREATE TABLE IF NOT EXISTS mng_agent_roles (
             id            SERIAL         PRIMARY KEY,
             project       TEXT           NOT NULL DEFAULT '_global',
             name          TEXT           NOT NULL,
@@ -524,12 +602,12 @@ class _Database:
             updated_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
             UNIQUE(project, name)
         );
-        CREATE INDEX IF NOT EXISTS idx_ar_project ON agent_roles(project);
+        CREATE INDEX IF NOT EXISTS idx_ar_project ON mng_agent_roles(project);
 
         -- Version history: written on every PATCH to system_prompt/provider/model.
-        CREATE TABLE IF NOT EXISTS agent_role_versions (
+        CREATE TABLE IF NOT EXISTS mng_agent_role_versions (
             id            SERIAL         PRIMARY KEY,
-            role_id       INT            NOT NULL REFERENCES agent_roles(id) ON DELETE CASCADE,
+            role_id       INT            NOT NULL REFERENCES mng_agent_roles(id) ON DELETE CASCADE,
             system_prompt TEXT           NOT NULL,
             provider      TEXT           NOT NULL,
             model         TEXT           NOT NULL,
@@ -537,19 +615,19 @@ class _Database:
             changed_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
             note          TEXT           NOT NULL DEFAULT ''
         );
-        CREATE INDEX IF NOT EXISTS idx_arv_role ON agent_role_versions(role_id);
+        CREATE INDEX IF NOT EXISTS idx_arv_role ON mng_agent_role_versions(role_id);
 
-        -- Link graph_nodes to a reusable role (prompt loaded from agent_roles at run time).
-        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS role_id INT REFERENCES agent_roles(id) ON DELETE SET NULL;
+        -- Link graph_nodes to a reusable role (prompt loaded from mng_agent_roles at run time).
+        ALTER TABLE mng_graph_nodes ADD COLUMN IF NOT EXISTS role_id INT REFERENCES mng_agent_roles(id) ON DELETE SET NULL;
         """
 
         for label, sql in [
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
-            ("Tagging (commits + session_tags)", _DDL_TAGGING),
-            ("Entities (categories + values + events + links)", _DDL_ENTITIES),
-            ("Graph workflows (nodes, edges, runs, results)", _DDL_GRAPH),
-            ("Memory layers (work_items, interactions, memory_items, project_facts)", _DDL_MEMORY_LAYERS),
-            ("Agent roles (library + version history)", _DDL_AGENT_ROLES),
+            ("Tagging (commits + mng_session_tags)", _DDL_TAGGING),
+            ("Entities (mng_entity_categories + mng_entity_values + links)", _DDL_ENTITIES),
+            ("Graph workflows (mng_graph_nodes, edges, runs, results)", _DDL_GRAPH),
+            ("Memory layers (mng_work_items, mng_interactions, mng_memory_items, mng_project_facts)", _DDL_MEMORY_LAYERS),
+            ("Agent roles (mng_agent_roles + mng_agent_role_versions)", _DDL_AGENT_ROLES),
         ]:
             try:
                 with conn.cursor() as cur:
@@ -668,7 +746,7 @@ class _Database:
             with conn.cursor() as cur:
                 for name, desc, prompt, provider, model in _ROLES:
                     cur.execute(
-                        """INSERT INTO agent_roles
+                        """INSERT INTO mng_agent_roles
                                (project, name, description, system_prompt, provider, model)
                            VALUES ('_global', %s, %s, %s, %s, %s)
                            ON CONFLICT (project, name) DO NOTHING""",

@@ -52,7 +52,7 @@ async def trigger_work_item_pipeline(
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "SELECT fact_key, fact_value FROM project_facts "
+                            "SELECT fact_key, fact_value FROM mng_project_facts "
                             "WHERE project_id=%s AND valid_until IS NULL ORDER BY fact_key",
                             (project,),
                         )
@@ -60,7 +60,7 @@ async def trigger_work_item_pipeline(
                         if facts:
                             project_facts_text = "\n".join(f"  {k}: {v}" for k, v in facts)
                         cur.execute(
-                            "SELECT content FROM memory_items WHERE project_id=%s "
+                            "SELECT content FROM mng_memory_items WHERE project_id=%s "
                             "ORDER BY created_at DESC LIMIT 3",
                             (project,),
                         )
@@ -192,12 +192,12 @@ def _set_status(work_item_id: str, status: str, error: str = "") -> None:
             with conn.cursor() as cur:
                 if error:
                     cur.execute(
-                        "UPDATE work_items SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
+                        "UPDATE mng_work_items SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
                         (f"{status}: {error[:200]}", work_item_id),
                     )
                 else:
                     cur.execute(
-                        "UPDATE work_items SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
+                        "UPDATE mng_work_items SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
                         (status, work_item_id),
                     )
     except Exception as e:
@@ -212,7 +212,7 @@ def _update_fields(work_item_id: str, acceptance_criteria: str, implementation_p
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """UPDATE work_items
+                    """UPDATE mng_work_items
                           SET acceptance_criteria=%s,
                               implementation_plan=%s,
                               updated_at=NOW()

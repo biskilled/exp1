@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-17 18:40 UTC by aicli /memory_
+_Generated: 2026-03-17 20:20 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -59,9 +59,10 @@ _Generated: 2026-03-17 18:40 UTC by aicli /memory_
 ### Doc_type
 
 - **customer-meeting** — dsds `(54 events, 51 commits)`
-- **retrospective** `(52 events, 51 commits)`
 - **high-level-design** `(52 events, 51 commits)`
+- **retrospective** `(52 events, 51 commits)`
 - **low-level-design**
+- **Test**
 
 ### Feature
 
@@ -69,14 +70,14 @@ _Generated: 2026-03-17 18:40 UTC by aicli /memory_
 - **auth** `(58 events, 51 commits)`
 - **mcp** `(4 events)`
 - **shared-memory** `(4 events)`
+- **graph-workflow** `(1 events)`
 - **UI** `(1 events)`
 - **workflow-runner** `(1 events)`
-- **graph-workflow** `(1 events)`
-- **test-picker-feature**
-- **dropbox**
-- **embeddings**
 - **tagging**
 - **billing**
+- **embeddings**
+- **test-picker-feature**
+- **dropbox**
 
 ### Phase
 
@@ -90,6 +91,14 @@ _Generated: 2026-03-17 18:40 UTC by aicli /memory_
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
 ## Recent Work (last 10 exchanges)
+
+**[2026-03-17 20:13]** `claude_cli/claude`
+Q: Planner works partial - I do see the nested work on some category like doc_type but in bug or feature ui is diffrent and this is not working. also I do see there is life cycle project, but I am not su
+A: Here's a summary of everything done and answers to your questions:  ---  ## What was fixed  **Planner consistency** — removed the split between `entity_values` (doc_type etc.) and `work_items` (feature/bug/task). Now ALL categories use the same `_renderTagTable` renderer reading from `entity_values`
+
+**[2026-03-17 18:50]** `claude_cli/claude`
+Q: I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked. I have created tagging mechasim in order to help map prompt/commit to proper tags. the aiCli can su
+A: Here's a summary of all changes made:  ---  ## Changes Made  ### Tab renames (`main.js`) - `"Workflow"` → `"Pipelines"` (PROJECT_TABS + global sidebar nav) - `"Prompts"` → `"Roles"` (PROJECT_TABS)  ### Nested tag button (`entities.js`) - Added `+▸` button directly in **every regular tag row** (previ
 
 **[2026-03-17 18:29]** `claude_cli/claude`
 Q: I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used to be. also, pipeline seems to be hardcoded and used the new infrastrucre of wo
@@ -121,11 +130,3 @@ A: All changes look correct. The Agent Roles implementation in `graph_workflow.j
 **[2026-03-16 19:00]** `claude_cli/claude`
 Q: I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over time (or stored that as local md files linked ..) I do want to store the prompts 
 A: Good design direction. Here's how this maps cleanly to what's already planned:  ---  ## Design: Agent Roles in Database  ### Schema (`agent_roles` + `agent_role_versions`)  ```sql -- Live role definitions CREATE TABLE agent_roles (     id        SERIAL PRIMARY KEY,     project   TEXT NOT NULL DEFAUL
-
-**[2026-03-16 18:52]** `claude_cli/claude`
-Q: I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline configure ? also there used to be parent - child support (for example UI -> dropbox) w
-A: Now I have the full picture. Let me answer all three questions clearly.  ---  ## Answers to your questions  ### 1. Where is the "Run Pipeline" configured?  It's in `ui/backend/core/work_item_pipeline.py` — **completely hardcoded**. 4 stages are Python-coded directly: PM → Architect → Developer → Rev
-
-**[2026-03-16 18:34]** `claude_cli/claude`
-Q: I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/workflows, you can check also the github - https://github.com/fjpulidop/specrail
-A: Now I have everything I need. Let me write the comprehensive comparison and design proposal.  ---  ## Workflow System Design: Comparison & Proposal  ### What the two external systems do  **specrails** is essentially a **Claude Code agent system** — 12 specialized prompt files (`.md` role definitions

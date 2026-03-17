@@ -105,10 +105,10 @@ async def list_work_items(
                           w.agent_run_id, w.agent_status, w.tags,
                           w.created_at, w.updated_at,
                           ec.color, ec.icon,
-                          (SELECT COUNT(*) FROM interaction_tags it
+                          (SELECT COUNT(*) FROM mng_interaction_tags it
                            WHERE it.work_item_id = w.id) AS interaction_count
-                   FROM work_items w
-                   LEFT JOIN entity_categories ec ON ec.project=w.project AND ec.name=w.category_name
+                   FROM mng_work_items w
+                   LEFT JOIN mng_entity_categories ec ON ec.project=w.project AND ec.name=w.category_name
                    WHERE {' AND '.join(where)}
                    ORDER BY w.category_name, w.status, w.created_at DESC
                    LIMIT %s""",
@@ -140,12 +140,12 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
     _require_db()
     p = _project(project or body.project)
 
-    # Resolve category_id from entity_categories if it exists
+    # Resolve category_id from mng_entity_categories if it exists
     category_id = None
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM entity_categories WHERE project=%s AND name=%s",
+                "SELECT id FROM mng_entity_categories WHERE project=%s AND name=%s",
                 (p, body.category_name),
             )
             row = cur.fetchone()
@@ -153,7 +153,7 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
                 category_id = row[0]
 
             cur.execute(
-                """INSERT INTO work_items
+                """INSERT INTO mng_work_items
                        (project, category_name, category_id, name, description,
                         status, lifecycle_status, due_date, parent_id,
                         acceptance_criteria, implementation_plan, tags)
@@ -204,7 +204,7 @@ async def patch_work_item(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE work_items SET {','.join(fields)} WHERE id=%s::uuid AND project=%s RETURNING id",
+                f"UPDATE mng_work_items SET {','.join(fields)} WHERE id=%s::uuid AND project=%s RETURNING id",
                 params,
             )
             if not cur.fetchone():
@@ -229,7 +229,7 @@ async def delete_work_item(item_id: str, project: str | None = Query(None)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM work_items WHERE id=%s::uuid AND project=%s RETURNING id",
+                "DELETE FROM mng_work_items WHERE id=%s::uuid AND project=%s RETURNING id",
                 (item_id, p),
             )
             if not cur.fetchone():
@@ -253,8 +253,8 @@ async def get_work_item_interactions(
             cur.execute(
                 """SELECT i.id, i.session_id, i.event_type, i.source_id,
                           i.prompt, i.response, i.phase, i.created_at
-                   FROM interaction_tags it
-                   JOIN interactions i ON i.id = it.interaction_id
+                   FROM mng_interaction_tags it
+                   JOIN mng_interactions i ON i.id = it.interaction_id
                    WHERE it.work_item_id=%s::uuid AND i.project_id=%s
                    ORDER BY i.created_at DESC LIMIT %s""",
                 (item_id, p, limit),
@@ -270,7 +270,7 @@ async def get_work_item_interactions(
     return {"interactions": rows, "work_item_id": item_id, "project": p}
 
 
-# ── Migrate from entity_values ────────────────────────────────────────────────
+# ── Migrate from mng_entity_values ────────────────────────────────────────────────
 
 @router.post("/migrate-from-tags")
 async def migrate_from_tags(project: str | None = Query(None)):
@@ -297,7 +297,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT name, description, acceptance_criteria FROM work_items WHERE id=%s::uuid AND project=%s",
+                "SELECT name, description, acceptance_criteria FROM mng_work_items WHERE id=%s::uuid AND project=%s",
                 (item_id, p),
             )
             row = cur.fetchone()
@@ -322,12 +322,12 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO graph_runs (id, workflow_id, project, status, user_input)
+                        """INSERT INTO mng_graph_runs (id, workflow_id, project, status, user_input)
                            VALUES (%s, %s, %s, 'running', %s)""",
                         (run_id_str, workflow_id, p, user_input),
                     )
                     # Get the int id of the inserted run
-                    cur.execute("SELECT id FROM graph_runs WHERE workflow_id=%s AND project=%s ORDER BY id DESC LIMIT 1", (workflow_id, p))
+                    cur.execute("SELECT id FROM mng_graph_runs WHERE workflow_id=%s AND project=%s ORDER BY id DESC LIMIT 1", (workflow_id, p))
                     run_row = cur.fetchone()
                     run_id = run_row[0] if run_row else None
 
@@ -335,7 +335,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE work_items SET agent_status='running', agent_run_id=%s, updated_at=NOW() WHERE id=%s::uuid",
+                        "UPDATE mng_work_items SET agent_status='running', agent_run_id=%s, updated_at=NOW() WHERE id=%s::uuid",
                         (run_id, item_id),
                     )
 
@@ -353,7 +353,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                     with db.conn() as conn2:
                         with conn2.cursor() as cur2:
                             cur2.execute(
-                                """UPDATE work_items
+                                """UPDATE mng_work_items
                                    SET agent_status='done',
                                        acceptance_criteria=COALESCE(NULLIF(%s,''), acceptance_criteria),
                                        implementation_plan=COALESCE(NULLIF(%s,''), implementation_plan),
@@ -378,7 +378,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid",
+                "UPDATE mng_work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid",
                 (item_id,),
             )
     from core.work_item_pipeline import trigger_work_item_pipeline
@@ -400,7 +400,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id FROM graph_workflows WHERE project=%s AND name=%s",
+                    "SELECT id FROM mng_graph_workflows WHERE project=%s AND name=%s",
                     (project, WF_NAME),
                 )
                 row = cur.fetchone()
@@ -413,7 +413,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT name, id FROM agent_roles
+                        """SELECT name, id FROM mng_agent_roles
                            WHERE is_active=TRUE AND project='_global'
                            AND name IN ('Product Manager','Sr. Architect','Web Developer','Code Reviewer')"""
                     )
@@ -438,7 +438,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO graph_workflows (project, name, description, max_iterations, created_at, updated_at)
+                    """INSERT INTO mng_graph_workflows (project, name, description, max_iterations, created_at, updated_at)
                        VALUES (%s, %s, %s, 3, NOW(), NOW()) RETURNING id""",
                     (project, WF_NAME, "4-agent PM → Architect → Developer → Reviewer pipeline for work items"),
                 )
@@ -447,7 +447,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
                 node_ids = []
                 for i, (node_name, provider, model, role_id, fallback_prompt) in enumerate(stages):
                     cur.execute(
-                        """INSERT INTO graph_nodes
+                        """INSERT INTO mng_graph_nodes
                                (workflow_id, name, provider, model, role_id, role_prompt,
                                 inject_context, require_approval, approval_msg,
                                 position_x, position_y, created_at, updated_at)
@@ -469,7 +469,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
                 ]
                 for src, tgt, cond, label in edge_defs:
                     cur.execute(
-                        """INSERT INTO graph_edges
+                        """INSERT INTO mng_graph_edges
                                (workflow_id, source_node_id, target_node_id, condition, label,
                                 created_at, updated_at)
                            VALUES (%s,%s,%s,%s,%s, NOW(), NOW())""",
@@ -494,7 +494,7 @@ async def get_project_facts(project: str | None = Query(None)):
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT id, fact_key, fact_value, valid_from
-                   FROM project_facts
+                   FROM mng_project_facts
                    WHERE project_id=%s AND valid_until IS NULL
                    ORDER BY fact_key""",
                 (p,),
@@ -530,7 +530,7 @@ async def get_memory_items(
         with conn.cursor() as cur:
             cur.execute(
                 f"""SELECT id, scope, scope_ref, content, reviewer_score, created_at
-                   FROM memory_items
+                   FROM mng_memory_items
                    WHERE {' AND '.join(where)}
                    ORDER BY created_at DESC LIMIT %s""",
                 params + [limit],

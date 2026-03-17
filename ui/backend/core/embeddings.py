@@ -615,7 +615,7 @@ async def embed_node_outputs(run_id: str, project: str) -> None:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT node_id, node_name, output "
-                    "FROM graph_node_results WHERE run_id=%s AND status='done'",
+                    "FROM mng_graph_node_results WHERE run_id=%s AND status='done'",
                     (run_id,),
                 )
                 rows = cur.fetchall()

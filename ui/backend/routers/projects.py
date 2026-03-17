@@ -825,7 +825,7 @@ async def _suggest_tags(
 # ── Memory distillation pipeline ─────────────────────────────────────────────
 
 async def _summarize_session_memory(project: str) -> int:
-    """Layer 1: Summarize unsummarized sessions into memory_items (Trycycle pattern).
+    """Layer 1: Summarize unsummarized sessions into mng_memory_items (Trycycle pattern).
 
     Queries interactions for sessions with >= 3 prompts not yet summarized.
     Each session gets two Haiku calls: summarize + rate/improve. Result stored
@@ -854,12 +854,12 @@ async def _summarize_session_memory(project: str) -> int:
                                   || CASE WHEN i.response != '' THEN E'\n A: ' || LEFT(i.response,200) ELSE '' END,
                                   E'\n\n' ORDER BY i.created_at
                               ) AS history_text
-                       FROM interactions i
+                       FROM mng_interactions i
                        WHERE i.project_id=%s
                          AND i.event_type='prompt'
                          AND i.session_id IS NOT NULL
                          AND NOT EXISTS (
-                             SELECT 1 FROM memory_items m
+                             SELECT 1 FROM mng_memory_items m
                              WHERE m.project_id=i.project_id
                                AND m.scope='session'
                                AND m.scope_ref=i.session_id
@@ -930,7 +930,7 @@ async def _summarize_session_memory(project: str) -> int:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            """INSERT INTO memory_items
+                            """INSERT INTO mng_memory_items
                                    (project_id, scope, scope_ref, content, source_ids,
                                     reviewer_score, reviewer_critique)
                                VALUES (%s,'session',%s,%s,%s::uuid[],%s,%s)
@@ -972,7 +972,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
             with conn.cursor() as cur:
                 # Get work item details
                 cur.execute(
-                    "SELECT name, description FROM work_items WHERE id=%s::uuid AND project=%s",
+                    "SELECT name, description FROM mng_work_items WHERE id=%s::uuid AND project=%s",
                     (work_item_id, project),
                 )
                 wi_row = cur.fetchone()
@@ -983,10 +983,10 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
                 # Find memory_items whose source_ids overlap with this work_item's interactions
                 cur.execute(
                     """SELECT m.content
-                       FROM memory_items m
+                       FROM mng_memory_items m
                        WHERE m.project_id=%s AND m.scope='session'
                          AND EXISTS (
-                             SELECT 1 FROM interaction_tags it
+                             SELECT 1 FROM mng_interaction_tags it
                              WHERE it.work_item_id=%s::uuid
                                AND it.interaction_id = ANY(m.source_ids)
                          )
@@ -1044,7 +1044,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO memory_items
+                    """INSERT INTO mng_memory_items
                            (project_id, scope, scope_ref, content, reviewer_score, reviewer_critique)
                        VALUES (%s,'feature',%s,%s,%s,%s)
                        RETURNING id""",
@@ -1078,7 +1078,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT content FROM memory_items
+                    """SELECT content FROM mng_memory_items
                        WHERE project_id=%s
                        ORDER BY created_at DESC LIMIT 5""",
                     (project,),
@@ -1086,7 +1086,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
                 mem_texts = [r[0] for r in cur.fetchall()]
                 # Also include existing facts for context
                 cur.execute(
-                    """SELECT fact_key, fact_value FROM project_facts
+                    """SELECT fact_key, fact_value FROM mng_project_facts
                        WHERE project_id=%s AND valid_until IS NULL
                        ORDER BY fact_key""",
                     (project,),
@@ -1132,7 +1132,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
                         continue
                     # Invalidate conflicting current fact
                     cur.execute(
-                        """UPDATE project_facts SET valid_until=NOW()
+                        """UPDATE mng_project_facts SET valid_until=NOW()
                            WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL
                              AND fact_value != %s""",
                         (project, k, v),
@@ -1140,7 +1140,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
                     # Insert new fact (unique index prevents duplicates)
                     try:
                         cur.execute(
-                            """INSERT INTO project_facts
+                            """INSERT INTO mng_project_facts
                                    (project_id, fact_key, fact_value, source_memory_id)
                                VALUES (%s,%s,%s,%s::uuid)
                                ON CONFLICT (project_id, fact_key) WHERE valid_until IS NULL
@@ -1249,8 +1249,8 @@ async def generate_memory(project_name: str):
                                   v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
                                   COUNT(DISTINCT et.event_id)                                          AS event_count,
                                   COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
-                           FROM entity_categories c
-                           JOIN entity_values v ON v.category_id = c.id
+                           FROM mng_entity_categories c
+                           JOIN mng_entity_values v ON v.category_id = c.id
                            LEFT JOIN {et_table} et ON et.entity_value_id = v.id
                            LEFT JOIN {ev_table} ev ON ev.id = et.event_id
                            WHERE v.project=%s AND v.status != 'archived'
@@ -1277,7 +1277,7 @@ async def generate_memory(project_name: str):
         except Exception as _e:
             log.warning("entity summary for /memory failed: %s", _e)
 
-    # ── Layer 1: summarize new sessions into memory_items (fire-and-forget) ──────
+    # ── Layer 1: summarize new sessions into mng_memory_items (fire-and-forget) ──────
     if db.is_available():
         try:
             asyncio.create_task(_summarize_session_memory(project_name))
@@ -1292,14 +1292,14 @@ async def generate_memory(project_name: str):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT fact_key, fact_value FROM project_facts
+                        """SELECT fact_key, fact_value FROM mng_project_facts
                            WHERE project_id=%s AND valid_until IS NULL
                            ORDER BY fact_key""",
                         (project_name,),
                     )
                     distilled_facts = [{"key": r[0], "value": r[1]} for r in cur.fetchall()]
                     cur.execute(
-                        """SELECT content FROM memory_items
+                        """SELECT content FROM mng_memory_items
                            WHERE project_id=%s
                            ORDER BY created_at DESC LIMIT 5""",
                         (project_name,),
@@ -1660,7 +1660,7 @@ async def generate_memory(project_name: str):
                     with db.conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute(
-                                """SELECT id, name FROM entity_values
+                                """SELECT id, name FROM mng_entity_values
                                    WHERE project=%s AND status='active'
                                    ORDER BY name LIMIT 50""",
                                 (project_name,),
@@ -1759,7 +1759,7 @@ async def memory_status(project_name: str, bust: bool = False):
         except Exception:
             pass
 
-    # Also count from interactions table (new storage)
+    # Also count from mng_interactions table (new storage)
     interactions_total = 0
     interactions_since = 0
     if db.is_available():
@@ -1767,13 +1767,13 @@ async def memory_status(project_name: str, bust: bool = False):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT COUNT(*) FROM interactions WHERE project_id=%s AND event_type='prompt'",
+                        "SELECT COUNT(*) FROM mng_interactions WHERE project_id=%s AND event_type='prompt'",
                         (project_name,),
                     )
                     interactions_total = (cur.fetchone() or (0,))[0]
                     if last_memory_run:
                         cur.execute(
-                            "SELECT COUNT(*) FROM interactions WHERE project_id=%s AND event_type='prompt' AND created_at > %s::timestamptz",
+                            "SELECT COUNT(*) FROM mng_interactions WHERE project_id=%s AND event_type='prompt' AND created_at > %s::timestamptz",
                             (project_name, last_memory_run),
                         )
                         interactions_since = (cur.fetchone() or (0,))[0]
@@ -1849,8 +1849,8 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
             with conn.cursor() as cur:
                 cur.execute(
                     """SELECT v.id, c.name AS category, v.name
-                       FROM entity_values v
-                       JOIN entity_categories c ON c.id = v.category_id
+                       FROM mng_entity_values v
+                       JOIN mng_entity_categories c ON c.id = v.category_id
                        WHERE v.project=%s AND v.status='active'
                        ORDER BY c.name, v.name""",
                     (project,),

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-17 20:06 UTC — do not edit manually.
+> Auto-generated 2026-03-17 20:20 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 121
-- **Last active**: 2026-03-17T19:26:02Z
+- **Sessions**: 122
+- **Last active**: 2026-03-17T20:20:26Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-17 20:13]** `claude_cli/claude`  
+→ Planner works partial - I do see the nested work on some category like doc_type but in bug or feature ui is diffrent and
+← _Here's a summary of everything done and answers to your questions:  ---  ## What was fixed  **Planner consistency** — removed the split between `entity_values` (doc_type etc.) and `work_items` (featur_
+
 **[2026-03-17 18:50]** `claude_cli/claude`  
 → I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked. I have created tagg
 ← _Here's a summary of all changes made:  ---  ## Changes Made  ### Tab renames (`main.js`) - `"Workflow"` → `"Pipelines"` (PROJECT_TABS + global sidebar nav) - `"Prompts"` → `"Roles"` (PROJECT_TABS)  ##_
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-16 17:42]** `claude_cli/claude`  
 → Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. 
 ← _Now I have a complete picture. Let me give you a clear, honest assessment.  ---  ## `/memory` Run Results  **Ran successfully** — generated 5 files at 17:43 UTC. Result: `"synthesized": false` because_
-
-**[2026-03-16 01:34]** `claude_cli/claude`  
-→ Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can
-← _## Complete System Improvement Summary  ---  ### What Was Built (7 Parts)  **Before:** Every LLM call got either 40 raw JSONL entries (noisy, expensive) or a CLAUDE.md (too coarse). Tags lived in per-_

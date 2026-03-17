@@ -72,7 +72,7 @@ async def list_roles(
             cur.execute(
                 """SELECT id, project, name, description, system_prompt,
                           provider, model, tags, is_active, created_at, updated_at
-                   FROM agent_roles
+                   FROM mng_agent_roles
                    WHERE is_active=TRUE AND (project='_global' OR project=%s)
                    ORDER BY (project='_global') DESC, name""",
                 (project,),
@@ -103,7 +103,7 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO agent_roles
+                """INSERT INTO mng_agent_roles
                        (project, name, description, system_prompt, provider, model, tags)
                    VALUES (%s,%s,%s,%s,%s,%s,%s)
                    RETURNING id, project, name, description, system_prompt,
@@ -136,7 +136,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, system_prompt, provider, model FROM agent_roles WHERE id=%s",
+                "SELECT id, system_prompt, provider, model FROM mng_agent_roles WHERE id=%s",
                 (role_id,),
             )
             existing = cur.fetchone()
@@ -171,20 +171,20 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
         with conn.cursor() as cur:
             if versioned_changed:
                 cur.execute(
-                    """INSERT INTO agent_role_versions
+                    """INSERT INTO mng_agent_role_versions
                            (role_id, system_prompt, provider, model, changed_by, note)
                        VALUES (%s,%s,%s,%s,%s,%s)""",
                     (role_id, existing[1], existing[2], existing[3],
                      (user or {}).get("email", ""), body.note),
                 )
             cur.execute(
-                f"UPDATE agent_roles SET {', '.join(fields)} WHERE id=%s",
+                f"UPDATE mng_agent_roles SET {', '.join(fields)} WHERE id=%s",
                 values,
             )
             cur.execute(
                 """SELECT id, project, name, description, system_prompt,
                           provider, model, tags, is_active, created_at, updated_at
-                   FROM agent_roles WHERE id=%s""",
+                   FROM mng_agent_roles WHERE id=%s""",
                 (role_id,),
             )
             row = cur.fetchone()
@@ -200,7 +200,7 @@ async def delete_role(role_id: int, user=Depends(get_optional_user)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE agent_roles SET is_active=FALSE, updated_at=NOW() WHERE id=%s",
+                "UPDATE mng_agent_roles SET is_active=FALSE, updated_at=NOW() WHERE id=%s",
                 (role_id,),
             )
     return {"deleted": True, "role_id": role_id}
@@ -216,7 +216,7 @@ async def get_versions(role_id: int, user=Depends(get_optional_user)):
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT id, system_prompt, provider, model, changed_by, changed_at, note
-                   FROM agent_role_versions WHERE role_id=%s ORDER BY changed_at DESC""",
+                   FROM mng_agent_role_versions WHERE role_id=%s ORDER BY changed_at DESC""",
                 (role_id,),
             )
             rows = cur.fetchall()
@@ -245,7 +245,7 @@ async def restore_version(role_id: int, version_id: int, user=Depends(get_option
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT system_prompt, provider, model FROM agent_role_versions WHERE id=%s AND role_id=%s",
+                "SELECT system_prompt, provider, model FROM mng_agent_role_versions WHERE id=%s AND role_id=%s",
                 (version_id, role_id),
             )
             ver = cur.fetchone()
@@ -254,20 +254,20 @@ async def restore_version(role_id: int, version_id: int, user=Depends(get_option
 
             # Save current state before overwriting
             cur.execute(
-                "SELECT system_prompt, provider, model FROM agent_roles WHERE id=%s",
+                "SELECT system_prompt, provider, model FROM mng_agent_roles WHERE id=%s",
                 (role_id,),
             )
             cur_state = cur.fetchone()
             if cur_state:
                 cur.execute(
-                    """INSERT INTO agent_role_versions
+                    """INSERT INTO mng_agent_role_versions
                            (role_id, system_prompt, provider, model, changed_by, note)
                        VALUES (%s,%s,%s,%s,%s,'before restore')""",
                     (role_id, cur_state[0], cur_state[1], cur_state[2],
                      (user or {}).get("email", "")),
                 )
             cur.execute(
-                """UPDATE agent_roles
+                """UPDATE mng_agent_roles
                    SET system_prompt=%s, provider=%s, model=%s, updated_at=NOW()
                    WHERE id=%s""",
                 (ver[0], ver[1], ver[2], role_id),

@@ -74,7 +74,7 @@ def log_usage(
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO usage_logs
+                        """INSERT INTO mng_usage_logs
                            (user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd)
                            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                         (user_id, provider, model, input_tokens, output_tokens, real_cost, charged_usd),

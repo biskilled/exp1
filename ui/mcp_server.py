@@ -15,6 +15,14 @@ Tools:
     get_session_tags     — active session tags (phase, feature, bug_ref)
     set_session_tags     — update active session tags
     commit_push          — commit + push from Cursor; logs to commit_log.jsonl
+    get_db_schema        — return complete database table schema reference
+    list_work_items      — list work items with pipeline status
+    run_work_item_pipeline — trigger 4-agent PM→Architect→Dev→Reviewer pipeline
+
+Database naming convention:
+    mng_TABLE  — global management tables (users, billing, entities, workflows, etc.)
+    cl_TABLE   — client-level tables (future multi-tenancy)
+    pr_[client]_[project]_TABLE — per-project tables (e.g. pr_local_aicli_commits)
 """
 from __future__ import annotations
 
@@ -313,6 +321,18 @@ async def list_tools() -> list[mcp_types.Tool]:
                 },
             },
         ),
+        mcp_types.Tool(
+            name="get_db_schema",
+            description=(
+                "Return the complete database table schema for this project. "
+                "Use this when you need to write SQL queries or understand the data model. "
+                "Tables follow naming convention: mng_ (global), pr_local_{project}_ (per-project)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {"project": {"type": "string"}},
+            },
+        ),
     ]
 
 
@@ -571,6 +591,153 @@ async def _dispatch(name: str, args: dict) -> Any:
             wi_id = matches[0]["id"]
         result = await _post(f"/work-items/{wi_id}/run-pipeline?project={_up.quote(project)}", {})
         return {"work_item_id": wi_id, "status": result.get("status"), "project": project}
+
+    elif name == "get_db_schema":
+        p = project
+        return {
+            "naming_convention": {
+                "mng_TABLE": "Global management tables (shared across all projects)",
+                "cl_TABLE": "Client-level tables (future multi-tenancy, currently none)",
+                "pr_local_{project}_TABLE": f"Per-project tables (e.g. pr_local_{p}_commits)",
+            },
+            "global_tables": {
+                "mng_users": {
+                    "purpose": "User accounts, roles, billing balances",
+                    "key_columns": ["id VARCHAR(36) PK", "email UNIQUE", "role (free/paid/admin)",
+                                    "balance_added_usd", "balance_used_usd", "stripe_customer_id"],
+                },
+                "mng_usage_logs": {
+                    "purpose": "Per-request LLM cost tracking",
+                    "key_columns": ["id SERIAL PK", "user_id FK→mng_users", "provider", "model",
+                                    "input_tokens", "output_tokens", "cost_usd", "charged_usd"],
+                },
+                "mng_transactions": {
+                    "purpose": "Credit/debit ledger (coupons, top-ups, charges)",
+                    "key_columns": ["id SERIAL PK", "user_id FK→mng_users", "type", "amount_usd", "description"],
+                },
+                "mng_session_tags": {
+                    "purpose": "Active session state per project (phase, feature, bug being worked on)",
+                    "key_columns": ["id SERIAL PK", "project UNIQUE", "phase", "feature", "bug_ref", "extra JSONB"],
+                },
+                "mng_entity_categories": {
+                    "purpose": "Tag category definitions per project (feature, bug, task, component, etc.)",
+                    "key_columns": ["id SERIAL PK", "project", "name", "color", "icon", "UNIQUE(project,name)"],
+                },
+                "mng_entity_values": {
+                    "purpose": "Tag instances — specific features, bugs, tasks tracked in Planner",
+                    "key_columns": ["id SERIAL PK", "category_id FK→mng_entity_categories", "project", "name",
+                                    "description", "status (active/done/archived)", "lifecycle_status",
+                                    "due_date DATE", "parent_id FK→self"],
+                },
+                "mng_entity_value_links": {
+                    "purpose": "Dependencies between entity values (blocks, related_to)",
+                    "key_columns": ["from_value_id FK→mng_entity_values", "to_value_id FK→mng_entity_values",
+                                    "link_type (blocks/related_to)", "PK(from,to,link_type)"],
+                },
+                "mng_graph_workflows": {
+                    "purpose": "DAG workflow definitions (multi-agent pipelines)",
+                    "key_columns": ["id SERIAL PK", "project", "name", "description", "max_iterations",
+                                    "UNIQUE(project,name)"],
+                },
+                "mng_graph_nodes": {
+                    "purpose": "Steps within a workflow (LLM calls, conditions, etc.)",
+                    "key_columns": ["id SERIAL PK", "workflow_id FK→mng_graph_workflows", "name", "node_type",
+                                    "prompt", "provider", "model", "pos_x", "pos_y", "config JSONB",
+                                    "role_id FK→mng_agent_roles"],
+                },
+                "mng_graph_edges": {
+                    "purpose": "Directed connections between workflow nodes",
+                    "key_columns": ["id SERIAL PK", "workflow_id", "source_node FK→mng_graph_nodes",
+                                    "target_node FK→mng_graph_nodes", "edge_type (default/loop/conditional)"],
+                },
+                "mng_graph_runs": {
+                    "purpose": "Workflow execution instances with status and cost tracking",
+                    "key_columns": ["id SERIAL PK", "workflow_id", "project", "status (pending/running/done/failed)",
+                                    "total_cost_usd", "input TEXT", "output TEXT", "context JSONB"],
+                },
+                "mng_graph_node_results": {
+                    "purpose": "Per-node output within a run",
+                    "key_columns": ["id SERIAL PK", "run_id FK→mng_graph_runs", "node_id FK→mng_graph_nodes",
+                                    "status", "output TEXT", "cost NUMERIC"],
+                },
+                "mng_work_items": {
+                    "purpose": "Structured feature/bug/task items with 4-agent pipeline tracking",
+                    "key_columns": ["id UUID PK", "project", "category_name", "category_id FK→mng_entity_categories",
+                                    "name", "description", "status (active/done/archived)",
+                                    "lifecycle_status (idea/design/development/testing/review/done)",
+                                    "due_date DATE", "parent_id FK→self",
+                                    "acceptance_criteria TEXT", "implementation_plan TEXT",
+                                    "agent_run_id FK→mng_graph_runs", "agent_status", "tags TEXT[]"],
+                },
+                "mng_interactions": {
+                    "purpose": "Unified prompt/response log replacing per-project events tables",
+                    "key_columns": ["id UUID PK", "project_id TEXT", "work_item_id FK→mng_work_items",
+                                    "session_id TEXT", "llm_source TEXT", "event_type (prompt/commit/etc.)",
+                                    "source_id TEXT UNIQUE per project", "prompt TEXT", "response TEXT",
+                                    "phase TEXT", "tags TEXT[]", "metadata JSONB",
+                                    "prompt_embedding VECTOR(1536)", "response_embedding VECTOR(1536)"],
+                },
+                "mng_interaction_tags": {
+                    "purpose": "Links interactions to work items (replaces per-project event_tags)",
+                    "key_columns": ["interaction_id FK→mng_interactions", "work_item_id FK→mng_work_items",
+                                    "auto_tagged BOOLEAN", "PK(interaction_id, work_item_id)"],
+                },
+                "mng_memory_items": {
+                    "purpose": "Trycycle-reviewed session/feature summaries (distilled memory layer 2)",
+                    "key_columns": ["id UUID PK", "project_id TEXT", "scope (session/feature)",
+                                    "scope_ref TEXT", "content TEXT", "reviewer_score INT",
+                                    "reviewer_critique TEXT", "source_ids UUID[]", "tags TEXT[]",
+                                    "embedding VECTOR(1536)"],
+                },
+                "mng_project_facts": {
+                    "purpose": "Durable extracted facts ('we use pgvector', 'auth is JWT'); valid_until NULL = current",
+                    "key_columns": ["id UUID PK", "project_id TEXT", "fact_key TEXT",
+                                    "fact_value TEXT", "valid_from TIMESTAMPTZ", "valid_until TIMESTAMPTZ",
+                                    "source_memory_id FK→mng_memory_items",
+                                    "UNIQUE(project_id, fact_key) WHERE valid_until IS NULL"],
+                },
+                "mng_agent_roles": {
+                    "purpose": "Reusable LLM personas for workflow nodes (admin-editable system prompts)",
+                    "key_columns": ["id SERIAL PK", "project TEXT (default '_global')", "name TEXT",
+                                    "description TEXT", "system_prompt TEXT", "provider TEXT",
+                                    "model TEXT", "tags TEXT[]", "is_active BOOLEAN",
+                                    "UNIQUE(project, name)"],
+                },
+                "mng_agent_role_versions": {
+                    "purpose": "Audit log of role prompt/model changes",
+                    "key_columns": ["id SERIAL PK", "role_id FK→mng_agent_roles", "system_prompt TEXT",
+                                    "provider TEXT", "model TEXT", "changed_by TEXT", "note TEXT"],
+                },
+            },
+            "per_project_tables": {
+                f"pr_local_{p}_commits": {
+                    "purpose": "Git commits linked to sessions and prompts",
+                    "key_columns": ["id SERIAL PK", "commit_hash VARCHAR(40) UNIQUE", "commit_msg TEXT",
+                                    "session_id", "prompt_source_id", "phase", "feature", "committed_at"],
+                },
+                f"pr_local_{p}_events": {
+                    "purpose": "Raw event log (prompt/commit events, pre-mng_interactions era)",
+                    "key_columns": ["id SERIAL PK", "event_type VARCHAR(50)", "source_id VARCHAR(255)",
+                                    "phase", "feature", "session_id", "metadata JSONB", "UNIQUE(event_type,source_id)"],
+                },
+                f"pr_local_{p}_embeddings": {
+                    "purpose": "Smart-chunked embeddings for semantic search (pgvector)",
+                    "key_columns": ["id SERIAL PK", "source_type VARCHAR(50)", "source_id VARCHAR(255)",
+                                    "chunk_index INT", "content TEXT", "embedding vector(1536)",
+                                    "chunk_type (full/summary/function/class/section)", "language", "file_path"],
+                },
+                f"pr_local_{p}_event_tags": {
+                    "purpose": "Links raw events to mng_entity_values (legacy; new writes use mng_interaction_tags)",
+                    "key_columns": ["event_id INT", "entity_value_id FK→mng_entity_values",
+                                    "auto_tagged BOOLEAN", "PK(event_id, entity_value_id)"],
+                },
+                f"pr_local_{p}_event_links": {
+                    "purpose": "Event-to-event directed links (for timeline causality)",
+                    "key_columns": ["from_event_id INT", "to_event_id INT",
+                                    "link_type VARCHAR(50)", "PK(from,to,link_type)"],
+                },
+            },
+        }
 
     else:
         raise ValueError(f"Unknown tool: {name}")

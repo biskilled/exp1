@@ -156,7 +156,7 @@ async def list_workflows(
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id, project, name, description, max_iterations, created_at "
-                "FROM graph_workflows WHERE project=%s ORDER BY created_at DESC",
+                "FROM mng_graph_workflows WHERE project=%s ORDER BY created_at DESC",
                 (p,),
             )
             rows = cur.fetchall()
@@ -171,7 +171,7 @@ async def create_workflow(body: WorkflowCreate, user=Depends(get_optional_user))
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO graph_workflows (id, project, name, description, max_iterations)
+                """INSERT INTO mng_graph_workflows (id, project, name, description, max_iterations)
                    VALUES (%s, %s, %s, %s, %s)
                    RETURNING id, project, name, description, max_iterations, created_at""",
                 (wf_id, p, body.name, body.description, body.max_iterations),
@@ -187,7 +187,7 @@ async def get_run(run_id: str, user=Depends(get_optional_user)):
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id, workflow_id, project, status, user_input, context, "
-                "started_at, finished_at, total_cost_usd, error FROM graph_runs WHERE id=%s",
+                "started_at, finished_at, total_cost_usd, error FROM mng_graph_runs WHERE id=%s",
                 (run_id,),
             )
             row = cur.fetchone()
@@ -204,7 +204,7 @@ async def get_run(run_id: str, user=Depends(get_optional_user)):
             cur.execute(
                 """SELECT id, node_id, node_name, status, output, structured,
                           input_tokens, output_tokens, cost_usd, started_at, finished_at, iteration
-                   FROM graph_node_results WHERE run_id=%s ORDER BY id""",
+                   FROM mng_graph_node_results WHERE run_id=%s ORDER BY id""",
                 (run_id,),
             )
             node_results = []
@@ -227,7 +227,7 @@ async def cancel_run(run_id: str, user=Depends(get_optional_user)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE graph_runs SET status='cancelled', finished_at=NOW() WHERE id=%s AND status='running'",
+                "UPDATE mng_graph_runs SET status='cancelled', finished_at=NOW() WHERE id=%s AND status='running'",
                 (run_id,),
             )
     return {"status": "cancelled", "run_id": run_id}
@@ -240,7 +240,7 @@ async def get_workflow(workflow_id: str, user=Depends(get_optional_user)):
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id, project, name, description, max_iterations, created_at "
-                "FROM graph_workflows WHERE id=%s",
+                "FROM mng_graph_workflows WHERE id=%s",
                 (workflow_id,),
             )
             row = cur.fetchone()
@@ -252,14 +252,14 @@ async def get_workflow(workflow_id: str, user=Depends(get_optional_user)):
                 """SELECT id, workflow_id, name, role_file, role_prompt, provider, model,
                           output_schema, inject_context, position_x, position_y, created_at,
                           require_approval, approval_msg, role_id
-                   FROM graph_nodes WHERE workflow_id=%s ORDER BY created_at""",
+                   FROM mng_graph_nodes WHERE workflow_id=%s ORDER BY created_at""",
                 (workflow_id,),
             )
             wf["nodes"] = [_row_to_node(r) for r in cur.fetchall()]
 
             cur.execute(
                 """SELECT id, workflow_id, source_node_id, target_node_id, condition, label, created_at
-                   FROM graph_edges WHERE workflow_id=%s ORDER BY created_at""",
+                   FROM mng_graph_edges WHERE workflow_id=%s ORDER BY created_at""",
                 (workflow_id,),
             )
             wf["edges"] = [_row_to_edge(r) for r in cur.fetchall()]
@@ -288,7 +288,7 @@ async def update_workflow(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE graph_workflows SET {', '.join(fields)} WHERE id=%s",
+                f"UPDATE mng_graph_workflows SET {', '.join(fields)} WHERE id=%s",
                 values,
             )
     return {"updated": True, "workflow_id": workflow_id}
@@ -299,7 +299,7 @@ async def delete_workflow(workflow_id: str, user=Depends(get_optional_user)):
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM graph_workflows WHERE id=%s", (workflow_id,))
+            cur.execute("DELETE FROM mng_graph_workflows WHERE id=%s", (workflow_id,))
     return {"deleted": True, "workflow_id": workflow_id}
 
 
@@ -316,7 +316,7 @@ async def create_node(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO graph_nodes
+                """INSERT INTO mng_graph_nodes
                    (id, workflow_id, name, role_id, role_file, role_prompt, provider, model,
                     output_schema, inject_context, require_approval, approval_msg,
                     position_x, position_y)
@@ -366,7 +366,7 @@ async def update_node(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE graph_nodes SET {', '.join(fields)} WHERE id=%s AND workflow_id=%s",
+                f"UPDATE mng_graph_nodes SET {', '.join(fields)} WHERE id=%s AND workflow_id=%s",
                 values,
             )
     return {"updated": True, "node_id": node_id}
@@ -382,7 +382,7 @@ async def delete_node(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM graph_nodes WHERE id=%s AND workflow_id=%s",
+                "DELETE FROM mng_graph_nodes WHERE id=%s AND workflow_id=%s",
                 (node_id, workflow_id),
             )
     return {"deleted": True, "node_id": node_id}
@@ -401,7 +401,7 @@ async def create_edge(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO graph_edges
+                """INSERT INTO mng_graph_edges
                    (id, workflow_id, source_node_id, target_node_id, condition, label)
                    VALUES (%s,%s,%s,%s,%s,%s)
                    RETURNING id, workflow_id, source_node_id, target_node_id, condition, label, created_at""",
@@ -434,7 +434,7 @@ async def update_edge(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE graph_edges SET {', '.join(fields)} WHERE id=%s AND workflow_id=%s",
+                f"UPDATE mng_graph_edges SET {', '.join(fields)} WHERE id=%s AND workflow_id=%s",
                 values,
             )
     return {"updated": True, "edge_id": edge_id}
@@ -450,7 +450,7 @@ async def delete_edge(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM graph_edges WHERE id=%s AND workflow_id=%s",
+                "DELETE FROM mng_graph_edges WHERE id=%s AND workflow_id=%s",
                 (edge_id, workflow_id),
             )
     return {"deleted": True, "edge_id": edge_id}
@@ -474,7 +474,7 @@ async def start_run(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO graph_runs (id, workflow_id, project, status, user_input)
+                """INSERT INTO mng_graph_runs (id, workflow_id, project, status, user_input)
                    VALUES (%s, %s, %s, 'running', %s)""",
                 (run_id, workflow_id, p, body.user_input),
             )
@@ -491,7 +491,7 @@ async def start_run(
                     with db.conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute(
-                                "UPDATE graph_runs SET status='error', error=%s, finished_at=NOW() WHERE id=%s",
+                                "UPDATE mng_graph_runs SET status='error', error=%s, finished_at=NOW() WHERE id=%s",
                                 (str(e), run_id),
                             )
                 except Exception:
@@ -526,7 +526,7 @@ async def make_run_decision(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT workflow_id, project, context, total_cost_usd FROM graph_runs WHERE id=%s AND status='waiting_approval'",
+                "SELECT workflow_id, project, context, total_cost_usd FROM mng_graph_runs WHERE id=%s AND status='waiting_approval'",
                 (run_id,),
             )
             row = cur.fetchone()
@@ -543,7 +543,7 @@ async def make_run_decision(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE graph_runs SET status='stopped', finished_at=NOW() WHERE id=%s",
+                    "UPDATE mng_graph_runs SET status='stopped', finished_at=NOW() WHERE id=%s",
                     (run_id,),
                 )
         return {"status": "stopped", "run_id": run_id}
@@ -556,7 +556,7 @@ async def make_run_decision(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE graph_runs SET status='running', context=%s WHERE id=%s",
+                    "UPDATE mng_graph_runs SET status='running', context=%s WHERE id=%s",
                     (json.dumps(ctx), run_id),
                 )
         asyncio.create_task(resume_graph_workflow(run_id, [waiting_node_id], project))
@@ -574,7 +574,7 @@ async def make_run_decision(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE graph_runs SET status='done', context=%s, finished_at=NOW() WHERE id=%s",
+                    "UPDATE mng_graph_runs SET status='done', context=%s, finished_at=NOW() WHERE id=%s",
                     (json.dumps(ctx), run_id),
                 )
         return {"status": "done", "run_id": run_id}
@@ -582,7 +582,7 @@ async def make_run_decision(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE graph_runs SET status='running', context=%s WHERE id=%s",
+                "UPDATE mng_graph_runs SET status='running', context=%s WHERE id=%s",
                 (json.dumps(ctx), run_id),
             )
 
@@ -598,7 +598,7 @@ async def list_runs(workflow_id: str, user=Depends(get_optional_user)):
             cur.execute(
                 """SELECT id, workflow_id, project, status, user_input,
                           started_at, finished_at, total_cost_usd, error
-                   FROM graph_runs WHERE workflow_id=%s ORDER BY started_at DESC LIMIT 50""",
+                   FROM mng_graph_runs WHERE workflow_id=%s ORDER BY started_at DESC LIMIT 50""",
                 (workflow_id,),
             )
             rows = cur.fetchall()

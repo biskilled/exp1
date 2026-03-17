@@ -315,7 +315,52 @@ sidebar tabs:
 /search      routers/search.py        semantic search (pgvector)
 /entities    routers/entities.py      entity taxonomy + events + tagging + suggestions
 /graph       routers/graph_workflows.py  async DAG graph workflows (Cytoscape.js)
+/work-items  routers/work_items.py    work item CRUD + pipeline trigger + facts + memory-items
+/agent-roles routers/agent_roles.py   agent role library (name/prompt/model) + version history
 ```
+
+---
+
+## Database Table Reference
+
+All tables follow a structured naming convention:
+- **`mng_`** — Management/global tables (shared across all clients and projects)
+- **`cl_`** — Client-level tables (currently none; reserved for future multi-tenancy)
+- **`pr_[client]_[project]_`** — Per-project tables (e.g. `pr_local_aicli_commits`)
+
+### Global Management Tables (`mng_`)
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `mng_users` | User accounts, roles, billing balances | `id`, `email`, `role` (free/paid/admin), `balance_added_usd`, `balance_used_usd` |
+| `mng_usage_logs` | Per-request LLM cost tracking | `user_id`, `provider`, `model`, `input_tokens`, `output_tokens`, `cost_usd`, `charged_usd` |
+| `mng_transactions` | Credit/debit ledger (coupons, top-ups, charges) | `user_id`, `type`, `amount_usd`, `description` |
+| `mng_session_tags` | Active session state per project | `project`, `phase`, `feature`, `bug_ref`, `extra` JSONB |
+| `mng_entity_categories` | Tag category definitions per project | `project`, `name`, `color`, `icon` |
+| `mng_entity_values` | Tag instances (features, bugs, tasks, etc.) | `category_id`, `project`, `name`, `status`, `lifecycle_status`, `due_date`, `parent_id` |
+| `mng_entity_value_links` | Dependencies between entity values (blocks/related) | `from_value_id`, `to_value_id`, `link_type` |
+| `mng_graph_workflows` | DAG workflow definitions | `project`, `name`, `description`, `max_iterations` |
+| `mng_graph_nodes` | Steps within a workflow | `workflow_id`, `name`, `node_type`, `prompt`, `provider`, `model`, `role_id` |
+| `mng_graph_edges` | Connections between nodes | `workflow_id`, `source_node`, `target_node`, `edge_type` |
+| `mng_graph_runs` | Workflow execution instances | `workflow_id`, `project`, `status`, `total_cost_usd`, `input`, `output` |
+| `mng_graph_node_results` | Per-node output within a run | `run_id`, `node_id`, `status`, `output`, `cost` |
+| `mng_work_items` | Structured feature/bug/task items with pipeline tracking | `project`, `category_name`, `name`, `lifecycle_status`, `acceptance_criteria`, `implementation_plan`, `agent_run_id`, `agent_status` |
+| `mng_interactions` | Unified prompt/response log (replaces per-project events) | `project_id`, `session_id`, `source_id`, `event_type`, `prompt`, `response`, `phase`, `work_item_id` |
+| `mng_interaction_tags` | Links interactions to work items | `interaction_id`, `work_item_id`, `auto_tagged` |
+| `mng_memory_items` | Trycycle-reviewed session/feature summaries | `project_id`, `scope` (session/feature), `scope_ref`, `content`, `reviewer_score`, `source_ids` |
+| `mng_project_facts` | Durable extracted facts ("we use pgvector", "auth is JWT") | `project_id`, `fact_key`, `fact_value`, `valid_until` (NULL = current) |
+| `mng_agent_roles` | Reusable LLM personas for workflow nodes | `project`, `name`, `description`, `system_prompt`, `provider`, `model` |
+| `mng_agent_role_versions` | Audit log of role prompt/model changes | `role_id`, `system_prompt`, `provider`, `model`, `changed_by` |
+
+### Per-Project Tables (`pr_[client]_[project]_`)
+
+| Table Pattern | Purpose | Key Columns |
+|--------------|---------|-------------|
+| `pr_local_{project}_commits` | Git commits linked to sessions | `commit_hash`, `session_id`, `prompt_source_id`, `phase`, `feature` |
+| `pr_local_{project}_events` | Raw event log (prompt/commit events, pre-interactions) | `event_type`, `source_id`, `phase`, `feature`, `session_id` |
+| `pr_local_{project}_embeddings` | Smart-chunked embeddings for semantic search | `source_type`, `source_id`, `chunk_index`, `embedding` VECTOR(1536) |
+| `pr_local_{project}_event_tags` | Links events to `mng_entity_values` | `event_id`, `entity_value_id`, `auto_tagged` |
+| `pr_local_{project}_event_links` | Event-to-event links | `from_event_id`, `to_event_id`, `link_type` |
 
 ---
 
