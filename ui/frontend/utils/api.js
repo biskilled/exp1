@@ -283,10 +283,14 @@ api.entities = {
 function enc(v) { return encodeURIComponent(v || ''); }
 
 api.workItems = {
-  list:            (project, category, status) => {
-    const q = new URLSearchParams({ project: project || '' });
-    if (category) q.set('category', category);
-    if (status)   q.set('status',   status);
+  list:            (projectOrOpts, category, status) => {
+    // Accept either (project, category, status) or ({project, category, status, name})
+    const opts = (projectOrOpts && typeof projectOrOpts === 'object')
+      ? projectOrOpts : { project: projectOrOpts, category, status };
+    const q = new URLSearchParams({ project: opts.project || '' });
+    if (opts.category) q.set('category', opts.category);
+    if (opts.status)   q.set('status',   opts.status);
+    if (opts.name)     q.set('name',     opts.name);
     return _get(`/work-items?${q}`);
   },
   create:          (project, body) => _post(`/work-items?project=${enc(project)}`, body),

@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-17 18:30 UTC by aicli /memory_
+_Generated: 2026-03-17 18:40 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -67,8 +67,8 @@ _Generated: 2026-03-17 18:30 UTC by aicli /memory_
 
 - **pagination** `(94 events, 51 commits)`
 - **auth** `(58 events, 51 commits)`
+- **mcp** `(4 events)`
 - **shared-memory** `(4 events)`
-- **mcp** `(3 events)`
 - **UI** `(1 events)`
 - **workflow-runner** `(1 events)`
 - **graph-workflow** `(1 events)`
@@ -93,6 +93,7 @@ _Generated: 2026-03-17 18:30 UTC by aicli /memory_
 
 **[2026-03-17 18:29]** `claude_cli/claude`
 Q: I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used to be. also, pipeline seems to be hardcoded and used the new infrastrucre of wo
+A: `agent_run_id` is `INT` (not UUID), so `str(row["agent_run_id"])` is fine — it just converts the int to string. That's correct.  The three fixes applied to `work_items.py`:  1. **`WorkItemCreate` model** — added `parent_id: Optional[str] = None` 2. **INSERT query** — added `parent_id` column and `bo
 
 **[2026-03-17 18:28]** `claude_cli/claude`
 Q: What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project manager (high design), develop , tester , reviewer) ?

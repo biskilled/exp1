@@ -215,15 +215,9 @@ function _plannerCycleLifecycle(valId, current) {
 const _collapsed = new Set();
 
 function _renderTagTableFromCache() {
-  const { selectedCat, selectedCatName, selectedCatColor, selectedCatIcon, project } = _plannerState;
+  const { selectedCat, selectedCatName, selectedCatColor, selectedCatIcon } = _plannerState;
   const pane = document.getElementById('planner-tags-pane');
   if (!pane || !selectedCat) return;
-
-  // Work item categories use a dedicated renderer with pipeline support
-  if (_isWorkItemCat(selectedCatName)) {
-    _renderWorkItemTable(pane, selectedCatName, selectedCatColor, selectedCatIcon, project);
-    return;
-  }
   _renderTagTable(pane, selectedCat, selectedCatName, selectedCatColor, selectedCatIcon);
 }
 
@@ -622,7 +616,19 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
             ${_esc(v.status || 'active')}
           </span>
         </td>
-        <td style="padding:0.5rem 0.4rem;text-align:center" onclick="event.stopPropagation()">
+        <td style="padding:0.5rem 0.4rem;text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
+          <button onclick="window._plannerAddChild(${catId},${v.id})"
+            style="font-size:0.6rem;padding:0.13rem 0.35rem;background:var(--surface2);
+                   border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+                   color:var(--text2);font-family:var(--font);outline:none;margin-right:3px"
+            title="Add child tag">+▸</button>
+          ${_isWorkItemCat(catName) ? `<button
+            onclick="event.stopPropagation();window._plannerOpenDrawer(${catId},${v.id});
+                     setTimeout(()=>window._plannerDrawerRunPipeline('${_esc(catName)}','${_esc(v.name)}','${_esc(_plannerState.project)}'),200)"
+            style="font-size:0.6rem;padding:0.13rem 0.35rem;background:var(--accent)18;
+                   border:1px solid var(--accent);border-radius:var(--radius);cursor:pointer;
+                   color:var(--accent);font-family:var(--font);outline:none;margin-right:3px"
+            title="Run AI Pipeline">▶</button>` : ''}
           <button onclick="window._plannerOpenDrawer(${catId},${v.id})"
             style="font-size:0.85rem;padding:0.15rem 0.45rem;background:var(--surface2);
                    border:1px solid var(--border);border-radius:var(--radius);
@@ -682,7 +688,7 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:90px">Lifecycle</th>
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500;width:75px">Status</th>
-          <th style="width:44px"></th>
+          <th style="width:${_isWorkItemCat(catName) ? '108' : '80'}px"></th>
         </tr>
       </thead>
       <tbody>
@@ -720,8 +726,13 @@ function _plannerOpenDrawer(catId, valId) {
     drawer.style.borderLeftWidth = '1px';
   }
   _renderDrawer();
-  // Async: load value links after drawer renders
+  // Async: load value links + pipeline status after drawer renders
   _loadDrawerLinks(valId);
+  const { selectedCatName, project } = _plannerState;
+  if (_isWorkItemCat(selectedCatName)) {
+    const v = getCacheValues(catId).find(x => x.id === valId);
+    if (v) _loadDrawerPipeline(selectedCatName, v.name, project);
+  }
 }
 
 function _plannerCloseDrawer() {
@@ -869,6 +880,16 @@ function _renderDrawer() {
         </div>
       </div>
 
+      <!-- AI Pipeline (feature/bug/task only) -->
+      ${_isWorkItemCat(_plannerState.selectedCatName) ? `
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">AI Pipeline</div>
+        <div id="drawer-pipeline-content">
+          <span style="font-size:0.62rem;color:var(--muted)">Checking…</span>
+        </div>
+      </div>` : ''}
+
       <!-- Add sub-tag -->
       <div style="border-top:1px solid var(--border);padding-top:0.75rem">
         <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
@@ -949,6 +970,78 @@ async function _plannerDrawerAddChild(catId, parentId) {
     if (msg) msg.textContent = e.message;
   }
 }
+
+// ── Pipeline drawer helpers (feature / bug / task categories) ─────────────────
+
+async function _loadDrawerPipeline(catName, valName, project) {
+  const el = document.getElementById('drawer-pipeline-content');
+  if (!el) return;
+  try {
+    const data = await api.workItems.list({ project, category: catName, name: valName });
+    const wi   = (data.work_items || []).find(w => w.name === valName);
+    const runBtn = `<button id="drawer-run-pipeline-btn"
+      onclick="window._plannerDrawerRunPipeline('${_esc(catName)}','${_esc(valName)}','${_esc(project)}')"
+      style="font-size:0.62rem;padding:0.2rem 0.55rem;background:var(--accent);border:none;
+             color:#fff;border-radius:var(--radius);cursor:pointer;font-family:var(--font);
+             outline:none;white-space:nowrap">▶ Run Pipeline</button>`;
+
+    if (!wi) {
+      el.innerHTML = `<div style="display:flex;gap:6px;align-items:center">
+        ${runBtn}
+        <span style="font-size:0.6rem;color:var(--muted)">No run yet</span>
+      </div>`;
+      return;
+    }
+    const statusBadge = wi.agent_status
+      ? `<span style="font-size:0.55rem;padding:0.1rem 0.4rem;border-radius:8px;color:#fff;
+                      background:${wi.agent_status==='done'?'#27ae60':wi.agent_status==='failed'?'#e74c3c':'#e67e22'}">
+           ${_esc(wi.agent_status)}</span>` : '';
+    const acSection = wi.acceptance_criteria
+      ? `<div style="margin-top:0.5rem">
+           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.25rem">Acceptance Criteria</div>
+           <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;white-space:pre-wrap;
+                       max-height:100px;overflow-y:auto;background:var(--surface2);
+                       padding:0.35rem 0.5rem;border-radius:var(--radius)">${_esc(wi.acceptance_criteria)}</div>
+         </div>` : '';
+    const planSection = wi.implementation_plan
+      ? `<div style="margin-top:0.5rem">
+           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.25rem">Implementation Plan</div>
+           <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;white-space:pre-wrap;
+                       max-height:100px;overflow-y:auto;background:var(--surface2);
+                       padding:0.35rem 0.5rem;border-radius:var(--radius)">${_esc(wi.implementation_plan)}</div>
+         </div>` : '';
+    el.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:0.35rem">
+      ${runBtn} ${statusBadge}
+    </div>${acSection}${planSection}`;
+  } catch (e) {
+    if (el) el.innerHTML = `<span style="font-size:0.6rem;color:var(--red)">${_esc(e.message)}</span>`;
+  }
+}
+
+window._plannerDrawerRunPipeline = async (catName, valName, project) => {
+  const btn = document.getElementById('drawer-run-pipeline-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    // Find or create the work_item linked to this entity_value by name
+    let data = await api.workItems.list({ project, category: catName, name: valName });
+    let wi   = (data.work_items || []).find(w => w.name === valName);
+    if (!wi) {
+      wi = await api.workItems.create(project, { category_name: catName, name: valName });
+    }
+    const res = await api.workItems.runPipeline(wi.id, project);
+    toast(
+      res.workflow_id
+        ? `Pipeline started — <a href="#" onclick="window._nav('workflow');return false"
+             style="color:inherit;font-weight:bold">view in Pipelines tab</a>`
+        : 'Pipeline started',
+      'success', 6000,
+    );
+    setTimeout(() => _loadDrawerPipeline(catName, valName, project), 4000);
+  } catch (e) {
+    toast('Pipeline error: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Run Pipeline'; }
+  }
+};
 
 async function _plannerDeleteVal(valId) {
   if (!confirm('Delete this tag (and all its children + event links)?')) return;

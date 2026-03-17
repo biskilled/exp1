@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-17 18:30 UTC — do not edit manually.
+> Auto-generated 2026-03-17 20:06 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 119
-- **Last active**: 2026-03-17T18:30:00Z
+- **Sessions**: 121
+- **Last active**: 2026-03-17T19:26:02Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,8 +151,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-17 18:50]** `claude_cli/claude`  
+→ I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked. I have created tagg
+← _Here's a summary of all changes made:  ---  ## Changes Made  ### Tab renames (`main.js`) - `"Workflow"` → `"Pipelines"` (PROJECT_TABS + global sidebar nav) - `"Prompts"` → `"Roles"` (PROJECT_TABS)  ##_
+
 **[2026-03-17 18:29]** `claude_cli/claude`  
 → I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used
+← _`agent_run_id` is `INT` (not UUID), so `str(row["agent_run_id"])` is fine — it just converts the int to string. That's correct.  The three fixes applied to `work_items.py`:  1. **`WorkItemCreate` mode_
 
 **[2026-03-17 18:28]** `claude_cli/claude`  
 → What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project manager (high design)
@@ -204,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-16 01:34]** `claude_cli/claude`  
 → Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can
 ← _## Complete System Improvement Summary  ---  ### What Was Built (7 Parts)  **Before:** Every LLM call got either 40 raw JSONL entries (noisy, expensive) or a CLAUDE.md (too coarse). Tags lived in per-_
-
-**[2026-03-16 01:26]** `claude_cli/claude`  
-→ After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can
-← _Here's a complete answer to your questions:  ---  ## Audit Results + What Was Fixed  ### Tags — mostly good, one gap fixed The old `event_tags_{project}` system is fully wired: chat, history sync, and_

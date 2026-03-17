@@ -24,9 +24,9 @@ const PROJECT_TABS = [
   { id: 'summary',  icon: '📄', label: 'Summary'  },
   { id: 'chat',     icon: '◉',  label: 'Chat'     },
   { id: 'planner',  icon: '◎',  label: 'Planner'  },
-  { id: 'prompts',  icon: '≡',  label: 'Prompts'  },
+  { id: 'prompts',  icon: '≡',  label: 'Roles'    },
   { id: 'code',     icon: '</>',label: 'Code'     },
-  { id: 'workflow', icon: '◈',  label: 'Workflow' },
+  { id: 'workflow', icon: '◈',  label: 'Pipelines'},
   { id: 'history',  icon: '⏱',  label: 'History'  },
   { id: 'settings', icon: '⚙',  label: 'Settings' },
 ];
@@ -237,10 +237,10 @@ function renderSidebarNav() {
       </div>
       <div class="nav-item ${state.activeView === 'workflow' ? 'active' : ''}"
            id="nav-workflow"
-           data-label="Workflows"
+           data-label="Pipelines"
            onclick="window._nav('workflow')">
-        <span class="nav-icon">⟳</span>
-        <span class="nav-label">Workflows</span>
+        <span class="nav-icon">◈</span>
+        <span class="nav-label">Pipelines</span>
       </div>
     `;
   }

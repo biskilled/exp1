@@ -81,9 +81,10 @@ async def list_work_items(
     project:  str | None = Query(None),
     category: str | None = Query(None),
     status:   str | None = Query(None),
+    name:     str | None = Query(None),
     limit:    int        = Query(100),
 ):
-    """List work items, optionally filtered by category and status."""
+    """List work items, optionally filtered by category, status, or exact name."""
     _require_db()
     p = _project(project)
     where = ["w.project=%s"]
@@ -92,6 +93,8 @@ async def list_work_items(
         where.append("w.category_name=%s"); params.append(category)
     if status:
         where.append("w.status=%s"); params.append(status)
+    if name:
+        where.append("w.name=%s"); params.append(name)
 
     with db.conn() as conn:
         with conn.cursor() as cur:

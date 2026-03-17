@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-17] `claude_cli`: Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it ta
 - [2026-03-17] `claude_cli`: In the project I used to see the aiCli project, and I do not see that now. also when I press in my r
 - [2026-03-17] `claude_cli`: can you use the mcp tool and explain what the code is doing ?
 - [2026-03-17] `claude_cli`: What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project m
 - [2026-03-17] `claude_cli`: I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-ch
+- [2026-03-17] `claude_cli`: I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked.
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
