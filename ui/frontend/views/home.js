@@ -41,6 +41,7 @@ export function renderHome(container) {
               const p = allProjects.find(x => x.name === name);
               return `
                 <div onclick="window._openProject('${name}')"
+                  data-project-name="${name}"
                   style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.85rem;
                     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
                     cursor:pointer;transition:border-color 0.15s"
@@ -78,6 +79,7 @@ export function renderHome(container) {
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.75rem">
             ${sortedProjects.map(p => `
               <div onclick="window._openProject('${p.name}')"
+                data-project-name="${p.name}"
                 style="padding:1rem 1.1rem;background:var(--surface);border:1px solid var(--border);
                   border-radius:var(--radius-lg);cursor:pointer;transition:border-color 0.15s"
                 onmouseenter="this.style.borderColor='var(--accent)'"

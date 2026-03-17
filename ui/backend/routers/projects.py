@@ -2054,9 +2054,11 @@ async def get_project(project_name: str):
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
 
-    # Lazy-ensure per-project DB tables on load
+    # Lazy-ensure per-project DB tables — run in a thread so it never blocks the response.
+    # First call: ~1 DB round-trip (cold start on Railway may still be slow but won't
+    # freeze the UI). Subsequent calls: instant (cached in db._schema_ready).
     if db.is_available():
-        db.ensure_project_schema(project_name)
+        asyncio.get_event_loop().run_in_executor(None, db.ensure_project_schema, project_name)
 
     proj_yaml = proj_dir / "project.yaml"
     data: dict = {"name": project_name}

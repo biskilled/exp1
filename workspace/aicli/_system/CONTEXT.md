@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-17 13:41 UTC — do not edit manually.
+> Auto-generated 2026-03-17 14:34 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 115
-- **Last active**: 2026-03-16T19:14:12Z
+- **Sessions**: 116
+- **Last active**: 2026-03-17T14:03:16Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -153,6 +153,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-17 13:33]** `claude_cli/claude`  
 → Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it takes quite long time 
+← _Now let's verify the key changes are correct with a quick sanity check:_
 
 **[2026-03-17 13:30]** `claude_cli/claude`  
 → can you use the mcp tool and explain what the prject is about ?

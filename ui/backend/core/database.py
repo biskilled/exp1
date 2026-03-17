@@ -33,6 +33,9 @@ class _Database:
     def __init__(self) -> None:
         self._pool: psycopg2.pool.ThreadedConnectionPool | None = None
         self._available: bool = False
+        # Projects whose per-project schema has been verified this process lifetime.
+        # Skips all DDL/ALTER on subsequent calls — safe because CREATE/ALTER are idempotent.
+        self._schema_ready: set[str] = set()
 
     def init(self) -> None:
         """Called at startup. Creates connection pool if DATABASE_URL is set."""
@@ -62,9 +65,15 @@ class _Database:
         return f"{base}_{safe}"
 
     def ensure_project_schema(self, project: str) -> None:
-        """Create per-project tables if they don't exist. Safe to call repeatedly."""
+        """Create per-project tables if they don't exist. Safe to call repeatedly.
+
+        Results are cached in-process: the DDL only runs once per project per process
+        lifetime, eliminating the round-trip cost on every subsequent project open.
+        """
         if not self._available:
             return
+        if project in self._schema_ready:
+            return   # already done this process lifetime — skip all DDL
         tbl = self.project_table
         c   = tbl("commits",    project)
         e   = tbl("events",     project)
@@ -142,16 +151,9 @@ class _Database:
         );
         CREATE INDEX IF NOT EXISTS idx_{el}_from ON {el}(from_event_id);
         """
-        try:
-            with self.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(ddl)
-            log.info(f"✅ Per-project schema ready for '{project}'")
-        except Exception as exc:
-            log.warning(f"ensure_project_schema({project}) failed: {exc}")
-
-        # Idempotent column migrations — run separately so a prior failure doesn't block these.
-        # Each ALTER runs in its own transaction; failures are silently ignored (column may exist).
+        # All DDL + migrations in a single transaction — one round-trip instead of 14.
+        # Each statement is wrapped in a SAVEPOINT so a single failure (e.g. column
+        # already exists on Postgres < 9.6) doesn't roll back the whole batch.
         _migrations = [
             f"ALTER TABLE {c} ADD COLUMN IF NOT EXISTS prompt_source_id VARCHAR(255)",
             f"ALTER TABLE {c} ADD COLUMN IF NOT EXISTS session_id        VARCHAR(255)",
@@ -163,9 +165,7 @@ class _Database:
             f"CREATE INDEX IF NOT EXISTS idx_{el}_to     ON {el}(to_event_id)",
             f"CREATE INDEX IF NOT EXISTS idx_{c}_session ON {c}(session_id) WHERE session_id IS NOT NULL",
             f"CREATE INDEX IF NOT EXISTS idx_{emb}_src   ON {emb}(source_type, source_id)",
-            # entity_values migrations (shared table — idempotent ALTERs)
             "ALTER TABLE entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea'",
-            # entity_value_links table
             """CREATE TABLE IF NOT EXISTS entity_value_links (
                 from_value_id INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
                 to_value_id   INT NOT NULL REFERENCES entity_values(id) ON DELETE CASCADE,
@@ -176,13 +176,24 @@ class _Database:
             "CREATE INDEX IF NOT EXISTS idx_evl_from ON entity_value_links(from_value_id)",
             "CREATE INDEX IF NOT EXISTS idx_evl_to   ON entity_value_links(to_value_id)",
         ]
-        for sql in _migrations:
-            try:
-                with self.conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(sql)
-            except Exception:
-                pass  # already exists or unsupported — safe to ignore
+        try:
+            with self.conn() as conn:
+                with conn.cursor() as cur:
+                    # Main table DDL
+                    cur.execute(ddl)
+                    # Migrations — each in its own savepoint so one failure doesn't abort all
+                    for i, sql in enumerate(_migrations):
+                        sp = f"sp_mig_{i}"
+                        try:
+                            cur.execute(f"SAVEPOINT {sp}")
+                            cur.execute(sql)
+                            cur.execute(f"RELEASE SAVEPOINT {sp}")
+                        except Exception:
+                            cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+            self._schema_ready.add(project)
+            log.info(f"✅ Per-project schema ready for '{project}'")
+        except Exception as exc:
+            log.warning(f"ensure_project_schema({project}) failed: {exc}")
 
     @contextmanager
     def conn(self) -> Generator:

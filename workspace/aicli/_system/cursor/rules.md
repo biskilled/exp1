@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-16 19:14 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-17 14:03 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-16] are you using the mcp now?
-- [2026-03-16] I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/
 - [2026-03-16] I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline config
 - [2026-03-16] I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over t
 - [2026-03-16] yes
+- [2026-03-17] can you use the mcp tool and explain what the prject is about ?
+- [2026-03-17] Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it takes quite long time 

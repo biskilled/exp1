@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 19:14 UTC by aicli /memory_
+_Generated: 2026-03-17 14:03 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -91,6 +91,13 @@ _Generated: 2026-03-16 19:14 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-03-17 13:33]** `claude_cli/claude`
+Q: Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it takes quite long time to load summery and History. can check why is that? and add some flow to explain
+A: Now let's verify the key changes are correct with a quick sanity check:
+
+**[2026-03-17 13:30]** `claude_cli/claude`
+Q: can you use the mcp tool and explain what the prject is about ?
+
 **[2026-03-16 19:02]** `claude_cli/claude`
 Q: yes
 A: All changes look correct. The Agent Roles implementation in `graph_workflow.js` is now complete. Here's a summary of what was done in this session:  **`graph_workflow.js` — completed:** - `_gwOnRoleChange(val)`: now auto-populates `cfg-provider` / `cfg-model` from the selected role's defaults, updat
@@ -122,10 +129,3 @@ A: Now I have a complete picture. Let me give you a clear, honest assessment.  -
 **[2026-03-16 01:34]** `claude_cli/claude`
 Q: Can you summersie all improvement - would that make the systme better perfromed , would memroy work better? doad mcp can provide more accurate answer in order to manage work item , create workflow bas
 A: ## Complete System Improvement Summary  ---  ### What Was Built (7 Parts)  **Before:** Every LLM call got either 40 raw JSONL entries (noisy, expensive) or a CLAUDE.md (too coarse). Tags lived in per-project tables. Work items were just entity values with no intelligence. MCP had read-only project s
-
-**[2026-03-16 01:26]** `claude_cli/claude`
-Q: After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can be improved answering and storing data related to the project and will I be abl
-A: Here's a complete answer to your questions:  ---  ## Audit Results + What Was Fixed  ### Tags — mostly good, one gap fixed The old `event_tags_{project}` system is fully wired: chat, history sync, and the tag-by-source-id UI all write to it. The new `interaction_tags` table (for the memory pipeline)
-
-**[2026-03-16 00:48]** `claude_cli/claude`
-Q: I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/workflows (github page - https://github.com/fjpulidop/specrails/tree/main) and got 

@@ -96,20 +96,40 @@ async function _continueToApp(user) {
   updateStatusDot();
   renderSidebarContent();
 
-  // Auto-restore last open project (if valid and still exists)
+  // Show home screen immediately so the user can see all projects
+  navigateTo('home');
+
+  // Auto-restore last open project in the background — home stays visible while loading
   const recent = getRecentProjects();
   const allNames = (state.projects || []).map(p => p.name);
   const lastProject = recent.find(n => allNames.includes(n));
   if (lastProject) {
-    await openProject(lastProject);
-  } else {
-    navigateTo('home');
+    // Mark the project card as "restoring" then open it
+    _markProjectRestoring(lastProject);
+    openProject(lastProject).catch(() => {});
   }
 
   // Load balance chip — only when a real user is logged in
   if (state.backendOnline && state.user?.email) {
     updateBalanceChip().catch(() => {});
   }
+}
+
+function _markProjectRestoring(name) {
+  // Add a subtle "Restoring…" indicator on the home page card while loading
+  requestAnimationFrame(() => {
+    const cards = document.querySelectorAll('[data-project-name]');
+    cards.forEach(el => {
+      if (el.dataset.projectName === name) {
+        el.style.borderColor = 'var(--accent)';
+        const badge = document.createElement('span');
+        badge.id = 'restore-badge';
+        badge.style.cssText = 'font-size:0.6rem;color:var(--accent);margin-left:auto';
+        badge.textContent = '↺ restoring…';
+        el.querySelector('div')?.appendChild(badge);
+      }
+    });
+  });
 }
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
@@ -436,6 +456,10 @@ export function navigateTo(viewId, opts = {}) {
 // ── Open project (shared helper) ──────────────────────────────────────────────
 
 export async function openProject(name) {
+  // Show "opening…" in the titlebar immediately — visible during DB cold-start
+  const tp = document.getElementById('titlebar-project');
+  if (tp) tp.innerHTML = `<span style="font-size:0.75rem;color:var(--muted)">Opening ${name}…</span>`;
+
   try {
     const project = await api.getProject(name);
     await api.switchProject(name);
@@ -447,8 +471,7 @@ export async function openProject(name) {
     // Pre-warm tag cache so chat picker + planner have zero-latency data
     loadTagCache(name).catch(() => {});
 
-    // Update titlebar
-    const tp = document.getElementById('titlebar-project');
+    // Update titlebar — clear the "Opening…" state
     if (tp) tp.innerHTML = `<span style="font-size:0.75rem;color:var(--accent)">${name}</span><span class="caret">▾</span>`;
 
     navigateTo('summary');
@@ -475,6 +498,9 @@ export async function openProject(name) {
     }
 
   } catch (e) {
+    // Reset titlebar on failure
+    const tpErr = document.getElementById('titlebar-project');
+    if (tpErr) tpErr.innerHTML = `<span style="font-size:0.75rem;color:var(--muted)">No project</span><span class="caret">▾</span>`;
     toast(`Could not open project: ${e.message}`, 'error');
   }
 }
