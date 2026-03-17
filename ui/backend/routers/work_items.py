@@ -21,7 +21,9 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import uuid
 from typing import Optional
 from datetime import datetime
 
@@ -54,6 +56,7 @@ class WorkItemCreate(BaseModel):
     status:              str = "active"
     lifecycle_status:    str = "idea"
     due_date:            Optional[str] = None
+    parent_id:           Optional[str] = None
     acceptance_criteria: str = ""
     implementation_plan: str = ""
     tags:                list[str] = []
@@ -95,7 +98,7 @@ async def list_work_items(
             cur.execute(
                 f"""SELECT w.id, w.category_name, w.name, w.description,
                           w.status, w.lifecycle_status, w.due_date,
-                          w.acceptance_criteria, w.implementation_plan,
+                          w.parent_id, w.acceptance_criteria, w.implementation_plan,
                           w.agent_run_id, w.agent_status, w.tags,
                           w.created_at, w.updated_at,
                           ec.color, ec.icon,
@@ -118,6 +121,10 @@ async def list_work_items(
                 if row.get("due_date"):
                     row["due_date"] = row["due_date"].isoformat()
                 row["id"] = str(row["id"])
+                if row.get("parent_id"):
+                    row["parent_id"] = str(row["parent_id"])
+                if row.get("agent_run_id"):
+                    row["agent_run_id"] = str(row["agent_run_id"])
                 if row.get("tags") is None:
                     row["tags"] = []
                 rows.append(row)
@@ -145,12 +152,13 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
             cur.execute(
                 """INSERT INTO work_items
                        (project, category_name, category_id, name, description,
-                        status, lifecycle_status, due_date,
+                        status, lifecycle_status, due_date, parent_id,
                         acceptance_criteria, implementation_plan, tags)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    RETURNING id, name, category_name, created_at""",
                 (p, body.category_name, category_id, body.name, body.description,
                  body.status, body.lifecycle_status, body.due_date or None,
+                 body.parent_id or None,
                  body.acceptance_criteria, body.implementation_plan,
                  body.tags),
             )
@@ -275,7 +283,12 @@ async def migrate_from_tags(project: str | None = Query(None)):
 
 @router.post("/{item_id}/run-pipeline")
 async def run_pipeline(item_id: str, project: str | None = Query(None)):
-    """Start the 4-agent PM→Architect→Developer→Reviewer pipeline for a work item."""
+    """Start the 4-agent PM→Architect→Developer→Reviewer pipeline for a work item.
+
+    Finds or creates the '_work_item_pipeline' graph workflow for this project,
+    then runs it via the graph_runner so the run is visible in the Workflow tab.
+    Falls back to the standalone pipeline if graph_runner fails.
+    """
     _require_db()
     p = _project(project)
     with db.conn() as conn:
@@ -290,17 +303,181 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
 
     name, desc, existing_ac = row
 
-    # Mark as running
+    # ── Ensure the pipeline graph workflow exists ─────────────────────────────
+    workflow_id = await _ensure_pipeline_workflow(p)
+    run_id = None
+
+    if workflow_id:
+        # Build user_input for the pipeline nodes
+        user_input = (
+            f"Work item: **{name}**\n"
+            f"Description: {desc or 'No description provided.'}\n"
+            + (f"Existing criteria:\n{existing_ac}\n" if existing_ac else "")
+        )
+        try:
+            run_id_str = str(uuid.uuid4())
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """INSERT INTO graph_runs (id, workflow_id, project, status, user_input)
+                           VALUES (%s, %s, %s, 'running', %s)""",
+                        (run_id_str, workflow_id, p, user_input),
+                    )
+                    # Get the int id of the inserted run
+                    cur.execute("SELECT id FROM graph_runs WHERE workflow_id=%s AND project=%s ORDER BY id DESC LIMIT 1", (workflow_id, p))
+                    run_row = cur.fetchone()
+                    run_id = run_row[0] if run_row else None
+
+            # Mark work item running
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE work_items SET agent_status='running', agent_run_id=%s, updated_at=NOW() WHERE id=%s::uuid",
+                        (run_id, item_id),
+                    )
+
+            # Run in background via graph_runner
+            from core.graph_runner import run_graph_workflow
+
+            async def _run_graph():
+                try:
+                    ctx = await run_graph_workflow(str(workflow_id), user_input, run_id_str, p)
+                    ac   = ctx.get("PM") or ctx.get("pm") or ""
+                    impl = ctx.get("Architect") or ctx.get("architect") or ""
+                    dev  = ctx.get("Developer") or ctx.get("developer") or ""
+                    if dev and impl:
+                        impl = f"{impl}\n\n## Implementation Output\n{dev}"
+                    with db.conn() as conn2:
+                        with conn2.cursor() as cur2:
+                            cur2.execute(
+                                """UPDATE work_items
+                                   SET agent_status='done',
+                                       acceptance_criteria=COALESCE(NULLIF(%s,''), acceptance_criteria),
+                                       implementation_plan=COALESCE(NULLIF(%s,''), implementation_plan),
+                                       updated_at=NOW()
+                                   WHERE id=%s::uuid""",
+                                (ac, impl, item_id),
+                            )
+                except Exception as exc:
+                    log.error(f"run_pipeline graph failed for {item_id}: {exc}")
+                    # Fallback: standalone pipeline
+                    from core.work_item_pipeline import trigger_work_item_pipeline
+                    await trigger_work_item_pipeline(item_id, p, name, desc, existing_ac)
+
+            asyncio.create_task(_run_graph())
+            return {"status": "pipeline started", "work_item_id": item_id,
+                    "workflow_id": workflow_id, "run_id": run_id, "project": p}
+
+        except Exception as e:
+            log.warning(f"Graph pipeline setup failed ({e}), falling back to standalone")
+
+    # Fallback: standalone pipeline (no DB graph)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid",
                 (item_id,),
             )
-
     from core.work_item_pipeline import trigger_work_item_pipeline
     asyncio.create_task(trigger_work_item_pipeline(item_id, p, name, desc, existing_ac))
     return {"status": "pipeline started", "work_item_id": item_id, "project": p}
+
+
+async def _ensure_pipeline_workflow(project: str) -> int | None:
+    """Find or create the '_work_item_pipeline' graph workflow for this project.
+
+    Returns the workflow id (int), or None if DB is unavailable.
+    Seeds the workflow with 4 nodes (PM, Architect, Developer, Reviewer) using
+    agent_roles if they exist, otherwise inline prompts.
+    """
+    WF_NAME = "_work_item_pipeline"
+    if not db.is_available():
+        return None
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM graph_workflows WHERE project=%s AND name=%s",
+                    (project, WF_NAME),
+                )
+                row = cur.fetchone()
+                if row:
+                    return row[0]
+
+        # Load agent_roles for the 4 stages
+        role_ids: dict[str, int] = {}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT name, id FROM agent_roles
+                           WHERE is_active=TRUE AND project='_global'
+                           AND name IN ('Product Manager','Sr. Architect','Web Developer','Code Reviewer')"""
+                    )
+                    for r in cur.fetchall():
+                        role_ids[r[0]] = r[1]
+        except Exception:
+            pass
+
+        claude_model = getattr(settings, "claude_model", settings.haiku_model)
+
+        stages = [
+            ("PM",        "claude", settings.haiku_model, role_ids.get("Product Manager"),
+             "You are a Product Manager. Write 3-8 clear, testable acceptance criteria (bullet points starting '- [ ]') for the work item."),
+            ("Architect", "claude", settings.haiku_model, role_ids.get("Sr. Architect"),
+             "You are a Senior Architect. Write a concise technical implementation plan (numbered steps, specific files/functions)."),
+            ("Developer", "claude", claude_model,           role_ids.get("Web Developer"),
+             "You are a Senior Developer. Implement the work item per the acceptance criteria and implementation plan. Provide detailed code changes."),
+            ("Reviewer",  "claude", settings.haiku_model, role_ids.get("Code Reviewer"),
+             'You are a Code Reviewer. Review only against the acceptance criteria. Return JSON: {"passed": true/false, "score": 1-10, "issues": []}.'),
+        ]
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO graph_workflows (project, name, description, max_iterations, created_at, updated_at)
+                       VALUES (%s, %s, %s, 3, NOW(), NOW()) RETURNING id""",
+                    (project, WF_NAME, "4-agent PM → Architect → Developer → Reviewer pipeline for work items"),
+                )
+                wf_id = cur.fetchone()[0]
+
+                node_ids = []
+                for i, (node_name, provider, model, role_id, fallback_prompt) in enumerate(stages):
+                    cur.execute(
+                        """INSERT INTO graph_nodes
+                               (workflow_id, name, provider, model, role_id, role_prompt,
+                                inject_context, require_approval, approval_msg,
+                                position_x, position_y, created_at, updated_at)
+                           VALUES (%s,%s,%s,%s,%s,%s, TRUE, FALSE, '', %s, 100, NOW(), NOW())
+                           RETURNING id""",
+                        (wf_id, node_name, provider, model,
+                         role_id, "" if role_id else fallback_prompt,
+                         i * 220),
+                    )
+                    node_ids.append(cur.fetchone()[0])
+
+                # Edges: PM→Arch, Arch→Dev, Dev→Rev, Rev→Dev (loop if score<7)
+                edge_defs = [
+                    (node_ids[0], node_ids[1], None, ""),
+                    (node_ids[1], node_ids[2], None, ""),
+                    (node_ids[2], node_ids[3], None, ""),
+                    (node_ids[3], node_ids[2],
+                     json.dumps({"op": "lt", "field": "score", "value": 7}), "retry"),
+                ]
+                for src, tgt, cond, label in edge_defs:
+                    cur.execute(
+                        """INSERT INTO graph_edges
+                               (workflow_id, source_node_id, target_node_id, condition, label,
+                                created_at, updated_at)
+                           VALUES (%s,%s,%s,%s,%s, NOW(), NOW())""",
+                        (wf_id, src, tgt, cond, label),
+                    )
+
+        log.info(f"Created _work_item_pipeline workflow {wf_id} for project {project}")
+        return wf_id
+    except Exception as exc:
+        log.warning(f"_ensure_pipeline_workflow failed: {exc}")
+        return None
 
 
 # ── Project facts ─────────────────────────────────────────────────────────────

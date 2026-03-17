@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-17 18:19 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-17 18:30 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-16] yes
-- [2026-03-17] can you use the mcp tool and explain what the prject is about ?
 - [2026-03-17] Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it takes quite long time 
 - [2026-03-17] In the project I used to see the aiCli project, and I do not see that now. also when I press in my recent project - aiCl
 - [2026-03-17] can you use the mcp tool and explain what the code is doing ?
+- [2026-03-17] What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project manager (high design)
+- [2026-03-17] I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used

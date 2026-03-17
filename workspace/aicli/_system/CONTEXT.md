@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-17 18:19 UTC — do not edit manually.
+> Auto-generated 2026-03-17 18:30 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 118
-- **Last active**: 2026-03-17T18:19:17Z
+- **Sessions**: 119
+- **Last active**: 2026-03-17T18:30:00Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-17 18:29]** `claude_cli/claude`  
+→ I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used
+
+**[2026-03-17 18:28]** `claude_cli/claude`  
+→ What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project manager (high design)
+← _## Claude Agent SDK vs Your Current Multi-Agent System  ### What is the Claude Agent SDK?  The **Claude Agent SDK** is Anthropic's official Python/TypeScript framework for building AI agents that can:_
+
 **[2026-03-17 18:18]** `claude_cli/claude`  
 → can you use the mcp tool and explain what the code is doing ?
 ← _Here's what **aicli** does:  ## aicli — Shared AI Memory Platform  **Core idea**: When you switch between different AI tools (Claude CLI, Cursor, ChatGPT, the aicli web UI), they all forget your proje_
@@ -201,10 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-16 01:26]** `claude_cli/claude`  
 → After this refactor - can you check if tags are well used ? is memroy improved by new summersation process? will mcp can
 ← _Here's a complete answer to your questions:  ---  ## Audit Results + What Was Fixed  ### Tags — mostly good, one gap fixed The old `event_tags_{project}` system is fully wired: chat, history sync, and_
-
-**[2026-03-16 00:48]** `claude_cli/claude`  
-→ I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/wor
-
-**[2026-03-16 00:19]** `claude_cli/claude`  
-→ I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure th
-← _All clean. Here's a summary of everything fixed:  ---  ## Optimization fixes applied  | Issue | File | Fix | |---|---|---| | `haiku_model` hardcoded in 6 places | `config.py` | Added `haiku_model: str_

@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-17 18:19 UTC by aicli /memory_
+_Generated: 2026-03-17 18:30 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -68,7 +68,7 @@ _Generated: 2026-03-17 18:19 UTC by aicli /memory_
 - **pagination** `(94 events, 51 commits)`
 - **auth** `(58 events, 51 commits)`
 - **shared-memory** `(4 events)`
-- **mcp** `(2 events)`
+- **mcp** `(3 events)`
 - **UI** `(1 events)`
 - **workflow-runner** `(1 events)`
 - **graph-workflow** `(1 events)`
@@ -90,6 +90,13 @@ _Generated: 2026-03-17 18:19 UTC by aicli /memory_
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
 ## Recent Work (last 10 exchanges)
+
+**[2026-03-17 18:29]** `claude_cli/claude`
+Q: I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used to be. also, pipeline seems to be hardcoded and used the new infrastrucre of wo
+
+**[2026-03-17 18:28]** `claude_cli/claude`
+Q: What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project manager (high design), develop , tester , reviewer) ?
+A: ## Claude Agent SDK vs Your Current Multi-Agent System  ### What is the Claude Agent SDK?  The **Claude Agent SDK** is Anthropic's official Python/TypeScript framework for building AI agents that can: - Execute tools (file read, bash, web search, custom MCP tools) - Delegate to **subagents** (specia
 
 **[2026-03-17 18:18]** `claude_cli/claude`
 Q: can you use the mcp tool and explain what the code is doing ?
@@ -121,11 +128,3 @@ A: Now I have the full picture. Let me answer all three questions clearly.  --- 
 **[2026-03-16 18:34]** `claude_cli/claude`
 Q: I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/workflows, you can check also the github - https://github.com/fjpulidop/specrail
 A: Now I have everything I need. Let me write the comprehensive comparison and design proposal.  ---  ## Workflow System Design: Comparison & Proposal  ### What the two external systems do  **specrails** is essentially a **Claude Code agent system** — 12 specialized prompt files (`.md` role definitions
-
-**[2026-03-16 18:26]** `claude_cli/claude`
-Q: are you using the mcp now?
-A: ---  **To answer your question directly:**  No, I'm not using the MCP in this session. Everything I did was via direct HTTP calls (`curl`, Python `urllib`).  **What changes:**  - `.mcp.json` is now at the project root — Claude Code will pick it up **on next session start** - `enableAllProjectMcpServ
-
-**[2026-03-16 18:02]** `claude_cli/claude`
-Q: Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai the key is under OPENAI_API_KEY
-A: Everything is working end-to-end. Here's the full picture:  ---  ## Full Pipeline — Now Working  ### What just happened in sequence: 1. **Bug found and fixed** — `ARRAY_AGG(uuid[])` came back from psycopg2 as a raw string `'{uuid1,uuid2}'`, causing `[str(i) for i in ids]` to iterate over characters 

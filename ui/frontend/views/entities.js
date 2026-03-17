@@ -229,12 +229,17 @@ function _renderTagTableFromCache() {
 
 // ── Work item table (for feature/bug/task categories) ─────────────────────────
 
+// Collapse state for work item tree (mirroring _collapsed for regular tags)
+const _wiCollapsed = new Set();
+// Current items cache (id → wi object) for the open category
+let _wiItemsCache = {};
+
 async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
   pane.innerHTML = `
     <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
       <span style="font-size:0.8rem;color:${catColor}">${catIcon}</span>
       <span style="font-size:0.78rem;font-weight:600;color:var(--text)">${_esc(catName)}</span>
-      <button onclick="window._plannerShowNewWorkItem('${_esc(catName)}')"
+      <button onclick="window._plannerShowNewWorkItem('${_esc(catName)}', null)"
         style="background:var(--accent);border:none;color:#fff;font-size:0.62rem;
                padding:0.2rem 0.55rem;border-radius:var(--radius);cursor:pointer;
                font-family:var(--font);outline:none;margin-left:auto">+ New</button>
@@ -243,100 +248,195 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
       Loading…
     </div>
   `;
+
+  // Wire globals up front so they're always available
+  window._plannerShowNewWorkItem = async (cn, parentId) => {
+    const label = parentId ? `New child ${cn} name:` : `New ${cn} name:`;
+    const name = prompt(label);
+    if (!name) return;
+    try {
+      await api.workItems.create(project, { category_name: cn, name, parent_id: parentId || null });
+      _renderWorkItemTable(pane, catName, catColor, catIcon, project);
+    } catch (e) { toast('Create failed: ' + e.message, 'error'); }
+  };
+  window._wiToggleCollapse = (id) => {
+    if (_wiCollapsed.has(id)) _wiCollapsed.delete(id); else _wiCollapsed.add(id);
+    const tb = document.getElementById('wi-table-body');
+    if (tb) tb.innerHTML = _wiRenderRows(_wiItemsCache, catName, catColor, catIcon, project);
+  };
+  window._wiRunPipeline = async (id, proj) => {
+    const btn = document.querySelector(`[data-wi-run-btn="${id}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+      const res = await api.workItems.runPipeline(id, proj);
+      const wfId = res.workflow_id;
+      toast(
+        wfId
+          ? `Pipeline started — <a href="#" onclick="window._nav('workflow');return false" style="color:inherit;font-weight:bold">view in Workflow tab</a>`
+          : 'Pipeline started — check back shortly',
+        'success',
+        6000,
+      );
+      setTimeout(() => _renderWorkItemTable(pane, catName, catColor, catIcon, project), 4000);
+    } catch (e) {
+      toast('Pipeline error: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '▶'; }
+    }
+  };
+  window._plannerOpenWorkItemDrawer = (id, cn, proj) => _openWorkItemDrawer(id, cn, proj, pane, catColor, catIcon);
+
   try {
     const data = await api.workItems.list(project, catName);
     const items = data.work_items || [];
+
+    // Build lookup + tree
+    _wiItemsCache = {};
+    items.forEach(wi => { _wiItemsCache[wi.id] = wi; });
+
     const tableBody = document.getElementById('wi-table-body');
     if (!tableBody) return;
+
     if (!items.length) {
-      tableBody.textContent = `No ${catName}s yet — click + New to create one.`;
+      tableBody.innerHTML = `<div style="text-align:center;padding:3rem 1rem;color:var(--muted)">
+        <div style="font-size:2rem;margin-bottom:0.75rem">${catIcon}</div>
+        No ${catName}s yet — click <strong>+ New</strong> to create one.
+      </div>`;
       return;
     }
-    const agentBadge = (s) => {
-      if (!s) return '';
-      const col = s === 'done' ? '#27ae60' : s === 'failed' ? '#e74c3c' : s.startsWith('running') ? '#e67e22' : '#888';
-      return `<span style="font-size:0.55rem;color:#fff;background:${col};padding:0.1rem 0.35rem;border-radius:8px;white-space:nowrap">${_esc(s)}</span>`;
-    };
-    tableBody.innerHTML = `
-      <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
-        <thead>
-          <tr style="border-bottom:2px solid var(--border)">
-            <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
-            <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:80px">Lifecycle</th>
-            <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:65px">Status</th>
-            <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;max-width:120px">Criteria</th>
-            <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:75px">Agent</th>
-            <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:80px">Due</th>
-            <th style="width:90px"></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${items.map(wi => {
-            const acPreview = wi.acceptance_criteria ? wi.acceptance_criteria.replace(/\n/g,' ').slice(0,60) + (wi.acceptance_criteria.length > 60 ? '…' : '') : '—';
-            const lc = wi.lifecycle_status || 'idea';
-            const lc_col = _LIFECYCLE_COLORS[lc] || '#888';
-            const sc = wi.status === 'active' ? '#27ae60' : wi.status === 'done' ? '#4a90e2' : '#888';
-            return `
-            <tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
-                data-wi-id="${wi.id}"
-                onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(catName)}','${_esc(project)}')"
-                onmouseenter="this.style.background='var(--surface2)'"
-                onmouseleave="this.style.background=''">
-              <td style="padding:0.5rem 0.5rem;color:var(--text);font-weight:500;
-                         max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${_esc(wi.name)}">${_esc(wi.name)}</td>
-              <td style="padding:0.5rem 0.4rem;white-space:nowrap" onclick="event.stopPropagation()">
-                <span style="font-size:0.58rem;color:#fff;background:${lc_col};
-                             padding:0.1rem 0.4rem;border-radius:10px;white-space:nowrap">${lc}</span>
-              </td>
-              <td style="padding:0.5rem 0.4rem;white-space:nowrap">
-                <span style="font-size:0.6rem;color:${sc};background:${sc}22;
-                             padding:0.12rem 0.4rem;border-radius:10px">${_esc(wi.status || 'active')}</span>
-              </td>
-              <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem;
-                         max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${_esc(wi.acceptance_criteria || '')}">${_esc(acPreview)}</td>
-              <td style="padding:0.5rem 0.4rem" onclick="event.stopPropagation()">
-                ${agentBadge(wi.agent_status)}
-              </td>
-              <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem">
-                ${wi.due_date ? wi.due_date.slice(0, 10) : '—'}
-              </td>
-              <td style="padding:0.5rem 0.4rem;white-space:nowrap;text-align:right"
-                  onclick="event.stopPropagation()">
-                <button title="Run 4-agent pipeline"
-                  onclick="window._wiRunPipeline('${_esc(wi.id)}','${_esc(project)}')"
-                  style="font-size:0.6rem;padding:0.15rem 0.4rem;background:var(--accent);
-                         border:none;border-radius:var(--radius);cursor:pointer;color:#fff;
-                         font-family:var(--font);outline:none;white-space:nowrap">▶ Pipeline</button>
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    `;
-    // Wire globals for work items
-    window._plannerShowNewWorkItem = async (cn) => {
-      const name = prompt(`New ${cn} name:`);
-      if (!name) return;
-      try {
-        await api.workItems.create(project, { category_name: cn, name });
-        _renderWorkItemTable(pane, catName, catColor, catIcon, project);
-      } catch (e) { toast('Create failed: ' + e.message, 'error'); }
-    };
-    window._wiRunPipeline = async (id, proj) => {
-      try {
-        await api.workItems.runPipeline(id, proj);
-        toast('Pipeline started — check back shortly', 'success');
-        setTimeout(() => _renderWorkItemTable(pane, catName, catColor, catIcon, project), 3000);
-      } catch (e) { toast('Pipeline error: ' + e.message, 'error'); }
-    };
-    window._plannerOpenWorkItemDrawer = (id, cn, proj) => _openWorkItemDrawer(id, cn, proj, pane, catColor, catIcon);
+
+    tableBody.innerHTML = _wiRenderRows(_wiItemsCache, catName, catColor, catIcon, project);
   } catch (e) {
     const tb = document.getElementById('wi-table-body');
     if (tb) tb.textContent = `Error loading ${catName}s: ${e.message}`;
   }
 }
+
+function _wiRenderRows(byId, catName, catColor, catIcon, project) {
+  // Build roots + children map
+  const children = {};  // parent_id → [wi]
+  const roots = [];
+  Object.values(byId).forEach(wi => {
+    if (wi.parent_id && byId[wi.parent_id]) {
+      (children[wi.parent_id] = children[wi.parent_id] || []).push(wi);
+    } else {
+      roots.push(wi);
+    }
+  });
+
+  const agentBadge = (s) => {
+    if (!s) return '';
+    const col = s === 'done' ? '#27ae60' : s === 'failed' ? '#e74c3c' : s.startsWith('running') ? '#e67e22' : '#888';
+    return `<span style="font-size:0.55rem;color:#fff;background:${col};
+                         padding:0.1rem 0.35rem;border-radius:8px;white-space:nowrap">${_esc(s)}</span>`;
+  };
+
+  function rowsForNode(wi, depth) {
+    const lc     = wi.lifecycle_status || 'idea';
+    const lcCol  = _LIFECYCLE_COLORS[lc] || '#888';
+    const sc     = wi.status === 'active' ? '#27ae60' : wi.status === 'done' ? '#4a90e2' : '#888';
+    const kids   = children[wi.id] || [];
+    const hasKids   = kids.length > 0;
+    const expanded  = !_wiCollapsed.has(wi.id);
+    const indent    = depth * 18;
+    const acPreview = wi.acceptance_criteria
+      ? wi.acceptance_criteria.replace(/\n/g, ' ').slice(0, 55) + (wi.acceptance_criteria.length > 55 ? '…' : '')
+      : '—';
+    const isRunning = (wi.agent_status || '').startsWith('running');
+
+    const toggleBtn = hasKids
+      ? `<span onclick="event.stopPropagation();window._wiToggleCollapse('${wi.id}')"
+               style="cursor:pointer;color:var(--muted);margin-right:3px;display:inline-block;
+                      width:14px;text-align:center;font-size:0.72rem;user-select:none;flex-shrink:0"
+               title="${expanded ? 'Collapse' : 'Expand'}">${expanded ? '▾' : '▸'}</span>`
+      : `<span style="display:inline-block;width:14px;margin-right:3px;flex-shrink:0"></span>`;
+
+    let html = `
+      <tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
+          data-wi-id="${wi.id}"
+          onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(catName)}','${_esc(project)}')"
+          onmouseenter="this.style.background='var(--surface2)'"
+          onmouseleave="this.style.background=''">
+        <td style="padding:0.5rem 0.5rem 0.5rem ${0.5 + indent / 16}rem;
+                   color:var(--text);font-weight:${depth === 0 ? '500' : '400'}">
+          <div style="display:flex;align-items:center">
+            ${toggleBtn}
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${_esc(wi.name)}">${_esc(wi.name)}</span>
+          </div>
+        </td>
+        <td style="padding:0.5rem 0.4rem;white-space:nowrap" onclick="event.stopPropagation()">
+          <span onclick="window._wiCycleLifecycle('${wi.id}','${lc}')"
+                title="Click to advance"
+                style="font-size:0.58rem;color:#fff;background:${lcCol};
+                       padding:0.1rem 0.4rem;border-radius:10px;white-space:nowrap;
+                       cursor:pointer;user-select:none">${lc}</span>
+        </td>
+        <td style="padding:0.5rem 0.4rem;white-space:nowrap">
+          <span style="font-size:0.6rem;color:${sc};background:${sc}22;
+                       padding:0.12rem 0.4rem;border-radius:10px">${_esc(wi.status || 'active')}</span>
+        </td>
+        <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem;
+                   max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+            title="${_esc(wi.acceptance_criteria || '')}">${_esc(acPreview)}</td>
+        <td style="padding:0.5rem 0.4rem" onclick="event.stopPropagation()">
+          ${agentBadge(wi.agent_status)}
+        </td>
+        <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem">
+          ${wi.due_date ? wi.due_date.slice(0, 10) : '—'}
+        </td>
+        <td style="padding:0.5rem 0.4rem;white-space:nowrap;text-align:right"
+            onclick="event.stopPropagation()">
+          <button title="Add child ${catName}"
+            onclick="window._plannerShowNewWorkItem('${_esc(catName)}','${_esc(wi.id)}')"
+            style="font-size:0.6rem;padding:0.13rem 0.35rem;background:var(--surface2);
+                   border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+                   color:var(--text2);font-family:var(--font);outline:none;margin-right:3px">+▸</button>
+          <button title="Run pipeline" data-wi-run-btn="${wi.id}"
+            onclick="window._wiRunPipeline('${_esc(wi.id)}','${_esc(project)}')"
+            style="font-size:0.6rem;padding:0.13rem 0.35rem;
+                   background:${isRunning ? '#e67e22' : 'var(--accent)'};
+                   border:none;border-radius:var(--radius);cursor:pointer;color:#fff;
+                   font-family:var(--font);outline:none;white-space:nowrap">
+            ${isRunning ? '⟳' : '▶'}</button>
+        </td>
+      </tr>`;
+
+    if (hasKids && expanded) {
+      html += kids.map(child => rowsForNode(child, depth + 1)).join('');
+    }
+    return html;
+  }
+
+  return `
+    <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:80px">Lifecycle</th>
+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:65px">Status</th>
+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;max-width:110px">Criteria</th>
+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:70px">Agent</th>
+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:78px">Due</th>
+          <th style="width:80px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${roots.map(wi => rowsForNode(wi, 0)).join('')}
+      </tbody>
+    </table>`;
+}
+
+// Lifecycle cycling for work items (inline, mirrors _plannerCycleLifecycle)
+window._wiCycleLifecycle = (id, current) => {
+  const idx  = _LIFECYCLE_ORDER.indexOf(current);
+  const next = _LIFECYCLE_ORDER[(idx + 1) % _LIFECYCLE_ORDER.length];
+  if (_wiItemsCache[id]) _wiItemsCache[id].lifecycle_status = next;
+  const tb = document.getElementById('wi-table-body');
+  const { selectedCatName: catName, selectedCatColor: catColor, selectedCatIcon: catIcon, project } = _plannerState;
+  if (tb) tb.innerHTML = _wiRenderRows(_wiItemsCache, catName, catColor, catIcon, project);
+  api.workItems.patch(id, _plannerState.project, { lifecycle_status: next })
+    .catch(e => toast('Lifecycle sync error: ' + e.message, 'error'));
+};
 
 async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon) {
   const drawer = document.getElementById('planner-drawer');
@@ -431,14 +531,27 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <div style="font-size:0.68rem;color:var(--text2)">${_esc(wi.agent_status)}</div>
         </div>` : ''}
 
+        <!-- Parent item link -->
+        ${wi.parent_id && _wiItemsCache[wi.parent_id] ? `
+        <div>
+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                      letter-spacing:.06em;margin-bottom:0.3rem">Parent</div>
+          <span style="font-size:0.68rem;color:var(--accent);cursor:pointer"
+                onclick="window._plannerOpenWorkItemDrawer('${wi.parent_id}','${_esc(catName)}','${_esc(project)}')"
+          >${_esc((_wiItemsCache[wi.parent_id] || {}).name || '')}</span>
+        </div>` : ''}
+
         <!-- Run Pipeline -->
         <div style="border-top:1px solid var(--border);padding-top:0.75rem">
-          <button onclick="window._wiRunPipeline('${id}','${project}')"
+          <button id="wi-drawer-run-btn"
+            onclick="window._wiRunPipeline('${id}','${project}')"
             style="background:var(--accent);border:none;color:#fff;font-size:0.68rem;
                    padding:0.3rem 0.75rem;border-radius:var(--radius);cursor:pointer;
-                   font-family:var(--font);outline:none;width:100%">▶ Run 4-Agent Pipeline</button>
+                   font-family:var(--font);outline:none;width:100%">▶ Run Pipeline</button>
           <div style="font-size:0.58rem;color:var(--muted);margin-top:0.35rem;line-height:1.4">
             PM → Architect → Developer → Reviewer
+            ${wi.agent_run_id ? `· <a href="#" onclick="window._nav('workflow');return false"
+              style="color:var(--accent);text-decoration:none">View last run →</a>` : ''}
           </div>
         </div>
 
