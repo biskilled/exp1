@@ -8,6 +8,14 @@ export function renderHome(container) {
 
   const recent = getRecentProjects();
   const allProjects = state.projects || [];
+  // Sort: recently opened first, then alphabetical
+  const sortedProjects = [...allProjects].sort((a, b) => {
+    const ia = recent.indexOf(a.name), ib = recent.indexOf(b.name);
+    if (ia === -1 && ib === -1) return a.name.localeCompare(b.name);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
 
   container.innerHTML = `
     <div style="max-width:800px;margin:0 auto">
@@ -68,7 +76,7 @@ export function renderHome(container) {
           </div>
         ` : `
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.75rem">
-            ${allProjects.map(p => `
+            ${sortedProjects.map(p => `
               <div onclick="window._openProject('${p.name}')"
                 style="padding:1rem 1.1rem;background:var(--surface);border:1px solid var(--border);
                   border-radius:var(--radius-lg);cursor:pointer;transition:border-color 0.15s"

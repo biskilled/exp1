@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-16 19:02 UTC — do not edit manually.
+> Auto-generated 2026-03-17 13:41 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 114
-- **Last active**: 2026-03-16T19:01:42Z
+- **Sessions**: 115
+- **Last active**: 2026-03-16T19:14:12Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,16 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-17 13:33]** `claude_cli/claude`  
+→ Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it takes quite long time 
+
+**[2026-03-17 13:30]** `claude_cli/claude`  
+→ can you use the mcp tool and explain what the prject is about ?
+
+**[2026-03-16 19:02]** `claude_cli/claude`  
+→ yes
+← _All changes look correct. The Agent Roles implementation in `graph_workflow.js` is now complete. Here's a summary of what was done in this session:  **`graph_workflow.js` — completed:** - `_gwOnRoleCh_
+
 **[2026-03-16 19:00]** `claude_cli/claude`  
 → I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over t
 ← _Good design direction. Here's how this maps cleanly to what's already planned:  ---  ## Design: Agent Roles in Database  ### Schema (`agent_roles` + `agent_role_versions`)  ```sql -- Live role definit_
@@ -196,15 +206,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-15 23:38]** `claude_cli/claude`  
 → Is there is any addiotnal improvement that I can implemet for having full memroy , and project management lifecycle ? 
 ← _Based on the audit, here are the gaps and a prioritized roadmap:  ---  ## What's Missing — Prioritized  ### Quick Wins (low effort, high value)  **1. MCP `create_entity` tool** Claude CLI / Cursor can_
-
-**[2026-03-15 23:29]** `claude_cli/claude`  
-→ is it align to the 5 steps memory? is there is any addiotnal requirement in order to be able to retreivae details inform
-← _All three enhancements are implemented and working. Here's a summary of what was done:  ---  **Three changes implemented:**  **1. `GET /entities/summary` — new endpoint in `entities.py`** Returns all _
-
-**[2026-03-15 23:13]** `claude_cli/claude`  
-→ now that there is porper tagging - can you make sure all is linked, mapped propery in databse schema and used properly f
-← _Everything is working. Here's a summary of all changes made:  ---  ## What was changed and why  ### Schema (`core/database.py`) - Added `phase`, `feature`, `session_id` as **real columns** (not just J_
-
-**[2026-03-15 22:57]** `claude_cli/claude`  
-→ It looks good and working as expected. the issue now is how it is linked to Histroy chat and commit. as this is saved by
-← _Now the full flow works. Here's a summary of everything fixed:  **Root causes and fixes:**  1. **History chat filter shows nothing for a phase** — History.jsonl entries had no `phase` field if the ses_

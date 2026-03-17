@@ -117,7 +117,10 @@ export class HistoryView {
       if (nav) nav.innerHTML = '';
     }
 
-    content.innerHTML = "<div style='padding:20px;color:var(--muted)'>Loading…</div>";
+    content.innerHTML = `<div style='padding:20px;color:var(--muted);display:flex;align-items:center;gap:8px'>
+      <span id="hist-loading-spinner" style="display:inline-block;animation:spin 1s linear infinite">⟳</span>
+      <span id="hist-loading-msg">Loading…</span>
+    </div>`;
     try {
       if (tab === "chat")         await this._renderChat(content);
       else if (tab === "commits") await this._renderCommits(content);
@@ -130,43 +133,58 @@ export class HistoryView {
 
   // ── Chat tab ──────────────────────────────────────────────────────────────
 
+  _setLoadingMsg(msg) {
+    const el = document.getElementById('hist-loading-msg');
+    if (el) el.textContent = msg;
+  }
+
   async _renderChat(container) {
     const project = state.currentProject?.name || '';
 
-    // Cache-busting timestamp prevents browser from serving stale history data
+    // Step 1: fetch history (newest 500) + config in parallel
+    this._setLoadingMsg('Fetching history entries…');
     const _ts = Date.now();
-    const [histRes, commitsData, catsRes, cfgData] = await Promise.all([
-      fetch(_histUrl(`/history/chat?_t=${_ts}`)).then(r => r.json()),
-      api.historyCommits(project, 2000).catch(() => ({ commits: [] })),
+    const [histRes, catsRes, cfgData] = await Promise.all([
+      fetch(_histUrl(`/history/chat?limit=500&_t=${_ts}`)).then(r => r.json()),
       api.entities.listCategories(project).catch(() => ({ categories: [] })),
       api.getProjectConfig(project).catch(() => ({})),
     ]);
 
-    this._histData   = histRes;
-    this._commitData = commitsData;
-    this._histPage   = 1;
-
-    await this._buildTagCache(project, catsRes.categories || []);
-
-    // Load existing tags from DB into _entryTags (persistent across re-renders)
-    try {
-      const sourceTags = await api.entities.getSourceTags(project);
-      for (const [sid, tags] of Object.entries(sourceTags || {})) {
-        if (!this._entryTags[sid]) this._entryTags[sid] = tags;
-      }
-    } catch (_) { /* DB unavailable — skip */ }
+    const total = histRes.total || 0;
+    this._histData = histRes;
+    this._histPage = 1;
 
     let ghBase = (cfgData.github_repo || '').replace(/\.git$/, '').replace(/\/$/, '');
     if (ghBase.startsWith('git@')) ghBase = ghBase.replace(/^git@([^:]+):/, 'https://$1/');
     this._chatGhBase = ghBase;
 
+    // Step 2: build tag cache (categories already loaded above)
+    this._setLoadingMsg(`Building tag index (${total} entries)…`);
+    await this._buildTagCache(project, catsRes.categories || []);
+
+    // Step 3: render immediately so user sees data
     this._renderChatContainer(container);
+
+    // Step 4: load source tags in background (non-blocking — chips appear after render)
+    api.entities.getSourceTags(project).then(sourceTags => {
+      for (const [sid, tags] of Object.entries(sourceTags || {})) {
+        if (!this._entryTags[sid]) this._entryTags[sid] = tags;
+      }
+    }).catch(() => {});
+
+    // Step 5: pre-load commits in background for the Commits tab (lazy)
+    if (!this._commitData) {
+      api.historyCommits(project, 500).then(d => {
+        this._commitData = d;
+      }).catch(() => { this._commitData = { commits: [] }; });
+    }
   }
 
   _renderChatContainer(container) {
     const entries    = this._histData?.entries  || [];
-    const total      = entries.length;
+    const serverTotal = this._histData?.total   || entries.length;
     const filtered   = this._histData?.filtered || 0;
+    const hasMore    = this._histData?.has_more  || false;
     const untagged   = entries.filter(e => !e.phase && !e.feature).length;
 
     container.innerHTML = `
@@ -190,7 +208,11 @@ export class HistoryView {
           <option value="maintenance">Maintenance</option>
           <option value="bugfix">Bug Fix</option>
         </select>
-        ${filtered > 0 ? `<span style="color:var(--muted)">${filtered} noise entries hidden</span>` : ''}
+        ${filtered > 0 ? `<span style="color:var(--muted)">${filtered} noise hidden</span>` : ''}
+        ${hasMore ? `<span style="color:var(--muted)">showing ${entries.length} of ${serverTotal}</span>
+          <button onclick="window._historyView._loadMore()"
+            style="padding:2px 7px;border:1px solid var(--accent);border-radius:3px;cursor:pointer;
+                   background:var(--surface);font-size:11px;color:var(--accent)">Load all</button>` : ''}
         <div style="flex:1"></div>
         ${untagged > 0 ? `<span style="color:#e74c3c;font-weight:600">${untagged} untagged</span>` : `<span style="color:green">All tagged ✓</span>`}
         <button onclick="window._historyView._refreshHistory()"
@@ -216,8 +238,34 @@ export class HistoryView {
     this._entryTags  = {};
     const content = document.getElementById("history-content");
     if (content) {
-      content.innerHTML = "<div style='padding:20px;color:var(--muted)'>Reloading…</div>";
+      content.innerHTML = `<div style='padding:20px;color:var(--muted);display:flex;align-items:center;gap:8px'>
+        <span style="display:inline-block;animation:spin 1s linear infinite">⟳</span>
+        <span id="hist-loading-msg">Reloading…</span>
+      </div>`;
       await this._renderChat(content);
+    }
+  }
+
+  async _loadMore() {
+    const project = state.currentProject?.name || '';
+    const current = this._histData?.entries || [];
+    const _ts = Date.now();
+    const content = document.getElementById('history-content');
+    // Load all entries (no limit)
+    if (content) {
+      const btn = content.querySelector('button[onclick*="_loadMore"]');
+      if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    }
+    try {
+      const res = await fetch(_histUrl(`/history/chat?limit=0&_t=${_ts}`)).then(r => r.json());
+      this._histData = res;
+      this._histPage = 1;
+      this._renderChatContainer(content);
+    } catch (e) {
+      if (content) {
+        const btn = content.querySelector('button[onclick*="_loadMore"]');
+        if (btn) { btn.disabled = false; btn.textContent = 'Load all'; }
+      }
     }
   }
 

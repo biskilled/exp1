@@ -106,11 +106,6 @@ export async function renderSummary(container, projectName) {
   // ── Project Facts card (rendered above Memory Health) ────────────────────────
   let _factsCardEl = null;
   async function _renderFactsCard() {
-    if (!_factsCardEl) {
-      _factsCardEl = document.createElement('div');
-      _factsCardEl.id = 'summary-facts-card';
-      _factsCardEl.style.cssText = 'margin:0.75rem 0 0.4rem 0;';
-    }
     try {
       const data = await api.workItems.facts(projectName);
       const facts = data.facts || [];
@@ -142,11 +137,6 @@ export async function renderSummary(container, projectName) {
   // ── Memory Health card (rendered above PROJECT.md) ───────────────────────────
   let _memCardEl = null;
   async function _renderMemoryCard() {
-    if (!_memCardEl) {
-      _memCardEl = document.createElement('div');
-      _memCardEl.id = 'summary-memory-card';
-      _memCardEl.style.cssText = 'margin:0.75rem 0;';
-    }
     try {
       const s = await api.getMemoryStatus(projectName);
       const needs = s.needs_memory;
@@ -198,32 +188,46 @@ export async function renderSummary(container, projectName) {
     }
   }
 
-  // Load PROJECT.md via dedicated summary endpoint
+  // ── Build the card placeholder elements (rendered into body before md) ──────
+  _factsCardEl = document.createElement('div');
+  _factsCardEl.id = 'summary-facts-card';
+  _factsCardEl.style.cssText = 'margin:0.75rem 0 0.4rem 0;';
+
+  _memCardEl = document.createElement('div');
+  _memCardEl.id = 'summary-memory-card';
+  _memCardEl.style.cssText = 'margin:0.75rem 0;';
+  // Show a lightweight skeleton so layout doesn't jump
+  _memCardEl.innerHTML = `
+    <div style="border:1px solid var(--border);border-radius:8px;background:var(--surface);
+                padding:0.65rem 1rem;font-size:0.72rem;color:var(--muted);
+                display:flex;align-items:center;gap:0.5rem">
+      <span style="font-size:0.85rem">⏳</span> Checking memory health…
+    </div>`;
+
+  const mdDiv = document.createElement('div');
+
+  // ── Step 1: fetch PROJECT.md and render immediately ──────────────────────────
   try {
     const data = await api.getProjectSummary(projectName);
     _original = data.content || '';
-    body.className = 'summary-content';
-    body.innerHTML = '';
-    await Promise.all([_renderFactsCard(), _renderMemoryCard()]);
-    body.appendChild(_factsCardEl);
-    body.appendChild(_memCardEl);
-    const mdDiv = document.createElement('div');
     mdDiv.className = 'summary-md';
     mdDiv.innerHTML = renderMd(_original);
-    body.appendChild(mdDiv);
   } catch {
-    // File might not exist yet — show default template
     _original = `# ${projectName}\n\nProject description goes here.\n`;
-    body.className = 'summary-content';
-    body.innerHTML = '';
-    await Promise.all([_renderFactsCard(), _renderMemoryCard()]);
-    body.appendChild(_factsCardEl);
-    body.appendChild(_memCardEl);
-    const mdDiv = document.createElement('div');
     mdDiv.innerHTML = `<div class="summary-md">${renderMd(_original)}</div>
       <p style="font-size:0.68rem;color:var(--muted);margin-top:1rem">
         No PROJECT.md found. Click <strong>Edit</strong> to create one.
       </p>`;
-    body.appendChild(mdDiv);
   }
+
+  // Render skeleton + markdown immediately — user sees content at once
+  body.className = 'summary-content';
+  body.innerHTML = '';
+  body.appendChild(_factsCardEl);
+  body.appendChild(_memCardEl);
+  body.appendChild(mdDiv);
+
+  // ── Step 2: load cards in background (don't block initial render) ────────────
+  _renderFactsCard().catch(() => {});
+  _renderMemoryCard().catch(() => {});
 }

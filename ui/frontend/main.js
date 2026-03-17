@@ -1,5 +1,5 @@
 import { initLayout } from './utils/layout.js';
-import { api, addRecentProject } from './utils/api.js';
+import { api, addRecentProject, getRecentProjects } from './utils/api.js';
 import { renderAdmin as _renderAdminView } from './views/admin.js';
 import { state, setState } from './stores/state.js';
 import { toast } from './utils/toast.js';
@@ -95,7 +95,16 @@ async function _continueToApp(user) {
 
   updateStatusDot();
   renderSidebarContent();
-  navigateTo('home');
+
+  // Auto-restore last open project (if valid and still exists)
+  const recent = getRecentProjects();
+  const allNames = (state.projects || []).map(p => p.name);
+  const lastProject = recent.find(n => allNames.includes(n));
+  if (lastProject) {
+    await openProject(lastProject);
+  } else {
+    navigateTo('home');
+  }
 
   // Load balance chip — only when a real user is logged in
   if (state.backendOnline && state.user?.email) {
@@ -451,12 +460,19 @@ export async function openProject(name) {
 
     // Background context refresh — regenerates CLAUDE.md + CONTEXT.md, copies to code dir.
     // Runs after navigation so it doesn't block the UI opening.
-    api.getProjectContext(name, true).then(data => {
-      const fresh = data.context || data.claude_md || '';
-      if (fresh && state.currentProject?.name === name) {
-        setState({ currentProject: { ...state.currentProject, system_prompt: fresh } });
-      }
-    }).catch(() => {/* silent — don't block project open */});
+    // Throttled to once per 30 minutes per project (sessionStorage TTL).
+    const CTX_TTL = 30 * 60 * 1000;
+    const ctxKey  = `ctx_refresh_${name}`;
+    const lastCtx = parseInt(sessionStorage.getItem(ctxKey) || '0', 10);
+    if (Date.now() - lastCtx > CTX_TTL) {
+      sessionStorage.setItem(ctxKey, String(Date.now()));
+      api.getProjectContext(name, true).then(data => {
+        const fresh = data.context || data.claude_md || '';
+        if (fresh && state.currentProject?.name === name) {
+          setState({ currentProject: { ...state.currentProject, system_prompt: fresh } });
+        }
+      }).catch(() => {/* silent — don't block project open */});
+    }
 
   } catch (e) {
     toast(`Could not open project: ${e.message}`, 'error');

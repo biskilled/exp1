@@ -109,13 +109,15 @@ def _load_prompt_log_legacy() -> list[dict]:
 async def chat_history(
     project: str | None = Query(None),
     provider: str | None = Query(None),
-    limit: int = Query(0),          # 0 = return all (frontend handles pagination)
+    limit: int = Query(500),    # default 500 newest; 0 = all
+    offset: int = Query(0),     # for pagination: skip first N entries
     current_user: Optional[dict] = Depends(get_optional_user),
 ):
     """Return unified project history — all sources, all users.
 
     Noise entries (user_input containing <task-notification>, <tool-use-id>, etc.)
-    are filtered out before returning. limit=0 means no cap (frontend paginates).
+    are filtered out before returning.
+    Returns newest-first. limit+offset allow server-side pagination.
     """
     entries = _load_unified_history(project, provider)
 
@@ -139,10 +141,19 @@ async def chat_history(
     deduped = [e for e in deduped if not _is_noisy(e)]
 
     deduped.sort(key=lambda x: x.get("ts", ""), reverse=True)
-    filtered = total_raw - len(deduped)
-    if limit > 0:
-        return {"entries": deduped[:limit], "total": len(deduped), "filtered": filtered}
-    return {"entries": deduped, "total": len(deduped), "filtered": filtered}
+    total = len(deduped)
+    filtered = total_raw - total
+
+    # Apply server-side pagination
+    page_entries = deduped[offset:offset + limit] if limit > 0 else deduped[offset:]
+    return {
+        "entries": page_entries,
+        "total": total,
+        "filtered": filtered,
+        "offset": offset,
+        "limit": limit,
+        "has_more": (offset + len(page_entries)) < total,
+    }
 
 
 class CommitPatch(BaseModel):

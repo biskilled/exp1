@@ -2065,3 +2065,8 @@ body.sidebar-collapsed .sidebar-user-actions { opacity: 0; pointer-events: none;
 }
 .search-result-item:hover { background: var(--surface2); }
 .search-result-meta { font-size: 0.68rem; color: var(--muted); margin-top: 0.25rem; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

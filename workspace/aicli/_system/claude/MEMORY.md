@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-16 19:01 UTC by aicli /memory_
+_Generated: 2026-03-16 19:14 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -67,7 +67,7 @@ _Generated: 2026-03-16 19:01 UTC by aicli /memory_
 
 - **pagination** `(94 events, 51 commits)`
 - **auth** `(58 events, 51 commits)`
-- **shared-memory** `(3 events)`
+- **shared-memory** `(4 events)`
 - **mcp** `(1 events)`
 - **graph-workflow** `(1 events)`
 - **workflow-runner** `(1 events)`
@@ -86,10 +86,14 @@ _Generated: 2026-03-16 19:01 UTC by aicli /memory_
 
 ### Task
 
-- **memory** `(96 events, 51 commits)`
+- **memory** `(97 events, 51 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
 ## Recent Work (last 10 exchanges)
+
+**[2026-03-16 19:02]** `claude_cli/claude`
+Q: yes
+A: All changes look correct. The Agent Roles implementation in `graph_workflow.js` is now complete. Here's a summary of what was done in this session:  **`graph_workflow.js` — completed:** - `_gwOnRoleChange(val)`: now auto-populates `cfg-provider` / `cfg-model` from the selected role's defaults, updat
 
 **[2026-03-16 19:00]** `claude_cli/claude`
 Q: I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over time (or stored that as local md files linked ..) I do want to store the prompts 
@@ -125,7 +129,3 @@ A: Here's a complete answer to your questions:  ---  ## Audit Results + What Was
 
 **[2026-03-16 00:48]** `claude_cli/claude`
 Q: I have started to look in some other solution like https://github.com/danshapiro/trycycle and www.specrails.dev/docs/workflows (github page - https://github.com/fjpulidop/specrails/tree/main) and got 
-
-**[2026-03-16 00:19]** `claude_cli/claude`
-Q: I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure that there are no text string that need to be in config file. for example backen u
-A: All clean. Here's a summary of everything fixed:  ---  ## Optimization fixes applied  | Issue | File | Fix | |---|---|---| | `haiku_model` hardcoded in 6 places | `config.py` | Added `haiku_model: str = "claude-haiku-4-5-20251001"` | | `backend_url` hardcoded | `config.py` | Added `backend_url: str 

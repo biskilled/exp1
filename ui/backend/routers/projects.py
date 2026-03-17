@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import shutil
+import time
 import yaml
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,10 @@ log = logging.getLogger(__name__)
 
 # Absolute path to the aicli root dir (ui/backend/routers/projects.py → 4 levels up)
 _AICLI_DIR = Path(__file__).parent.parent.parent.parent
+
+# 60-second in-process cache for memory-status (avoids scanning history.jsonl on every tab open)
+_MEMORY_STATUS_CACHE: dict[str, tuple[float, dict]] = {}   # project → (timestamp, result)
+_MEMORY_STATUS_TTL = 60.0  # seconds
 
 # ── History rotation ──────────────────────────────────────────────────────────
 
@@ -1607,6 +1612,8 @@ async def generate_memory(project_name: str):
         state_path.write_text(json.dumps(state_data, indent=2))
     except Exception:
         pass
+    # Bust memory-status cache so next load reflects the fresh run
+    _MEMORY_STATUS_CACHE.pop(project_name, None)
 
     # ── Layer 3: extract project facts in background after synthesis ─────────
     if db.is_available() and synthesis:
@@ -1681,13 +1688,22 @@ async def generate_memory(project_name: str):
 
 
 @router.get("/{project_name}/memory-status")
-async def memory_status(project_name: str):
+async def memory_status(project_name: str, bust: bool = False):
     """Return memory health: how many new prompts since last /memory run.
 
     Reads project_state.json for last_memory_run, counts new history.jsonl entries,
     compares against configurable threshold (project.yaml memory_threshold, default 20).
     Used by the UI amber banner and summary Memory Health card.
+    Result is cached for 60 s per project to avoid rescanning on every page load.
+    Pass ?bust=true to force a fresh scan (e.g. after running /memory).
     """
+    # Serve from cache if fresh enough
+    cached = _MEMORY_STATUS_CACHE.get(project_name)
+    if cached and not bust:
+        ts, result = cached
+        if time.monotonic() - ts < _MEMORY_STATUS_TTL:
+            return result
+
     proj_dir = _workspace() / project_name
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
@@ -1770,7 +1786,7 @@ async def memory_status(project_name: str):
     total_prompts  = max(total_prompts, interactions_total)
     prompts_since  = max(prompts_since, interactions_since)
 
-    return {
+    result = {
         "last_memory_run": last_memory_run,
         "prompts_since_last_memory": prompts_since,
         "total_prompts": total_prompts,
@@ -1779,6 +1795,8 @@ async def memory_status(project_name: str):
         "days_since_last_memory": days_since,
         "project": project_name,
     }
+    _MEMORY_STATUS_CACHE[project_name] = (time.monotonic(), result)
+    return result
 
 
 async def _ingest_new_commits(project: str, code_dir: str, ingest_commit_fn) -> None:
