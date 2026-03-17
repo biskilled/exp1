@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-17 18:12 UTC — do not edit manually.
+> Auto-generated 2026-03-17 18:19 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 117
-- **Last active**: 2026-03-17T14:39:32Z
+- **Sessions**: 118
+- **Last active**: 2026-03-17T18:19:17Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-17 18:18]** `claude_cli/claude`  
+→ can you use the mcp tool and explain what the code is doing ?
+← _Here's what **aicli** does:  ## aicli — Shared AI Memory Platform  **Core idea**: When you switch between different AI tools (Claude CLI, Cursor, ChatGPT, the aicli web UI), they all forget your proje_
+
 **[2026-03-17 14:35]** `claude_cli/claude`  
 → In the project I used to see the aiCli project, and I do not see that now. also when I press in my recent project - aiCl
 ← _Everything looks correct. Let me do a final check on the full `openProject` function to make sure it's clean:_
@@ -204,6 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-16 00:19]** `claude_cli/claude`  
 → I would like to optimise the code : check each file, make sure code is in used and all method are required. make sure th
 ← _All clean. Here's a summary of everything fixed:  ---  ## Optimization fixes applied  | Issue | File | Fix | |---|---|---| | `haiku_model` hardcoded in 6 places | `config.py` | Added `haiku_model: str_
-
-**[2026-03-15 23:49]** `claude_cli/claude`  
-→ 1,2,3,4,5 and 8. I would like to add also anotehr mng table to check how many prompt there are and prompt the user (in u

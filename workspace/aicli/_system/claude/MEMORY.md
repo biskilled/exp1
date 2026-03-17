@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-17 14:40 UTC by aicli /memory_
+_Generated: 2026-03-17 18:19 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform that provides Claude, OpenAI, and other LLMs with persistent access to development project state via an MCP server. It combines a Python CLI backend (FastAPI + PostgreSQL + pgvector for semantic search) with an Electron UI (Vanilla JS + xterm.js + Monaco editor) to enable cross-session memory synthesis, multi-agent workflows, and real-time project tracking. Current focus is optimizing PROJECT.md load performance on Railway free tier and investigating project visibility regressions.
 
 ## Tech Stack
 
@@ -93,4 +89,43 @@ aicli is a shared AI memory platform that provides Claude, OpenAI, and other LLM
 - **memory** `(97 events, 51 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
-**[2026-03-17]** `user_report` — aiCli project disappeared from recent projects list and PROJECT.md takes >1 minute to load on free Railway tier; suspected DB query latency or file I/O bottleneck affecting project initialization flow. **[2026-03-16]** `architecture` — Multi-agent workflow system designed with async DAG executor, asyncio.gather for parallel node execution, Cytoscape.js visualization, and YAML configuration; specrails pattern evaluated for Claude Code agent with 12 prompt roles. **[2026-03-16]** `config` — Backend configuration externalized (backend_url, haiku_model, db_pool_max to config.py); /health check endpoint added for MCP server readiness verification. **[2026-03-16]** `memory` — Dual-layer memory synthesis pipeline completed: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules); session_bulk_tag() fixed to persist to both event_tags and interaction_tags tables. **[2026-03-15]** `persistence` — Session phase field now loads from DB on init and saves via PATCH /chat/sessions/{id}/tags; backfill logic preserves history.jsonl order by created_at. **[2026-03-15]** `tagging` — Tag deduplication completed (149 tags, 0 duplicates); removal propagates across Chat/History/Commits views via UI buttons; load-once-on-access pattern eliminates redundant SQL calls.
+## Recent Work (last 10 exchanges)
+
+**[2026-03-17 18:18]** `claude_cli/claude`
+Q: can you use the mcp tool and explain what the code is doing ?
+A: Here's what **aicli** does:  ## aicli — Shared AI Memory Platform  **Core idea**: When you switch between different AI tools (Claude CLI, Cursor, ChatGPT, the aicli web UI), they all forget your project context. aicli solves this by giving every LLM the **same persistent memory**.  ### What the code
+
+**[2026-03-17 14:35]** `claude_cli/claude`
+Q: In the project I used to see the aiCli project, and I do not see that now. also when I press in my recent project - aiCli - it is start to load after few seconds. loading PRPJECT.md file take really l
+A: Everything looks correct. Let me do a final check on the full `openProject` function to make sure it's clean:
+
+**[2026-03-17 13:33]** `claude_cli/claude`
+Q: Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it takes quite long time to load summery and History. can check why is that? and add some flow to explain
+A: Now let's verify the key changes are correct with a quick sanity check:
+
+**[2026-03-17 13:30]** `claude_cli/claude`
+Q: can you use the mcp tool and explain what the prject is about ?
+
+**[2026-03-16 19:02]** `claude_cli/claude`
+Q: yes
+A: All changes look correct. The Agent Roles implementation in `graph_workflow.js` is now complete. Here's a summary of what was done in this session:  **`graph_workflow.js` — completed:** - `_gwOnRoleChange(val)`: now auto-populates `cfg-provider` / `cfg-model` from the selected role's defaults, updat
+
+**[2026-03-16 19:00]** `claude_cli/claude`
+Q: I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over time (or stored that as local md files linked ..) I do want to store the prompts 
+A: Good design direction. Here's how this maps cleanly to what's already planned:  ---  ## Design: Agent Roles in Database  ### Schema (`agent_roles` + `agent_role_versions`)  ```sql -- Live role definitions CREATE TABLE agent_roles (     id        SERIAL PRIMARY KEY,     project   TEXT NOT NULL DEFAUL
+
+**[2026-03-16 18:52]** `claude_cli/claude`
+Q: I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline configure ? also there used to be parent - child support (for example UI -> dropbox) w
+A: Now I have the full picture. Let me answer all three questions clearly.  ---  ## Answers to your questions  ### 1. Where is the "Run Pipeline" configured?  It's in `ui/backend/core/work_item_pipeline.py` — **completely hardcoded**. 4 stages are Python-coded directly: PM → Architect → Developer → Rev
+
+**[2026-03-16 18:34]** `claude_cli/claude`
+Q: I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/workflows, you can check also the github - https://github.com/fjpulidop/specrail
+A: Now I have everything I need. Let me write the comprehensive comparison and design proposal.  ---  ## Workflow System Design: Comparison & Proposal  ### What the two external systems do  **specrails** is essentially a **Claude Code agent system** — 12 specialized prompt files (`.md` role definitions
+
+**[2026-03-16 18:26]** `claude_cli/claude`
+Q: are you using the mcp now?
+A: ---  **To answer your question directly:**  No, I'm not using the MCP in this session. Everything I did was via direct HTTP calls (`curl`, Python `urllib`).  **What changes:**  - `.mcp.json` is now at the project root — Claude Code will pick it up **on next session start** - `enableAllProjectMcpServ
+
+**[2026-03-16 18:02]** `claude_cli/claude`
+Q: Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai the key is under OPENAI_API_KEY
+A: Everything is working end-to-end. Here's the full picture:  ---  ## Full Pipeline — Now Working  ### What just happened in sequence: 1. **Bug found and fixed** — `ARRAY_AGG(uuid[])` came back from psycopg2 as a raw string `'{uuid1,uuid2}'`, causing `[str(i) for i in ids]` to iterate over characters 
