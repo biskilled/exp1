@@ -357,10 +357,13 @@ async def _auto_detect_session_feature(
             return
 
         # Guard: skip if session already has a feature tag
+        tbl_st = db.client_table("session_tags")
+        tbl_ev = db.client_table("entity_values")
+        tbl_ec = db.client_table("entity_categories")
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT feature FROM mng_session_tags WHERE project=%s",
+                    f"SELECT feature FROM {tbl_st} WHERE project=%s",
                     (project,),
                 )
                 row = cur.fetchone()
@@ -376,8 +379,8 @@ async def _auto_detect_session_feature(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT v.name FROM mng_entity_values v
-                       JOIN mng_entity_categories c ON c.id = v.category_id
+                    f"""SELECT v.name FROM {tbl_ev} v
+                       JOIN {tbl_ec} c ON c.id = v.category_id
                        WHERE v.project=%s AND c.name='feature' AND v.status='active'
                        ORDER BY v.name""",
                     (project,),
@@ -417,7 +420,7 @@ async def _auto_detect_session_feature(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO mng_session_tags (project, feature) VALUES (%s,%s)
+                    f"""INSERT INTO {tbl_st} (project, feature) VALUES (%s,%s)
                        ON CONFLICT (project) DO UPDATE SET feature=%s, updated_at=NOW()""",
                     (project, feature_name, feature_name),
                 )

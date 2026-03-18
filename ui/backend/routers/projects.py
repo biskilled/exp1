@@ -1253,13 +1253,15 @@ async def generate_memory(project_name: str):
             ev_table = db.project_table("events",     project_name)
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    _tbl_ec = db.client_table("entity_categories")
+                    _tbl_ev = db.client_table("entity_values")
                     cur.execute(
                         f"""SELECT c.name AS category, c.icon,
                                   v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
                                   COUNT(DISTINCT et.event_id)                                          AS event_count,
                                   COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
-                           FROM mng_entity_categories c
-                           JOIN mng_entity_values v ON v.category_id = c.id
+                           FROM {_tbl_ec} c
+                           JOIN {_tbl_ev} v ON v.category_id = c.id
                            LEFT JOIN {et_table} et ON et.entity_value_id = v.id
                            LEFT JOIN {ev_table} ev ON ev.id = et.event_id
                            WHERE v.project=%s AND v.status != 'archived'
@@ -1668,8 +1670,9 @@ async def generate_memory(project_name: str):
                 try:
                     with db.conn() as conn:
                         with conn.cursor() as cur:
+                            _tbl_ev = db.client_table("entity_values")
                             cur.execute(
-                                f"""SELECT id, name FROM mng_entity_values
+                                f"""SELECT id, name FROM {_tbl_ev}
                                    WHERE project=%s AND status='active'
                                    ORDER BY name LIMIT 50""",
                                 (project_name,),
@@ -1856,10 +1859,12 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
         et_table = db.project_table("event_tags", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
+                _tbl_ev = db.client_table("entity_values")
+                _tbl_ec = db.client_table("entity_categories")
                 cur.execute(
-                    """SELECT v.id, c.name AS category, v.name
-                       FROM mng_entity_values v
-                       JOIN mng_entity_categories c ON c.id = v.category_id
+                    f"""SELECT v.id, c.name AS category, v.name
+                       FROM {_tbl_ev} v
+                       JOIN {_tbl_ec} c ON c.id = v.category_id
                        WHERE v.project=%s AND v.status='active'
                        ORDER BY c.name, v.name""",
                     (project,),

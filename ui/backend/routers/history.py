@@ -362,10 +362,11 @@ async def get_session_tags(project: str | None = Query(None)):
     """Get current active session tags for a project."""
     p = project or settings.active_project or "default"
     if db.is_available():
+        tbl_st = db.client_table("session_tags")
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT phase, feature, bug_ref, extra FROM mng_session_tags WHERE project=%s",
+                    f"SELECT phase, feature, bug_ref, extra FROM {tbl_st} WHERE project=%s",
                     (p,),
                 )
                 row = cur.fetchone()
@@ -408,10 +409,11 @@ async def put_session_tags(body: SessionTagsUpdate, project: str | None = Query(
     tags_path.write_text(_json.dumps(tags, indent=2))
 
     if db.is_available():
+        tbl_st = db.client_table("session_tags")
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO mng_session_tags (project, phase, feature, bug_ref, extra, updated_at)
+                cur.execute(f"""
+                    INSERT INTO {tbl_st} (project, phase, feature, bug_ref, extra, updated_at)
                     VALUES (%s, %s, %s, %s, %s, NOW())
                     ON CONFLICT (project) DO UPDATE SET
                         phase = EXCLUDED.phase,

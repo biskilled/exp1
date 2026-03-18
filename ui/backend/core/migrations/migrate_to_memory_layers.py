@@ -60,13 +60,15 @@ async def run_migration(project: str) -> dict[str, int]:
         with db.conn() as conn:
             with conn.cursor() as cur:
 
-                # ── Step 1: mng_entity_values (feature/bug/task) → {tbl_wi} ─────────
+                # ── Step 1: cl_local_entity_values (feature/bug/task) → {tbl_wi} ────
+                _tbl_ev = db.client_table("entity_values")
+                _tbl_ec = db.client_table("entity_categories")
                 cur.execute(
-                    """SELECT v.id, c.name AS cat_name, c.id AS cat_id,
+                    f"""SELECT v.id, c.name AS cat_name, c.id AS cat_id,
                               v.name, v.description, v.status, v.lifecycle_status,
                               v.due_date, v.parent_id, v.created_at
-                       FROM mng_entity_values v
-                       JOIN mng_entity_categories c ON c.id = v.category_id
+                       FROM {_tbl_ev} v
+                       JOIN {_tbl_ec} c ON c.id = v.category_id
                        WHERE v.project=%s
                          AND c.name IN ('feature','bug','task')""",
                     (project,),

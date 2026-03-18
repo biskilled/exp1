@@ -615,23 +615,23 @@ async def _dispatch(name: str, args: dict) -> Any:
                     "purpose": "Credit/debit ledger (coupons, top-ups, charges)",
                     "key_columns": ["id SERIAL PK", "user_id FK→mng_users", "type", "amount_usd", "description"],
                 },
-                "mng_session_tags": {
+                "cl_local_session_tags": {
                     "purpose": "Active session state per project (phase, feature, bug being worked on)",
                     "key_columns": ["id SERIAL PK", "project UNIQUE", "phase", "feature", "bug_ref", "extra JSONB"],
                 },
-                "mng_entity_categories": {
+                "cl_local_entity_categories": {
                     "purpose": "Tag category definitions per project (feature, bug, task, component, etc.)",
                     "key_columns": ["id SERIAL PK", "project", "name", "color", "icon", "UNIQUE(project,name)"],
                 },
-                "mng_entity_values": {
+                "cl_local_entity_values": {
                     "purpose": "Tag instances — specific features, bugs, tasks tracked in Planner",
-                    "key_columns": ["id SERIAL PK", "category_id FK→mng_entity_categories", "project", "name",
+                    "key_columns": ["id SERIAL PK", "category_id FK→cl_local_entity_categories", "project", "name",
                                     "description", "status (active/done/archived)", "lifecycle_status",
                                     "due_date DATE", "parent_id FK→self"],
                 },
-                "mng_entity_value_links": {
+                "cl_local_entity_value_links": {
                     "purpose": "Dependencies between entity values (blocks, related_to)",
-                    "key_columns": ["from_value_id FK→mng_entity_values", "to_value_id FK→mng_entity_values",
+                    "key_columns": ["from_value_id FK→cl_local_entity_values", "to_value_id FK→cl_local_entity_values",
                                     "link_type (blocks/related_to)", "PK(from,to,link_type)"],
                 },
                 "mng_graph_workflows": {
@@ -643,7 +643,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                     "purpose": "Steps within a workflow (LLM calls, conditions, etc.)",
                     "key_columns": ["id SERIAL PK", "workflow_id FK→mng_graph_workflows", "name", "node_type",
                                     "prompt", "provider", "model", "pos_x", "pos_y", "config JSONB",
-                                    "role_id FK→mng_agent_roles"],
+                                    "role_id FK→cl_local_agent_roles"],
                 },
                 "mng_graph_edges": {
                     "purpose": "Directed connections between workflow nodes",
@@ -662,7 +662,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                 },
                 "mng_work_items": {
                     "purpose": "Structured feature/bug/task items with 4-agent pipeline tracking",
-                    "key_columns": ["id UUID PK", "project", "category_name", "category_id FK→mng_entity_categories",
+                    "key_columns": ["id UUID PK", "project", "category_name", "category_id FK→cl_local_entity_categories",
                                     "name", "description", "status (active/done/archived)",
                                     "lifecycle_status (idea/design/development/testing/review/done)",
                                     "due_date DATE", "parent_id FK→self",
@@ -697,15 +697,22 @@ async def _dispatch(name: str, args: dict) -> Any:
                                     "UNIQUE(project_id, fact_key) WHERE valid_until IS NULL"],
                 },
                 "mng_agent_roles": {
-                    "purpose": "Reusable LLM personas for workflow nodes (admin-editable system prompts)",
+                    "purpose": "Built-in role templates (read-only; seeding source for cl_local_agent_roles)",
                     "key_columns": ["id SERIAL PK", "project TEXT (default '_global')", "name TEXT",
                                     "description TEXT", "system_prompt TEXT", "provider TEXT",
                                     "model TEXT", "tags TEXT[]", "is_active BOOLEAN",
                                     "UNIQUE(project, name)"],
                 },
-                "mng_agent_role_versions": {
+                "cl_local_agent_roles": {
+                    "purpose": "Per-client reusable LLM personas for workflow nodes (admin-editable)",
+                    "key_columns": ["id SERIAL PK", "project TEXT (default '_global')", "name TEXT",
+                                    "description TEXT", "system_prompt TEXT", "provider TEXT",
+                                    "model TEXT", "tags TEXT[]", "is_active BOOLEAN",
+                                    "UNIQUE(project, name)"],
+                },
+                "cl_local_agent_role_versions": {
                     "purpose": "Audit log of role prompt/model changes",
-                    "key_columns": ["id SERIAL PK", "role_id FK→mng_agent_roles", "system_prompt TEXT",
+                    "key_columns": ["id SERIAL PK", "role_id FK→cl_local_agent_roles", "system_prompt TEXT",
                                     "provider TEXT", "model TEXT", "changed_by TEXT", "note TEXT"],
                 },
             },
@@ -727,8 +734,8 @@ async def _dispatch(name: str, args: dict) -> Any:
                                     "chunk_type (full/summary/function/class/section)", "language", "file_path"],
                 },
                 f"pr_local_{p}_event_tags": {
-                    "purpose": "Links raw events to mng_entity_values (legacy; new writes use mng_interaction_tags)",
-                    "key_columns": ["event_id INT", "entity_value_id FK→mng_entity_values",
+                    "purpose": "Links raw events to cl_local_entity_values (legacy; new writes use interaction_tags)",
+                    "key_columns": ["event_id INT", "entity_value_id FK→cl_local_entity_values",
                                     "auto_tagged BOOLEAN", "PK(event_id, entity_value_id)"],
                 },
                 f"pr_local_{p}_event_links": {

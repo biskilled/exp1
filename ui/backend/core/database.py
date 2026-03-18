@@ -36,6 +36,8 @@ class _Database:
         # Projects whose per-project schema has been verified this process lifetime.
         # Skips all DDL/ALTER on subsequent calls — safe because CREATE/ALTER are idempotent.
         self._schema_ready: set[str] = set()
+        # Clients whose per-client schema (cl_{client}_*) has been verified.
+        self._client_schema_ready: set[str] = set()
 
     def init(self) -> None:
         """Called at startup. Creates connection pool if DATABASE_URL is set."""
@@ -49,6 +51,7 @@ class _Database:
             with self.conn() as conn:
                 self._rename_legacy_tables(conn)
                 self._ensure_schema(conn)
+                self.ensure_client_schema("local", conn)
             self._available = True
             log.info("✅ PostgreSQL connected — user store: database")
         except Exception as e:
@@ -65,6 +68,12 @@ class _Database:
         safe = re.sub(r'[^a-z0-9]', '_', project.lower())[:40].strip('_')
         return f"pr_{client}_{safe}_{base}"
 
+    @staticmethod
+    def client_table(base: str, client: str = "local") -> str:
+        """Return per-client table name, e.g. cl_local_session_tags."""
+        safe = re.sub(r'[^a-z0-9]', '_', client.lower())[:20].strip('_')
+        return f"cl_{safe}_{base}"
+
     def ensure_project_schema(self, project: str) -> None:
         """Create per-project tables if they don't exist. Safe to call repeatedly.
 
@@ -75,6 +84,11 @@ class _Database:
             return
         if project in self._schema_ready:
             return   # already done this process lifetime — skip all DDL
+        # Per-client table refs used in FK constraints
+        tbl_cl_ev  = self.client_table("entity_values")     # cl_local_entity_values
+        tbl_cl_ec  = self.client_table("entity_categories") # cl_local_entity_categories
+        tbl_cl_ar  = self.client_table("agent_roles")       # cl_local_agent_roles
+
         tbl  = self.project_table
         c    = tbl("commits",          project)
         e    = tbl("events",           project)
@@ -145,7 +159,7 @@ class _Database:
 
         CREATE TABLE IF NOT EXISTS {et} (
             event_id        INT         NOT NULL,
-            entity_value_id INT         NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
+            entity_value_id INT         NOT NULL REFERENCES {tbl_cl_ev}(id) ON DELETE CASCADE,
             auto_tagged     BOOLEAN     NOT NULL DEFAULT FALSE,
             created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY(event_id, entity_value_id)
@@ -167,7 +181,7 @@ class _Database:
             id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
             project             TEXT          NOT NULL,
             category_name       TEXT          NOT NULL,
-            category_id         INT           REFERENCES mng_entity_categories(id) ON DELETE SET NULL,
+            category_id         INT           REFERENCES {tbl_cl_ec}(id) ON DELETE SET NULL,
             name                TEXT          NOT NULL,
             description         TEXT          NOT NULL DEFAULT '',
             status              VARCHAR(20)   NOT NULL DEFAULT 'active',
@@ -271,7 +285,7 @@ class _Database:
             id               UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
             workflow_id      UUID           NOT NULL REFERENCES {gw}(id) ON DELETE CASCADE,
             name             VARCHAR(255)   NOT NULL,
-            role_id          INT            REFERENCES mng_agent_roles(id) ON DELETE SET NULL,
+            role_id          INT            REFERENCES {tbl_cl_ar}(id) ON DELETE SET NULL,
             role_file        VARCHAR(255),
             role_prompt      TEXT           NOT NULL DEFAULT '',
             provider         VARCHAR(50)    NOT NULL DEFAULT 'claude',
@@ -349,16 +363,6 @@ class _Database:
             f"CREATE INDEX IF NOT EXISTS idx_{el}_to     ON {el}(to_event_id)",
             f"CREATE INDEX IF NOT EXISTS idx_{c}_session ON {c}(session_id) WHERE session_id IS NOT NULL",
             f"CREATE INDEX IF NOT EXISTS idx_{emb}_src   ON {emb}(source_type, source_id)",
-            "ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea'",
-            """CREATE TABLE IF NOT EXISTS mng_entity_value_links (
-                from_value_id INT NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
-                to_value_id   INT NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
-                link_type     VARCHAR(50) NOT NULL DEFAULT 'blocks',
-                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                PRIMARY KEY(from_value_id, to_value_id, link_type)
-            )""",
-            "CREATE INDEX IF NOT EXISTS idx_evl_from ON mng_entity_value_links(from_value_id)",
-            "CREATE INDEX IF NOT EXISTS idx_evl_to   ON mng_entity_value_links(to_value_id)",
         ]
         try:
             with self.conn() as conn:
@@ -378,6 +382,161 @@ class _Database:
             log.info(f"✅ Per-project schema ready for '{project}'")
         except Exception as exc:
             log.warning(f"ensure_project_schema({project}) failed: {exc}")
+
+    def ensure_client_schema(self, client: str = "local", _conn=None) -> None:
+        """Create and seed per-client tables (cl_{client}_*). Safe to call repeatedly.
+
+        Caches result per-client in _client_schema_ready — DDL only runs once per process.
+        Pass _conn to reuse an existing connection (caller handles commit).
+        """
+        if not self._available and _conn is None:
+            return
+        if client in self._client_schema_ready:
+            return
+        c = re.sub(r'[^a-z0-9]', '_', client.lower())[:20].strip('_')
+        tbl_st  = f"cl_{c}_session_tags"
+        tbl_ec  = f"cl_{c}_entity_categories"
+        tbl_ev  = f"cl_{c}_entity_values"
+        tbl_evl = f"cl_{c}_entity_value_links"
+        tbl_ar  = f"cl_{c}_agent_roles"
+        tbl_arv = f"cl_{c}_agent_role_versions"
+        ddl = f"""
+        CREATE TABLE IF NOT EXISTS {tbl_st} (
+            id         SERIAL       PRIMARY KEY,
+            project    VARCHAR(255) NOT NULL UNIQUE,
+            phase      VARCHAR(50),
+            feature    VARCHAR(255),
+            bug_ref    VARCHAR(255),
+            extra      JSONB        NOT NULL DEFAULT '{{}}',
+            updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_{tbl_st}_proj ON {tbl_st}(project);
+
+        CREATE TABLE IF NOT EXISTS {tbl_ec} (
+            id         SERIAL       PRIMARY KEY,
+            project    VARCHAR(255) NOT NULL,
+            name       VARCHAR(100) NOT NULL,
+            color      VARCHAR(30)  NOT NULL DEFAULT '#4a90e2',
+            icon       VARCHAR(10)  NOT NULL DEFAULT '⬡',
+            created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE(project, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{tbl_ec}_proj ON {tbl_ec}(project);
+
+        CREATE TABLE IF NOT EXISTS {tbl_ev} (
+            id               SERIAL       PRIMARY KEY,
+            category_id      INT          REFERENCES {tbl_ec}(id) ON DELETE CASCADE,
+            project          VARCHAR(255) NOT NULL,
+            name             VARCHAR(255) NOT NULL,
+            description      TEXT         NOT NULL DEFAULT '',
+            status           VARCHAR(20)  NOT NULL DEFAULT 'active',
+            created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            due_date         DATE,
+            parent_id        INT          REFERENCES {tbl_ev}(id) ON DELETE SET NULL,
+            lifecycle_status VARCHAR(20)  NOT NULL DEFAULT 'idea',
+            UNIQUE(project, category_id, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{tbl_ev}_cat    ON {tbl_ev}(category_id);
+        CREATE INDEX IF NOT EXISTS idx_{tbl_ev}_proj   ON {tbl_ev}(project);
+        CREATE INDEX IF NOT EXISTS idx_{tbl_ev}_parent ON {tbl_ev}(parent_id);
+
+        CREATE TABLE IF NOT EXISTS {tbl_evl} (
+            from_value_id INT         NOT NULL REFERENCES {tbl_ev}(id) ON DELETE CASCADE,
+            to_value_id   INT         NOT NULL REFERENCES {tbl_ev}(id) ON DELETE CASCADE,
+            link_type     VARCHAR(50) NOT NULL DEFAULT 'blocks',
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY(from_value_id, to_value_id, link_type)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{tbl_evl}_from ON {tbl_evl}(from_value_id);
+        CREATE INDEX IF NOT EXISTS idx_{tbl_evl}_to   ON {tbl_evl}(to_value_id);
+
+        CREATE TABLE IF NOT EXISTS {tbl_ar} (
+            id            SERIAL       PRIMARY KEY,
+            project       VARCHAR(100) NOT NULL DEFAULT '_global',
+            name          VARCHAR(255) NOT NULL,
+            description   TEXT         NOT NULL DEFAULT '',
+            system_prompt TEXT         NOT NULL DEFAULT '',
+            provider      VARCHAR(50)  NOT NULL DEFAULT 'claude',
+            model         VARCHAR(100) NOT NULL DEFAULT '',
+            tags          TEXT[]       NOT NULL DEFAULT '{{}}',
+            is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE(project, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{tbl_ar}_proj ON {tbl_ar}(project);
+
+        CREATE TABLE IF NOT EXISTS {tbl_arv} (
+            id            SERIAL       PRIMARY KEY,
+            role_id       INT          NOT NULL REFERENCES {tbl_ar}(id) ON DELETE CASCADE,
+            system_prompt TEXT         NOT NULL DEFAULT '',
+            provider      VARCHAR(50)  NOT NULL DEFAULT 'claude',
+            model         VARCHAR(100) NOT NULL DEFAULT '',
+            changed_by    VARCHAR(255),
+            changed_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            note          TEXT         NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_{tbl_arv}_role ON {tbl_arv}(role_id);
+        """
+        # Seeding: only if target table is empty (preserves data on upgrade)
+        _seed_ec = f"""
+            INSERT INTO {tbl_ec} (project, name, color, icon)
+            SELECT project, name, color, icon FROM mng_entity_categories
+            WHERE NOT EXISTS (SELECT 1 FROM {tbl_ec} LIMIT 1)
+            ON CONFLICT DO NOTHING
+        """
+        _seed_ar = f"""
+            INSERT INTO {tbl_ar}
+                (project, name, description, system_prompt, provider, model, tags, is_active)
+            SELECT project, name, description, system_prompt, provider, model, tags, is_active
+            FROM mng_agent_roles
+            WHERE NOT EXISTS (SELECT 1 FROM {tbl_ar} LIMIT 1)
+            ON CONFLICT DO NOTHING
+        """
+        # FK migration: fix cl_local_agent_role_versions to reference cl_local_agent_roles
+        # (after rename from mng_agent_role_versions the constraint still points to mng_agent_roles)
+        _fix_arv_fk = [
+            f"ALTER TABLE {tbl_arv} DROP CONSTRAINT IF EXISTS mng_agent_role_versions_role_id_fkey",
+            f"ALTER TABLE {tbl_arv} DROP CONSTRAINT IF EXISTS {tbl_arv}_role_id_fkey",
+            f"""ALTER TABLE {tbl_arv} ADD CONSTRAINT {tbl_arv}_role_id_fkey
+                FOREIGN KEY (role_id) REFERENCES {tbl_ar}(id) ON DELETE CASCADE""",
+        ]
+
+        def _run(conn):
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(ddl)
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                log.warning(f"ensure_client_schema({client}) DDL failed: {e}")
+                return
+            for label, sql in [("entity_categories seed", _seed_ec), ("agent_roles seed", _seed_ar)]:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(sql)
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    log.debug(f"Client schema {label} skipped: {e}")
+            for sql in _fix_arv_fk:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(sql)
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+            self._client_schema_ready.add(client)
+            log.info(f"✅ Per-client schema ready for client='{client}'")
+
+        if _conn is not None:
+            _run(_conn)
+        else:
+            try:
+                with self.conn() as conn:
+                    _run(conn)
+            except Exception as e:
+                log.warning(f"ensure_client_schema connection failed: {e}")
 
     @contextmanager
     def conn(self) -> Generator:
@@ -402,6 +561,7 @@ class _Database:
         """
         # Global shared tables: old_name → new_name
         _GLOBAL_RENAMES = [
+            # Phase 1: bare names → mng_ prefix
             ("users",               "mng_users"),
             ("usage_logs",          "mng_usage_logs"),
             ("transactions",        "mng_transactions"),
@@ -411,6 +571,13 @@ class _Database:
             ("entity_value_links",  "mng_entity_value_links"),
             ("agent_roles",         "mng_agent_roles"),
             ("agent_role_versions", "mng_agent_role_versions"),
+            # Phase 2: mng_ → cl_local_ (per-client tables)
+            ("mng_session_tags",        "cl_local_session_tags"),
+            ("mng_entity_categories",   "cl_local_entity_categories"),
+            ("mng_entity_values",       "cl_local_entity_values"),
+            ("mng_entity_value_links",  "cl_local_entity_value_links"),
+            ("mng_agent_role_versions", "cl_local_agent_role_versions"),
+            # Note: mng_agent_roles is NOT renamed — stays as read-only template
         ]
 
         # Per-project table patterns: old suffix → new base name (client fixed to "local")
@@ -531,24 +698,12 @@ class _Database:
             cur.execute(ddl)
         conn.commit()
 
-        _DDL_TAGGING = """
-        -- Active session tags per project (shared; commits are now per-project tables)
-        CREATE TABLE IF NOT EXISTS mng_session_tags (
-            id         SERIAL         PRIMARY KEY,
-            project    VARCHAR(255)   NOT NULL UNIQUE,
-            phase      VARCHAR(20),
-            feature    VARCHAR(255),
-            bug_ref    VARCHAR(255),
-            extra      JSONB          NOT NULL DEFAULT '{}',
-            updated_at TIMESTAMPTZ    NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_session_tags_project ON mng_session_tags(project);
-        """
-
         # Each optional block uses its own cursor + commit so a failure in one
         # does NOT roll back other blocks (psycopg2 shares one transaction by default).
+
+        # mng_entity_categories — read-only template; seeded from _DEFAULT_CATEGORIES via entities router.
+        # Per-client data lives in cl_{client}_entity_categories (see ensure_client_schema).
         _DDL_ENTITIES = """
-        -- Tag categories per project (feature, bug, component, doc_type, …)
         CREATE TABLE IF NOT EXISTS mng_entity_categories (
             id         SERIAL         PRIMARY KEY,
             project    VARCHAR(255)   NOT NULL,
@@ -559,41 +714,11 @@ class _Database:
             UNIQUE(project, name)
         );
         CREATE INDEX IF NOT EXISTS idx_ec_project ON mng_entity_categories(project);
-
-        -- Tag values (specific instances per category)
-        CREATE TABLE IF NOT EXISTS mng_entity_values (
-            id          SERIAL         PRIMARY KEY,
-            category_id INT            NOT NULL REFERENCES mng_entity_categories(id) ON DELETE CASCADE,
-            project     VARCHAR(255)   NOT NULL,
-            name        VARCHAR(255)   NOT NULL,
-            description TEXT           NOT NULL DEFAULT '',
-            status      VARCHAR(20)    NOT NULL DEFAULT 'active',
-            created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-            UNIQUE(project, category_id, name)
-        );
-        CREATE INDEX IF NOT EXISTS idx_ev_category ON mng_entity_values(category_id);
-        CREATE INDEX IF NOT EXISTS idx_ev_project  ON mng_entity_values(project);
-        ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS due_date DATE;
-        ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES mng_entity_values(id) ON DELETE SET NULL;
-        ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'idea';
-        CREATE INDEX IF NOT EXISTS idx_ev_parent ON mng_entity_values(parent_id);
-
-        -- Value-to-value dependency links (blocks, related_to, etc.)
-        CREATE TABLE IF NOT EXISTS mng_entity_value_links (
-            from_value_id INT NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
-            to_value_id   INT NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
-            link_type     VARCHAR(50) NOT NULL DEFAULT 'blocks',
-            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            PRIMARY KEY(from_value_id, to_value_id, link_type)
-        );
-        CREATE INDEX IF NOT EXISTS idx_evl_from ON mng_entity_value_links(from_value_id);
-        CREATE INDEX IF NOT EXISTS idx_evl_to   ON mng_entity_value_links(to_value_id);
-        -- events, event_tags, event_links are now per-project tables (see ensure_project_schema)
         """
 
+        # mng_agent_roles — read-only template; seeded with 10 built-in roles below.
+        # Per-client data lives in cl_{client}_agent_roles (see ensure_client_schema).
         _DDL_AGENT_ROLES = """
-        -- Agent role library: reusable LLM personas for workflow nodes.
-        -- All users see name/description; system_prompt is admin-only via the API.
         CREATE TABLE IF NOT EXISTS mng_agent_roles (
             id            SERIAL         PRIMARY KEY,
             project       TEXT           NOT NULL DEFAULT '_global',
@@ -609,26 +734,12 @@ class _Database:
             UNIQUE(project, name)
         );
         CREATE INDEX IF NOT EXISTS idx_ar_project ON mng_agent_roles(project);
-
-        -- Version history: written on every PATCH to system_prompt/provider/model.
-        CREATE TABLE IF NOT EXISTS mng_agent_role_versions (
-            id            SERIAL         PRIMARY KEY,
-            role_id       INT            NOT NULL REFERENCES mng_agent_roles(id) ON DELETE CASCADE,
-            system_prompt TEXT           NOT NULL,
-            provider      TEXT           NOT NULL,
-            model         TEXT           NOT NULL,
-            changed_by    TEXT,
-            changed_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-            note          TEXT           NOT NULL DEFAULT ''
-        );
-        CREATE INDEX IF NOT EXISTS idx_arv_role ON mng_agent_role_versions(role_id);
         """
 
         for label, sql in [
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
-            ("Tagging (commits + mng_session_tags)", _DDL_TAGGING),
-            ("Entities (mng_entity_categories + mng_entity_values + links)", _DDL_ENTITIES),
-            ("Agent roles (mng_agent_roles + mng_agent_role_versions)", _DDL_AGENT_ROLES),
+            ("Entities template (mng_entity_categories)", _DDL_ENTITIES),
+            ("Agent roles template (mng_agent_roles)", _DDL_AGENT_ROLES),
         ]:
             try:
                 with conn.cursor() as cur:

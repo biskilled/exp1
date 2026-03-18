@@ -113,7 +113,7 @@ async def list_work_items(
                           (SELECT COUNT(*) FROM {tbl_itag} it
                            WHERE it.work_item_id = w.id) AS interaction_count
                    FROM {tbl_wi} w
-                   LEFT JOIN mng_entity_categories ec ON ec.project=w.project AND ec.name=w.category_name
+                   LEFT JOIN {db.client_table("entity_categories")} ec ON ec.project=w.project AND ec.name=w.category_name
                    WHERE {' AND '.join(where)}
                    ORDER BY w.category_name, w.status, w.created_at DESC
                    LIMIT %s""",
@@ -150,12 +150,13 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
     tbl_mi   = db.project_table("memory_items",     p)
     tbl_pf   = db.project_table("project_facts",    p)
 
-    # Resolve category_id from mng_entity_categories if it exists
+    # Resolve category_id from cl_local_entity_categories if it exists
+    _tbl_ec = db.client_table("entity_categories")
     category_id = None
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM mng_entity_categories WHERE project=%s AND name=%s",
+                f"SELECT id FROM {_tbl_ec} WHERE project=%s AND name=%s",
                 (p, body.category_name),
             )
             row = cur.fetchone()
@@ -454,8 +455,9 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    _tbl_ar = db.client_table("agent_roles")
                     cur.execute(
-                        """SELECT name, id FROM mng_agent_roles
+                        f"""SELECT name, id FROM {_tbl_ar}
                            WHERE is_active=TRUE AND project='_global'
                            AND name IN ('Product Manager','Sr. Architect','Web Developer','Code Reviewer')"""
                     )

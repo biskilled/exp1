@@ -97,8 +97,9 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    tbl_ar = db.client_table("agent_roles")
                     cur.execute(
-                        "SELECT system_prompt FROM mng_agent_roles WHERE id=%s AND is_active=TRUE",
+                        f"SELECT system_prompt FROM {tbl_ar} WHERE id=%s AND is_active=TRUE",
                         (node["role_id"],),
                     )
                     row = cur.fetchone()
