@@ -66,12 +66,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Project visibility and listing issues (2026-03-18) \u2014 Recent projects list shows 'aiCli' but doesn't display it as selectable project; investigating openProject() function and project query logic; backend startup delay on free tier acceptable",
-    "PROJECT.md load performance optimization (2026-03-17) \u2014 >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under consideration",
-    "_continueToApp retry logic (2026-03-18) \u2014 Added race condition handling if projects load succeeds but returns empty; retry mechanism to ensure reliable app startup",
-    "Multi-agent workflow system (2026-03-16) \u2014 Async DAG executor integration with Cytoscape.js visualization + YAML config for multi-agent prompt orchestration",
-    "Dual-layer memory distillation (2026-03-16) \u2014 Raw JSONL \u2192 interaction_tags \u2192 5 memory files pipeline; fixed session_bulk_tag() for consistency across both tables",
-    "Session phase persistence and tag deduplication (2026-03-15) \u2014 Phase loads from DB on init, saves via PATCH; 149 tags with 0 duplicates; removal propagates across all views"
+    "Project visibility and listing issues (2026-03-18) \u2014 AiCli appears in Recent projects but not displaying as selectable/current project in main view; investigating openProject() timing during backend init",
+    "Backend startup race condition handling (2026-03-18) \u2014 Added _continueToApp retry logic to handle projects query success returning empty list; prevents false \"project not found\" errors",
+    "AttributeError fixes in main.py (2026-03-18) \u2014 Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir variable scoping in memory endpoint",
+    "PROJECT.md load performance (2026-03-17) \u2014 >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under evaluation",
+    "Multi-agent workflow system integration (2026-03-16) \u2014 Async DAG executor with Cytoscape.js visualization + YAML config for orchestrating multi-agent prompts",
+    "Dual-layer memory distillation pipeline (2026-03-16) \u2014 Raw JSONL \u2192 interaction_tags \u2192 5 memory files; fixed session_bulk_tag() consistency across both tables"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -103,7 +103,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-18T21:02:53Z",
+  "last_memory_run": "2026-03-18T21:07:40Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state",
@@ -119,15 +119,16 @@
       "MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking",
       "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config",
       "Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()",
-      "Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at"
+      "Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at",
+      "Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)"
     ],
     "in_progress": [
-      "Project visibility and listing issues (2026-03-18) \u2014 Recent projects list shows 'aiCli' but doesn't display it as selectable project; investigating openProject() function and project query logic; backend startup delay on free tier acceptable",
-      "PROJECT.md load performance optimization (2026-03-17) \u2014 >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under consideration",
-      "_continueToApp retry logic (2026-03-18) \u2014 Added race condition handling if projects load succeeds but returns empty; retry mechanism to ensure reliable app startup",
-      "Multi-agent workflow system (2026-03-16) \u2014 Async DAG executor integration with Cytoscape.js visualization + YAML config for multi-agent prompt orchestration",
-      "Dual-layer memory distillation (2026-03-16) \u2014 Raw JSONL \u2192 interaction_tags \u2192 5 memory files pipeline; fixed session_bulk_tag() for consistency across both tables",
-      "Session phase persistence and tag deduplication (2026-03-15) \u2014 Phase loads from DB on init, saves via PATCH; 149 tags with 0 duplicates; removal propagates across all views"
+      "Project visibility and listing issues (2026-03-18) \u2014 AiCli appears in Recent projects but not displaying as selectable/current project in main view; investigating openProject() timing during backend init",
+      "Backend startup race condition handling (2026-03-18) \u2014 Added _continueToApp retry logic to handle projects query success returning empty list; prevents false \"project not found\" errors",
+      "AttributeError fixes in main.py (2026-03-18) \u2014 Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir variable scoping in memory endpoint",
+      "PROJECT.md load performance (2026-03-17) \u2014 >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under evaluation",
+      "Multi-agent workflow system integration (2026-03-16) \u2014 Async DAG executor with Cytoscape.js visualization + YAML config for orchestrating multi-agent prompts",
+      "Dual-layer memory distillation pipeline (2026-03-16) \u2014 Raw JSONL \u2192 interaction_tags \u2192 5 memory files; fixed session_bulk_tag() consistency across both tables"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -136,16 +137,13 @@
       "ui_components": "xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre",
       "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "db_schema": "Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)",
       "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)",
       "workflow_engine": "Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization",
       "mcp": "Standalone stdio MCP server with 12+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity, update_entity, list_entities, get_feature_status)",
-      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
-      "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, and MCP integration settings"
+      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder"
     },
-    "project_summary": "aicli is a shared AI memory platform that integrates with Claude CLI and LLM platforms, combining flat-file JSONL history with PostgreSQL pgvector semantic search and a nested tagging system. It features an Electron desktop UI with xterm.js and Monaco, multi-agent workflow orchestration via async DAG execution, and a stdio MCP server for project state/memory queries. Current focus: resolving project visibility/listing bugs and load performance on Railway free tier while maintaining dual-layer memory synthesis and tag consistency across sessions.",
-    "memory_digest": "**[2026-03-18]** `session_log` \u2014 Project visibility issue identified: aiCli appears in Recent but not as selectable project; requires openProject() and listing query debugging. Backend startup delay on free tier acceptable; _continueToApp retry logic implemented for race conditions.\n\n**[2026-03-17]** `performance_audit` \u2014 PROJECT.md load time exceeds 1 minute on Railway free tier; investigating DB query latency vs file I/O; pagination/lazy-loading proposed.\n\n**[2026-03-16]** `feature_integration` \u2014 Multi-agent workflow system with async DAG executor and Cytoscape.js visualization approved; dual-layer memory distillation (JSONL \u2192 interaction_tags \u2192 5 output files) fixed for consistency.\n\n**[2026-03-15]** `persistence_fix` \u2014 Session phase now persists via DB load on init and PATCH save; 149 tags deduplicated (0 duplicates); removal propagates across Chat/History/Commits views.\n\n**[2026-03-10]** `architecture_review` \u2014 Nested tag hierarchy expanded beyond 2 levels via parent_id FK; load-once-on-access pattern eliminated redundant SQL calls; 3-dot menu pattern adopted for Planner UI; port binding conflicts resolved via freePort() cleanup."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron/vanilla JS frontend that synthesizes development history into structured memory using Claude Haiku, semantic search via PostgreSQL + pgvector, and multi-agent workflow orchestration. Currently addressing project visibility bugs, load performance optimization on free tier, and completing dual-layer memory distillation pipeline with MCP server integration for data retrieval and entity management.",
+    "memory_digest": "**[2026-03-18]** `bug fix` \u2014 Removed stale db.ensure_project_schema() call in main.py causing AttributeError; replaced with _ensure_shared_schema pattern.\n**[2026-03-18]** `bug fix` \u2014 Fixed undefined code_dir variable in CLAUDE.md template generation (line 1120 in memory endpoint); variable now properly scoped from config.\n**[2026-03-18]** `architecture` \u2014 Enhanced _continueToApp retry logic to handle race condition where projects query succeeds but returns empty list, preventing false \"project not found\" errors on startup.\n**[2026-03-18]** `pending investigation` \u2014 Project visibility bug identified: AiCli displays in Recent projects list but fails to show as current active project in main project selector view; timing issue during backend initialization suspected.\n**[2026-03-17]** `performance` \u2014 Identified >1 minute PROJECT.md load time on free Railway tier; investigating root cause between DB query latency and file I/O bottleneck; pagination/lazy-loading considered as mitigation.\n**[2026-03-16]** `feature` \u2014 Multi-agent workflow system integration progressing: async DAG executor with Cytoscape.js visualization + YAML configuration for multi-agent prompt orchestration.\n**[2026-03-16]** `feature` \u2014 Dual-layer memory synthesis pipeline validated: raw JSONL \u2192 interaction_tags \u2192 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules); session_bulk_tag() consistency fixed.\n**[2026-03-15]** `data model` \u2014 Session phase persistence confirmed working: loads from DB on init, saves via PATCH /chat/sessions/{id}/tags; tag deduplication verified (149 tags, 0 duplicates).\n**[2026-03-10]** `architecture` \u2014 Load-once-on-access pattern implemented to eliminate redundant SQL calls; tag cache loaded once per project tab and synced across Chat/History/Commits on explicit save.\n**[2026-03-10]** `ui/ux` \u2014 Nested tag hierarchy approved beyond 2-level constraint; login established as first-level hierarchy; 3-dot menu pattern adopted for Planner action visibility."
   }
 }

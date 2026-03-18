@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-18 21:02 UTC by aicli /memory_
+_Generated: 2026-03-18 21:06 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron/vanilla JS frontend that synthesizes development history into structured memory using Claude Haiku, semantic search via PostgreSQL + pgvector, and multi-agent workflow orchestration. Currently addressing project visibility bugs, load performance optimization on free tier, and completing dual-layer memory distillation pipeline with MCP server integration for data retrieval and entity management.
 
 ## Project Facts
 
@@ -55,12 +59,12 @@ _Generated: 2026-03-18 21:02 UTC by aicli /memory_
 
 ## In Progress
 
-- Project visibility and listing issues (2026-03-18) — Recent projects list shows 'aiCli' but doesn't display it as selectable project; investigating openProject() function and project query logic; backend startup delay on free tier acceptable
-- PROJECT.md load performance optimization (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under consideration
-- _continueToApp retry logic (2026-03-18) — Added race condition handling if projects load succeeds but returns empty; retry mechanism to ensure reliable app startup
-- Multi-agent workflow system (2026-03-16) — Async DAG executor integration with Cytoscape.js visualization + YAML config for multi-agent prompt orchestration
-- Dual-layer memory distillation (2026-03-16) — Raw JSONL → interaction_tags → 5 memory files pipeline; fixed session_bulk_tag() for consistency across both tables
-- Session phase persistence and tag deduplication (2026-03-15) — Phase loads from DB on init, saves via PATCH; 149 tags with 0 duplicates; removal propagates across all views
+- Project visibility and listing issues (2026-03-18) — AiCli appears in Recent projects but not displaying as selectable/current project in main view; investigating openProject() timing during backend init
+- Backend startup race condition handling (2026-03-18) — Added _continueToApp retry logic to handle projects query success returning empty list; prevents false "project not found" errors
+- AttributeError fixes in main.py (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir variable scoping in memory endpoint
+- PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under evaluation
+- Multi-agent workflow system integration (2026-03-16) — Async DAG executor with Cytoscape.js visualization + YAML config for orchestrating multi-agent prompts
+- Dual-layer memory distillation pipeline (2026-03-16) — Raw JSONL → interaction_tags → 5 memory files; fixed session_bulk_tag() consistency across both tables
 
 ## Active Features / Bugs / Tasks
 
@@ -79,7 +83,7 @@ _Generated: 2026-03-18 21:02 UTC by aicli /memory_
 ### Feature
 
 - **UI** `(8 events, 7 commits)`
-- **shared-memory** `(3 events)`
+- **shared-memory** `(4 events)`
 - **dropbox**
 - **pagination**
 - **tagging**
@@ -93,13 +97,13 @@ _Generated: 2026-03-18 21:02 UTC by aicli /memory_
 
 ### Phase
 
-- **discovery** `(1 events)`
+- **discovery** `(8 events, 7 commits)`
 - **development**
 - **prod**
 
 ### Task
 
-- **memory** `(1 events)`
+- **memory** `(2 events)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
 ## Recent Memory
@@ -169,3 +173,16 @@ _Generated: 2026-03-18 21:02 UTC by aicli /memory_
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-18]** `bug fix` — Removed stale db.ensure_project_schema() call in main.py causing AttributeError; replaced with _ensure_shared_schema pattern.
+**[2026-03-18]** `bug fix` — Fixed undefined code_dir variable in CLAUDE.md template generation (line 1120 in memory endpoint); variable now properly scoped from config.
+**[2026-03-18]** `architecture` — Enhanced _continueToApp retry logic to handle race condition where projects query succeeds but returns empty list, preventing false "project not found" errors on startup.
+**[2026-03-18]** `pending investigation` — Project visibility bug identified: AiCli displays in Recent projects list but fails to show as current active project in main project selector view; timing issue during backend initialization suspected.
+**[2026-03-17]** `performance` — Identified >1 minute PROJECT.md load time on free Railway tier; investigating root cause between DB query latency and file I/O bottleneck; pagination/lazy-loading considered as mitigation.
+**[2026-03-16]** `feature` — Multi-agent workflow system integration progressing: async DAG executor with Cytoscape.js visualization + YAML configuration for multi-agent prompt orchestration.
+**[2026-03-16]** `feature` — Dual-layer memory synthesis pipeline validated: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules); session_bulk_tag() consistency fixed.
+**[2026-03-15]** `data model` — Session phase persistence confirmed working: loads from DB on init, saves via PATCH /chat/sessions/{id}/tags; tag deduplication verified (149 tags, 0 duplicates).
+**[2026-03-10]** `architecture` — Load-once-on-access pattern implemented to eliminate redundant SQL calls; tag cache loaded once per project tab and synced across Chat/History/Commits on explicit save.
+**[2026-03-10]** `ui/ux` — Nested tag hierarchy approved beyond 2-level constraint; login established as first-level hierarchy; 3-dot menu pattern adopted for Planner action visibility.
