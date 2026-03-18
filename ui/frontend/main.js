@@ -41,18 +41,27 @@ async function boot() {
   if (localStorage.getItem('aicli_sidebar_open') === '0')
     document.body.classList.add('sidebar-collapsed');
 
-  // 1. Check backend health + whether auth is required
+  // 1. Check backend health — retry up to 8× (1.5 s apart) so the UI waits
+  //    for the backend process to finish starting rather than immediately
+  //    showing "No projects" because the first request was refused.
   let backendOk = false;
-  try {
-    const h = await api.health();
-    backendOk = true;
-    setState({
-      backendOnline: true,
-      requireAuth: h.require_auth || false,
-    });
-  } catch {
-    setState({ backendOnline: false });
-    updateStatusDot();
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      const h = await api.health();
+      backendOk = true;
+      setState({ backendOnline: true, requireAuth: h.require_auth || false });
+      break;
+    } catch {
+      if (attempt < 7) {
+        // Show "Connecting…" with attempt count so the user sees progress
+        const st = document.getElementById('status-text');
+        if (st) st.textContent = `Connecting… (${attempt + 1})`;
+        await new Promise(r => setTimeout(r, 1500));
+      } else {
+        setState({ backendOnline: false });
+        updateStatusDot();
+      }
+    }
   }
 
   if (!backendOk) {
@@ -86,11 +95,17 @@ async function boot() {
 }
 
 async function _continueToApp(user) {
-  try {
-    const data = await api.listProjects();
-    setState({ projects: data.projects || [] });
-  } catch (e) {
-    console.warn('Could not load projects:', e.message);
+  // Load project list — one retry if first attempt returns empty (backend warming up)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const data = await api.listProjects();
+      const projects = data.projects || [];
+      setState({ projects });
+      if (projects.length > 0) break;
+    } catch (e) {
+      console.warn('Could not load projects:', e.message);
+    }
+    if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
   }
 
   updateStatusDot();

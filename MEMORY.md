@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-18 18:21 UTC by aicli /memory_
+_Generated: 2026-03-18 18:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to provide persistent semantic memory, project tracking, and multi-agent workflow orchestration across LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok). Currently at version 2.2.0, it uses PostgreSQL+pgvector for semantic search, JSONL for history with rotation, and an MCP server for tool integration; active focus is resolving PROJECT.md load performance issues and a project visibility regression on the free Railway tier.
 
 ## Tech Stack
 
@@ -26,9 +30,9 @@ _Generated: 2026-03-18 18:21 UTC by aicli /memory_
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables with real indexed columns (phase/feature/session_id)
+- Flat file primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables with indexed columns (phase/feature/session_id)
 - Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server for local dev
-- JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free
+- JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
@@ -39,45 +43,45 @@ _Generated: 2026-03-18 18:21 UTC by aicli /memory_
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Performance: load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
+- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
 
 ## In Progress
 
-- PROJECT.md load performance optimization (2026-03-17) — User reported >1 minute load time on free Railway tier when opening aiCli project; investigating if root cause is DB query latency or file I/O bottleneck; considering pagination/lazy-loading for project initialization
-- Project visibility issue (2026-03-17) — aiCli project disappeared from recent projects list; unclear if UI state bug or DB query regression; requires verification of openProject() function and project listing logic
-- Multi-agent workflow system (2026-03-16) — Analyzed specrails pattern (Claude Code agent with 12 prompt roles) and evaluated async DAG executor integration with Cytoscape.js visualization + YAML config
-- Config externalization and MCP readiness (2026-03-16) — Moved backend_url, haiku_model, db_pool_max to config.py; added /health check for MCP server initialization verification
-- Dual-layer memory distillation (2026-03-16) — Implemented raw JSONL → interaction_tags → 5 memory files pipeline; fixed session_bulk_tag() to write to both event_tags and interaction_tags for consistency
-- Session phase persistence and tag deduplication (2026-03-15) — Phase now loads from DB on init and saves via PATCH; 149 tags with 0 duplicates; removal via UI buttons propagates across Chat/History/Commits views
+- PROJECT.md load performance optimization (2026-03-17) — >1 minute load time on free Railway tier when opening aiCli project; investigating DB query latency vs file I/O bottleneck; considering pagination/lazy-loading
+- Project visibility issue (2026-03-17) — aiCli project disappeared from recent projects list; requires verification of openProject() function and project listing query logic
+- Multi-agent workflow system (2026-03-16) — Async DAG executor integration with Cytoscape.js visualization + YAML config for multi-agent prompt orchestration
+- Config externalization and MCP readiness (2026-03-16) — Moved backend_url, haiku_model, db_pool_max to config.py; added /health check for MCP server initialization
+- Dual-layer memory distillation (2026-03-16) — Raw JSONL → interaction_tags → 5 memory files pipeline; fixed session_bulk_tag() for consistency across both tables
+- Session phase persistence and tag deduplication (2026-03-15) — Phase loads from DB on init, saves via PATCH; 149 tags with 0 duplicates; removal propagates across all views
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks**
+- **hooks** `(2 events)`
 
 ### Doc_type
 
-- **high-level-design**
-- **low-level-design**
-- **customer-meeting** — dsds
-- **retrospective**
+- **high-level-design** `(1 events)`
+- **low-level-design** `(1 events)`
 - **Test**
+- **retrospective**
+- **customer-meeting** — dsds
 
 ### Feature
 
-- **shared-memory**
-- **graph-workflow**
-- **billing**
-- **auth**
-- **embeddings**
-- **tagging**
-- **mcp**
-- **workflow-runner**
+- **shared-memory** `(3 events)`
 - **test-picker-feature**
 - **UI**
 - **dropbox**
 - **pagination**
+- **tagging**
+- **graph-workflow**
+- **billing**
+- **auth**
+- **embeddings**
+- **mcp**
+- **workflow-runner**
 
 ### Phase
 
@@ -87,44 +91,25 @@ _Generated: 2026-03-18 18:21 UTC by aicli /memory_
 
 ### Task
 
+- **memory** `(1 events)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
-- **memory**
 
-## Recent Work (last 10 exchanges)
+**[2026-03-17]** `issue_report` — PROJECT.md load time exceeds 1 minute on free Railway tier; investigating whether root cause is DB query latency or file I/O; requires pagination/lazy-loading analysis.
 
-**[2026-03-18 18:15]** `claude_cli/claude`
-Q: There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run the memory - and ther ewas an error in line 1120 - {code_dir}/CLAUDE.md  - code
+**[2026-03-17]** `bug_report` — aiCli project disappeared from recent projects list; underlying cause unclear (UI state bug vs DB query regression); openProject() function verification needed.
 
-**[2026-03-18 17:44]** `claude_cli/claude`
-Q: it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did you mean: '_ensure_shared_schema'? also I do not see my AiCli project (only at 
-A: Everything is working. Here's the summary of all fixes applied:  ---  **3 issues fixed:**  **1. `main.py`** — removed the stale `db.ensure_project_schema(settings.active_project)` call  **2. `database.py` — 4 schema fixes:** - `_ensure_schema()` now runs DDL statement-by-statement instead of as one 
+**[2026-03-16]** `feature_complete` — Multi-agent workflow system analyzed and approved; async DAG executor with Cytoscape.js visualization and YAML config for orchestrating multi-agent prompt chains.
 
-**[2026-03-18 16:00]** `claude_cli/claude`
-Q: That is correct. it is bed pattern to use clinet name. there is already mng_users table that can manage client as well (client can have multiple users, but probably small amount if users up to 5 max p
+**[2026-03-16]** `refactor_complete` — Config externalization finished: backend_url, haiku_model, db_pool_max moved to config.py; /health check endpoint added for MCP server readiness verification.
 
-**[2026-03-18 15:49]** `claude_cli/claude`
-Q: I would like to know what do you think about the architecure ? Assuming there might be diffrent clients (for each clinet might be diffrenet projects) . Also what is the best way to manage free / unreg
-A: ## Architectural Review: 3-Layer Client/Project Tables  ### What's Good  The three-tier naming is clear and the seeding pattern (`mng_` → `cl_local_` on first run) is clean. For a single-tenant tool it works well today.  ---  ### Key Concerns at Scale  **1. Table proliferation**  With the current de
+**[2026-03-16]** `feature_complete` — Dual-layer memory distillation pipeline implemented: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules); session_bulk_tag() fixed for table consistency.
 
-**[2026-03-18 12:51]** `claude_cli/claude`
-Q: I would like to make sure the client table are also aligned - for example mng_session_tags - is related to client (that can have multiple projects) also entitiy is per client. currently, as I am testi
+**[2026-03-15]** `bug_fix` — Session phase persistence resolved: phase loads from DB on init and persists via PATCH /chat/sessions/{id}/tags; tag deduplication audit found 149 tags with zero duplicates; removal propagates across Chat/History/Commits.
 
-**[2026-03-18 12:00]** `claude_cli/claude`
-Q: clean that up . also I do remember there was graph support for memroy usage, but I dont see any record in. how graph tables are used in the app, who suppose to manage that? this is not suppose to be a
-A: All endpoints working correctly. Here's a summary of everything done:  **All `mng_graph_*` references eliminated** across 4 files:  | File | Changes | |------|---------| | `routers/graph_workflows.py` | Added `project: str = Query("")` to 12 endpoints; all `mng_graph_*` → `db.project_table()` | | `c
+**[2026-03-10]** `performance_optimization` — Eliminated redundant SQL calls by implementing load-once-on-access pattern; tag cache loaded once per project tab and updated only on explicit save.
 
-**[2026-03-18 11:51]** `claude_cli/claude`
-Q: I do see the table mng_session_tags, I also see session_tags.json file at the project workspace - is it in used , what is it for ?
-A: Everything is working. Here's the final state:  **Database — 24 tables, clean split:**  | Prefix | Count | Tables | |--------|-------|--------| | `mng_` | 14 | Global config: users, billing, entity taxonomy, graph workflows, agent roles | | `pr_local_aicli_` | 10 | Project data: commits, events, emb
+**[2026-03-10]** `feature_approved` — Nested tags hierarchy expanded beyond 2-level limit via parent_id FK; login remains first-level only; tree UI implemented in Planner with unlimited depth support.
 
-**[2026-03-18 10:46]** `claude_cli/claude`
-Q: looks better. why memory_items and project_facts are under systeme managament tables? there are not part of project ?
-A: All endpoints working. Let me update MEMORY.md to reflect the final table structure:
+**[2026-03-10]** `ux_improvement` — Planner action visibility increased via 3-dot menu button replacing small action buttons; unarchive capability added; AI suggestions marked clearly as requiring approval.
 
-**[2026-03-17 21:06]** `claude_cli/claude`
-Q: Can you run the command as well, as I dont see any change in the database . also I think that there are old tables that are not in used
-A: Clean. Here's the complete summary:  **Before:** 29 tables (mixed naming, 5 stale bare tables)   **After:** 24 tables — perfectly organized  ### Dropped (stale legacy tables) `commits`, `embeddings`, `events`, `event_tags`, `event_links` — these were pre-project-split bare tables with old data; the 
-
-**[2026-03-17 20:36]** `claude_cli/claude`
-Q: before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure the table as - mng_TABLE_NAME for all aiCli managend tables (global table for all 
-A: Clean. Let me also verify the `work_item_pipeline.py` core file is correct:
+**[2026-03-10]** `bug_identified` — Tags saved in UI disappear on session switch; unknown if UI rendering issue or DB save failure; root cause investigation deferred.
