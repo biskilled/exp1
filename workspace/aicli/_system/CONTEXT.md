@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-17 20:20 UTC — do not edit manually.
+> Auto-generated 2026-03-17 21:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 122
-- **Last active**: 2026-03-17T20:20:26Z
+- **Sessions**: 123
+- **Last active**: 2026-03-17T21:01:34Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -145,11 +145,18 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ├── cli.py                 ← Interactive REPL (prompt_toolkit + rich)
 
 
-*...258 more lines in PROJECT.md*
+*...303 more lines in PROJECT.md*
 
 ---
 
 ## Recent Development History
+
+**[2026-03-17 21:06]** `claude_cli/claude`  
+→ Can you run the command as well, as I dont see any change in the database . also I think that there are old tables that 
+
+**[2026-03-17 20:36]** `claude_cli/claude`  
+→ before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure th
+← _Clean. Let me also verify the `work_item_pipeline.py` core file is correct:_
 
 **[2026-03-17 20:13]** `claude_cli/claude`  
 → Planner works partial - I do see the nested work on some category like doc_type but in bug or feature ui is diffrent and
@@ -201,11 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-16 18:26]** `claude_cli/claude`  
 → are you using the mcp now? 
 ← _---  **To answer your question directly:**  No, I'm not using the MCP in this session. Everything I did was via direct HTTP calls (`curl`, Python `urllib`).  **What changes:**  - `.mcp.json` is now at_
-
-**[2026-03-16 18:02]** `claude_cli/claude`  
-→ Keys are stored at my .env file which you can load - for claude api the key is under ANTHROPIC_API_KEY and for openai th
-← _Everything is working end-to-end. Here's the full picture:  ---  ## Full Pipeline — Now Working  ### What just happened in sequence: 1. **Bug found and fixed** — `ARRAY_AGG(uuid[])` came back from psy_
-
-**[2026-03-16 17:42]** `claude_cli/claude`  
-→ Can you run the /memory and go over current architecure - how data is stored, how mcp is used, go ver all memory layer. 
-← _Now I have a complete picture. Let me give you a clear, honest assessment.  ---  ## `/memory` Run Results  **Ran successfully** — generated 5 files at 17:43 UTC. Result: `"synthesized": false` because_

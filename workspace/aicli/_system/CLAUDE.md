@@ -108,15 +108,15 @@ Layer 5 — Global Knowledge
 ```
 
 
-*See PROJECT.md for full documentation (338 lines total)*
+*See PROJECT.md for full documentation (383 lines total)*
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-17] `claude_cli`: can you use the mcp tool and explain what the code is doing ?
-- [2026-03-17] `claude_cli`: What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project m
 - [2026-03-17] `claude_cli`: I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-ch
 - [2026-03-17] `claude_cli`: I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked.
 - [2026-03-17] `claude_cli`: Planner works partial - I do see the nested work on some category like doc_type but in bug or featur
+- [2026-03-17] `claude_cli`: before I continue - I do see quite lots of table used for this project. can you remove unused tables
+- [2026-03-17] `claude_cli`: Can you run the command as well, as I dont see any change in the database . also I think that there 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-17 20:20 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-17 21:01 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-17] can you use the mcp tool and explain what the code is doing ?
 - [2026-03-17] What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project manager (high design)
 - [2026-03-17] I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used
 - [2026-03-17] I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked. I have created tagg
 - [2026-03-17] Planner works partial - I do see the nested work on some category like doc_type but in bug or feature ui is diffrent and
+- [2026-03-17] before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure th

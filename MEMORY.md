@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-17 20:20 UTC by aicli /memory_
+_Generated: 2026-03-17 21:01 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -58,26 +58,26 @@ _Generated: 2026-03-17 20:20 UTC by aicli /memory_
 
 ### Doc_type
 
-- **customer-meeting** — dsds `(54 events, 51 commits)`
-- **high-level-design** `(52 events, 51 commits)`
-- **retrospective** `(52 events, 51 commits)`
+- **customer-meeting** — dsds `(55 events, 51 commits)`
+- **high-level-design** `(53 events, 51 commits)`
+- **retrospective** `(53 events, 51 commits)`
+- **Test** `(1 events)`
 - **low-level-design**
-- **Test**
 
 ### Feature
 
-- **pagination** `(94 events, 51 commits)`
-- **auth** `(58 events, 51 commits)`
-- **mcp** `(4 events)`
-- **shared-memory** `(4 events)`
-- **graph-workflow** `(1 events)`
-- **UI** `(1 events)`
-- **workflow-runner** `(1 events)`
-- **tagging**
-- **billing**
-- **embeddings**
-- **test-picker-feature**
-- **dropbox**
+- **pagination** `(95 events, 51 commits)`
+- **auth** `(59 events, 51 commits)`
+- **mcp** `(5 events)`
+- **shared-memory** `(5 events)`
+- **graph-workflow** `(2 events)`
+- **UI** `(2 events)`
+- **workflow-runner** `(2 events)`
+- **tagging** `(1 events)`
+- **billing** `(1 events)`
+- **embeddings** `(1 events)`
+- **test-picker-feature** `(1 events)`
+- **dropbox** `(1 events)`
 
 ### Phase
 
@@ -91,6 +91,10 @@ _Generated: 2026-03-17 20:20 UTC by aicli /memory_
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
 ## Recent Work (last 10 exchanges)
+
+**[2026-03-17 20:36]** `claude_cli/claude`
+Q: before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure the table as - mng_TABLE_NAME for all aiCli managend tables (global table for all 
+A: Clean. Let me also verify the `work_item_pipeline.py` core file is correct:
 
 **[2026-03-17 20:13]** `claude_cli/claude`
 Q: Planner works partial - I do see the nested work on some category like doc_type but in bug or feature ui is diffrent and this is not working. also I do see there is life cycle project, but I am not su
@@ -126,7 +130,3 @@ Q: can you use the mcp tool and explain what the prject is about ?
 **[2026-03-16 19:02]** `claude_cli/claude`
 Q: yes
 A: All changes look correct. The Agent Roles implementation in `graph_workflow.js` is now complete. Here's a summary of what was done in this session:  **`graph_workflow.js` — completed:** - `_gwOnRoleChange(val)`: now auto-populates `cfg-provider` / `cfg-model` from the selected role's defaults, updat
-
-**[2026-03-16 19:00]** `claude_cli/claude`
-Q: I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over time (or stored that as local md files linked ..) I do want to store the prompts 
-A: Good design direction. Here's how this maps cleanly to what's already planned:  ---  ## Design: Agent Roles in Database  ### Schema (`agent_roles` + `agent_role_versions`)  ```sql -- Live role definitions CREATE TABLE agent_roles (     id        SERIAL PRIMARY KEY,     project   TEXT NOT NULL DEFAUL
