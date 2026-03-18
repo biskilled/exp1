@@ -324,11 +324,15 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
     f"""
     _require_db()
     p = _project(project)
-    tbl_wi   = db.project_table("work_items",        p)
-    tbl_int  = db.project_table("interactions",     p)
-    tbl_itag = db.project_table("interaction_tags", p)
-    tbl_mi   = db.project_table("memory_items",     p)
-    tbl_pf   = db.project_table("project_facts",    p)
+    tbl_wi   = db.project_table("work_items",          p)
+    tbl_int  = db.project_table("interactions",        p)
+    tbl_itag = db.project_table("interaction_tags",    p)
+    tbl_mi   = db.project_table("memory_items",        p)
+    tbl_pf   = db.project_table("project_facts",       p)
+    tbl_gw   = db.project_table("graph_workflows",     p)
+    tbl_gn   = db.project_table("graph_nodes",         p)
+    tbl_ge   = db.project_table("graph_edges",         p)
+    tbl_gr   = db.project_table("graph_runs",          p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -357,12 +361,12 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO mng_graph_runs (id, workflow_id, project, status, user_input)
-                           VALUES (%s, %s, %s, 'running', %s)f""",
+                        f"""INSERT INTO {tbl_gr} (id, workflow_id, project, status, user_input)
+                           VALUES (%s, %s, %s, 'running', %s)""",
                         (run_id_str, workflow_id, p, user_input),
                     )
                     # Get the int id of the inserted run
-                    cur.execute("SELECT id FROM mng_graph_runs WHERE workflow_id=%s AND project=%s ORDER BY id DESC LIMIT 1", (workflow_id, p))
+                    cur.execute(f"SELECT id FROM {tbl_gr} WHERE workflow_id=%s AND project=%s ORDER BY id DESC LIMIT 1", (workflow_id, p))
                     run_row = cur.fetchone()
                     run_id = run_row[0] if run_row else None
 
@@ -393,7 +397,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                                        acceptance_criteria=COALESCE(NULLIF(%s,''), acceptance_criteria),
                                        implementation_plan=COALESCE(NULLIF(%s,''), implementation_plan),
                                        updated_at=NOW()
-                                   WHERE id=%s::uuidf""",
+                                   WHERE id=%s::uuid""",
                                 (ac, impl, item_id),
                             )
                 except Exception as exc:
@@ -431,11 +435,14 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
     WF_NAME = "_work_item_pipeline"
     if not db.is_available():
         return None
+    tbl_gw = db.project_table("graph_workflows", project)
+    tbl_gn = db.project_table("graph_nodes",     project)
+    tbl_ge = db.project_table("graph_edges",     project)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id FROM mng_graph_workflows WHERE project=%s AND name=%s",
+                    f"SELECT id FROM {tbl_gw} WHERE project=%s AND name=%s",
                     (project, WF_NAME),
                 )
                 row = cur.fetchone()
@@ -473,7 +480,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO mng_graph_workflows (project, name, description, max_iterations, created_at, updated_at)
+                    f"""INSERT INTO {tbl_gw} (project, name, description, max_iterations, created_at, updated_at)
                        VALUES (%s, %s, %s, 3, NOW(), NOW()) RETURNING id""",
                     (project, WF_NAME, "4-agent PM → Architect → Developer → Reviewer pipeline for work items"),
                 )
@@ -482,7 +489,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
                 node_ids = []
                 for i, (node_name, provider, model, role_id, fallback_prompt) in enumerate(stages):
                     cur.execute(
-                        """INSERT INTO mng_graph_nodes
+                        f"""INSERT INTO {tbl_gn}
                                (workflow_id, name, provider, model, role_id, role_prompt,
                                 inject_context, require_approval, approval_msg,
                                 position_x, position_y, created_at, updated_at)
@@ -504,7 +511,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
                 ]
                 for src, tgt, cond, label in edge_defs:
                     cur.execute(
-                        """INSERT INTO mng_graph_edges
+                        f"""INSERT INTO {tbl_ge}
                                (workflow_id, source_node_id, target_node_id, condition, label,
                                 created_at, updated_at)
                            VALUES (%s,%s,%s,%s,%s, NOW(), NOW())""",

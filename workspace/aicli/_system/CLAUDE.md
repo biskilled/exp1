@@ -36,7 +36,7 @@ You are a senior Python software architect with deep expertise in:
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
+- Real DB columns for phase/feature/session_id in pr_local_{p}_events + pr_local_{p}_interactions with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
@@ -97,7 +97,7 @@ Layer 3 — Project Knowledge
 
 Layer 4 — Historical Knowledge
   └── workspace/{project}/_system/history.jsonl    — all interactions (UI + CLI + workflow + Cursor)
-  └── workspace/{project}/_system/events_{p}       — PostgreSQL event log, tagged to features/bugs
+  └── workspace/{project}/_system/ → DB: pr_local_{p}_events, pr_local_{p}_interactions  — event log + interaction log, tagged to features/bugs/tasks
       Past decisions, design discussions, feature history, bug postmortems, refactor notes
 
 Layer 5 — Global Knowledge

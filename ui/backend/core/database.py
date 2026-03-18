@@ -86,6 +86,11 @@ class _Database:
         itag = tbl("interaction_tags", project)
         mi   = tbl("memory_items",     project)
         pf   = tbl("project_facts",    project)
+        gw   = tbl("graph_workflows",    project)
+        gn   = tbl("graph_nodes",        project)
+        ge   = tbl("graph_edges",        project)
+        gr   = tbl("graph_runs",         project)
+        gnr  = tbl("graph_node_results", project)
         ddl = f"""
         CREATE TABLE IF NOT EXISTS {c} (
             id           SERIAL         PRIMARY KEY,
@@ -171,7 +176,7 @@ class _Database:
             parent_id           UUID          REFERENCES {wi}(id) ON DELETE SET NULL,
             acceptance_criteria TEXT          NOT NULL DEFAULT '',
             implementation_plan TEXT          NOT NULL DEFAULT '',
-            agent_run_id        INT           REFERENCES mng_graph_runs(id) ON DELETE SET NULL,
+            agent_run_id        UUID,
             agent_status        VARCHAR(20),
             tags                TEXT[]        NOT NULL DEFAULT '{{}}',
             created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
@@ -247,6 +252,88 @@ class _Database:
         );
         CREATE INDEX IF NOT EXISTS        idx_{pf}_project ON {pf}(project_id)            WHERE valid_until IS NULL;
         CREATE UNIQUE INDEX IF NOT EXISTS idx_{pf}_current ON {pf}(project_id, fact_key)  WHERE valid_until IS NULL;
+
+        -- Graph workflow definitions (per-project pipelines)
+        CREATE TABLE IF NOT EXISTS {gw} (
+            id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+            project        VARCHAR(255)   NOT NULL,
+            name           VARCHAR(255)   NOT NULL,
+            description    TEXT           NOT NULL DEFAULT '',
+            max_iterations INTEGER        NOT NULL DEFAULT 3,
+            created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            updated_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            UNIQUE(project, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{gw}_project ON {gw}(project);
+
+        -- Graph nodes (LLM steps within a workflow)
+        CREATE TABLE IF NOT EXISTS {gn} (
+            id               UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+            workflow_id      UUID           NOT NULL REFERENCES {gw}(id) ON DELETE CASCADE,
+            name             VARCHAR(255)   NOT NULL,
+            role_id          INT            REFERENCES mng_agent_roles(id) ON DELETE SET NULL,
+            role_file        VARCHAR(255),
+            role_prompt      TEXT           NOT NULL DEFAULT '',
+            provider         VARCHAR(50)    NOT NULL DEFAULT 'claude',
+            model            VARCHAR(100)   NOT NULL DEFAULT '',
+            output_schema    JSONB,
+            inject_context   BOOLEAN        NOT NULL DEFAULT TRUE,
+            require_approval BOOLEAN        NOT NULL DEFAULT FALSE,
+            approval_msg     TEXT           NOT NULL DEFAULT '',
+            position_x       REAL           NOT NULL DEFAULT 100,
+            position_y       REAL           NOT NULL DEFAULT 100,
+            created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_{gn}_workflow ON {gn}(workflow_id);
+
+        -- Graph edges (connections between nodes)
+        CREATE TABLE IF NOT EXISTS {ge} (
+            id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+            workflow_id    UUID         NOT NULL REFERENCES {gw}(id) ON DELETE CASCADE,
+            source_node_id UUID         NOT NULL REFERENCES {gn}(id) ON DELETE CASCADE,
+            target_node_id UUID         NOT NULL REFERENCES {gn}(id) ON DELETE CASCADE,
+            condition      JSONB,
+            label          VARCHAR(255) NOT NULL DEFAULT '',
+            created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_{ge}_workflow ON {ge}(workflow_id);
+
+        -- Workflow run instances
+        CREATE TABLE IF NOT EXISTS {gr} (
+            id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+            workflow_id    UUID           NOT NULL REFERENCES {gw}(id) ON DELETE CASCADE,
+            project        VARCHAR(255)   NOT NULL,
+            status         VARCHAR(50)    NOT NULL DEFAULT 'running',
+            user_input     TEXT           NOT NULL DEFAULT '',
+            context        JSONB          NOT NULL DEFAULT '{{}}',
+            started_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            finished_at    TIMESTAMPTZ,
+            total_cost_usd NUMERIC(12, 8) NOT NULL DEFAULT 0,
+            error          TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_{gr}_workflow ON {gr}(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_{gr}_project  ON {gr}(project);
+
+        -- Results per node per run
+        CREATE TABLE IF NOT EXISTS {gnr} (
+            id            SERIAL         PRIMARY KEY,
+            run_id        UUID           NOT NULL REFERENCES {gr}(id) ON DELETE CASCADE,
+            node_id       UUID           NOT NULL REFERENCES {gn}(id) ON DELETE CASCADE,
+            node_name     VARCHAR(255)   NOT NULL DEFAULT '',
+            status        VARCHAR(50)    NOT NULL DEFAULT 'running',
+            output        TEXT           NOT NULL DEFAULT '',
+            structured    JSONB,
+            input_tokens  INT            NOT NULL DEFAULT 0,
+            output_tokens INT            NOT NULL DEFAULT 0,
+            cost_usd      NUMERIC(12, 8) NOT NULL DEFAULT 0,
+            started_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+            finished_at   TIMESTAMPTZ,
+            iteration     INT            NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_{gnr}_run  ON {gnr}(run_id);
+        CREATE INDEX IF NOT EXISTS idx_{gnr}_node ON {gnr}(node_id);
         """
         # All DDL + migrations in a single transaction — one round-trip instead of 14.
         # Each statement is wrapped in a SAVEPOINT so a single failure (e.g. column
@@ -322,11 +409,6 @@ class _Database:
             ("entity_categories",   "mng_entity_categories"),
             ("entity_values",       "mng_entity_values"),
             ("entity_value_links",  "mng_entity_value_links"),
-            ("graph_workflows",     "mng_graph_workflows"),
-            ("graph_nodes",         "mng_graph_nodes"),
-            ("graph_edges",         "mng_graph_edges"),
-            ("graph_runs",          "mng_graph_runs"),
-            ("graph_node_results",  "mng_graph_node_results"),
             ("agent_roles",         "mng_agent_roles"),
             ("agent_role_versions", "mng_agent_role_versions"),
         ]
@@ -509,77 +591,6 @@ class _Database:
         -- events, event_tags, event_links are now per-project tables (see ensure_project_schema)
         """
 
-        _DDL_GRAPH = """
-        -- Graph workflow definitions
-        CREATE TABLE IF NOT EXISTS mng_graph_workflows (
-            id             SERIAL         PRIMARY KEY,
-            project        VARCHAR(255)   NOT NULL,
-            name           VARCHAR(255)   NOT NULL,
-            description    TEXT           NOT NULL DEFAULT '',
-            max_iterations INTEGER        NOT NULL DEFAULT 3,
-            created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-            UNIQUE(project, name)
-        );
-        CREATE INDEX IF NOT EXISTS idx_gw_project ON mng_graph_workflows(project);
-
-        -- Graph nodes (steps within a workflow)
-        CREATE TABLE IF NOT EXISTS mng_graph_nodes (
-            id          SERIAL         PRIMARY KEY,
-            workflow_id INT            NOT NULL REFERENCES mng_graph_workflows(id) ON DELETE CASCADE,
-            name        VARCHAR(255)   NOT NULL,
-            node_type   VARCHAR(50)    NOT NULL DEFAULT 'llm',
-            prompt      TEXT           NOT NULL DEFAULT '',
-            provider    VARCHAR(50)    NOT NULL DEFAULT 'claude',
-            model       VARCHAR(100)   NOT NULL DEFAULT '',
-            pos_x       REAL           NOT NULL DEFAULT 0,
-            pos_y       REAL           NOT NULL DEFAULT 0,
-            config      JSONB          NOT NULL DEFAULT '{}'
-        );
-        CREATE INDEX IF NOT EXISTS idx_gn_workflow ON mng_graph_nodes(workflow_id);
-
-        -- Graph edges (connections between nodes)
-        CREATE TABLE IF NOT EXISTS mng_graph_edges (
-            id            SERIAL       PRIMARY KEY,
-            workflow_id   INT          NOT NULL REFERENCES mng_graph_workflows(id) ON DELETE CASCADE,
-            source_node   INT          NOT NULL REFERENCES mng_graph_nodes(id) ON DELETE CASCADE,
-            target_node   INT          NOT NULL REFERENCES mng_graph_nodes(id) ON DELETE CASCADE,
-            edge_type     VARCHAR(50)  NOT NULL DEFAULT 'default',
-            UNIQUE(workflow_id, source_node, target_node, edge_type)
-        );
-
-        -- Workflow run instances
-        CREATE TABLE IF NOT EXISTS mng_graph_runs (
-            id              SERIAL         PRIMARY KEY,
-            workflow_id     INT            NOT NULL REFERENCES mng_graph_workflows(id) ON DELETE CASCADE,
-            project         VARCHAR(255)   NOT NULL,
-            status          VARCHAR(50)    NOT NULL DEFAULT 'pending',
-            started_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-            finished_at     TIMESTAMPTZ,
-            total_cost_usd  NUMERIC(12, 8) NOT NULL DEFAULT 0,
-            context         JSONB          NOT NULL DEFAULT '{}',
-            input           TEXT           NOT NULL DEFAULT '',
-            output          TEXT           NOT NULL DEFAULT ''
-        );
-        ALTER TABLE mng_graph_runs ADD COLUMN IF NOT EXISTS total_cost_usd NUMERIC(12, 8) NOT NULL DEFAULT 0;
-        ALTER TABLE mng_graph_runs ADD COLUMN IF NOT EXISTS context        JSONB          NOT NULL DEFAULT '{}';
-        CREATE INDEX IF NOT EXISTS idx_gr_workflow ON mng_graph_runs(workflow_id);
-        CREATE INDEX IF NOT EXISTS idx_gr_project  ON mng_graph_runs(project);
-
-        -- Results per node per run
-        CREATE TABLE IF NOT EXISTS mng_graph_node_results (
-            id        SERIAL         PRIMARY KEY,
-            run_id    INT            NOT NULL REFERENCES mng_graph_runs(id) ON DELETE CASCADE,
-            node_id   INT            NOT NULL REFERENCES mng_graph_nodes(id) ON DELETE CASCADE,
-            status    VARCHAR(50)    NOT NULL DEFAULT 'pending',
-            output    TEXT           NOT NULL DEFAULT '',
-            cost      NUMERIC(12, 8) NOT NULL DEFAULT 0,
-            started_at  TIMESTAMPTZ,
-            finished_at TIMESTAMPTZ
-        );
-        CREATE INDEX IF NOT EXISTS idx_gnr_run  ON mng_graph_node_results(run_id);
-        CREATE INDEX IF NOT EXISTS idx_gnr_node ON mng_graph_node_results(node_id);
-        """
-
         _DDL_AGENT_ROLES = """
         -- Agent role library: reusable LLM personas for workflow nodes.
         -- All users see name/description; system_prompt is admin-only via the API.
@@ -611,16 +622,12 @@ class _Database:
             note          TEXT           NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_arv_role ON mng_agent_role_versions(role_id);
-
-        -- Link graph_nodes to a reusable role (prompt loaded from mng_agent_roles at run time).
-        ALTER TABLE mng_graph_nodes ADD COLUMN IF NOT EXISTS role_id INT REFERENCES mng_agent_roles(id) ON DELETE SET NULL;
         """
 
         for label, sql in [
             ("Embeddings (pgvector)", _DDL_EMBEDDINGS),
             ("Tagging (commits + mng_session_tags)", _DDL_TAGGING),
             ("Entities (mng_entity_categories + mng_entity_values + links)", _DDL_ENTITIES),
-            ("Graph workflows (mng_graph_nodes, edges, runs, results)", _DDL_GRAPH),
             ("Agent roles (mng_agent_roles + mng_agent_role_versions)", _DDL_AGENT_ROLES),
         ]:
             try:

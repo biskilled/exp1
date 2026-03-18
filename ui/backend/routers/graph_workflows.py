@@ -20,7 +20,7 @@ Routes:
   DELETE /graph-workflows/{id}/edges/{eid}
 
   POST   /graph-workflows/{id}/runs    start run (background task)
-  GET    /graph-workflows/runs/{rid}   poll run status
+  GET    /graph-workflows/runs/{rid}   poll run status  (table: pr_local_{p}_graph_node_results)
   GET    /graph-workflows/{id}/runs    list runs
   DELETE /graph-workflows/runs/{rid}   cancel
 """
@@ -152,11 +152,12 @@ async def list_workflows(
 ):
     _require_db()
     p = _active_project(project)
+    tbl_gw = db.project_table("graph_workflows", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, project, name, description, max_iterations, created_at "
-                "FROM mng_graph_workflows WHERE project=%s ORDER BY created_at DESC",
+                f"SELECT id, project, name, description, max_iterations, created_at "
+                f"FROM {tbl_gw} WHERE project=%s ORDER BY created_at DESC",
                 (p,),
             )
             rows = cur.fetchall()
@@ -167,11 +168,12 @@ async def list_workflows(
 async def create_workflow(body: WorkflowCreate, user=Depends(get_optional_user)):
     _require_db()
     p = _active_project(body.project)
+    tbl_gw = db.project_table("graph_workflows", p)
     wf_id = str(uuid.uuid4())
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO mng_graph_workflows (id, project, name, description, max_iterations)
+                f"""INSERT INTO {tbl_gw} (id, project, name, description, max_iterations)
                    VALUES (%s, %s, %s, %s, %s)
                    RETURNING id, project, name, description, max_iterations, created_at""",
                 (wf_id, p, body.name, body.description, body.max_iterations),
@@ -181,13 +183,20 @@ async def create_workflow(body: WorkflowCreate, user=Depends(get_optional_user))
 
 
 @router.get("/runs/{run_id}")
-async def get_run(run_id: str, user=Depends(get_optional_user)):
+async def get_run(
+    run_id: str,
+    project: str = Query(""),
+    user=Depends(get_optional_user),
+):
     _require_db()
+    p = _active_project(project)
+    tbl_gr = db.project_table("graph_runs", p)
+    tbl_gnr = db.project_table("graph_node_results", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, workflow_id, project, status, user_input, context, "
-                "started_at, finished_at, total_cost_usd, error FROM mng_graph_runs WHERE id=%s",
+                f"SELECT id, workflow_id, project, status, user_input, context, "
+                f"started_at, finished_at, total_cost_usd, error FROM {tbl_gr} WHERE id=%s",
                 (run_id,),
             )
             row = cur.fetchone()
@@ -202,9 +211,9 @@ async def get_run(run_id: str, user=Depends(get_optional_user)):
                 "error": row[9],
             }
             cur.execute(
-                """SELECT id, node_id, node_name, status, output, structured,
+                f"""SELECT id, node_id, node_name, status, output, structured,
                           input_tokens, output_tokens, cost_usd, started_at, finished_at, iteration
-                   FROM mng_graph_node_results WHERE run_id=%s ORDER BY id""",
+                   FROM {tbl_gnr} WHERE run_id=%s ORDER BY id""",
                 (run_id,),
             )
             node_results = []
@@ -222,25 +231,39 @@ async def get_run(run_id: str, user=Depends(get_optional_user)):
 
 
 @router.delete("/runs/{run_id}")
-async def cancel_run(run_id: str, user=Depends(get_optional_user)):
+async def cancel_run(
+    run_id: str,
+    project: str = Query(""),
+    user=Depends(get_optional_user),
+):
     _require_db()
+    p = _active_project(project)
+    tbl_gr = db.project_table("graph_runs", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE mng_graph_runs SET status='cancelled', finished_at=NOW() WHERE id=%s AND status='running'",
+                f"UPDATE {tbl_gr} SET status='cancelled', finished_at=NOW() WHERE id=%s AND status='running'",
                 (run_id,),
             )
     return {"status": "cancelled", "run_id": run_id}
 
 
 @router.get("/{workflow_id}")
-async def get_workflow(workflow_id: str, user=Depends(get_optional_user)):
+async def get_workflow(
+    workflow_id: str,
+    project: str = Query(""),
+    user=Depends(get_optional_user),
+):
     _require_db()
+    p = _active_project(project)
+    tbl_gw = db.project_table("graph_workflows", p)
+    tbl_gn = db.project_table("graph_nodes", p)
+    tbl_ge = db.project_table("graph_edges", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, project, name, description, max_iterations, created_at "
-                "FROM mng_graph_workflows WHERE id=%s",
+                f"SELECT id, project, name, description, max_iterations, created_at "
+                f"FROM {tbl_gw} WHERE id=%s",
                 (workflow_id,),
             )
             row = cur.fetchone()
@@ -249,17 +272,17 @@ async def get_workflow(workflow_id: str, user=Depends(get_optional_user)):
             wf = _row_to_workflow(row)
 
             cur.execute(
-                """SELECT id, workflow_id, name, role_file, role_prompt, provider, model,
+                f"""SELECT id, workflow_id, name, role_file, role_prompt, provider, model,
                           output_schema, inject_context, position_x, position_y, created_at,
                           require_approval, approval_msg, role_id
-                   FROM mng_graph_nodes WHERE workflow_id=%s ORDER BY created_at""",
+                   FROM {tbl_gn} WHERE workflow_id=%s ORDER BY created_at""",
                 (workflow_id,),
             )
             wf["nodes"] = [_row_to_node(r) for r in cur.fetchall()]
 
             cur.execute(
-                """SELECT id, workflow_id, source_node_id, target_node_id, condition, label, created_at
-                   FROM mng_graph_edges WHERE workflow_id=%s ORDER BY created_at""",
+                f"""SELECT id, workflow_id, source_node_id, target_node_id, condition, label, created_at
+                   FROM {tbl_ge} WHERE workflow_id=%s ORDER BY created_at""",
                 (workflow_id,),
             )
             wf["edges"] = [_row_to_edge(r) for r in cur.fetchall()]
@@ -271,9 +294,12 @@ async def get_workflow(workflow_id: str, user=Depends(get_optional_user)):
 async def update_workflow(
     workflow_id: str,
     body: WorkflowUpdate,
+    project: str = Query(""),
     user=Depends(get_optional_user),
 ):
     _require_db()
+    p = _active_project(project)
+    tbl_gw = db.project_table("graph_workflows", p)
     fields = []
     values: list[Any] = []
     if body.name is not None:
@@ -288,18 +314,24 @@ async def update_workflow(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE mng_graph_workflows SET {', '.join(fields)} WHERE id=%s",
+                f"UPDATE {tbl_gw} SET {', '.join(fields)} WHERE id=%s",
                 values,
             )
     return {"updated": True, "workflow_id": workflow_id}
 
 
 @router.delete("/{workflow_id}")
-async def delete_workflow(workflow_id: str, user=Depends(get_optional_user)):
+async def delete_workflow(
+    workflow_id: str,
+    project: str = Query(""),
+    user=Depends(get_optional_user),
+):
     _require_db()
+    p = _active_project(project)
+    tbl_gw = db.project_table("graph_workflows", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM mng_graph_workflows WHERE id=%s", (workflow_id,))
+            cur.execute(f"DELETE FROM {tbl_gw} WHERE id=%s", (workflow_id,))
     return {"deleted": True, "workflow_id": workflow_id}
 
 
@@ -309,14 +341,17 @@ async def delete_workflow(workflow_id: str, user=Depends(get_optional_user)):
 async def create_node(
     workflow_id: str,
     body: NodeCreate,
+    project: str = Query(""),
     user=Depends(get_optional_user),
 ):
     _require_db()
+    p = _active_project(project)
+    tbl_gn = db.project_table("graph_nodes", p)
     node_id = str(uuid.uuid4())
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO mng_graph_nodes
+                f"""INSERT INTO {tbl_gn}
                    (id, workflow_id, name, role_id, role_file, role_prompt, provider, model,
                     output_schema, inject_context, require_approval, approval_msg,
                     position_x, position_y)
@@ -341,9 +376,12 @@ async def update_node(
     workflow_id: str,
     node_id: str,
     body: NodeUpdate,
+    project: str = Query(""),
     user=Depends(get_optional_user),
 ):
     _require_db()
+    p = _active_project(project)
+    tbl_gn = db.project_table("graph_nodes", p)
     fields = []
     values: list[Any] = []
     mapping = {
@@ -366,7 +404,7 @@ async def update_node(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE mng_graph_nodes SET {', '.join(fields)} WHERE id=%s AND workflow_id=%s",
+                f"UPDATE {tbl_gn} SET {', '.join(fields)} WHERE id=%s AND workflow_id=%s",
                 values,
             )
     return {"updated": True, "node_id": node_id}
@@ -376,13 +414,16 @@ async def update_node(
 async def delete_node(
     workflow_id: str,
     node_id: str,
+    project: str = Query(""),
     user=Depends(get_optional_user),
 ):
     _require_db()
+    p = _active_project(project)
+    tbl_gn = db.project_table("graph_nodes", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM mng_graph_nodes WHERE id=%s AND workflow_id=%s",
+                f"DELETE FROM {tbl_gn} WHERE id=%s AND workflow_id=%s",
                 (node_id, workflow_id),
             )
     return {"deleted": True, "node_id": node_id}
@@ -394,14 +435,17 @@ async def delete_node(
 async def create_edge(
     workflow_id: str,
     body: EdgeCreate,
+    project: str = Query(""),
     user=Depends(get_optional_user),
 ):
     _require_db()
+    p = _active_project(project)
+    tbl_ge = db.project_table("graph_edges", p)
     edge_id = str(uuid.uuid4())
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO mng_graph_edges
+                f"""INSERT INTO {tbl_ge}
                    (id, workflow_id, source_node_id, target_node_id, condition, label)
                    VALUES (%s,%s,%s,%s,%s,%s)
                    RETURNING id, workflow_id, source_node_id, target_node_id, condition, label, created_at""",
@@ -419,9 +463,12 @@ async def update_edge(
     workflow_id: str,
     edge_id: str,
     body: EdgeUpdate,
+    project: str = Query(""),
     user=Depends(get_optional_user),
 ):
     _require_db()
+    p = _active_project(project)
+    tbl_ge = db.project_table("graph_edges", p)
     fields = []
     values: list[Any] = []
     if body.label is not None:
@@ -434,7 +481,7 @@ async def update_edge(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE mng_graph_edges SET {', '.join(fields)} WHERE id=%s AND workflow_id=%s",
+                f"UPDATE {tbl_ge} SET {', '.join(fields)} WHERE id=%s AND workflow_id=%s",
                 values,
             )
     return {"updated": True, "edge_id": edge_id}
@@ -444,13 +491,16 @@ async def update_edge(
 async def delete_edge(
     workflow_id: str,
     edge_id: str,
+    project: str = Query(""),
     user=Depends(get_optional_user),
 ):
     _require_db()
+    p = _active_project(project)
+    tbl_ge = db.project_table("graph_edges", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM mng_graph_edges WHERE id=%s AND workflow_id=%s",
+                f"DELETE FROM {tbl_ge} WHERE id=%s AND workflow_id=%s",
                 (edge_id, workflow_id),
             )
     return {"deleted": True, "edge_id": edge_id}
@@ -468,13 +518,14 @@ async def start_run(
     from core.graph_runner import run_graph_workflow
 
     p = _active_project(body.project)
+    tbl_gr = db.project_table("graph_runs", p)
     run_id = str(uuid.uuid4())
 
     # Insert initial run record
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO mng_graph_runs (id, workflow_id, project, status, user_input)
+                f"""INSERT INTO {tbl_gr} (id, workflow_id, project, status, user_input)
                    VALUES (%s, %s, %s, 'running', %s)""",
                 (run_id, workflow_id, p, body.user_input),
             )
@@ -491,7 +542,7 @@ async def start_run(
                     with db.conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute(
-                                "UPDATE mng_graph_runs SET status='error', error=%s, finished_at=NOW() WHERE id=%s",
+                                f"UPDATE {tbl_gr} SET status='error', error=%s, finished_at=NOW() WHERE id=%s",
                                 (str(e), run_id),
                             )
                 except Exception:
@@ -512,6 +563,7 @@ class DecisionRequest(BaseModel):
 async def make_run_decision(
     run_id: str,
     body: DecisionRequest,
+    project: str = Query(""),
     user=Depends(get_optional_user),
 ):
     """User approval decision for a paused run.
@@ -523,10 +575,13 @@ async def make_run_decision(
     _require_db()
     from core.graph_runner import resume_graph_workflow
 
+    p = _active_project(project)
+    tbl_gr = db.project_table("graph_runs", p)
+
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT workflow_id, project, context, total_cost_usd FROM mng_graph_runs WHERE id=%s AND status='waiting_approval'",
+                f"SELECT workflow_id, project, context, total_cost_usd FROM {tbl_gr} WHERE id=%s AND status='waiting_approval'",
                 (run_id,),
             )
             row = cur.fetchone()
@@ -543,7 +598,7 @@ async def make_run_decision(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE mng_graph_runs SET status='stopped', finished_at=NOW() WHERE id=%s",
+                    f"UPDATE {tbl_gr} SET status='stopped', finished_at=NOW() WHERE id=%s",
                     (run_id,),
                 )
         return {"status": "stopped", "run_id": run_id}
@@ -556,7 +611,7 @@ async def make_run_decision(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE mng_graph_runs SET status='running', context=%s WHERE id=%s",
+                    f"UPDATE {tbl_gr} SET status='running', context=%s WHERE id=%s",
                     (json.dumps(ctx), run_id),
                 )
         asyncio.create_task(resume_graph_workflow(run_id, [waiting_node_id], project))
@@ -574,7 +629,7 @@ async def make_run_decision(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE mng_graph_runs SET status='done', context=%s, finished_at=NOW() WHERE id=%s",
+                    f"UPDATE {tbl_gr} SET status='done', context=%s, finished_at=NOW() WHERE id=%s",
                     (json.dumps(ctx), run_id),
                 )
         return {"status": "done", "run_id": run_id}
@@ -582,7 +637,7 @@ async def make_run_decision(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE mng_graph_runs SET status='running', context=%s WHERE id=%s",
+                f"UPDATE {tbl_gr} SET status='running', context=%s WHERE id=%s",
                 (json.dumps(ctx), run_id),
             )
 
@@ -591,14 +646,20 @@ async def make_run_decision(
 
 
 @router.get("/{workflow_id}/runs")
-async def list_runs(workflow_id: str, user=Depends(get_optional_user)):
+async def list_runs(
+    workflow_id: str,
+    project: str = Query(""),
+    user=Depends(get_optional_user),
+):
     _require_db()
+    p = _active_project(project)
+    tbl_gr = db.project_table("graph_runs", p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT id, workflow_id, project, status, user_input,
+                f"""SELECT id, workflow_id, project, status, user_input,
                           started_at, finished_at, total_cost_usd, error
-                   FROM mng_graph_runs WHERE workflow_id=%s ORDER BY started_at DESC LIMIT 50""",
+                   FROM {tbl_gr} WHERE workflow_id=%s ORDER BY started_at DESC LIMIT 50""",
                 (workflow_id,),
             )
             rows = cur.fetchall()

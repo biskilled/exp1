@@ -611,11 +611,11 @@ async def embed_node_outputs(run_id: str, project: str) -> None:
     if not db.is_available():
         return
     try:
+        tbl_gnr = db.project_table("graph_node_results", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT node_id, node_name, output "
-                    "FROM mng_graph_node_results WHERE run_id=%s AND status='done'",
+                    f"SELECT node_id, node_name, output FROM {tbl_gnr} WHERE run_id=%s AND status='done'",
                     (run_id,),
                 )
                 rows = cur.fetchall()
