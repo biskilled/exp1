@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-17] `claude_cli`: Can you run the command as well, as I dont see any change in the database . also I think that there 
-- [2026-03-18] `claude_cli`: looks better. why memory_items and project_facts are under systeme managament tables? there are not 
-- [2026-03-18] `claude_cli`: I do see the table mng_session_tags, I also see session_tags.json file at the project workspace - is
-- [2026-03-18] `claude_cli`: clean that up . also I do remember there was graph support for memroy usage, but I dont see any reco
 - [2026-03-18] `claude_cli`: I would like to make sure the client table are also aligned - for example mng_session_tags - is rela
+- [2026-03-18] `claude_cli`: I would like to know what do you think about the architecure ? Assuming there might be diffrent clie
+- [2026-03-18] `claude_cli`: That is correct. it is bed pattern to use clinet name. there is already mng_users table that can man
+- [2026-03-18] `claude_cli`: it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_
+- [2026-03-18] `claude_cli`: There are some error - on the first load, it lookls like Backend is failing (after thay it succeed).
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

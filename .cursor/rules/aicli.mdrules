@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-18 10:43 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-18 18:21 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-17] I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used
-- [2026-03-17] I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked. I have created tagg
-- [2026-03-17] Planner works partial - I do see the nested work on some category like doc_type but in bug or feature ui is diffrent and
-- [2026-03-17] before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure th
-- [2026-03-17] Can you run the command as well, as I dont see any change in the database . also I think that there are old tables that 
+- [2026-03-18] I would like to make sure the client table are also aligned - for example mng_session_tags - is related to client (that 
+- [2026-03-18] I would like to know what do you think about the architecure ? Assuming there might be diffrent clients (for each clinet
+- [2026-03-18] That is correct. it is bed pattern to use clinet name. there is already mng_users table that can manage client as well (
+- [2026-03-18] it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did
+- [2026-03-18] There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run

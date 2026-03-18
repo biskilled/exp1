@@ -1157,7 +1157,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
 
 @router.post("/{project_name}/memory")
 async def generate_memory(project_name: str):
-    f"""Generate per-LLM memory files and copy to code_dir.
+    """Generate per-LLM memory files and copy to code_dir.
 
     Generates files for every AI tool in use:
       _system/claude/MEMORY.md         — distilled Q&A history + decisions (Claude CLI reads at session start)
@@ -1166,11 +1166,11 @@ async def generate_memory(project_name: str):
       _system/aicli/context.md         — compact block injected by aicli CLI into ALL providers
       _system/aicli/copilot.md         — GitHub Copilot instructions
 
-    Copies to code_dir:
-      {code_dir}/CLAUDE.md             → Claude CLI auto-loads
-      {code_dir}/MEMORY.md             → referenced in CLAUDE.md so Claude reads it
-      {code_dir}/.cursor/rules/aicli.mdrules  → Cursor AI
-      {code_dir}/.github/copilot-instructions.md → GitHub Copilot
+    Copies to <code_dir>:
+      <code_dir>/CLAUDE.md             → Claude CLI auto-loads
+      <code_dir>/MEMORY.md             → referenced in CLAUDE.md so Claude reads it
+      <code_dir>/.cursor/rules/aicli.mdrules  → Cursor AI
+      <code_dir>/.github/copilot-instructions.md → GitHub Copilot
     """
     proj_dir = _workspace() / project_name
     if not proj_dir.exists():

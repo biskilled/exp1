@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-18 10:43 UTC by aicli /memory_
+_Generated: 2026-03-18 18:21 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -54,43 +54,72 @@ _Generated: 2026-03-18 10:43 UTC by aicli /memory_
 
 ### Bug
 
-- **hooks** `(94 events, 51 commits)`
+- **hooks**
 
 ### Doc_type
 
-- **customer-meeting** — dsds `(55 events, 51 commits)`
-- **high-level-design** `(53 events, 51 commits)`
-- **retrospective** `(53 events, 51 commits)`
-- **Test** `(1 events)`
+- **high-level-design**
 - **low-level-design**
+- **customer-meeting** — dsds
+- **retrospective**
+- **Test**
 
 ### Feature
 
-- **pagination** `(95 events, 51 commits)`
-- **auth** `(59 events, 51 commits)`
-- **mcp** `(5 events)`
-- **shared-memory** `(5 events)`
-- **graph-workflow** `(2 events)`
-- **UI** `(2 events)`
-- **workflow-runner** `(2 events)`
-- **tagging** `(1 events)`
-- **billing** `(1 events)`
-- **embeddings** `(1 events)`
-- **test-picker-feature** `(1 events)`
-- **dropbox** `(1 events)`
+- **shared-memory**
+- **graph-workflow**
+- **billing**
+- **auth**
+- **embeddings**
+- **tagging**
+- **mcp**
+- **workflow-runner**
+- **test-picker-feature**
+- **UI**
+- **dropbox**
+- **pagination**
 
 ### Phase
 
-- **discovery** `(3 events)`
-- **development** `(1 events)`
+- **discovery**
+- **development**
 - **prod**
 
 ### Task
 
-- **memory** `(97 events, 51 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
+- **memory**
 
 ## Recent Work (last 10 exchanges)
+
+**[2026-03-18 18:15]** `claude_cli/claude`
+Q: There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run the memory - and ther ewas an error in line 1120 - {code_dir}/CLAUDE.md  - code
+
+**[2026-03-18 17:44]** `claude_cli/claude`
+Q: it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did you mean: '_ensure_shared_schema'? also I do not see my AiCli project (only at 
+A: Everything is working. Here's the summary of all fixes applied:  ---  **3 issues fixed:**  **1. `main.py`** — removed the stale `db.ensure_project_schema(settings.active_project)` call  **2. `database.py` — 4 schema fixes:** - `_ensure_schema()` now runs DDL statement-by-statement instead of as one 
+
+**[2026-03-18 16:00]** `claude_cli/claude`
+Q: That is correct. it is bed pattern to use clinet name. there is already mng_users table that can manage client as well (client can have multiple users, but probably small amount if users up to 5 max p
+
+**[2026-03-18 15:49]** `claude_cli/claude`
+Q: I would like to know what do you think about the architecure ? Assuming there might be diffrent clients (for each clinet might be diffrenet projects) . Also what is the best way to manage free / unreg
+A: ## Architectural Review: 3-Layer Client/Project Tables  ### What's Good  The three-tier naming is clear and the seeding pattern (`mng_` → `cl_local_` on first run) is clean. For a single-tenant tool it works well today.  ---  ### Key Concerns at Scale  **1. Table proliferation**  With the current de
+
+**[2026-03-18 12:51]** `claude_cli/claude`
+Q: I would like to make sure the client table are also aligned - for example mng_session_tags - is related to client (that can have multiple projects) also entitiy is per client. currently, as I am testi
+
+**[2026-03-18 12:00]** `claude_cli/claude`
+Q: clean that up . also I do remember there was graph support for memroy usage, but I dont see any record in. how graph tables are used in the app, who suppose to manage that? this is not suppose to be a
+A: All endpoints working correctly. Here's a summary of everything done:  **All `mng_graph_*` references eliminated** across 4 files:  | File | Changes | |------|---------| | `routers/graph_workflows.py` | Added `project: str = Query("")` to 12 endpoints; all `mng_graph_*` → `db.project_table()` | | `c
+
+**[2026-03-18 11:51]** `claude_cli/claude`
+Q: I do see the table mng_session_tags, I also see session_tags.json file at the project workspace - is it in used , what is it for ?
+A: Everything is working. Here's the final state:  **Database — 24 tables, clean split:**  | Prefix | Count | Tables | |--------|-------|--------| | `mng_` | 14 | Global config: users, billing, entity taxonomy, graph workflows, agent roles | | `pr_local_aicli_` | 10 | Project data: commits, events, emb
+
+**[2026-03-18 10:46]** `claude_cli/claude`
+Q: looks better. why memory_items and project_facts are under systeme managament tables? there are not part of project ?
+A: All endpoints working. Let me update MEMORY.md to reflect the final table structure:
 
 **[2026-03-17 21:06]** `claude_cli/claude`
 Q: Can you run the command as well, as I dont see any change in the database . also I think that there are old tables that are not in used
@@ -99,34 +128,3 @@ A: Clean. Here's the complete summary:  **Before:** 29 tables (mixed naming, 5 s
 **[2026-03-17 20:36]** `claude_cli/claude`
 Q: before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure the table as - mng_TABLE_NAME for all aiCli managend tables (global table for all 
 A: Clean. Let me also verify the `work_item_pipeline.py` core file is correct:
-
-**[2026-03-17 20:13]** `claude_cli/claude`
-Q: Planner works partial - I do see the nested work on some category like doc_type but in bug or feature ui is diffrent and this is not working. also I do see there is life cycle project, but I am not su
-A: Here's a summary of everything done and answers to your questions:  ---  ## What was fixed  **Planner consistency** — removed the split between `entity_values` (doc_type etc.) and `work_items` (feature/bug/task). Now ALL categories use the same `_renderTagTable` renderer reading from `entity_values`
-
-**[2026-03-17 18:50]** `claude_cli/claude`
-Q: I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked. I have created tagging mechasim in order to help map prompt/commit to proper tags. the aiCli can su
-A: Here's a summary of all changes made:  ---  ## Changes Made  ### Tab renames (`main.js`) - `"Workflow"` → `"Pipelines"` (PROJECT_TABS + global sidebar nav) - `"Prompts"` → `"Roles"` (PROJECT_TABS)  ### Nested tag button (`entities.js`) - Added `+▸` button directly in **every regular tag row** (previ
-
-**[2026-03-17 18:29]** `claude_cli/claude`
-Q: I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used to be. also, pipeline seems to be hardcoded and used the new infrastrucre of wo
-A: `agent_run_id` is `INT` (not UUID), so `str(row["agent_run_id"])` is fine — it just converts the int to string. That's correct.  The three fixes applied to `work_items.py`:  1. **`WorkItemCreate` model** — added `parent_id: Optional[str] = None` 2. **INSERT query** — added `parent_id` column and `bo
-
-**[2026-03-17 18:28]** `claude_cli/claude`
-Q: What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project manager (high design), develop , tester , reviewer) ?
-A: ## Claude Agent SDK vs Your Current Multi-Agent System  ### What is the Claude Agent SDK?  The **Claude Agent SDK** is Anthropic's official Python/TypeScript framework for building AI agents that can: - Execute tools (file read, bash, web search, custom MCP tools) - Delegate to **subagents** (specia
-
-**[2026-03-17 18:18]** `claude_cli/claude`
-Q: can you use the mcp tool and explain what the code is doing ?
-A: Here's what **aicli** does:  ## aicli — Shared AI Memory Platform  **Core idea**: When you switch between different AI tools (Claude CLI, Cursor, ChatGPT, the aicli web UI), they all forget your project context. aicli solves this by giving every LLM the **same persistent memory**.  ### What the code
-
-**[2026-03-17 14:35]** `claude_cli/claude`
-Q: In the project I used to see the aiCli project, and I do not see that now. also when I press in my recent project - aiCli - it is start to load after few seconds. loading PRPJECT.md file take really l
-A: Everything looks correct. Let me do a final check on the full `openProject` function to make sure it's clean:
-
-**[2026-03-17 13:33]** `claude_cli/claude`
-Q: Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it takes quite long time to load summery and History. can check why is that? and add some flow to explain
-A: Now let's verify the key changes are correct with a quick sanity check:
-
-**[2026-03-17 13:30]** `claude_cli/claude`
-Q: can you use the mcp tool and explain what the prject is about ?

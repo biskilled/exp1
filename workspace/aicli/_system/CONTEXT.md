@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-18 13:50 UTC — do not edit manually.
+> Auto-generated 2026-03-18 18:21 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 130
-- **Last active**: 2026-03-18T13:45:25Z
+- **Sessions**: 139
+- **Last active**: 2026-03-18T18:10:44Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,20 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-18 18:15]** `claude_cli/claude`  
+→ There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
+
+**[2026-03-18 17:44]** `claude_cli/claude`  
+→ it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did
+← _Everything is working. Here's the summary of all fixes applied:  ---  **3 issues fixed:**  **1. `main.py`** — removed the stale `db.ensure_project_schema(settings.active_project)` call  **2. `database_
+
+**[2026-03-18 16:00]** `claude_cli/claude`  
+→ That is correct. it is bed pattern to use clinet name. there is already mng_users table that can manage client as well (
+
+**[2026-03-18 15:49]** `claude_cli/claude`  
+→ I would like to know what do you think about the architecure ? Assuming there might be diffrent clients (for each clinet
+← _## Architectural Review: 3-Layer Client/Project Tables  ### What's Good  The three-tier naming is clear and the seeding pattern (`mng_` → `cl_local_` on first run) is clean. For a single-tenant tool i_
+
 **[2026-03-18 12:51]** `claude_cli/claude`  
 → I would like to make sure the client table are also aligned - for example mng_session_tags - is related to client (that 
 
@@ -193,18 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-17 18:18]** `claude_cli/claude`  
 → can you use the mcp tool and explain what the code is doing ?
 ← _Here's what **aicli** does:  ## aicli — Shared AI Memory Platform  **Core idea**: When you switch between different AI tools (Claude CLI, Cursor, ChatGPT, the aicli web UI), they all forget your proje_
-
-**[2026-03-17 14:35]** `claude_cli/claude`  
-→ In the project I used to see the aiCli project, and I do not see that now. also when I press in my recent project - aiCl
-← _Everything looks correct. Let me do a final check on the full `openProject` function to make sure it's clean:_
-
-**[2026-03-17 13:33]** `claude_cli/claude`  
-→ Somehow, I cannot see the prject now in order at me lat project.. also when I open the project it takes quite long time 
-← _Now let's verify the key changes are correct with a quick sanity check:_
-
-**[2026-03-17 13:30]** `claude_cli/claude`  
-→ can you use the mcp tool and explain what the prject is about ?
-
-**[2026-03-16 19:02]** `claude_cli/claude`  
-→ yes
-← _All changes look correct. The Agent Roles implementation in `graph_workflow.js` is now complete. Here's a summary of what was done in this session:  **`graph_workflow.js` — completed:** - `_gwOnRoleCh_
