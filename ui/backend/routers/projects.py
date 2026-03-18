@@ -937,8 +937,18 @@ async def _summarize_session_memory(project: str) -> int:
                             (project, session_id, final_summary,
                              source_ids_pg, score, critique or None),
                         )
-                        if cur.fetchone():
+                        row = cur.fetchone()
+                        if row:
                             created += 1
+                            # Embed into pgvector for semantic search
+                            try:
+                                from core.embeddings import embed_and_store
+                                asyncio.create_task(embed_and_store(
+                                    project, "memory_item", str(row[0]), final_summary,
+                                    doc_type="session_summary",
+                                ))
+                            except Exception:
+                                pass
             except Exception as e:
                 log.debug(f"_summarize_session_memory: session {session_id} failed: {e}")
 
@@ -1049,7 +1059,19 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
                     (project, wi_name, final_summary, score, critique or None),
                 )
                 row = cur.fetchone()
-                return str(row[0]) if row else None
+                if not row:
+                    return None
+                memory_id = str(row[0])
+                # Embed into pgvector for semantic search
+                try:
+                    from core.embeddings import embed_and_store
+                    asyncio.create_task(embed_and_store(
+                        project, "memory_item", memory_id, final_summary,
+                        doc_type="feature_summary",
+                    ))
+                except Exception:
+                    pass
+                return memory_id
     except Exception as e:
         log.debug(f"_summarize_feature_memory failed: {e}")
         return None
@@ -1273,16 +1295,17 @@ async def generate_memory(project_name: str):
         except Exception as _e:
             log.warning("entity summary for /memory failed: %s", _e)
 
-    # ── Layer 1: summarize new sessions into pr_memory_items (fire-and-forget) ──
+    # ── Layer 1: summarize new sessions into pr_memory_items (awaited so fresh
+    #    summaries are available when we load distilled context below) ──────────
     if db.is_available():
         try:
-            asyncio.create_task(_summarize_session_memory(project_name))
+            await _summarize_session_memory(project_name)
         except Exception:
             pass
 
     # ── Load distilled context: project_facts + recent memory_items ──────────
     distilled_facts: list[dict] = []
-    distilled_memory_items: list[str] = []
+    distilled_memory_items: list[dict] = []
     if db.is_available():
         try:
             with db.conn() as conn:
@@ -1295,12 +1318,20 @@ async def generate_memory(project_name: str):
                     )
                     distilled_facts = [{"key": r[0], "value": r[1]} for r in cur.fetchall()]
                     cur.execute(
-                        """SELECT content FROM pr_memory_items
+                        """SELECT content, scope, scope_ref, created_at FROM pr_memory_items
                            WHERE client_id=1 AND project=%s
-                           ORDER BY created_at DESC LIMIT 5""",
+                           ORDER BY created_at DESC LIMIT 8""",
                         (project_name,),
                     )
-                    distilled_memory_items = [r[0] for r in cur.fetchall()]
+                    distilled_memory_items = [
+                        {
+                            "content": r[0],
+                            "scope": r[1],
+                            "scope_ref": r[2] or "",
+                            "date": str(r[3])[:10] if r[3] else "",
+                        }
+                        for r in cur.fetchall()
+                    ]
         except Exception as _df_err:
             log.debug(f"distilled context load failed: {_df_err}")
 
@@ -1310,7 +1341,8 @@ async def generate_memory(project_name: str):
         facts_lines = "\n".join(f"  {f['key']}: {f['value']}" for f in distilled_facts[:12])
         distilled_text += f"[Project Facts]\n{facts_lines}\n\n"
     if distilled_memory_items:
-        distilled_text += "[Recent Memory Summaries]\n" + "\n---\n".join(distilled_memory_items[:3])
+        summaries = "\n---\n".join(m["content"] for m in distilled_memory_items[:3])
+        distilled_text += f"[Recent Memory Summaries]\n{summaries}"
 
     # Merge with entity text for LLM
     combined_entity_text = "\n\n".join(filter(None, [entity_text_for_llm, distilled_text]))
@@ -1369,6 +1401,13 @@ async def generate_memory(project_name: str):
         memory_lines.append(synthesis["project_summary"])
         memory_lines.append("")
 
+    # Project Facts — durable extracted facts (always injected, no search needed)
+    if distilled_facts:
+        memory_lines.append("## Project Facts\n")
+        for f in distilled_facts:
+            memory_lines.append(f"- **{f['key']}**: {f['value']}")
+        memory_lines.append("")
+
     if state_data.get("tech_stack"):
         memory_lines.append("## Tech Stack\n")
         for k, v in state_data["tech_stack"].items():
@@ -1414,11 +1453,31 @@ async def generate_memory(project_name: str):
                 memory_lines.append(label)
             memory_lines.append("")
 
+    # Recent Memory — high-quality Trycycle-reviewed summaries from pr_memory_items
+    if distilled_memory_items:
+        memory_lines.append("## Recent Memory\n")
+        memory_lines.append("> Distilled summaries (Trycycle-reviewed). Feature summaries shown first.\n")
+        # Show feature-scope items first, then session items
+        sorted_items = sorted(
+            distilled_memory_items[:6],
+            key=lambda m: (0 if m["scope"] == "feature" else 1, m["date"]),
+            reverse=False,
+        )
+        for m in sorted_items:
+            scope_label = f"`{m['scope']}"
+            if m["scope_ref"]:
+                scope_label += f": {m['scope_ref'][:40]}"
+            scope_label += f"` — {m['date']}" if m["date"] else "`"
+            memory_lines.append(f"### {scope_label}\n")
+            memory_lines.append(m["content"])
+            memory_lines.append("")
+
     if synthesis and synthesis.get("memory_digest"):
-        # LLM-synthesized meaningful digest of recent work
+        # LLM synthesis across all context (supplements memory_items or standalone)
+        memory_lines.append("## AI Synthesis\n")
         memory_lines.append(synthesis["memory_digest"])
-    else:
-        # Fallback: mechanical Q&A truncation (no API key or synthesis failed)
+    elif not distilled_memory_items:
+        # Fallback: mechanical Q&A truncation (no API key or synthesis failed and no memory_items)
         memory_lines.append("## Recent Work (last 10 exchanges)\n")
         shown = 0
         for e in reversed(recent):

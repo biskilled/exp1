@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-18 20:12 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-18 21:02 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-18] I would like to know what do you think about the architecure ? Assuming there might be diffrent clients (for each clinet
-- [2026-03-18] That is correct. it is bed pattern to use clinet name. there is already mng_users table that can manage client as well (
 - [2026-03-18] it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did
 - [2026-03-18] There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
 - [2026-03-18] Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
+- [2026-03-18] Few more strucure - users are also part of client (client can have mutiple users). Also I would like to understand if yo
+- [2026-03-18] I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, llm repsonse, tags an

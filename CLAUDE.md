@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-18] `claude_cli`: I would like to know what do you think about the architecure ? Assuming there might be diffrent clie
-- [2026-03-18] `claude_cli`: That is correct. it is bed pattern to use clinet name. there is already mng_users table that can man
 - [2026-03-18] `claude_cli`: it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_
 - [2026-03-18] `claude_cli`: There are some error - on the first load, it lookls like Backend is failing (after thay it succeed).
 - [2026-03-18] `claude_cli`: Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not se
+- [2026-03-18] `claude_cli`: Few more strucure - users are also part of client (client can have mutiple users). Also I would like
+- [2026-03-18] `claude_cli`: I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, l
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

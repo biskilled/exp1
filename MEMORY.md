@@ -1,11 +1,19 @@
 # Project Memory — aicli
-_Generated: 2026-03-18 20:12 UTC by aicli /memory_
+_Generated: 2026-03-18 21:02 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
-## Project Summary
+## Project Facts
 
-aicli is a shared AI memory platform that integrates with Claude CLI and LLM platforms, combining flat-file JSONL history with PostgreSQL pgvector semantic search and a nested tagging system. It features an Electron desktop UI with xterm.js and Monaco, multi-agent workflow orchestration via async DAG execution, and a stdio MCP server for project state/memory queries. Current focus: resolving project visibility/listing bugs and load performance on Railway free tier while maintaining dual-layer memory synthesis and tag consistency across sessions.
+- **auth_pattern**: login_as_first_level_hierarchy
+- **data_persistence_issue**: tags_disappear_on_session_switch
+- **db_engine**: SQL
+- **deployment_target**: Claude_CLI_and_LLM_platforms
+- **mcp_integration**: embedding_and_data_retrieval
+- **memory_management_pattern**: load_once_on_access_update_on_save
+- **performance_optimization**: redundant_SQL_calls_eliminated
+- **tagging_system**: nested_hierarchy_beyond_2_levels
+- **ui_library**: 3_dot_menu_pattern
 
 ## Tech Stack
 
@@ -58,21 +66,20 @@ aicli is a shared AI memory platform that integrates with Claude CLI and LLM pla
 
 ### Bug
 
-- **hooks** `(7 events, 5 commits)`
+- **hooks** `(9 events, 7 commits)`
 
 ### Doc_type
 
-- **high-level-design** `(1 events)`
 - **low-level-design** `(1 events)`
+- **high-level-design** `(1 events)`
+- **customer-meeting** — dsds
 - **Test**
 - **retrospective**
-- **customer-meeting** — dsds
 
 ### Feature
 
+- **UI** `(8 events, 7 commits)`
 - **shared-memory** `(3 events)`
-- **test-picker-feature**
-- **UI**
 - **dropbox**
 - **pagination**
 - **tagging**
@@ -82,10 +89,11 @@ aicli is a shared AI memory platform that integrates with Claude CLI and LLM pla
 - **embeddings**
 - **mcp**
 - **workflow-runner**
+- **test-picker-feature**
 
 ### Phase
 
-- **discovery**
+- **discovery** `(1 events)`
 - **development**
 - **prod**
 
@@ -94,12 +102,70 @@ aicli is a shared AI memory platform that integrates with Claude CLI and LLM pla
 - **memory** `(1 events)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
-**[2026-03-18]** `session_log` — Project visibility issue identified: aiCli appears in Recent but not as selectable project; requires openProject() and listing query debugging. Backend startup delay on free tier acceptable; _continueToApp retry logic implemented for race conditions.
+## Recent Memory
 
-**[2026-03-17]** `performance_audit` — PROJECT.md load time exceeds 1 minute on Railway free tier; investigating DB query latency vs file I/O; pagination/lazy-loading proposed.
+> Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-**[2026-03-16]** `feature_integration` — Multi-agent workflow system with async DAG executor and Cytoscape.js visualization approved; dual-layer memory distillation (JSONL → interaction_tags → 5 output files) fixed for consistency.
+### `session: 5b19c863-f99a-439c-b595-b415d0d342ed` — 2026-03-16
 
-**[2026-03-15]** `persistence_fix` — Session phase now persists via DB load on init and PATCH save; 149 tags deduplicated (0 duplicates); removal propagates across Chat/History/Commits views.
+# Development Session Summary
 
-**[2026-03-10]** `architecture_review` — Nested tag hierarchy expanded beyond 2 levels via parent_id FK; load-once-on-access pattern eliminated redundant SQL calls; 3-dot menu pattern adopted for Planner UI; port binding conflicts resolved via freePort() cleanup.
+**Session Focus**: Architecture audit and capability assessment of memory management, tagging system, and MCP integration
+
+**Actions Completed**:
+• Executed `/memory` command to audit data storage layers and tagging system functionality
+• Reviewed how MCP integrates with memory layer for embedding and data retrieval
+• Validated tag system implementation for data organization across Claude CLI and other LLMs
+
+**Key Questions Addressed**:
+• Refactor impact on tag usage and memory efficiency from new summarization process
+• MCP's capability to answer work item management queries and generate workflows
+• Whether improved architecture enables better complex project delivery
+• Real-time MCP functionality and data retrieval accuracy within session
+
+**Findings/Outcomes**: [INCOMPLETE - Session summary ends mid-question; actual results, performance metrics, identified issues, and recommendations not documented]
+
+**Follow-up Needed**: Clarify final question intent and document concrete findings from /memory audit and MCP capability test
+
+### `session: 03f774e9-ad60-4cf3-8c0c-0191ba9a78d0` — 2026-03-16
+
+# Development Session Summary (2026-03-10)
+
+• **Database Performance Issue**: Identified multiple redundant SQL calls slowing the system; implemented strategy to load data once on project access (e.g., tags into memory) and only update DB on explicit save actions
+
+• **Tag Hierarchy Enhancement**: Approved nested tags feature to expand beyond current 2-level hierarchy (category → tag); confirmed login will be first-level only
+
+• **UI/UX Improvements for Planner**:
+  - Increased visibility of action options (currently too small)
+  - Replaced small action buttons with 3-dot menu button to improve clarity
+  - Added ability to unarchive archived items
+
+• **Data Persistence Bug**: Discovered tags saved in UI disappear when switching sessions—unclear if UI rendering issue or database save failure; requires investigation
+
+• **AI Suggestions UI**: Need to make `/memory` suggestions more visible and clearly labeled as "AI suggestions requiring approval," including which session they apply to and direct GitHub commit links
+
+• **Backend Stability**: Intermittent app restart failures due to port 127.0.0.1:8000 binding conflicts
+
+### `session: 8f29a8d3-13a3-42ed-9219-de7bfe53e3d2` — 2026-03-18
+
+# Development Session Summary (2026-03-18)
+
+## Issues Fixed
+
+• **AttributeError in `main.py`** — Removed stale `db.ensure_project_schema(settings.active_project)` call (method doesn't exist; should use `_ensure_shared_schema` instead)
+
+• **Memory endpoint CLAUDE.md template error** — Undefined `code_dir` variable at line 1120 causing runtime failure; variable now properly scoped/defined from config
+
+• **Backend startup race condition** — Modified `_continueToApp()` retry logic to handle edge case where projects load succeeds but returns empty list (prevents false "project not found" errors on first load)
+
+## Issues Identified but Unresolved
+
+• **Project visibility bug** — AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization; **PENDING: Further investigation**
+
+## Design Gaps Requiring Implementation
+
+• **memory_items and project_facts tables not updating** — Per original specification, these tables should be populated to enable improved memory/context mechanism, but update logic not implemented; **PENDING: Implementation and testing**
+
+## Data Model Clarification
+
+• Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)

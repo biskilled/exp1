@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-18 20:13 UTC — do not edit manually.
+> Auto-generated 2026-03-18 21:02 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 141
-- **Last active**: 2026-03-18T20:12:41Z
+- **Sessions**: 142
+- **Last active**: 2026-03-18T20:36:10Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-18 20:54]** `claude_cli/claude`  
+→ I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, llm repsonse, tags an
+
+**[2026-03-18 20:17]** `claude_cli/claude`  
+→ Few more strucure - users are also part of client (client can have mutiple users). Also I would like to understand if yo
+← _Both fixes are in place. The `from pathlib import Path` import is now added, `mng_users.client_id` FK is defined, and the `history.jsonl` backfill code at line 1017 will now work correctly.  The backe_
+
 **[2026-03-18 20:03]** `claude_cli/claude`  
 → Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
 ← _Now also fix `_continueToApp` — if projects load succeeds but returns empty (e.g. race condition), retry once:_
@@ -200,11 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-17 18:50]** `claude_cli/claude`  
 → I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked. I have created tagg
 ← _Here's a summary of all changes made:  ---  ## Changes Made  ### Tab renames (`main.js`) - `"Workflow"` → `"Pipelines"` (PROJECT_TABS + global sidebar nav) - `"Prompts"` → `"Roles"` (PROJECT_TABS)  ##_
-
-**[2026-03-17 18:29]** `claude_cli/claude`  
-→ I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-child) tags as it used
-← _`agent_run_id` is `INT` (not UUID), so `str(row["agent_run_id"])` is fine — it just converts the int to string. That's correct.  The three fixes applied to `work_items.py`:  1. **`WorkItemCreate` mode_
-
-**[2026-03-17 18:28]** `claude_cli/claude`  
-→ What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project manager (high design)
-← _## Claude Agent SDK vs Your Current Multi-Agent System  ### What is the Claude Agent SDK?  The **Claude Agent SDK** is Anthropic's official Python/TypeScript framework for building AI agents that can:_
