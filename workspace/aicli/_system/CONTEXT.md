@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-17 21:28 UTC — do not edit manually.
+> Auto-generated 2026-03-18 10:43 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 123
-- **Last active**: 2026-03-17T21:01:34Z
+- **Sessions**: 124
+- **Last active**: 2026-03-18T10:43:21Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -153,6 +153,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-17 21:06]** `claude_cli/claude`  
 → Can you run the command as well, as I dont see any change in the database . also I think that there are old tables that 
+← _Clean. Here's the complete summary:  **Before:** 29 tables (mixed naming, 5 stale bare tables)   **After:** 24 tables — perfectly organized  ### Dropped (stale legacy tables) `commits`, `embeddings`, _
 
 **[2026-03-17 20:36]** `claude_cli/claude`  
 → before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure th

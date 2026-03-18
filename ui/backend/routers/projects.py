@@ -1,6 +1,6 @@
 """
 Projects router — list/create/switch projects from templates.
-"""
+f"""
 
 import asyncio
 import json
@@ -321,6 +321,8 @@ async def create_project(body: NewProject):
 @router.post("/switch/{project_name}")
 async def switch_project(project_name: str):
     """Switch the active project (updates in-memory settings)."""
+    tbl_mi   = db.project_table("memory_items",  project_name)
+    tbl_pf   = db.project_table("project_facts", project_name)
     proj_dir = _workspace() / project_name
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
@@ -825,7 +827,9 @@ async def _suggest_tags(
 # ── Memory distillation pipeline ─────────────────────────────────────────────
 
 async def _summarize_session_memory(project: str) -> int:
-    """Layer 1: Summarize unsummarized sessions into mng_memory_items (Trycycle pattern).
+    tbl_int  = db.project_table("interactions",  project)
+    tbl_mi   = db.project_table("memory_items",  project)
+    """Layer 1: Summarize unsummarized sessions into {tbl_mi} (Trycycle pattern).
 
     Queries interactions for sessions with >= 3 prompts not yet summarized.
     Each session gets two Haiku calls: summarize + rate/improve. Result stored
@@ -846,7 +850,7 @@ async def _summarize_session_memory(project: str) -> int:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT i.session_id, COUNT(*) AS cnt,
+                    f"""SELECT i.session_id, COUNT(*) AS cnt,
                               ARRAY_AGG(i.id ORDER BY i.created_at) AS ids,
                               STRING_AGG(
                                   '[' || LEFT(i.created_at::text, 16) || '] Q: '
@@ -854,12 +858,12 @@ async def _summarize_session_memory(project: str) -> int:
                                   || CASE WHEN i.response != '' THEN E'\n A: ' || LEFT(i.response,200) ELSE '' END,
                                   E'\n\n' ORDER BY i.created_at
                               ) AS history_text
-                       FROM mng_interactions i
+                       FROM {tbl_int} i
                        WHERE i.project_id=%s
                          AND i.event_type='prompt'
                          AND i.session_id IS NOT NULL
                          AND NOT EXISTS (
-                             SELECT 1 FROM mng_memory_items m
+                             SELECT 1 FROM {tbl_mi} m
                              WHERE m.project_id=i.project_id
                                AND m.scope='session'
                                AND m.scope_ref=i.session_id
@@ -930,7 +934,7 @@ async def _summarize_session_memory(project: str) -> int:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            """INSERT INTO mng_memory_items
+                            f"""INSERT INTO {tbl_mi}
                                    (project_id, scope, scope_ref, content, source_ids,
                                     reviewer_score, reviewer_critique)
                                VALUES (%s,'session',%s,%s,%s::uuid[],%s,%s)
@@ -951,7 +955,10 @@ async def _summarize_session_memory(project: str) -> int:
 
 
 async def _summarize_feature_memory(project: str, work_item_id: str) -> str | None:
-    """Layer 2: Summarize a completed feature/bug/task into a memory_item.
+    tbl_wi   = db.project_table("work_items",        project)
+    tbl_mi   = db.project_table("memory_items",      project)
+    tbl_itag = db.project_table("interaction_tags",  project)
+    f"""Layer 2: Summarize a completed feature/bug/task into a memory_item.
 
     Called when a work_item lifecycle_status → 'done'.
     Collects session summaries whose source_ids overlap with this work_item's interactions,
@@ -972,7 +979,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
             with conn.cursor() as cur:
                 # Get work item details
                 cur.execute(
-                    "SELECT name, description FROM mng_work_items WHERE id=%s::uuid AND project=%s",
+                    "SELECT name, description FROM {tbl_wi} WHERE id=%s::uuid AND project=%s",
                     (work_item_id, project),
                 )
                 wi_row = cur.fetchone()
@@ -983,15 +990,15 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
                 # Find memory_items whose source_ids overlap with this work_item's interactions
                 cur.execute(
                     """SELECT m.content
-                       FROM mng_memory_items m
+                       FROM {tbl_mi} m
                        WHERE m.project_id=%s AND m.scope='session'
                          AND EXISTS (
-                             SELECT 1 FROM mng_interaction_tags it
+                             SELECT 1 FROM {tbl_itag} it
                              WHERE it.work_item_id=%s::uuid
                                AND it.interaction_id = ANY(m.source_ids)
                          )
                        ORDER BY m.created_at
-                       LIMIT 10""",
+                       LIMIT 10f""",
                     (project, work_item_id),
                 )
                 session_summaries = [r[0] for r in cur.fetchall()]
@@ -1044,7 +1051,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO mng_memory_items
+                    """INSERT INTO {tbl_mi}
                            (project_id, scope, scope_ref, content, reviewer_score, reviewer_critique)
                        VALUES (%s,'feature',%s,%s,%s,%s)
                        RETURNING id""",
@@ -1058,7 +1065,9 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
 
 
 async def _extract_project_facts(project: str, memory_item_id: str | None = None) -> int:
-    """Layer 3: Extract durable facts from recent memory and store in project_facts.
+    tbl_mi   = db.project_table("memory_items",   project)
+    tbl_pf   = db.project_table("project_facts",  project)
+    f"""Layer 3: Extract durable facts from recent memory and store in project_facts.
 
     Haiku extracts 3-8 key-value facts (e.g. auth_pattern=JWT).
     Conflicts are invalidated (valid_until=NOW()) before inserting new facts.
@@ -1078,7 +1087,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT content FROM mng_memory_items
+                    """SELECT content FROM {tbl_mi}
                        WHERE project_id=%s
                        ORDER BY created_at DESC LIMIT 5""",
                     (project,),
@@ -1086,7 +1095,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
                 mem_texts = [r[0] for r in cur.fetchall()]
                 # Also include existing facts for context
                 cur.execute(
-                    """SELECT fact_key, fact_value FROM mng_project_facts
+                    f"""SELECT fact_key, fact_value FROM {tbl_pf}
                        WHERE project_id=%s AND valid_until IS NULL
                        ORDER BY fact_key""",
                     (project,),
@@ -1132,7 +1141,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
                         continue
                     # Invalidate conflicting current fact
                     cur.execute(
-                        """UPDATE mng_project_facts SET valid_until=NOW()
+                        f"""UPDATE {tbl_pf} SET valid_until=NOW()
                            WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL
                              AND fact_value != %s""",
                         (project, k, v),
@@ -1140,7 +1149,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
                     # Insert new fact (unique index prevents duplicates)
                     try:
                         cur.execute(
-                            """INSERT INTO mng_project_facts
+                            f"""INSERT INTO {tbl_pf}
                                    (project_id, fact_key, fact_value, source_memory_id)
                                VALUES (%s,%s,%s,%s::uuid)
                                ON CONFLICT (project_id, fact_key) WHERE valid_until IS NULL
@@ -1159,7 +1168,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
 
 @router.post("/{project_name}/memory")
 async def generate_memory(project_name: str):
-    """Generate per-LLM memory files and copy to code_dir.
+    f"""Generate per-LLM memory files and copy to code_dir.
 
     Generates files for every AI tool in use:
       _system/claude/MEMORY.md         — distilled Q&A history + decisions (Claude CLI reads at session start)
@@ -1277,7 +1286,7 @@ async def generate_memory(project_name: str):
         except Exception as _e:
             log.warning("entity summary for /memory failed: %s", _e)
 
-    # ── Layer 1: summarize new sessions into mng_memory_items (fire-and-forget) ──────
+    # ── Layer 1: summarize new sessions into {tbl_mi} (fire-and-forget) ──────
     if db.is_available():
         try:
             asyncio.create_task(_summarize_session_memory(project_name))
@@ -1292,14 +1301,14 @@ async def generate_memory(project_name: str):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT fact_key, fact_value FROM mng_project_facts
+                        """SELECT fact_key, fact_value FROM {tbl_pf}
                            WHERE project_id=%s AND valid_until IS NULL
-                           ORDER BY fact_key""",
+                           ORDER BY fact_keyf""",
                         (project_name,),
                     )
                     distilled_facts = [{"key": r[0], "value": r[1]} for r in cur.fetchall()]
                     cur.execute(
-                        """SELECT content FROM mng_memory_items
+                        """SELECT content FROM {tbl_mi}
                            WHERE project_id=%s
                            ORDER BY created_at DESC LIMIT 5""",
                         (project_name,),
@@ -1660,7 +1669,7 @@ async def generate_memory(project_name: str):
                     with db.conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute(
-                                """SELECT id, name FROM mng_entity_values
+                                f"""SELECT id, name FROM mng_entity_values
                                    WHERE project=%s AND status='active'
                                    ORDER BY name LIMIT 50""",
                                 (project_name,),
@@ -1759,7 +1768,7 @@ async def memory_status(project_name: str, bust: bool = False):
         except Exception:
             pass
 
-    # Also count from mng_interactions table (new storage)
+    # Also count from {tbl_int} table (new storage)
     interactions_total = 0
     interactions_since = 0
     if db.is_available():
@@ -1767,13 +1776,13 @@ async def memory_status(project_name: str, bust: bool = False):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT COUNT(*) FROM mng_interactions WHERE project_id=%s AND event_type='prompt'",
+                        "SELECT COUNT(*) FROM {tbl_int} WHERE project_id=%s AND event_type='prompt'",
                         (project_name,),
                     )
                     interactions_total = (cur.fetchone() or (0,))[0]
                     if last_memory_run:
                         cur.execute(
-                            "SELECT COUNT(*) FROM mng_interactions WHERE project_id=%s AND event_type='prompt' AND created_at > %s::timestamptz",
+                            "SELECT COUNT(*) FROM {tbl_int} WHERE project_id=%s AND event_type='prompt' AND created_at > %s::timestamptz",
                             (project_name, last_memory_run),
                         )
                         interactions_since = (cur.fetchone() or (0,))[0]

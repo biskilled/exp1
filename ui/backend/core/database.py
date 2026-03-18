@@ -75,12 +75,17 @@ class _Database:
             return
         if project in self._schema_ready:
             return   # already done this process lifetime — skip all DDL
-        tbl = self.project_table
-        c   = tbl("commits",    project)
-        e   = tbl("events",     project)
-        emb = tbl("embeddings", project)
-        et  = tbl("event_tags", project)
-        el  = tbl("event_links", project)
+        tbl  = self.project_table
+        c    = tbl("commits",          project)
+        e    = tbl("events",           project)
+        emb  = tbl("embeddings",       project)
+        et   = tbl("event_tags",       project)
+        el   = tbl("event_links",      project)
+        wi   = tbl("work_items",       project)
+        int_ = tbl("interactions",     project)
+        itag = tbl("interaction_tags", project)
+        mi   = tbl("memory_items",     project)
+        pf   = tbl("project_facts",    project)
         ddl = f"""
         CREATE TABLE IF NOT EXISTS {c} (
             id           SERIAL         PRIMARY KEY,
@@ -151,6 +156,97 @@ class _Database:
             PRIMARY KEY(from_event_id, to_event_id, link_type)
         );
         CREATE INDEX IF NOT EXISTS idx_{el}_from ON {el}(from_event_id);
+
+        -- Work items: feature/bug/task items with pipeline tracking (per-project)
+        CREATE TABLE IF NOT EXISTS {wi} (
+            id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+            project             TEXT          NOT NULL,
+            category_name       TEXT          NOT NULL,
+            category_id         INT           REFERENCES mng_entity_categories(id) ON DELETE SET NULL,
+            name                TEXT          NOT NULL,
+            description         TEXT          NOT NULL DEFAULT '',
+            status              VARCHAR(20)   NOT NULL DEFAULT 'active',
+            lifecycle_status    VARCHAR(20)   NOT NULL DEFAULT 'idea',
+            due_date            DATE,
+            parent_id           UUID          REFERENCES {wi}(id) ON DELETE SET NULL,
+            acceptance_criteria TEXT          NOT NULL DEFAULT '',
+            implementation_plan TEXT          NOT NULL DEFAULT '',
+            agent_run_id        INT           REFERENCES mng_graph_runs(id) ON DELETE SET NULL,
+            agent_status        VARCHAR(20),
+            tags                TEXT[]        NOT NULL DEFAULT '{{}}',
+            created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            UNIQUE(project, category_name, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{wi}_project  ON {wi}(project);
+        CREATE INDEX IF NOT EXISTS idx_{wi}_category ON {wi}(category_name);
+        CREATE INDEX IF NOT EXISTS idx_{wi}_status   ON {wi}(status);
+
+        -- Interactions: unified prompt/response log (per-project)
+        CREATE TABLE IF NOT EXISTS {int_} (
+            id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id          TEXT          NOT NULL,
+            work_item_id        UUID          REFERENCES {wi}(id) ON DELETE SET NULL,
+            session_id          TEXT,
+            llm_source          TEXT,
+            event_type          TEXT          NOT NULL DEFAULT 'prompt',
+            source_id           TEXT,
+            prompt              TEXT          NOT NULL DEFAULT '',
+            response            TEXT          NOT NULL DEFAULT '',
+            prompt_embedding    VECTOR(1536),
+            response_embedding  VECTOR(1536),
+            phase               TEXT,
+            tags                TEXT[]        NOT NULL DEFAULT '{{}}',
+            metadata            JSONB         NOT NULL DEFAULT '{{}}',
+            created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_{int_}_project  ON {int_}(project_id);
+        CREATE INDEX IF NOT EXISTS idx_{int_}_session  ON {int_}(session_id)   WHERE session_id IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_{int_}_source ON {int_}(project_id, source_id) WHERE source_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_{int_}_created  ON {int_}(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_{int_}_workitem ON {int_}(work_item_id) WHERE work_item_id IS NOT NULL;
+
+        -- Interaction tags: links interactions to work items (per-project)
+        CREATE TABLE IF NOT EXISTS {itag} (
+            interaction_id  UUID          NOT NULL REFERENCES {int_}(id)  ON DELETE CASCADE,
+            work_item_id    UUID          NOT NULL REFERENCES {wi}(id)    ON DELETE CASCADE,
+            auto_tagged     BOOLEAN       NOT NULL DEFAULT FALSE,
+            created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            PRIMARY KEY(interaction_id, work_item_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_{itag}_work ON {itag}(work_item_id);
+
+        -- Memory items: distilled session/feature summaries (per-project)
+        CREATE TABLE IF NOT EXISTS {mi} (
+            id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id      TEXT          NOT NULL,
+            scope           TEXT          NOT NULL,
+            scope_ref       TEXT,
+            content         TEXT          NOT NULL,
+            embedding       VECTOR(1536),
+            source_ids      UUID[]        NOT NULL DEFAULT '{{}}',
+            tags            TEXT[]        NOT NULL DEFAULT '{{}}',
+            reviewer_score  INT,
+            reviewer_critique TEXT,
+            created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_{mi}_project ON {mi}(project_id);
+        CREATE INDEX IF NOT EXISTS idx_{mi}_scope   ON {mi}(project_id, scope);
+        CREATE INDEX IF NOT EXISTS idx_{mi}_created ON {mi}(created_at DESC);
+
+        -- Project facts: durable extracted facts (per-project; valid_until NULL = current)
+        CREATE TABLE IF NOT EXISTS {pf} (
+            id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id       TEXT          NOT NULL,
+            fact_key         TEXT          NOT NULL,
+            fact_value       TEXT          NOT NULL,
+            valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            valid_until      TIMESTAMPTZ,
+            source_memory_id UUID          REFERENCES {mi}(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS        idx_{pf}_project ON {pf}(project_id)            WHERE valid_until IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_{pf}_current ON {pf}(project_id, fact_key)  WHERE valid_until IS NULL;
         """
         # All DDL + migrations in a single transaction — one round-trip instead of 14.
         # Each statement is wrapped in a SAVEPOINT so a single failure (e.g. column
@@ -231,11 +327,6 @@ class _Database:
             ("graph_edges",         "mng_graph_edges"),
             ("graph_runs",          "mng_graph_runs"),
             ("graph_node_results",  "mng_graph_node_results"),
-            ("work_items",          "mng_work_items"),
-            ("interactions",        "mng_interactions"),
-            ("interaction_tags",    "mng_interaction_tags"),
-            ("memory_items",        "mng_memory_items"),
-            ("project_facts",       "mng_project_facts"),
             ("agent_roles",         "mng_agent_roles"),
             ("agent_role_versions", "mng_agent_role_versions"),
         ]
@@ -489,102 +580,6 @@ class _Database:
         CREATE INDEX IF NOT EXISTS idx_gnr_node ON mng_graph_node_results(node_id);
         """
 
-        _DDL_MEMORY_LAYERS = """
-        -- Work items: replaces entity_values for feature/bug/task categories.
-        -- Adds acceptance_criteria, implementation_plan, and agent pipeline tracking.
-        CREATE TABLE IF NOT EXISTS mng_work_items (
-            id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-            project             TEXT          NOT NULL,
-            category_name       TEXT          NOT NULL,
-            category_id         INT           REFERENCES mng_entity_categories(id) ON DELETE SET NULL,
-            name                TEXT          NOT NULL,
-            description         TEXT          NOT NULL DEFAULT '',
-            status              VARCHAR(20)   NOT NULL DEFAULT 'active',
-            lifecycle_status    VARCHAR(20)   NOT NULL DEFAULT 'idea',
-            due_date            DATE,
-            parent_id           UUID          REFERENCES mng_work_items(id) ON DELETE SET NULL,
-            acceptance_criteria TEXT          NOT NULL DEFAULT '',
-            implementation_plan TEXT          NOT NULL DEFAULT '',
-            agent_run_id        INT           REFERENCES mng_graph_runs(id) ON DELETE SET NULL,
-            agent_status        VARCHAR(20),
-            tags                TEXT[]        NOT NULL DEFAULT '{}',
-            created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-            updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-            UNIQUE(project, category_name, name)
-        );
-        CREATE INDEX IF NOT EXISTS idx_wi_project  ON mng_work_items(project);
-        CREATE INDEX IF NOT EXISTS idx_wi_category ON mng_work_items(category_name);
-        CREATE INDEX IF NOT EXISTS idx_wi_status   ON mng_work_items(status);
-
-        -- Interactions: unified shared table replacing per-project events_{p}.
-        -- project_id is TEXT so no per-project schema migration is needed.
-        CREATE TABLE IF NOT EXISTS mng_interactions (
-            id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-            project_id          TEXT          NOT NULL,
-            work_item_id        UUID          REFERENCES mng_work_items(id) ON DELETE SET NULL,
-            session_id          TEXT,
-            llm_source          TEXT,
-            event_type          TEXT          NOT NULL DEFAULT 'prompt',
-            source_id           TEXT,
-            prompt              TEXT          NOT NULL DEFAULT '',
-            response            TEXT          NOT NULL DEFAULT '',
-            prompt_embedding    VECTOR(1536),
-            response_embedding  VECTOR(1536),
-            phase               TEXT,
-            tags                TEXT[]        NOT NULL DEFAULT '{}',
-            metadata            JSONB         NOT NULL DEFAULT '{}',
-            created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_int_project  ON mng_interactions(project_id);
-        CREATE INDEX IF NOT EXISTS idx_int_session  ON mng_interactions(session_id)   WHERE session_id IS NOT NULL;
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_int_source ON mng_interactions(project_id, source_id) WHERE source_id IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS idx_int_created  ON mng_interactions(created_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_int_workitem ON mng_interactions(work_item_id) WHERE work_item_id IS NOT NULL;
-
-        -- Interaction tags: replaces per-project event_tags_{p}.
-        CREATE TABLE IF NOT EXISTS mng_interaction_tags (
-            interaction_id  UUID          NOT NULL REFERENCES mng_interactions(id)  ON DELETE CASCADE,
-            work_item_id    UUID          NOT NULL REFERENCES mng_work_items(id)    ON DELETE CASCADE,
-            auto_tagged     BOOLEAN       NOT NULL DEFAULT FALSE,
-            created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-            PRIMARY KEY(interaction_id, work_item_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_itag_work ON mng_interaction_tags(work_item_id);
-
-        -- Memory items: Trycycle-reviewed session/feature summaries (distilled memory layer).
-        CREATE TABLE IF NOT EXISTS mng_memory_items (
-            id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-            project_id      TEXT          NOT NULL,
-            scope           TEXT          NOT NULL,
-            scope_ref       TEXT,
-            content         TEXT          NOT NULL,
-            embedding       VECTOR(1536),
-            source_ids      UUID[]        NOT NULL DEFAULT '{}',
-            tags            TEXT[]        NOT NULL DEFAULT '{}',
-            reviewer_score  INT,
-            reviewer_critique TEXT,
-            created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-            updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_mi_project ON mng_memory_items(project_id);
-        CREATE INDEX IF NOT EXISTS idx_mi_scope   ON mng_memory_items(project_id, scope);
-        CREATE INDEX IF NOT EXISTS idx_mi_created ON mng_memory_items(created_at DESC);
-
-        -- Project facts: durable single facts extracted from memory ("we use pgvector", etc.).
-        -- valid_until IS NULL = currently valid; set to NOW() to invalidate on conflict.
-        CREATE TABLE IF NOT EXISTS mng_project_facts (
-            id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-            project_id       TEXT          NOT NULL,
-            fact_key         TEXT          NOT NULL,
-            fact_value       TEXT          NOT NULL,
-            valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-            valid_until      TIMESTAMPTZ,
-            source_memory_id UUID          REFERENCES mng_memory_items(id) ON DELETE SET NULL
-        );
-        CREATE INDEX IF NOT EXISTS        idx_pf_project ON mng_project_facts(project_id)            WHERE valid_until IS NULL;
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_pf_current ON mng_project_facts(project_id, fact_key)  WHERE valid_until IS NULL;
-        """
-
         _DDL_AGENT_ROLES = """
         -- Agent role library: reusable LLM personas for workflow nodes.
         -- All users see name/description; system_prompt is admin-only via the API.
@@ -626,7 +621,6 @@ class _Database:
             ("Tagging (commits + mng_session_tags)", _DDL_TAGGING),
             ("Entities (mng_entity_categories + mng_entity_values + links)", _DDL_ENTITIES),
             ("Graph workflows (mng_graph_nodes, edges, runs, results)", _DDL_GRAPH),
-            ("Memory layers (mng_work_items, mng_interactions, mng_memory_items, mng_project_facts)", _DDL_MEMORY_LAYERS),
             ("Agent roles (mng_agent_roles + mng_agent_role_versions)", _DDL_AGENT_ROLES),
         ]:
             try:

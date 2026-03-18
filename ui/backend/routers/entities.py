@@ -298,6 +298,9 @@ async def entity_summary(project: str | None = Query(None)):
             "commit_count": commit_count,
         })
 
+    tbl_wi   = db.project_table("work_items",       p)
+    tbl_int  = db.project_table("interactions",     p)
+    tbl_itag = db.project_table("interaction_tags", p)
     # Augment feature/bug/task categories with work_item agent_status if available
     _WORK_ITEM_CATS = {"feature", "bug", "task"}
     for cat_name, cat_data in cats.items():
@@ -307,9 +310,9 @@ async def entity_summary(project: str | None = Query(None)):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT name, agent_status, acceptance_criteria,
+                        f"""SELECT name, agent_status, acceptance_criteria,
                                   implementation_plan, lifecycle_status
-                           FROM mng_work_items
+                           FROM {tbl_wi}
                            WHERE project=%s AND category_name=%s AND status != 'archived'""",
                         (p, cat_name),
                     )
@@ -1101,6 +1104,9 @@ async def session_bulk_tag(body: SessionTagBody):
                 tagged += cur.rowcount
 
     # Also link interactions → interaction_tags for matching work_item (best-effort)
+    tbl_wi   = db.project_table("work_items",       p)
+    tbl_int  = db.project_table("interactions",     p)
+    tbl_itag = db.project_table("interaction_tags", p)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
@@ -1111,16 +1117,16 @@ async def session_bulk_tag(body: SessionTagBody):
                 ev_row = cur.fetchone()
                 if ev_row:
                     cur.execute(
-                        "SELECT id FROM mng_work_items WHERE project=%s AND name=%s LIMIT 1",
+                        "SELECT id FROM {tbl_wi} WHERE project=%s AND name=%s LIMIT 1",
                         (p, ev_row[0]),
                     )
                     wi_row = cur.fetchone()
                     if wi_row:
                         work_item_id = str(wi_row[0])
                         cur.execute(
-                            """INSERT INTO mng_interaction_tags (interaction_id, work_item_id, auto_tagged)
+                            f"""INSERT INTO {tbl_itag} (interaction_id, work_item_id, auto_tagged)
                                SELECT i.id, %s::uuid, false
-                               FROM mng_interactions i
+                               FROM {tbl_int} i
                                WHERE i.project_id=%s AND i.session_id=%s
                                ON CONFLICT DO NOTHING""",
                             (work_item_id, p, body.session_id),
@@ -1307,19 +1313,22 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
     background.add_task(_propagate_tags_phase4, p)
 
     # Also write to interaction_tags (new memory layer) — best-effort
+    tbl_wi   = db.project_table("work_items",       p)
+    tbl_int  = db.project_table("interactions",     p)
+    tbl_itag = db.project_table("interaction_tags", p)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Find interaction by source_id
                 cur.execute(
-                    "SELECT id FROM mng_interactions WHERE project_id=%s AND source_id=%s LIMIT 1",
+                    "SELECT id FROM {tbl_int} WHERE project_id=%s AND source_id=%s LIMIT 1",
                     (p, body.source_id),
                 )
                 int_row = cur.fetchone()
                 if int_row:
                     # Find work_item by entity_value id (via entity_values name + work_items name match)
                     cur.execute(
-                        """SELECT w.id FROM mng_work_items w
+                        f"""SELECT w.id FROM {tbl_wi} w
                            JOIN mng_entity_values v ON v.project=w.project AND v.name=w.name
                            WHERE v.id=%s AND w.project=%s LIMIT 1""",
                         (body.entity_value_id, p),
@@ -1327,7 +1336,7 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
                     wi_row = cur.fetchone()
                     if wi_row:
                         cur.execute(
-                            """INSERT INTO mng_interaction_tags (interaction_id, work_item_id, auto_tagged)
+                            f"""INSERT INTO {tbl_itag} (interaction_id, work_item_id, auto_tagged)
                                VALUES (%s::uuid, %s::uuid, false) ON CONFLICT DO NOTHING""",
                             (str(int_row[0]), str(wi_row[0])),
                         )

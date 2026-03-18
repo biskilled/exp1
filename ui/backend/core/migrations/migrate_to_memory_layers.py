@@ -1,12 +1,12 @@
-"""
+f"""
 migrate_to_memory_layers.py — One-time migration from per-project tables to shared tables.
 
 Migrates:
-  1. mng_entity_values (feature/bug/task)  → mng_work_items  (INSERT ON CONFLICT DO NOTHING)
-  2. events_{p}                        → mng_interactions (source_id compat; ON CONFLICT DO NOTHING)
-  3. history.jsonl                     → mng_interactions (fill any gaps by source_id)
-  4. event_tags_{p}                    → mng_interaction_tags (via source_id → interaction + name → work_item)
-  5. UPDATE mng_interactions SET work_item_id from metadata feature field
+  1. mng_entity_values (feature/bug/task)  → {tbl_wi}  (INSERT ON CONFLICT DO NOTHING)
+  2. events_{p}                        → {tbl_int} (source_id compat; ON CONFLICT DO NOTHING)
+  3. history.jsonl                     → {tbl_int} (fill any gaps by source_id)
+  4. event_tags_{p}                    → {tbl_itag} (via source_id → interaction + name → work_item)
+  5. UPDATE {tbl_int} SET work_item_id from metadata feature field
 
 Run via: POST /admin/migrate-to-memory-layers?project=X
 Idempotent — safe to run multiple times.
@@ -24,15 +24,20 @@ log = logging.getLogger(__name__)
 
 
 async def run_migration(project: str) -> dict[str, int]:
+    tbl_wi   = db.project_table("work_items",        project)
+    tbl_int  = db.project_table("interactions",      project)
+    tbl_itag = db.project_table("interaction_tags",  project)
+    tbl_mi   = db.project_table("memory_items",      project)
+    tbl_pf   = db.project_table("project_facts",     project)
     """Migrate per-project tables → shared memory layer tables. Returns row counts."""
     if not db.is_available():
         return {"error": "PostgreSQL not available"}
 
     counts: dict[str, int] = {
-        "mng_work_items": 0,
+        "{tbl_wi}": 0,
         "interactions_from_events": 0,
         "interactions_from_history": 0,
-        "mng_interaction_tags": 0,
+        "{tbl_itag}": 0,
         "work_item_links": 0,
     }
 
@@ -55,7 +60,7 @@ async def run_migration(project: str) -> dict[str, int]:
         with db.conn() as conn:
             with conn.cursor() as cur:
 
-                # ── Step 1: mng_entity_values (feature/bug/task) → mng_work_items ─────────
+                # ── Step 1: mng_entity_values (feature/bug/task) → {tbl_wi} ─────────
                 cur.execute(
                     """SELECT v.id, c.name AS cat_name, c.id AS cat_id,
                               v.name, v.description, v.status, v.lifecycle_status,
@@ -70,7 +75,7 @@ async def run_migration(project: str) -> dict[str, int]:
                 old_id_to_wi: dict[int, str] = {}  # entity_value.id → work_item UUID
                 for (old_id, cat_name, cat_id, name, desc, status, lc, due, parent_ev_id, created_at) in ev_rows:
                     cur.execute(
-                        """INSERT INTO mng_work_items
+                        f"""INSERT INTO {tbl_wi}
                                (project, category_name, category_id, name, description,
                                 status, lifecycle_status, due_date, created_at, updated_at)
                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
@@ -82,18 +87,18 @@ async def run_migration(project: str) -> dict[str, int]:
                     row = cur.fetchone()
                     if row:
                         old_id_to_wi[old_id] = str(row[0])
-                        counts["mng_work_items"] += 1
+                        counts["{tbl_wi}"] += 1
                     else:
                         # Already exists — look up UUID
                         cur.execute(
-                            "SELECT id FROM mng_work_items WHERE project=%s AND category_name=%s AND name=%s",
+                            "SELECT id FROM {tbl_wi} WHERE project=%s AND category_name=%s AND name=%s",
                             (project, cat_name, name),
                         )
                         r2 = cur.fetchone()
                         if r2:
                             old_id_to_wi[old_id] = str(r2[0])
 
-                # ── Step 2: events_{p} → mng_interactions ────────────────────────────
+                # ── Step 2: events_{p} → {tbl_int} ────────────────────────────
                 source_id_to_interaction: dict[str, str] = {}
                 if _table_exists(cur, ev_table):
                     cur.execute(
@@ -106,7 +111,7 @@ async def run_migration(project: str) -> dict[str, int]:
                             continue
                         prompt_text = content or title or ""
                         cur.execute(
-                            """INSERT INTO mng_interactions
+                            f"""INSERT INTO {tbl_int}
                                    (project_id, session_id, event_type, source_id,
                                     prompt, phase, metadata, created_at)
                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
@@ -122,14 +127,14 @@ async def run_migration(project: str) -> dict[str, int]:
                             counts["interactions_from_events"] += 1
                         else:
                             cur.execute(
-                                "SELECT id FROM mng_interactions WHERE project_id=%s AND source_id=%s LIMIT 1",
+                                "SELECT id FROM {tbl_int} WHERE project_id=%s AND source_id=%s LIMIT 1",
                                 (project, source_id),
                             )
                             r2 = cur.fetchone()
                             if r2:
                                 source_id_to_interaction[source_id] = str(r2[0])
 
-                # ── Step 3: history.jsonl → mng_interactions (fill gaps) ──────────────
+                # ── Step 3: history.jsonl → {tbl_int} (fill gaps) ──────────────
                 if hist.exists():
                     for line in hist.read_text().splitlines():
                         if not line.strip():
@@ -144,7 +149,7 @@ async def run_migration(project: str) -> dict[str, int]:
                         if not e.get("user_input"):
                             continue
                         cur.execute(
-                            """INSERT INTO mng_interactions
+                            f"""INSERT INTO {tbl_int}
                                    (project_id, session_id, event_type, source_id, prompt, response, phase, metadata, created_at)
                                VALUES (%s,%s,'prompt',%s,%s,%s,%s,%s,%s::timestamptz)
                                ON CONFLICT DO NOTHING
@@ -163,7 +168,7 @@ async def run_migration(project: str) -> dict[str, int]:
                             source_id_to_interaction[ts] = str(r[0])
                             counts["interactions_from_history"] += 1
 
-                # ── Step 4: event_tags_{p} → mng_interaction_tags ────────────────────
+                # ── Step 4: event_tags_{p} → {tbl_itag} ────────────────────
                 if _table_exists(cur, et_table) and source_id_to_interaction and old_id_to_wi:
                     cur.execute(
                         f"""SELECT et.event_id, e.source_id, et.entity_value_id, et.auto_tagged
@@ -176,17 +181,17 @@ async def run_migration(project: str) -> dict[str, int]:
                         if not interaction_id or not work_item_id:
                             continue
                         cur.execute(
-                            """INSERT INTO mng_interaction_tags (interaction_id, work_item_id, auto_tagged)
+                            f"""INSERT INTO {tbl_itag} (interaction_id, work_item_id, auto_tagged)
                                VALUES (%s::uuid, %s::uuid, %s) ON CONFLICT DO NOTHING""",
                             (interaction_id, work_item_id, auto_tagged),
                         )
-                        counts["mng_interaction_tags"] += cur.rowcount
+                        counts["{tbl_itag}"] += cur.rowcount
 
                 # ── Step 5: backfill work_item_id from metadata feature field ─────
                 cur.execute(
-                    """UPDATE mng_interactions i
+                    f"""UPDATE {tbl_int} i
                           SET work_item_id = w.id
-                         FROM mng_work_items w
+                         FROM {tbl_wi} w
                         WHERE i.project_id = w.project
                           AND i.metadata->>'feature' = w.name
                           AND i.work_item_id IS NULL

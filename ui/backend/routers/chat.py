@@ -103,13 +103,14 @@ def _append_history(
         except Exception:
             pass
 
+        tbl_int = db.project_table("interactions", project)
         # Mirror to shared interactions table (feeds memory distillation pipeline)
         try:
             phase = (tags or {}).get("phase") or None
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO mng_interactions
+                        f"""INSERT INTO {tbl_int}
                                (project_id, session_id, llm_source, event_type, source_id,
                                 prompt, response, phase, metadata, created_at)
                            VALUES (%s,%s,%s,'prompt',%s,%s,%s,%s,%s::jsonb,%s::timestamptz)

@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-17 21:01 UTC by aicli /memory_
+_Generated: 2026-03-18 10:43 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -81,7 +81,7 @@ _Generated: 2026-03-17 21:01 UTC by aicli /memory_
 
 ### Phase
 
-- **discovery** `(2 events)`
+- **discovery** `(3 events)`
 - **development** `(1 events)`
 - **prod**
 
@@ -91,6 +91,10 @@ _Generated: 2026-03-17 21:01 UTC by aicli /memory_
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
 ## Recent Work (last 10 exchanges)
+
+**[2026-03-17 21:06]** `claude_cli/claude`
+Q: Can you run the command as well, as I dont see any change in the database . also I think that there are old tables that are not in used
+A: Clean. Here's the complete summary:  **Before:** 29 tables (mixed naming, 5 stale bare tables)   **After:** 24 tables — perfectly organized  ### Dropped (stale legacy tables) `commits`, `embeddings`, `events`, `event_tags`, `event_links` — these were pre-project-split bare tables with old data; the 
 
 **[2026-03-17 20:36]** `claude_cli/claude`
 Q: before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure the table as - mng_TABLE_NAME for all aiCli managend tables (global table for all 
@@ -126,7 +130,3 @@ A: Now let's verify the key changes are correct with a quick sanity check:
 
 **[2026-03-17 13:30]** `claude_cli/claude`
 Q: can you use the mcp tool and explain what the prject is about ?
-
-**[2026-03-16 19:02]** `claude_cli/claude`
-Q: yes
-A: All changes look correct. The Agent Roles implementation in `graph_workflow.js` is now complete. Here's a summary of what was done in this session:  **`graph_workflow.js` — completed:** - `_gwOnRoleChange(val)`: now auto-populates `cfg-provider` / `cfg-model` from the selected role's defaults, updat
