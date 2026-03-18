@@ -4,7 +4,7 @@ graph_runner.py — Async DAG execution engine for graph-based multi-LLM workflo
 Nodes with no unresolved predecessors run in parallel via asyncio.gather.
 Loop-back edges are supported via an iteration counter capped at workflow.max_iterations.
 Every completed node output is appended to a shared context dict and persisted to
-pr_local_{p}_graph_node_results + pr_local_{p}_graph_runs in PostgreSQL.
+pr_graph_node_results + pr_graph_runs in PostgreSQL.
 
 Public API:
     run_graph_workflow(workflow_id, user_input, run_id, project) -> dict
@@ -97,9 +97,8 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    tbl_ar = db.client_table("agent_roles")
                     cur.execute(
-                        f"SELECT system_prompt FROM {tbl_ar} WHERE id=%s AND is_active=TRUE",
+                        "SELECT system_prompt FROM mng_agent_roles WHERE id=%s AND client_id=1 AND is_active=TRUE",
                         (node["role_id"],),
                     )
                     row = cur.fetchone()
@@ -127,8 +126,6 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
     user_parts.append(f"\n<task>\nIteration {iteration + 1}. Proceed.\n</task>")
     user_msg = "\n".join(user_parts)
 
-    tbl_gnr = db.project_table("graph_node_results", project)
-
     result_id = None
     # Insert running record
     if db.is_available():
@@ -136,7 +133,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"""INSERT INTO {tbl_gnr}
+                        """INSERT INTO pr_graph_node_results
                            (run_id, node_id, node_name, status, iteration)
                            VALUES (%s, %s, %s, 'running', %s) RETURNING id""",
                         (run_id, node_id, node_name, iteration),
@@ -214,7 +211,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"""UPDATE {tbl_gnr} SET
+                        """UPDATE pr_graph_node_results SET
                            status=%s, output=%s, structured=%s,
                            input_tokens=%s, output_tokens=%s, cost_usd=%s,
                            finished_at=NOW()
@@ -262,12 +259,6 @@ async def run_graph_workflow(
     if not db.is_available():
         raise RuntimeError("PostgreSQL required for graph workflows")
 
-    tbl_gw  = db.project_table("graph_workflows",    project)
-    tbl_gn  = db.project_table("graph_nodes",        project)
-    tbl_ge  = db.project_table("graph_edges",        project)
-    tbl_gr  = db.project_table("graph_runs",         project)
-    tbl_gnr = db.project_table("graph_node_results", project)
-
     # ── 1. Load workflow, nodes, edges ────────────────────────────────────────
     workflow: dict = {}
     nodes: dict[str, dict] = {}   # id → node
@@ -275,16 +266,16 @@ async def run_graph_workflow(
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT id, project, name, max_iterations FROM {tbl_gw} WHERE id=%s", (workflow_id,))
+            cur.execute("SELECT id, project, name, max_iterations FROM pr_graph_workflows WHERE id=%s", (workflow_id,))
             row = cur.fetchone()
             if not row:
                 raise ValueError(f"Workflow not found: {workflow_id}")
             workflow = {"id": row[0], "project": row[1], "name": row[2], "max_iterations": row[3]}
 
             cur.execute(
-                f"""SELECT id, name, role_file, role_prompt, provider, model,
+                """SELECT id, name, role_file, role_prompt, provider, model,
                           output_schema, inject_context, require_approval, approval_msg, role_id
-                   FROM {tbl_gn} WHERE workflow_id=%s""",
+                   FROM pr_graph_nodes WHERE workflow_id=%s""",
                 (workflow_id,),
             )
             for r in cur.fetchall():
@@ -298,7 +289,7 @@ async def run_graph_workflow(
                 }
 
             cur.execute(
-                f"SELECT id, source_node_id, target_node_id, condition, label FROM {tbl_ge} WHERE workflow_id=%s",
+                "SELECT id, source_node_id, target_node_id, condition, label FROM pr_graph_edges WHERE workflow_id=%s",
                 (workflow_id,),
             )
             for r in cur.fetchall():
@@ -381,14 +372,14 @@ async def run_graph_workflow(
                         with db.conn() as conn:
                             with conn.cursor() as cur:
                                 cur.execute(
-                                    f"""UPDATE {tbl_gr} SET status='waiting_approval',
+                                    """UPDATE pr_graph_runs SET status='waiting_approval',
                                        context=%s, total_cost_usd=%s WHERE id=%s""",
                                     (json.dumps(ctx), total_cost, run_id),
                                 )
                         with db.conn() as conn:
                             with conn.cursor() as cur:
                                 cur.execute(
-                                    f"""UPDATE {tbl_gnr} SET status='waiting_approval'
+                                    """UPDATE pr_graph_node_results SET status='waiting_approval'
                                        WHERE run_id=%s AND node_id=%s
                                        ORDER BY id DESC LIMIT 1""",
                                     (run_id, nid),
@@ -431,7 +422,7 @@ async def run_graph_workflow(
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"""UPDATE {tbl_gr} SET
+                        """UPDATE pr_graph_runs SET
                            status='done', context=%s, total_cost_usd=%s, finished_at=NOW()
                            WHERE id=%s""",
                         (json.dumps(ctx), total_cost, run_id),
@@ -469,17 +460,11 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
     if not db.is_available():
         raise RuntimeError("PostgreSQL required for graph workflows")
 
-    tbl_gw  = db.project_table("graph_workflows",    project)
-    tbl_gn  = db.project_table("graph_nodes",        project)
-    tbl_ge  = db.project_table("graph_edges",        project)
-    tbl_gr  = db.project_table("graph_runs",         project)
-    tbl_gnr = db.project_table("graph_node_results", project)
-
     # Load run state
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT workflow_id, context, total_cost_usd FROM {tbl_gr} WHERE id=%s",
+                "SELECT workflow_id, context, total_cost_usd FROM pr_graph_runs WHERE id=%s",
                 (run_id,),
             )
             row = cur.fetchone()
@@ -497,7 +482,7 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT id, project, name, max_iterations FROM {tbl_gw} WHERE id=%s",
+                "SELECT id, project, name, max_iterations FROM pr_graph_workflows WHERE id=%s",
                 (workflow_id,),
             )
             r = cur.fetchone()
@@ -506,9 +491,9 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
             workflow = {"id": r[0], "project": r[1], "name": r[2], "max_iterations": r[3]}
 
             cur.execute(
-                f"""SELECT id, name, role_file, role_prompt, provider, model,
+                """SELECT id, name, role_file, role_prompt, provider, model,
                           output_schema, inject_context, require_approval, approval_msg, role_id
-                   FROM {tbl_gn} WHERE workflow_id=%s""",
+                   FROM pr_graph_nodes WHERE workflow_id=%s""",
                 (workflow_id,),
             )
             for r in cur.fetchall():
@@ -522,7 +507,7 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
                 }
 
             cur.execute(
-                f"SELECT id, source_node_id, target_node_id, condition, label FROM {tbl_ge} WHERE workflow_id=%s",
+                "SELECT id, source_node_id, target_node_id, condition, label FROM pr_graph_edges WHERE workflow_id=%s",
                 (workflow_id,),
             )
             for r in cur.fetchall():
@@ -554,7 +539,7 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"UPDATE {tbl_gr} SET status='done', context=%s, total_cost_usd=%s, finished_at=NOW() WHERE id=%s",
+                    "UPDATE pr_graph_runs SET status='done', context=%s, total_cost_usd=%s, finished_at=NOW() WHERE id=%s",
                     (json.dumps(ctx), total_cost, run_id),
                 )
         return ctx
@@ -594,13 +579,13 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
                         with db.conn() as conn:
                             with conn.cursor() as cur:
                                 cur.execute(
-                                    f"UPDATE {tbl_gr} SET status='waiting_approval', context=%s, total_cost_usd=%s WHERE id=%s",
+                                    "UPDATE pr_graph_runs SET status='waiting_approval', context=%s, total_cost_usd=%s WHERE id=%s",
                                     (json.dumps(ctx), total_cost, run_id),
                                 )
                         with db.conn() as conn:
                             with conn.cursor() as cur:
                                 cur.execute(
-                                    f"UPDATE {tbl_gnr} SET status='waiting_approval' WHERE run_id=%s AND node_id=%s ORDER BY id DESC LIMIT 1",
+                                    "UPDATE pr_graph_node_results SET status='waiting_approval' WHERE run_id=%s AND node_id=%s ORDER BY id DESC LIMIT 1",
                                     (run_id, nid),
                                 )
                     except Exception as e:
@@ -635,7 +620,7 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"UPDATE {tbl_gr} SET status='done', context=%s, total_cost_usd=%s, finished_at=NOW() WHERE id=%s",
+                        "UPDATE pr_graph_runs SET status='done', context=%s, total_cost_usd=%s, finished_at=NOW() WHERE id=%s",
                         (json.dumps(ctx), total_cost, run_id),
                     )
         except Exception as e:

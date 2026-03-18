@@ -87,12 +87,7 @@ async def list_work_items(
     """List work items, optionally filtered by category, status, or exact name."""
     _require_db()
     p = _project(project)
-    tbl_wi   = db.project_table("work_items",        p)
-    tbl_int  = db.project_table("interactions",     p)
-    tbl_itag = db.project_table("interaction_tags", p)
-    tbl_mi   = db.project_table("memory_items",     p)
-    tbl_pf   = db.project_table("project_facts",    p)
-    where = ["w.project=%s"]
+    where = ["w.client_id=1", "w.project=%s"]
     params: list = [p]
     if category:
         where.append("w.category_name=%s"); params.append(category)
@@ -110,10 +105,10 @@ async def list_work_items(
                           w.agent_run_id, w.agent_status, w.tags,
                           w.created_at, w.updated_at,
                           ec.color, ec.icon,
-                          (SELECT COUNT(*) FROM {tbl_itag} it
+                          (SELECT COUNT(*) FROM pr_interaction_tags it
                            WHERE it.work_item_id = w.id) AS interaction_count
-                   FROM {tbl_wi} w
-                   LEFT JOIN {db.client_table("entity_categories")} ec ON ec.project=w.project AND ec.name=w.category_name
+                   FROM pr_work_items w
+                   LEFT JOIN mng_entity_categories ec ON ec.client_id=1 AND ec.project=w.project AND ec.name=w.category_name
                    WHERE {' AND '.join(where)}
                    ORDER BY w.category_name, w.status, w.created_at DESC
                    LIMIT %s""",
@@ -144,19 +139,13 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
     f"""Create a new work item."""
     _require_db()
     p = _project(project or body.project)
-    tbl_wi   = db.project_table("work_items",        p)
-    tbl_int  = db.project_table("interactions",     p)
-    tbl_itag = db.project_table("interaction_tags", p)
-    tbl_mi   = db.project_table("memory_items",     p)
-    tbl_pf   = db.project_table("project_facts",    p)
 
-    # Resolve category_id from cl_local_entity_categories if it exists
-    _tbl_ec = db.client_table("entity_categories")
+    # Resolve category_id from mng_entity_categories if it exists
     category_id = None
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT id FROM {_tbl_ec} WHERE project=%s AND name=%s",
+                "SELECT id FROM mng_entity_categories WHERE client_id=1 AND project=%s AND name=%s",
                 (p, body.category_name),
             )
             row = cur.fetchone()
@@ -164,11 +153,12 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
                 category_id = row[0]
 
             cur.execute(
-                f"""INSERT INTO {tbl_wi}
-                       (project, category_name, category_id, name, description,
+                """INSERT INTO pr_work_items
+                       (client_id, project, category_name, category_id, name, description,
                         status, lifecycle_status, due_date, parent_id,
                         acceptance_criteria, implementation_plan, tags)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   VALUES (1, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (client_id, project, category_name, name) DO NOTHING
                    RETURNING id, name, category_name, created_at""",
                 (p, body.category_name, category_id, body.name, body.description,
                  body.status, body.lifecycle_status, body.due_date or None,
@@ -193,12 +183,6 @@ async def patch_work_item(
     f"""Update work item fields. Triggers feature memory synthesis when lifecycle → done.f"""
     _require_db()
     p = _project(project)
-    tbl_wi   = db.project_table("work_items",        p)
-    tbl_int  = db.project_table("interactions",     p)
-    tbl_itag = db.project_table("interaction_tags", p)
-    tbl_mi   = db.project_table("memory_items",     p)
-    tbl_pf   = db.project_table("project_facts",    p)
-
     fields, params = [], []
     if body.name                is not None: fields.append("name=%s");                params.append(body.name)
     if body.description         is not None: fields.append("description=%s");         params.append(body.description)
@@ -220,7 +204,7 @@ async def patch_work_item(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE {tbl_wi} SET {','.join(fields)} WHERE id=%s::uuid AND project=%s RETURNING id",
+                f"UPDATE pr_work_items SET {','.join(fields)} WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id",
                 params,
             )
             if not cur.fetchone():
@@ -242,15 +226,10 @@ async def delete_work_item(item_id: str, project: str | None = Query(None)):
     """Delete a work item and all its interaction_tags.f"""
     _require_db()
     p = _project(project)
-    tbl_wi   = db.project_table("work_items",        p)
-    tbl_int  = db.project_table("interactions",     p)
-    tbl_itag = db.project_table("interaction_tags", p)
-    tbl_mi   = db.project_table("memory_items",     p)
-    tbl_pf   = db.project_table("project_facts",    p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"DELETE FROM {tbl_wi} WHERE id=%s::uuid AND project=%s RETURNING id",
+                "DELETE FROM pr_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id",
                 (item_id, p),
             )
             if not cur.fetchone():
@@ -269,19 +248,14 @@ async def get_work_item_interactions(
     """Return recent interactions tagged to this work item.f"""
     _require_db()
     p = _project(project)
-    tbl_wi   = db.project_table("work_items",        p)
-    tbl_int  = db.project_table("interactions",     p)
-    tbl_itag = db.project_table("interaction_tags", p)
-    tbl_mi   = db.project_table("memory_items",     p)
-    tbl_pf   = db.project_table("project_facts",    p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""SELECT i.id, i.session_id, i.event_type, i.source_id,
+                """SELECT i.id, i.session_id, i.event_type, i.source_id,
                           i.prompt, i.response, i.phase, i.created_at
-                   FROM {tbl_itag} it
-                   JOIN {tbl_int} i ON i.id = it.interaction_id
-                   WHERE it.work_item_id=%s::uuid AND i.project_id=%s
+                   FROM pr_interaction_tags it
+                   JOIN pr_interactions i ON i.id = it.interaction_id
+                   WHERE it.work_item_id=%s::uuid AND i.client_id=1 AND i.project=%s
                    ORDER BY i.created_at DESC LIMIT %s""",
                 (item_id, p, limit),
             )
@@ -303,11 +277,6 @@ async def migrate_from_tags(project: str | None = Query(None)):
     f"""Copy feature/bug/task entity_values → work_items. Idempotent."""
     _require_db()
     p = _project(project)
-    tbl_wi   = db.project_table("work_items",        p)
-    tbl_int  = db.project_table("interactions",     p)
-    tbl_itag = db.project_table("interaction_tags", p)
-    tbl_mi   = db.project_table("memory_items",     p)
-    tbl_pf   = db.project_table("project_facts",    p)
     from core.migrations.migrate_to_memory_layers import run_migration
     asyncio.create_task(run_migration(p))
     return {"status": "migration started", "project": p}
@@ -325,19 +294,10 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
     f"""
     _require_db()
     p = _project(project)
-    tbl_wi   = db.project_table("work_items",          p)
-    tbl_int  = db.project_table("interactions",        p)
-    tbl_itag = db.project_table("interaction_tags",    p)
-    tbl_mi   = db.project_table("memory_items",        p)
-    tbl_pf   = db.project_table("project_facts",       p)
-    tbl_gw   = db.project_table("graph_workflows",     p)
-    tbl_gn   = db.project_table("graph_nodes",         p)
-    tbl_ge   = db.project_table("graph_edges",         p)
-    tbl_gr   = db.project_table("graph_runs",          p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT name, description, acceptance_criteria FROM {tbl_wi} WHERE id=%s::uuid AND project=%s",
+                "SELECT name, description, acceptance_criteria FROM pr_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s",
                 (item_id, p),
             )
             row = cur.fetchone()
@@ -362,12 +322,12 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"""INSERT INTO {tbl_gr} (id, workflow_id, project, status, user_input)
-                           VALUES (%s, %s, %s, 'running', %s)""",
-                        (run_id_str, workflow_id, p, user_input),
+                        """INSERT INTO pr_graph_runs (id, client_id, project, workflow_id, status, user_input)
+                           VALUES (%s, 1, %s, %s, 'running', %s)""",
+                        (run_id_str, p, workflow_id, user_input),
                     )
                     # Get the int id of the inserted run
-                    cur.execute(f"SELECT id FROM {tbl_gr} WHERE workflow_id=%s AND project=%s ORDER BY id DESC LIMIT 1", (workflow_id, p))
+                    cur.execute("SELECT id FROM pr_graph_runs WHERE client_id=1 AND project=%s AND workflow_id=%s ORDER BY id DESC LIMIT 1", (p, workflow_id))
                     run_row = cur.fetchone()
                     run_id = run_row[0] if run_row else None
 
@@ -375,7 +335,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"UPDATE {tbl_wi} SET agent_status='running', agent_run_id=%s, updated_at=NOW() WHERE id=%s::uuid",
+                        "UPDATE pr_work_items SET agent_status='running', agent_run_id=%s, updated_at=NOW() WHERE id=%s::uuid",
                         (run_id, item_id),
                     )
 
@@ -393,7 +353,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                     with db.conn() as conn2:
                         with conn2.cursor() as cur2:
                             cur2.execute(
-                                f"""UPDATE {tbl_wi}
+                                """UPDATE pr_work_items
                                    SET agent_status='done',
                                        acceptance_criteria=COALESCE(NULLIF(%s,''), acceptance_criteria),
                                        implementation_plan=COALESCE(NULLIF(%s,''), implementation_plan),
@@ -418,7 +378,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE {tbl_wi} SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid",
+                "UPDATE pr_work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid",
                 (item_id,),
             )
     from core.work_item_pipeline import trigger_work_item_pipeline
@@ -436,14 +396,11 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
     WF_NAME = "_work_item_pipeline"
     if not db.is_available():
         return None
-    tbl_gw = db.project_table("graph_workflows", project)
-    tbl_gn = db.project_table("graph_nodes",     project)
-    tbl_ge = db.project_table("graph_edges",     project)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT id FROM {tbl_gw} WHERE project=%s AND name=%s",
+                    "SELECT id FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND name=%s",
                     (project, WF_NAME),
                 )
                 row = cur.fetchone()
@@ -455,10 +412,9 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    _tbl_ar = db.client_table("agent_roles")
                     cur.execute(
-                        f"""SELECT name, id FROM {_tbl_ar}
-                           WHERE is_active=TRUE AND project='_global'
+                        """SELECT name, id FROM mng_agent_roles
+                           WHERE client_id=1 AND is_active=TRUE AND project='_global'
                            AND name IN ('Product Manager','Sr. Architect','Web Developer','Code Reviewer')"""
                     )
                     for r in cur.fetchall():
@@ -482,8 +438,10 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""INSERT INTO {tbl_gw} (project, name, description, max_iterations, created_at, updated_at)
-                       VALUES (%s, %s, %s, 3, NOW(), NOW()) RETURNING id""",
+                    """INSERT INTO pr_graph_workflows (client_id, project, name, description, max_iterations, created_at, updated_at)
+                       VALUES (1, %s, %s, %s, 3, NOW(), NOW())
+                       ON CONFLICT (client_id, project, name) DO NOTHING
+                       RETURNING id""",
                     (project, WF_NAME, "4-agent PM → Architect → Developer → Reviewer pipeline for work items"),
                 )
                 wf_id = cur.fetchone()[0]
@@ -491,7 +449,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
                 node_ids = []
                 for i, (node_name, provider, model, role_id, fallback_prompt) in enumerate(stages):
                     cur.execute(
-                        f"""INSERT INTO {tbl_gn}
+                        """INSERT INTO pr_graph_nodes
                                (workflow_id, name, provider, model, role_id, role_prompt,
                                 inject_context, require_approval, approval_msg,
                                 position_x, position_y, created_at, updated_at)
@@ -513,7 +471,7 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
                 ]
                 for src, tgt, cond, label in edge_defs:
                     cur.execute(
-                        f"""INSERT INTO {tbl_ge}
+                        """INSERT INTO pr_graph_edges
                                (workflow_id, source_node_id, target_node_id, condition, label,
                                 created_at, updated_at)
                            VALUES (%s,%s,%s,%s,%s, NOW(), NOW())""",
@@ -534,17 +492,12 @@ async def get_project_facts(project: str | None = Query(None)):
     """Return current (valid_until IS NULL) project facts."""
     _require_db()
     p = _project(project)
-    tbl_wi   = db.project_table("work_items",        p)
-    tbl_int  = db.project_table("interactions",     p)
-    tbl_itag = db.project_table("interaction_tags", p)
-    tbl_mi   = db.project_table("memory_items",     p)
-    tbl_pf   = db.project_table("project_facts",    p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""SELECT id, fact_key, fact_value, valid_from
-                   FROM {tbl_pf}
-                   WHERE project_id=%s AND valid_until IS NULL
+                """SELECT id, fact_key, fact_value, valid_from
+                   FROM pr_project_facts
+                   WHERE client_id=1 AND project=%s AND valid_until IS NULL
                    ORDER BY fact_key""",
                 (p,),
             )
@@ -570,12 +523,7 @@ async def get_memory_items(
     f"""Return recent memory_items (distilled session/feature summaries)."""
     _require_db()
     p = _project(project)
-    tbl_wi   = db.project_table("work_items",        p)
-    tbl_int  = db.project_table("interactions",     p)
-    tbl_itag = db.project_table("interaction_tags", p)
-    tbl_mi   = db.project_table("memory_items",     p)
-    tbl_pf   = db.project_table("project_facts",    p)
-    where = ["project_id=%s"]
+    where = ["client_id=1", "project=%s"]
     params: list = [p]
     if scope:
         where.append("scope=%s"); params.append(scope)
@@ -584,7 +532,7 @@ async def get_memory_items(
         with conn.cursor() as cur:
             cur.execute(
                 f"""SELECT id, scope, scope_ref, content, reviewer_score, created_at
-                   FROM {tbl_mi}
+                   FROM pr_memory_items
                    WHERE {' AND '.join(where)}
                    ORDER BY created_at DESC LIMIT %s""",
                 params + [limit],

@@ -646,28 +646,23 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
             for project in sorted(projects):
                 counts: dict[str, int] = {}
 
-                # Ensure per-project schema exists
-                db.ensure_project_schema(project)
-
                 # Migrate commits
                 if _table_exists(cur, "commits"):
-                    c_new = db.project_table("commits", project)
                     cur.execute(
-                        f"""INSERT INTO {c_new}
-                               (commit_hash, commit_msg, summary, phase, feature,
+                        """INSERT INTO pr_commits
+                               (client_id, project, commit_hash, commit_msg, summary, phase, feature,
                                 bug_ref, source, session_id, tags, committed_at, created_at)
-                            SELECT commit_hash, commit_msg, summary, phase, feature,
+                            SELECT 1, %s, commit_hash, commit_msg, summary, phase, feature,
                                    bug_ref, source, session_id, tags, committed_at, created_at
                             FROM commits WHERE project=%s
                             ON CONFLICT (commit_hash) DO NOTHING""",
-                        (project,),
+                        (project, project),
                     )
                     counts["commits"] = cur.rowcount
 
                 # Migrate events (build a mapping old_id → new_id for FK resolution)
                 old_to_new_event: dict[int, int] = {}
                 if _table_exists(cur, "events"):
-                    e_new = db.project_table("events", project)
                     cur.execute(
                         "SELECT id, event_type, source_id, title, content, metadata, created_at "
                         "FROM events WHERE project=%s",
@@ -677,12 +672,12 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
                     inserted_events = 0
                     for old_id, et, sid, title, content, meta, created_at in event_rows:
                         cur.execute(
-                            f"""INSERT INTO {e_new}
-                                   (event_type, source_id, title, content, metadata, created_at)
-                                VALUES (%s,%s,%s,%s,%s,%s)
-                                ON CONFLICT (event_type, source_id) DO NOTHING
+                            """INSERT INTO pr_events
+                                   (client_id, project, event_type, source_id, title, content, metadata, created_at)
+                                VALUES (1,%s,%s,%s,%s,%s,%s,%s)
+                                ON CONFLICT (client_id, project, event_type, source_id) DO NOTHING
                                 RETURNING id""",
-                            (et, sid, title, content, meta, created_at),
+                            (project, et, sid, title, content, meta, created_at),
                         )
                         row = cur.fetchone()
                         if row:
@@ -691,8 +686,8 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
                         else:
                             # Already existed — look up new id
                             cur.execute(
-                                f"SELECT id FROM {e_new} WHERE event_type=%s AND source_id=%s",
-                                (et, sid),
+                                "SELECT id FROM pr_events WHERE client_id=1 AND project=%s AND event_type=%s AND source_id=%s",
+                                (project, et, sid),
                             )
                             r2 = cur.fetchone()
                             if r2:
@@ -701,7 +696,6 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
 
                 # Migrate event_tags
                 if _table_exists(cur, "event_tags") and old_to_new_event:
-                    et_new = db.project_table("event_tags", project)
                     cur.execute(
                         "SELECT et.event_id, et.entity_value_id, et.auto_tagged "
                         "FROM event_tags et "
@@ -715,7 +709,7 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
                         new_eid = old_to_new_event.get(old_eid)
                         if new_eid:
                             cur.execute(
-                                f"INSERT INTO {et_new} (event_id, entity_value_id, auto_tagged) "
+                                "INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged) "
                                 "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
                                 (new_eid, val_id, auto),
                             )
@@ -724,7 +718,6 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
 
                 # Migrate event_links
                 if _table_exists(cur, "event_links") and old_to_new_event:
-                    el_new = db.project_table("event_links", project)
                     cur.execute(
                         "SELECT el.from_event_id, el.to_event_id, el.link_type "
                         "FROM event_links el "
@@ -739,7 +732,7 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
                         new_to   = old_to_new_event.get(old_to)
                         if new_from and new_to:
                             cur.execute(
-                                f"INSERT INTO {el_new} (from_event_id, to_event_id, link_type) "
+                                "INSERT INTO pr_event_links (from_event_id, to_event_id, link_type) "
                                 "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
                                 (new_from, new_to, ltype),
                             )
@@ -748,16 +741,15 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
 
                 # Migrate embeddings
                 if _table_exists(cur, "embeddings"):
-                    emb_new = db.project_table("embeddings", project)
                     cur.execute(
-                        f"""INSERT INTO {emb_new}
-                               (source_type, source_id, chunk_index, content, embedding,
+                        """INSERT INTO pr_embeddings
+                               (client_id, project, source_type, source_id, chunk_index, content, embedding,
                                 chunk_type, doc_type, language, file_path, metadata, created_at)
-                            SELECT source_type, source_id, chunk_index, content, embedding,
+                            SELECT 1, %s, source_type, source_id, chunk_index, content, embedding,
                                    chunk_type, doc_type, language, file_path, metadata, created_at
                             FROM embeddings WHERE project=%s
-                            ON CONFLICT (source_type, source_id, chunk_index) DO NOTHING""",
-                        (project,),
+                            ON CONFLICT (client_id, project, source_type, source_id, chunk_index) DO NOTHING""",
+                        (project, project),
                     )
                     counts["embeddings"] = cur.rowcount
 

@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-17] `claude_cli`: I dont see nay changes from the last improvement - current planner do not supposrt nested (parent-ch
-- [2026-03-17] `claude_cli`: I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked.
-- [2026-03-17] `claude_cli`: Planner works partial - I do see the nested work on some category like doc_type but in bug or featur
-- [2026-03-17] `claude_cli`: before I continue - I do see quite lots of table used for this project. can you remove unused tables
 - [2026-03-17] `claude_cli`: Can you run the command as well, as I dont see any change in the database . also I think that there 
+- [2026-03-18] `claude_cli`: looks better. why memory_items and project_facts are under systeme managament tables? there are not 
+- [2026-03-18] `claude_cli`: I do see the table mng_session_tags, I also see session_tags.json file at the project workspace - is
+- [2026-03-18] `claude_cli`: clean that up . also I do remember there was graph support for memroy usage, but I dont see any reco
+- [2026-03-18] `claude_cli`: I would like to make sure the client table are also aligned - for example mng_session_tags - is rela
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

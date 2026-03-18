@@ -299,15 +299,14 @@ async def embed_and_store(
         vector = response.data[0].embedding
         meta_json = json.dumps(metadata or {})
 
-        emb_table = db.project_table("embeddings", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""INSERT INTO {emb_table}
-                           (source_type, source_id, chunk_index, content,
+                    """INSERT INTO pr_embeddings
+                           (client_id, project, source_type, source_id, chunk_index, content,
                             embedding, chunk_type, doc_type, language, file_path, metadata)
-                       VALUES (%s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
-                       ON CONFLICT (source_type, source_id, chunk_index)
+                       VALUES (1, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
+                       ON CONFLICT (client_id, project, source_type, source_id, chunk_index)
                        DO UPDATE SET
                            content=EXCLUDED.content,
                            embedding=EXCLUDED.embedding,
@@ -318,7 +317,7 @@ async def embed_and_store(
                            metadata=EXCLUDED.metadata,
                            created_at=NOW()""",
                     (
-                        source_type, source_id, chunk_index,
+                        project, source_type, source_id, chunk_index,
                         content[:4000], str(vector), chunk_type,
                         doc_type, language, file_path, meta_json,
                     ),
@@ -384,9 +383,8 @@ async def semantic_search(
         response = await client.embeddings.create(model=_EMBEDDING_MODEL, input=query[:2000])
         query_vec = response.data[0].embedding
 
-        emb_table = db.project_table("embeddings", project)
-        filters: list[str] = ["embedding IS NOT NULL"]
-        params: list = [str(query_vec)]
+        filters: list[str] = ["client_id=1", "project=%s", "embedding IS NOT NULL"]
+        params: list = [project, str(query_vec)]
 
         if source_types:
             filters.append("source_type = ANY(%s)")
@@ -419,7 +417,7 @@ async def semantic_search(
                     f"""SELECT source_type, source_id, chunk_index, chunk_type,
                                content, language, file_path, doc_type, metadata,
                                1 - (embedding <=> %s::vector) AS score
-                        FROM {emb_table}
+                        FROM pr_embeddings
                         WHERE {where}
                         ORDER BY embedding <=> %s::vector
                         LIMIT %s""",
@@ -539,13 +537,12 @@ async def ingest_commit(project: str, commit_hash: str, code_dir: str) -> int:
         meta: dict = {"commit_msg": commit_msg}
         if db.is_available():
             try:
-                c_table = db.project_table("commits", project)
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            f"SELECT phase, feature, bug_ref "
-                            f"FROM {c_table} WHERE commit_hash=%s",
-                            (commit_hash,),
+                            "SELECT phase, feature, bug_ref "
+                            "FROM pr_commits WHERE client_id=1 AND project=%s AND commit_hash=%s",
+                            (project, commit_hash,),
                         )
                         row = cur.fetchone()
                         if row:
@@ -611,11 +608,10 @@ async def embed_node_outputs(run_id: str, project: str) -> None:
     if not db.is_available():
         return
     try:
-        tbl_gnr = db.project_table("graph_node_results", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT node_id, node_name, output FROM {tbl_gnr} WHERE run_id=%s AND status='done'",
+                    "SELECT node_id, node_name, output FROM pr_graph_node_results WHERE run_id=%s AND status='done'",
                     (run_id,),
                 )
                 rows = cur.fetchall()

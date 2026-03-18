@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-18 10:43 UTC — do not edit manually.
+> Auto-generated 2026-03-18 13:50 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 124
-- **Last active**: 2026-03-18T10:43:21Z
+- **Sessions**: 130
+- **Last active**: 2026-03-18T13:45:25Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,21 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-18 12:51]** `claude_cli/claude`  
+→ I would like to make sure the client table are also aligned - for example mng_session_tags - is related to client (that 
+
+**[2026-03-18 12:00]** `claude_cli/claude`  
+→ clean that up . also I do remember there was graph support for memroy usage, but I dont see any record in. how graph tab
+← _All endpoints working correctly. Here's a summary of everything done:  **All `mng_graph_*` references eliminated** across 4 files:  | File | Changes | |------|---------| | `routers/graph_workflows.py`_
+
+**[2026-03-18 11:51]** `claude_cli/claude`  
+→ I do see the table mng_session_tags, I also see session_tags.json file at the project workspace - is it in used , what i
+← _Everything is working. Here's the final state:  **Database — 24 tables, clean split:**  | Prefix | Count | Tables | |--------|-------|--------| | `mng_` | 14 | Global config: users, billing, entity ta_
+
+**[2026-03-18 10:46]** `claude_cli/claude`  
+→ looks better. why memory_items and project_facts are under systeme managament tables? there are not part of project ?
+← _All endpoints working. Let me update MEMORY.md to reflect the final table structure:_
+
 **[2026-03-17 21:06]** `claude_cli/claude`  
 → Can you run the command as well, as I dont see any change in the database . also I think that there are old tables that 
 ← _Clean. Here's the complete summary:  **Before:** 29 tables (mixed naming, 5 stale bare tables)   **After:** 24 tables — perfectly organized  ### Dropped (stale legacy tables) `commits`, `embeddings`, _
@@ -193,19 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-16 19:02]** `claude_cli/claude`  
 → yes
 ← _All changes look correct. The Agent Roles implementation in `graph_workflow.js` is now complete. Here's a summary of what was done in this session:  **`graph_workflow.js` — completed:** - `_gwOnRoleCh_
-
-**[2026-03-16 19:00]** `claude_cli/claude`  
-→ I do mention to sotre the prompts in database, would there be a way to change the prompts as it might be improved over t
-← _Good design direction. Here's how this maps cleanly to what's already planned:  ---  ## Design: Agent Roles in Database  ### Schema (`agent_roles` + `agent_role_versions`)  ```sql -- Live role definit_
-
-**[2026-03-16 18:52]** `claude_cli/claude`  
-→ I do see you have crete a defualt pipe line in the Planner tab that run defualt Pipeline . where is this pipeline config
-← _Now I have the full picture. Let me answer all three questions clearly.  ---  ## Answers to your questions  ### 1. Where is the "Run Pipeline" configured?  It's in `ui/backend/core/work_item_pipeline._
-
-**[2026-03-16 18:34]** `claude_cli/claude`  
-→ I would like to start working on the workflows - the goal is to be able to be similar to https://www.specrails.dev/docs/
-← _Now I have everything I need. Let me write the comprehensive comparison and design proposal.  ---  ## Workflow System Design: Comparison & Proposal  ### What the two external systems do  **specrails**_
-
-**[2026-03-16 18:26]** `claude_cli/claude`  
-→ are you using the mcp now? 
-← _---  **To answer your question directly:**  No, I'm not using the MCP in this session. Everything I did was via direct HTTP calls (`curl`, Python `urllib`).  **What changes:**  - `.mcp.json` is now at_

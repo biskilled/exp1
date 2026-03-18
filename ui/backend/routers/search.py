@@ -73,16 +73,14 @@ async def get_tagged_context(
         raise HTTPException(503, "PostgreSQL required")
 
     p = project or settings.active_project or "default"
-    ev_table = db.project_table("events",      p)
-    et_table = db.project_table("event_tags",  p)
 
-    filters: list[str] = []
-    params: list = []
+    filters: list[str] = ["ev.client_id=1", "ev.project=%s"]
+    params: list = [p]
 
     if entity_value_id:
         # Filter by applied entity tag — join through event_tags
         filters.append(
-            f"ev.id IN (SELECT event_id FROM {et_table} WHERE entity_value_id = %s)"
+            "ev.id IN (SELECT event_id FROM pr_event_tags WHERE entity_value_id = %s)"
         )
         params.append(entity_value_id)
     else:
@@ -98,7 +96,7 @@ async def get_tagged_context(
             )
             params.append(feature)
 
-    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    where = "WHERE " + " AND ".join(filters)
     params.append(limit)
 
     try:
@@ -108,7 +106,7 @@ async def get_tagged_context(
                     f"""SELECT ev.id, ev.event_type, ev.source_id, ev.title,
                                ev.phase, ev.feature, ev.session_id,
                                ev.created_at, ev.metadata
-                          FROM {ev_table} ev
+                          FROM pr_events ev
                           {where}
                          ORDER BY ev.created_at DESC
                          LIMIT %s""",

@@ -61,45 +61,42 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
         return
     try:
         from core.database import db as _db
-        c_table  = _db.project_table("commits",     project)
-        ev_table = _db.project_table("events",      project)
-        el_table = _db.project_table("event_links", project)
 
         with _db.conn() as conn:
             with conn.cursor() as cur:
                 # 1. Upsert the commit into commits table
                 cur.execute(
-                    f"""INSERT INTO {c_table}
-                            (commit_hash, session_id, commit_msg, committed_at, source)
-                        VALUES (%s, %s, %s, %s, %s)
+                    """INSERT INTO pr_commits
+                            (client_id, project, commit_hash, session_id, commit_msg, committed_at, source)
+                        VALUES (1, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (commit_hash) DO UPDATE
-                            SET session_id  = COALESCE(EXCLUDED.session_id, {c_table}.session_id),
-                                commit_msg  = COALESCE(EXCLUDED.commit_msg,  {c_table}.commit_msg),
-                                committed_at= COALESCE(EXCLUDED.committed_at,{c_table}.committed_at)
+                            SET session_id  = COALESCE(EXCLUDED.session_id, pr_commits.session_id),
+                                commit_msg  = COALESCE(EXCLUDED.commit_msg,  pr_commits.commit_msg),
+                                committed_at= COALESCE(EXCLUDED.committed_at,pr_commits.committed_at)
                     """,
-                    (commit_hash, session_id, commit_msg, committed_at or datetime.now(timezone.utc), "commit_push"),
+                    (project, commit_hash, session_id, commit_msg, committed_at or datetime.now(timezone.utc), "commit_push"),
                 )
 
                 # 2. Upsert a commit event so Phase 5 can find it
                 meta = json.dumps({"session_id": session_id}) if session_id else "{}"
                 cur.execute(
-                    f"""INSERT INTO {ev_table} (source_id, event_type, metadata)
-                        VALUES (%s, 'commit', %s::jsonb)
-                        ON CONFLICT (source_id) DO UPDATE
-                            SET metadata = {ev_table}.metadata || EXCLUDED.metadata
+                    """INSERT INTO pr_events (client_id, project, source_id, event_type, metadata)
+                        VALUES (1, %s, %s, 'commit', %s::jsonb)
+                        ON CONFLICT (client_id, project, event_type, source_id) DO UPDATE
+                            SET metadata = pr_events.metadata || EXCLUDED.metadata
                     """,
-                    (commit_hash, meta),
+                    (project, commit_hash, meta),
                 )
 
                 # 3. Phase 5 — link this commit to its triggering prompt
                 if session_id:
                     cur.execute(
-                        f"""INSERT INTO {el_table} (from_event_id, to_event_id, link_type)
+                        """INSERT INTO pr_event_links (from_event_id, to_event_id, link_type)
                             SELECT DISTINCT ON (ce.id)
                                 ce.id, pe.id, 'triggered_by'
-                            FROM {ev_table} ce
-                            JOIN {c_table} c ON c.commit_hash = ce.source_id
-                            JOIN {ev_table} pe ON (
+                            FROM pr_events ce
+                            JOIN pr_commits c ON c.commit_hash = ce.source_id
+                            JOIN pr_events pe ON (
                                 pe.metadata->>'session_id' = %s
                                 AND pe.event_type = 'prompt'
                                 AND pe.source_id ~ %s
@@ -108,23 +105,25 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
                             WHERE ce.source_id = %s
                               AND ce.event_type = 'commit'
                               AND c.committed_at IS NOT NULL
+                              AND ce.client_id=1 AND ce.project=%s
+                              AND pe.client_id=1 AND pe.project=%s
                               AND NOT EXISTS (
-                                  SELECT 1 FROM {el_table} el2
+                                  SELECT 1 FROM pr_event_links el2
                                   WHERE el2.from_event_id = ce.id AND el2.link_type = 'triggered_by'
                               )
                             ORDER BY ce.id, pe.source_id DESC
                             ON CONFLICT DO NOTHING
                         """,
-                        (session_id, r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}', commit_hash),
+                        (session_id, r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}', commit_hash, project, project),
                     )
 
                     # 4. Backfill prompt_source_id into commits table
                     cur.execute(
-                        f"""UPDATE {c_table} c
+                        """UPDATE pr_commits c
                                SET prompt_source_id = pe.source_id
-                              FROM {ev_table} ce
-                              JOIN {el_table} el ON el.from_event_id = ce.id AND el.link_type = 'triggered_by'
-                              JOIN {ev_table} pe ON pe.id = el.to_event_id AND pe.event_type = 'prompt'
+                              FROM pr_events ce
+                              JOIN pr_event_links el ON el.from_event_id = ce.id AND el.link_type = 'triggered_by'
+                              JOIN pr_events pe ON pe.id = el.to_event_id AND pe.event_type = 'prompt'
                              WHERE ce.source_id = c.commit_hash
                                AND c.commit_hash = %s
                                AND c.prompt_source_id IS NULL

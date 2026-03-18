@@ -306,9 +306,7 @@ async def create_project(body: NewProject):
             setup_results["cursor"] = str(cursor_rules_dir)
             setup_results["cursor_mcp"] = str(code_path / ".cursor" / "mcp.json")
 
-    # Ensure per-project DB tables exist (idempotent)
-    if db.is_available():
-        db.ensure_project_schema(body.name)
+    # Tables are pre-created at startup; no per-project schema call needed.
 
     return {
         "created": body.name,
@@ -321,8 +319,6 @@ async def create_project(body: NewProject):
 @router.post("/switch/{project_name}")
 async def switch_project(project_name: str):
     """Switch the active project (updates in-memory settings)."""
-    tbl_mi   = db.project_table("memory_items",  project_name)
-    tbl_pf   = db.project_table("project_facts", project_name)
     proj_dir = _workspace() / project_name
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
@@ -827,9 +823,7 @@ async def _suggest_tags(
 # ── Memory distillation pipeline ─────────────────────────────────────────────
 
 async def _summarize_session_memory(project: str) -> int:
-    tbl_int  = db.project_table("interactions",  project)
-    tbl_mi   = db.project_table("memory_items",  project)
-    """Layer 1: Summarize unsummarized sessions into {tbl_mi} (Trycycle pattern).
+    """Layer 1: Summarize unsummarized sessions into pr_memory_items (Trycycle pattern).
 
     Queries interactions for sessions with >= 3 prompts not yet summarized.
     Each session gets two Haiku calls: summarize + rate/improve. Result stored
@@ -850,7 +844,7 @@ async def _summarize_session_memory(project: str) -> int:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""SELECT i.session_id, COUNT(*) AS cnt,
+                    """SELECT i.session_id, COUNT(*) AS cnt,
                               ARRAY_AGG(i.id ORDER BY i.created_at) AS ids,
                               STRING_AGG(
                                   '[' || LEFT(i.created_at::text, 16) || '] Q: '
@@ -858,13 +852,13 @@ async def _summarize_session_memory(project: str) -> int:
                                   || CASE WHEN i.response != '' THEN E'\n A: ' || LEFT(i.response,200) ELSE '' END,
                                   E'\n\n' ORDER BY i.created_at
                               ) AS history_text
-                       FROM {tbl_int} i
-                       WHERE i.project_id=%s
+                       FROM pr_interactions i
+                       WHERE i.client_id=1 AND i.project=%s
                          AND i.event_type='prompt'
                          AND i.session_id IS NOT NULL
                          AND NOT EXISTS (
-                             SELECT 1 FROM {tbl_mi} m
-                             WHERE m.project_id=i.project_id
+                             SELECT 1 FROM pr_memory_items m
+                             WHERE m.client_id=1 AND m.project=i.project
                                AND m.scope='session'
                                AND m.scope_ref=i.session_id
                          )
@@ -934,10 +928,10 @@ async def _summarize_session_memory(project: str) -> int:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            f"""INSERT INTO {tbl_mi}
-                                   (project_id, scope, scope_ref, content, source_ids,
+                            """INSERT INTO pr_memory_items
+                                   (client_id, project, scope, scope_ref, content, source_ids,
                                     reviewer_score, reviewer_critique)
-                               VALUES (%s,'session',%s,%s,%s::uuid[],%s,%s)
+                               VALUES (1, %s,'session',%s,%s,%s::uuid[],%s,%s)
                                ON CONFLICT DO NOTHING
                                RETURNING id""",
                             (project, session_id, final_summary,
@@ -955,10 +949,7 @@ async def _summarize_session_memory(project: str) -> int:
 
 
 async def _summarize_feature_memory(project: str, work_item_id: str) -> str | None:
-    tbl_wi   = db.project_table("work_items",        project)
-    tbl_mi   = db.project_table("memory_items",      project)
-    tbl_itag = db.project_table("interaction_tags",  project)
-    f"""Layer 2: Summarize a completed feature/bug/task into a memory_item.
+    """Layer 2: Summarize a completed feature/bug/task into a memory_item.
 
     Called when a work_item lifecycle_status → 'done'.
     Collects session summaries whose source_ids overlap with this work_item's interactions,
@@ -979,7 +970,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
             with conn.cursor() as cur:
                 # Get work item details
                 cur.execute(
-                    "SELECT name, description FROM {tbl_wi} WHERE id=%s::uuid AND project=%s",
+                    "SELECT name, description FROM pr_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s",
                     (work_item_id, project),
                 )
                 wi_row = cur.fetchone()
@@ -990,15 +981,15 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
                 # Find memory_items whose source_ids overlap with this work_item's interactions
                 cur.execute(
                     """SELECT m.content
-                       FROM {tbl_mi} m
-                       WHERE m.project_id=%s AND m.scope='session'
+                       FROM pr_memory_items m
+                       WHERE m.client_id=1 AND m.project=%s AND m.scope='session'
                          AND EXISTS (
-                             SELECT 1 FROM {tbl_itag} it
+                             SELECT 1 FROM pr_interaction_tags it
                              WHERE it.work_item_id=%s::uuid
                                AND it.interaction_id = ANY(m.source_ids)
                          )
                        ORDER BY m.created_at
-                       LIMIT 10f""",
+                       LIMIT 10""",
                     (project, work_item_id),
                 )
                 session_summaries = [r[0] for r in cur.fetchall()]
@@ -1051,9 +1042,9 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO {tbl_mi}
-                           (project_id, scope, scope_ref, content, reviewer_score, reviewer_critique)
-                       VALUES (%s,'feature',%s,%s,%s,%s)
+                    """INSERT INTO pr_memory_items
+                           (client_id, project, scope, scope_ref, content, reviewer_score, reviewer_critique)
+                       VALUES (1, %s,'feature',%s,%s,%s,%s)
                        RETURNING id""",
                     (project, wi_name, final_summary, score, critique or None),
                 )
@@ -1065,9 +1056,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
 
 
 async def _extract_project_facts(project: str, memory_item_id: str | None = None) -> int:
-    tbl_mi   = db.project_table("memory_items",   project)
-    tbl_pf   = db.project_table("project_facts",  project)
-    f"""Layer 3: Extract durable facts from recent memory and store in project_facts.
+    """Layer 3: Extract durable facts from recent memory and store in project_facts.
 
     Haiku extracts 3-8 key-value facts (e.g. auth_pattern=JWT).
     Conflicts are invalidated (valid_until=NOW()) before inserting new facts.
@@ -1087,16 +1076,16 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT content FROM {tbl_mi}
-                       WHERE project_id=%s
+                    """SELECT content FROM pr_memory_items
+                       WHERE client_id=1 AND project=%s
                        ORDER BY created_at DESC LIMIT 5""",
                     (project,),
                 )
                 mem_texts = [r[0] for r in cur.fetchall()]
                 # Also include existing facts for context
                 cur.execute(
-                    f"""SELECT fact_key, fact_value FROM {tbl_pf}
-                       WHERE project_id=%s AND valid_until IS NULL
+                    """SELECT fact_key, fact_value FROM pr_project_facts
+                       WHERE client_id=1 AND project=%s AND valid_until IS NULL
                        ORDER BY fact_key""",
                     (project,),
                 )
@@ -1141,18 +1130,18 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
                         continue
                     # Invalidate conflicting current fact
                     cur.execute(
-                        f"""UPDATE {tbl_pf} SET valid_until=NOW()
-                           WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL
+                        """UPDATE pr_project_facts SET valid_until=NOW()
+                           WHERE client_id=1 AND project=%s AND fact_key=%s AND valid_until IS NULL
                              AND fact_value != %s""",
                         (project, k, v),
                     )
                     # Insert new fact (unique index prevents duplicates)
                     try:
                         cur.execute(
-                            f"""INSERT INTO {tbl_pf}
-                                   (project_id, fact_key, fact_value, source_memory_id)
-                               VALUES (%s,%s,%s,%s::uuid)
-                               ON CONFLICT (project_id, fact_key) WHERE valid_until IS NULL
+                            """INSERT INTO pr_project_facts
+                                   (client_id, project, fact_key, fact_value, source_memory_id)
+                               VALUES (1, %s,%s,%s,%s::uuid)
+                               ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL
                                DO NOTHING""",
                             (project, k, v, memory_item_id),
                         )
@@ -1249,25 +1238,21 @@ async def generate_memory(project_name: str):
     entity_text_for_llm = ""
     if db.is_available():
         try:
-            et_table = db.project_table("event_tags", project_name)
-            ev_table = db.project_table("events",     project_name)
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    _tbl_ec = db.client_table("entity_categories")
-                    _tbl_ev = db.client_table("entity_values")
                     cur.execute(
-                        f"""SELECT c.name AS category, c.icon,
+                        """SELECT c.name AS category, c.icon,
                                   v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
                                   COUNT(DISTINCT et.event_id)                                          AS event_count,
                                   COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
-                           FROM {_tbl_ec} c
-                           JOIN {_tbl_ev} v ON v.category_id = c.id
-                           LEFT JOIN {et_table} et ON et.entity_value_id = v.id
-                           LEFT JOIN {ev_table} ev ON ev.id = et.event_id
-                           WHERE v.project=%s AND v.status != 'archived'
+                           FROM mng_entity_categories c
+                           JOIN mng_entity_values v ON v.category_id = c.id
+                           LEFT JOIN pr_event_tags et ON et.entity_value_id = v.id
+                           LEFT JOIN pr_events ev ON ev.id = et.event_id AND ev.client_id=1 AND ev.project=%s
+                           WHERE c.client_id=1 AND v.project=%s AND v.status != 'archived'
                            GROUP BY c.name, c.icon, v.id, v.name, v.description, v.status, v.due_date, v.parent_id
                            ORDER BY c.name, v.status, COUNT(DISTINCT et.event_id) DESC""",
-                        (project_name,),
+                        (project_name, project_name),
                     )
                     entity_rows = cur.fetchall()
             # Build per-category groups
@@ -1288,7 +1273,7 @@ async def generate_memory(project_name: str):
         except Exception as _e:
             log.warning("entity summary for /memory failed: %s", _e)
 
-    # ── Layer 1: summarize new sessions into {tbl_mi} (fire-and-forget) ──────
+    # ── Layer 1: summarize new sessions into pr_memory_items (fire-and-forget) ──
     if db.is_available():
         try:
             asyncio.create_task(_summarize_session_memory(project_name))
@@ -1303,15 +1288,15 @@ async def generate_memory(project_name: str):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT fact_key, fact_value FROM {tbl_pf}
-                           WHERE project_id=%s AND valid_until IS NULL
-                           ORDER BY fact_keyf""",
+                        """SELECT fact_key, fact_value FROM pr_project_facts
+                           WHERE client_id=1 AND project=%s AND valid_until IS NULL
+                           ORDER BY fact_key""",
                         (project_name,),
                     )
                     distilled_facts = [{"key": r[0], "value": r[1]} for r in cur.fetchall()]
                     cur.execute(
-                        """SELECT content FROM {tbl_mi}
-                           WHERE project_id=%s
+                        """SELECT content FROM pr_memory_items
+                           WHERE client_id=1 AND project=%s
                            ORDER BY created_at DESC LIMIT 5""",
                         (project_name,),
                     )
@@ -1670,10 +1655,9 @@ async def generate_memory(project_name: str):
                 try:
                     with db.conn() as conn:
                         with conn.cursor() as cur:
-                            _tbl_ev = db.client_table("entity_values")
                             cur.execute(
-                                f"""SELECT id, name FROM {_tbl_ev}
-                                   WHERE project=%s AND status='active'
+                                """SELECT id, name FROM mng_entity_values
+                                   WHERE client_id=1 AND project=%s AND status='active'
                                    ORDER BY name LIMIT 50""",
                                 (project_name,),
                             )
@@ -1771,7 +1755,7 @@ async def memory_status(project_name: str, bust: bool = False):
         except Exception:
             pass
 
-    # Also count from {tbl_int} table (new storage)
+    # Also count from pr_interactions table (new storage)
     interactions_total = 0
     interactions_since = 0
     if db.is_available():
@@ -1779,13 +1763,13 @@ async def memory_status(project_name: str, bust: bool = False):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT COUNT(*) FROM {tbl_int} WHERE project_id=%s AND event_type='prompt'",
+                        "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt'",
                         (project_name,),
                     )
                     interactions_total = (cur.fetchone() or (0,))[0]
                     if last_memory_run:
                         cur.execute(
-                            "SELECT COUNT(*) FROM {tbl_int} WHERE project_id=%s AND event_type='prompt' AND created_at > %s::timestamptz",
+                            "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz",
                             (project_name, last_memory_run),
                         )
                         interactions_since = (cur.fetchone() or (0,))[0]
@@ -1816,18 +1800,19 @@ async def _ingest_new_commits(project: str, code_dir: str, ingest_commit_fn) -> 
     if not db.is_available():
         return
     try:
-        c_table   = db.project_table("commits",    project)
-        emb_table = db.project_table("embeddings", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Find commit hashes not yet in embeddings
                 cur.execute(
-                    f"""SELECT c.commit_hash FROM {c_table} c
-                       WHERE NOT EXISTS (
-                           SELECT 1 FROM {emb_table} e
-                           WHERE e.source_type='commit' AND e.source_id=c.commit_hash
+                    """SELECT c.commit_hash FROM pr_commits c
+                       WHERE c.client_id=1 AND c.project=%s
+                         AND NOT EXISTS (
+                           SELECT 1 FROM pr_embeddings e
+                           WHERE e.client_id=1 AND e.project=%s
+                             AND e.source_type='commit' AND e.source_id=c.commit_hash
                        )
                        ORDER BY c.committed_at DESC LIMIT 30""",
+                    (project, project),
                 )
                 hashes = [r[0] for r in cur.fetchall()]
         for h in hashes:
@@ -1855,17 +1840,13 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
         if not key:
             return
 
-        ev_table = db.project_table("events",     project)
-        et_table = db.project_table("event_tags", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                _tbl_ev = db.client_table("entity_values")
-                _tbl_ec = db.client_table("entity_categories")
                 cur.execute(
-                    f"""SELECT v.id, c.name AS category, v.name
-                       FROM {_tbl_ev} v
-                       JOIN {_tbl_ec} c ON c.id = v.category_id
-                       WHERE v.project=%s AND v.status='active'
+                    """SELECT v.id, c.name AS category, v.name
+                       FROM mng_entity_values v
+                       JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+                       WHERE v.client_id=1 AND v.project=%s AND v.status='active'
                        ORDER BY c.name, v.name""",
                     (project,),
                 )
@@ -1875,13 +1856,14 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
 
                 # Only tag events that are new (after since) and have no tags yet
                 since_filter = "AND e.created_at > %s::timestamptz" if since else ""
-                params: list = []
+                params: list = [project]
                 if since:
                     params.append(since)
                 cur.execute(
                     f"""SELECT e.id, e.event_type, e.title
-                        FROM {ev_table} e
-                        WHERE NOT EXISTS (SELECT 1 FROM {et_table} et WHERE et.event_id=e.id)
+                        FROM pr_events e
+                        WHERE e.client_id=1 AND e.project=%s
+                          AND NOT EXISTS (SELECT 1 FROM pr_event_tags et WHERE et.event_id=e.id)
                           {since_filter}
                         ORDER BY e.created_at DESC LIMIT 30""",
                     params,
@@ -1931,7 +1913,7 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
                     for vid in (value_ids or []):
                         try:
                             cur.execute(
-                                f"INSERT INTO {et_table} (event_id, entity_value_id, auto_tagged) "
+                                "INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged) "
                                 "VALUES (%s,%s,TRUE) ON CONFLICT DO NOTHING",
                                 (eid, int(vid)),
                             )
@@ -1953,20 +1935,19 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
     if not db.is_available():
         return
     try:
-        ev_table = db.project_table("events",      project)
-        el_table = db.project_table("event_links", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Get new events (after since)
                 if since:
-                    where_clause = "WHERE created_at > %s::timestamptz"
-                    params: list = [since]
+                    where_clause = "AND created_at > %s::timestamptz"
+                    params: list = [project, since]
                 else:
                     where_clause = ""
-                    params = []
+                    params = [project]
                 cur.execute(
                     f"""SELECT id, event_type, source_id, title, content, metadata
-                        FROM {ev_table} {where_clause}
+                        FROM pr_events
+                        WHERE client_id=1 AND project=%s {where_clause}
                         ORDER BY created_at DESC LIMIT 50""",
                     params,
                 )
@@ -2002,7 +1983,7 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
                         ):
                             try:
                                 cur.execute(
-                                    f"INSERT INTO {el_table} (from_event_id, to_event_id, link_type) "
+                                    "INSERT INTO pr_event_links (from_event_id, to_event_id, link_type) "
                                     "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
                                     (eid, bug_id, link_type),
                                 )
@@ -2050,7 +2031,7 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
                 for rel in relationships:
                     try:
                         cur.execute(
-                            f"INSERT INTO {el_table} (from_event_id, to_event_id, link_type) "
+                            "INSERT INTO pr_event_links (from_event_id, to_event_id, link_type) "
                             "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
                             (int(rel["from"]), int(rel["to"]), rel["type"]),
                         )
@@ -2067,12 +2048,6 @@ async def get_project(project_name: str):
     proj_dir = _workspace() / project_name
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
-
-    # Lazy-ensure per-project DB tables — run in a thread so it never blocks the response.
-    # First call: ~1 DB round-trip (cold start on Railway may still be slow but won't
-    # freeze the UI). Subsequent calls: instant (cached in db._schema_ready).
-    if db.is_available():
-        asyncio.get_event_loop().run_in_executor(None, db.ensure_project_schema, project_name)
 
     proj_yaml = proj_dir / "project.yaml"
     data: dict = {"name": project_name}

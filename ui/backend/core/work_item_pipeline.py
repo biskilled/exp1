@@ -32,9 +32,6 @@ async def trigger_work_item_pipeline(
     description: str,
     existing_criteria: str = "",
 ) -> None:
-    tbl_wi   = db.project_table("work_items",       project)
-    tbl_mi   = db.project_table("memory_items",     project)
-    tbl_pf   = db.project_table("project_facts",    project)
     """Run the full 4-agent pipeline for a work item. Fully async, safe to background."""
     try:
         from core.api_keys import get_key
@@ -55,15 +52,15 @@ async def trigger_work_item_pipeline(
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "SELECT fact_key, fact_value FROM {tbl_pf} "
-                            "WHERE project_id=%s AND valid_until IS NULL ORDER BY fact_key",
+                            "SELECT fact_key, fact_value FROM pr_project_facts "
+                            "WHERE client_id=1 AND project=%s AND valid_until IS NULL ORDER BY fact_key",
                             (project,),
                         )
                         facts = cur.fetchall()
                         if facts:
                             project_facts_text = "\n".join(f"  {k}: {v}" for k, v in facts)
                         cur.execute(
-                            "SELECT content FROM {tbl_mi} WHERE project_id=%s "
+                            "SELECT content FROM pr_memory_items WHERE client_id=1 AND project=%s "
                             "ORDER BY created_at DESC LIMIT 3",
                             (project,),
                         )
@@ -195,12 +192,12 @@ def _set_status(work_item_id: str, status: str, error: str = "") -> None:
             with conn.cursor() as cur:
                 if error:
                     cur.execute(
-                        "UPDATE {tbl_wi} SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
+                        "UPDATE pr_work_items SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
                         (f"{status}: {error[:200]}", work_item_id),
                     )
                 else:
                     cur.execute(
-                        "UPDATE {tbl_wi} SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
+                        "UPDATE pr_work_items SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
                         (status, work_item_id),
                     )
     except Exception as e:
@@ -215,7 +212,7 @@ def _update_fields(work_item_id: str, acceptance_criteria: str, implementation_p
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""UPDATE {tbl_wi}
+                    """UPDATE pr_work_items
                           SET acceptance_criteria=%s,
                               implementation_plan=%s,
                               updated_at=NOW()

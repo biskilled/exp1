@@ -1,12 +1,12 @@
-f"""
+"""
 migrate_to_memory_layers.py — One-time migration from per-project tables to shared tables.
 
 Migrates:
-  1. mng_entity_values (feature/bug/task)  → {tbl_wi}  (INSERT ON CONFLICT DO NOTHING)
-  2. events_{p}                        → {tbl_int} (source_id compat; ON CONFLICT DO NOTHING)
-  3. history.jsonl                     → {tbl_int} (fill any gaps by source_id)
-  4. event_tags_{p}                    → {tbl_itag} (via source_id → interaction + name → work_item)
-  5. UPDATE {tbl_int} SET work_item_id from metadata feature field
+  1. mng_entity_values (feature/bug/task)  → pr_work_items  (INSERT ON CONFLICT DO NOTHING)
+  2. pr_events                             → pr_interactions (source_id compat; ON CONFLICT DO NOTHING)
+  3. history.jsonl                         → pr_interactions (fill any gaps by source_id)
+  4. pr_event_tags                         → pr_interaction_tags (via source_id → interaction + name → work_item)
+  5. UPDATE pr_interactions SET work_item_id from metadata feature field
 
 Run via: POST /admin/migrate-to-memory-layers?project=X
 Idempotent — safe to run multiple times.
@@ -24,26 +24,17 @@ log = logging.getLogger(__name__)
 
 
 async def run_migration(project: str) -> dict[str, int]:
-    tbl_wi   = db.project_table("work_items",        project)
-    tbl_int  = db.project_table("interactions",      project)
-    tbl_itag = db.project_table("interaction_tags",  project)
-    tbl_mi   = db.project_table("memory_items",      project)
-    tbl_pf   = db.project_table("project_facts",     project)
     """Migrate per-project tables → shared memory layer tables. Returns row counts."""
     if not db.is_available():
         return {"error": "PostgreSQL not available"}
 
     counts: dict[str, int] = {
-        "{tbl_wi}": 0,
+        "work_items": 0,
         "interactions_from_events": 0,
         "interactions_from_history": 0,
-        "{tbl_itag}": 0,
+        "interaction_tags": 0,
         "work_item_links": 0,
     }
-
-    ev_table = db.project_table("events",      project)
-    et_table = db.project_table("event_tags",  project)
-    c_table  = db.project_table("commits",     project)
 
     ws_dir  = Path(settings.workspace_dir) / project / "_system"
     hist    = ws_dir / "history.jsonl"
@@ -60,16 +51,14 @@ async def run_migration(project: str) -> dict[str, int]:
         with db.conn() as conn:
             with conn.cursor() as cur:
 
-                # ── Step 1: cl_local_entity_values (feature/bug/task) → {tbl_wi} ────
-                _tbl_ev = db.client_table("entity_values")
-                _tbl_ec = db.client_table("entity_categories")
+                # ── Step 1: mng_entity_values (feature/bug/task) → pr_work_items ────
                 cur.execute(
-                    f"""SELECT v.id, c.name AS cat_name, c.id AS cat_id,
+                    """SELECT v.id, c.name AS cat_name, c.id AS cat_id,
                               v.name, v.description, v.status, v.lifecycle_status,
                               v.due_date, v.parent_id, v.created_at
-                       FROM {_tbl_ev} v
-                       JOIN {_tbl_ec} c ON c.id = v.category_id
-                       WHERE v.project=%s
+                       FROM mng_entity_values v
+                       JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+                       WHERE v.client_id=1 AND v.project=%s
                          AND c.name IN ('feature','bug','task')""",
                     (project,),
                 )
@@ -77,11 +66,11 @@ async def run_migration(project: str) -> dict[str, int]:
                 old_id_to_wi: dict[int, str] = {}  # entity_value.id → work_item UUID
                 for (old_id, cat_name, cat_id, name, desc, status, lc, due, parent_ev_id, created_at) in ev_rows:
                     cur.execute(
-                        f"""INSERT INTO {tbl_wi}
-                               (project, category_name, category_id, name, description,
+                        """INSERT INTO pr_work_items
+                               (client_id, project, category_name, category_id, name, description,
                                 status, lifecycle_status, due_date, created_at, updated_at)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                           ON CONFLICT (project, category_name, name) DO NOTHING
+                           VALUES (1, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (client_id, project, category_name, name) DO NOTHING
                            RETURNING id""",
                         (project, cat_name, cat_id, name, desc or "",
                          status or "active", lc or "idea", due, created_at, created_at),
@@ -89,34 +78,37 @@ async def run_migration(project: str) -> dict[str, int]:
                     row = cur.fetchone()
                     if row:
                         old_id_to_wi[old_id] = str(row[0])
-                        counts["{tbl_wi}"] += 1
+                        counts["work_items"] += 1
                     else:
                         # Already exists — look up UUID
                         cur.execute(
-                            "SELECT id FROM {tbl_wi} WHERE project=%s AND category_name=%s AND name=%s",
+                            "SELECT id FROM pr_work_items WHERE client_id=1 AND project=%s AND category_name=%s AND name=%s",
                             (project, cat_name, name),
                         )
                         r2 = cur.fetchone()
                         if r2:
                             old_id_to_wi[old_id] = str(r2[0])
 
-                # ── Step 2: events_{p} → {tbl_int} ────────────────────────────
+                # ── Step 2: pr_events → pr_interactions ────────────────────────────
                 source_id_to_interaction: dict[str, str] = {}
-                if _table_exists(cur, ev_table):
+                if _table_exists(cur, "pr_events"):
                     cur.execute(
-                        f"""SELECT id, event_type, source_id, title, content,
+                        """SELECT id, event_type, source_id, title, content,
                                    phase, feature, session_id, metadata, created_at
-                            FROM {ev_table} ORDER BY created_at""",
+                            FROM pr_events
+                            WHERE client_id=1 AND project=%s
+                            ORDER BY created_at""",
+                        (project,),
                     )
                     for (eid, etype, source_id, title, content, phase, feature, session_id, meta, created_at) in cur.fetchall():
                         if not source_id:
                             continue
                         prompt_text = content or title or ""
                         cur.execute(
-                            f"""INSERT INTO {tbl_int}
-                                   (project_id, session_id, event_type, source_id,
+                            """INSERT INTO pr_interactions
+                                   (client_id, project, session_id, event_type, source_id,
                                     prompt, phase, metadata, created_at)
-                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                               VALUES (1, %s,%s,%s,%s,%s,%s,%s,%s)
                                ON CONFLICT DO NOTHING
                                RETURNING id""",
                             (project, session_id, etype or "prompt", source_id,
@@ -129,14 +121,14 @@ async def run_migration(project: str) -> dict[str, int]:
                             counts["interactions_from_events"] += 1
                         else:
                             cur.execute(
-                                "SELECT id FROM {tbl_int} WHERE project_id=%s AND source_id=%s LIMIT 1",
+                                "SELECT id FROM pr_interactions WHERE client_id=1 AND project=%s AND source_id=%s LIMIT 1",
                                 (project, source_id),
                             )
                             r2 = cur.fetchone()
                             if r2:
                                 source_id_to_interaction[source_id] = str(r2[0])
 
-                # ── Step 3: history.jsonl → {tbl_int} (fill gaps) ──────────────
+                # ── Step 3: history.jsonl → pr_interactions (fill gaps) ──────────
                 if hist.exists():
                     for line in hist.read_text().splitlines():
                         if not line.strip():
@@ -151,9 +143,9 @@ async def run_migration(project: str) -> dict[str, int]:
                         if not e.get("user_input"):
                             continue
                         cur.execute(
-                            f"""INSERT INTO {tbl_int}
-                                   (project_id, session_id, event_type, source_id, prompt, response, phase, metadata, created_at)
-                               VALUES (%s,%s,'prompt',%s,%s,%s,%s,%s,%s::timestamptz)
+                            """INSERT INTO pr_interactions
+                                   (client_id, project, session_id, event_type, source_id, prompt, response, phase, metadata, created_at)
+                               VALUES (1, %s,%s,'prompt',%s,%s,%s,%s,%s,%s::timestamptz)
                                ON CONFLICT DO NOTHING
                                RETURNING id""",
                             (project,
@@ -170,12 +162,13 @@ async def run_migration(project: str) -> dict[str, int]:
                             source_id_to_interaction[ts] = str(r[0])
                             counts["interactions_from_history"] += 1
 
-                # ── Step 4: event_tags_{p} → {tbl_itag} ────────────────────
-                if _table_exists(cur, et_table) and source_id_to_interaction and old_id_to_wi:
+                # ── Step 4: pr_event_tags → pr_interaction_tags ──────────────────
+                if source_id_to_interaction and old_id_to_wi:
                     cur.execute(
-                        f"""SELECT et.event_id, e.source_id, et.entity_value_id, et.auto_tagged
-                            FROM {et_table} et
-                            JOIN {ev_table} e ON e.id = et.event_id""",
+                        """SELECT et.event_id, e.source_id, et.entity_value_id, et.auto_tagged
+                            FROM pr_event_tags et
+                            JOIN pr_events e ON e.id = et.event_id AND e.client_id=1 AND e.project=%s""",
+                        (project,),
                     )
                     for (event_id, source_id, ev_val_id, auto_tagged) in cur.fetchall():
                         interaction_id = source_id_to_interaction.get(source_id or "")
@@ -183,22 +176,22 @@ async def run_migration(project: str) -> dict[str, int]:
                         if not interaction_id or not work_item_id:
                             continue
                         cur.execute(
-                            f"""INSERT INTO {tbl_itag} (interaction_id, work_item_id, auto_tagged)
+                            """INSERT INTO pr_interaction_tags (interaction_id, work_item_id, auto_tagged)
                                VALUES (%s::uuid, %s::uuid, %s) ON CONFLICT DO NOTHING""",
                             (interaction_id, work_item_id, auto_tagged),
                         )
-                        counts["{tbl_itag}"] += cur.rowcount
+                        counts["interaction_tags"] += cur.rowcount
 
                 # ── Step 5: backfill work_item_id from metadata feature field ─────
                 cur.execute(
-                    f"""UPDATE {tbl_int} i
+                    """UPDATE pr_interactions i
                           SET work_item_id = w.id
-                         FROM {tbl_wi} w
-                        WHERE i.project_id = w.project
+                         FROM pr_work_items w
+                        WHERE i.client_id=1 AND i.project=%s
+                          AND w.client_id=1 AND w.project=%s
                           AND i.metadata->>'feature' = w.name
-                          AND i.work_item_id IS NULL
-                          AND i.project_id = %s""",
-                    (project,),
+                          AND i.work_item_id IS NULL""",
+                    (project, project),
                 )
                 counts["work_item_links"] = cur.rowcount
 

@@ -67,14 +67,13 @@ async def list_roles(
 ):
     _require_db()
     admin = _is_admin(user)
-    tbl_ar = db.client_table("agent_roles")
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""SELECT id, project, name, description, system_prompt,
+                """SELECT id, project, name, description, system_prompt,
                           provider, model, tags, is_active, created_at, updated_at
-                   FROM {tbl_ar}
-                   WHERE is_active=TRUE AND (project='_global' OR project=%s)
+                   FROM mng_agent_roles
+                   WHERE client_id=1 AND is_active=TRUE AND (project='_global' OR project=%s)
                    ORDER BY (project='_global') DESC, name""",
                 (project,),
             )
@@ -101,13 +100,12 @@ class RoleCreate(BaseModel):
 async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
     _require_db()
     _require_admin(user)
-    tbl_ar = db.client_table("agent_roles")
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""INSERT INTO {tbl_ar}
-                       (project, name, description, system_prompt, provider, model, tags)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s)
+                """INSERT INTO mng_agent_roles
+                       (client_id, project, name, description, system_prompt, provider, model, tags)
+                   VALUES (1, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING id, project, name, description, system_prompt,
                              provider, model, tags, is_active, created_at, updated_at""",
                 (body.project, body.name, body.description, body.system_prompt,
@@ -135,12 +133,10 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
     _require_admin(user)
 
     # Load current values for version comparison
-    tbl_ar  = db.client_table("agent_roles")
-    tbl_arv = db.client_table("agent_role_versions")
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT id, system_prompt, provider, model FROM {tbl_ar} WHERE id=%s",
+                "SELECT id, system_prompt, provider, model FROM mng_agent_roles WHERE id=%s AND client_id=1",
                 (role_id,),
             )
             existing = cur.fetchone()
@@ -175,20 +171,20 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
         with conn.cursor() as cur:
             if versioned_changed:
                 cur.execute(
-                    f"""INSERT INTO {tbl_arv}
+                    """INSERT INTO mng_agent_role_versions
                            (role_id, system_prompt, provider, model, changed_by, note)
-                       VALUES (%s,%s,%s,%s,%s,%s)""",
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
                     (role_id, existing[1], existing[2], existing[3],
                      (user or {}).get("email", ""), body.note),
                 )
             cur.execute(
-                f"UPDATE {tbl_ar} SET {', '.join(fields)} WHERE id=%s",
+                f"UPDATE mng_agent_roles SET {', '.join(fields)} WHERE id=%s",
                 values,
             )
             cur.execute(
-                f"""SELECT id, project, name, description, system_prompt,
+                """SELECT id, project, name, description, system_prompt,
                           provider, model, tags, is_active, created_at, updated_at
-                   FROM {tbl_ar} WHERE id=%s""",
+                   FROM mng_agent_roles WHERE id=%s""",
                 (role_id,),
             )
             row = cur.fetchone()
@@ -201,11 +197,10 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
 async def delete_role(role_id: int, user=Depends(get_optional_user)):
     _require_db()
     _require_admin(user)
-    tbl_ar = db.client_table("agent_roles")
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE {tbl_ar} SET is_active=FALSE, updated_at=NOW() WHERE id=%s",
+                "UPDATE mng_agent_roles SET is_active=FALSE, updated_at=NOW() WHERE id=%s AND client_id=1",
                 (role_id,),
             )
     return {"deleted": True, "role_id": role_id}
@@ -217,12 +212,11 @@ async def delete_role(role_id: int, user=Depends(get_optional_user)):
 async def get_versions(role_id: int, user=Depends(get_optional_user)):
     _require_db()
     _require_admin(user)
-    tbl_arv = db.client_table("agent_role_versions")
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""SELECT id, system_prompt, provider, model, changed_by, changed_at, note
-                   FROM {tbl_arv} WHERE role_id=%s ORDER BY changed_at DESC""",
+                """SELECT id, system_prompt, provider, model, changed_by, changed_at, note
+                   FROM mng_agent_role_versions WHERE role_id=%s ORDER BY changed_at DESC""",
                 (role_id,),
             )
             rows = cur.fetchall()
@@ -248,12 +242,10 @@ async def get_versions(role_id: int, user=Depends(get_optional_user)):
 async def restore_version(role_id: int, version_id: int, user=Depends(get_optional_user)):
     _require_db()
     _require_admin(user)
-    tbl_ar  = db.client_table("agent_roles")
-    tbl_arv = db.client_table("agent_role_versions")
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT system_prompt, provider, model FROM {tbl_arv} WHERE id=%s AND role_id=%s",
+                "SELECT system_prompt, provider, model FROM mng_agent_role_versions WHERE id=%s AND role_id=%s",
                 (version_id, role_id),
             )
             ver = cur.fetchone()
@@ -262,22 +254,22 @@ async def restore_version(role_id: int, version_id: int, user=Depends(get_option
 
             # Save current state before overwriting
             cur.execute(
-                f"SELECT system_prompt, provider, model FROM {tbl_ar} WHERE id=%s",
+                "SELECT system_prompt, provider, model FROM mng_agent_roles WHERE id=%s AND client_id=1",
                 (role_id,),
             )
             cur_state = cur.fetchone()
             if cur_state:
                 cur.execute(
-                    f"""INSERT INTO {tbl_arv}
+                    """INSERT INTO mng_agent_role_versions
                            (role_id, system_prompt, provider, model, changed_by, note)
-                       VALUES (%s,%s,%s,%s,%s,'before restore')""",
+                       VALUES (%s, %s, %s, %s, %s, 'before restore')""",
                     (role_id, cur_state[0], cur_state[1], cur_state[2],
                      (user or {}).get("email", "")),
                 )
             cur.execute(
-                f"""UPDATE {tbl_ar}
+                """UPDATE mng_agent_roles
                    SET system_prompt=%s, provider=%s, model=%s, updated_at=NOW()
-                   WHERE id=%s""",
+                   WHERE id=%s AND client_id=1""",
                 (ver[0], ver[1], ver[2], role_id),
             )
     return {"restored": True, "role_id": role_id, "version_id": version_id}

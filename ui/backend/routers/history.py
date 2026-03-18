@@ -177,17 +177,17 @@ async def commits_history(
     p = project or settings.active_project or "default"
 
     if db.is_available():
-        c_table = db.project_table("commits", p)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(f"""
+                cur.execute("""
                     SELECT id, commit_hash, commit_msg, summary, phase,
                            feature, bug_ref, source, session_id, prompt_source_id,
                            tags, committed_at
-                    FROM {c_table}
+                    FROM pr_commits
+                    WHERE client_id=1 AND project=%s
                     ORDER BY committed_at DESC NULLS LAST, id DESC
                     LIMIT %s
-                """, (limit,))
+                """, (p, limit))
                 cols = [d[0] for d in cur.description]
                 rows = [dict(zip(cols, r)) for r in cur.fetchall()]
                 # Normalise types for JSON
@@ -259,12 +259,11 @@ async def patch_commit(commit_id: int, body: CommitPatch, project: str | None = 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    c_table = db.project_table("commits", p)
     params.append(commit_id)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE {c_table} SET {', '.join(updates)} WHERE id = %s RETURNING id",
+                f"UPDATE pr_commits SET {', '.join(updates)} WHERE id = %s AND client_id=1 RETURNING id",
                 params,
             )
             if not cur.fetchone():
@@ -284,8 +283,6 @@ async def sync_commits(project: str | None = Query(None)):
     if not log_path.exists():
         return {"imported": 0, "project": p}
 
-    c_table = db.project_table("commits", p)
-    db.ensure_project_schema(p)
     inserted = 0
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -303,17 +300,18 @@ async def sync_commits(project: str | None = Query(None)):
                     if not commit_hash:
                         continue
 
-                    cur.execute(f"""
-                        INSERT INTO {c_table}
-                            (commit_hash, commit_msg, source, session_id, committed_at)
-                        VALUES (%s, %s, %s, %s, %s)
+                    cur.execute("""
+                        INSERT INTO pr_commits
+                            (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
+                        VALUES (1, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (commit_hash) DO UPDATE SET
                             session_id = CASE
                                 WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
                                 THEN EXCLUDED.session_id
-                                ELSE {c_table}.session_id
+                                ELSE pr_commits.session_id
                             END
                     """, (
+                        p,
                         commit_hash,
                         raw.get("message", raw.get("msg", "")),
                         raw.get("source", "git"),
@@ -362,11 +360,10 @@ async def get_session_tags(project: str | None = Query(None)):
     """Get current active session tags for a project."""
     p = project or settings.active_project or "default"
     if db.is_available():
-        tbl_st = db.client_table("session_tags")
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT phase, feature, bug_ref, extra FROM {tbl_st} WHERE project=%s",
+                    "SELECT phase, feature, bug_ref, extra FROM mng_session_tags WHERE client_id=1 AND project=%s",
                     (p,),
                 )
                 row = cur.fetchone()
@@ -409,13 +406,12 @@ async def put_session_tags(body: SessionTagsUpdate, project: str | None = Query(
     tags_path.write_text(_json.dumps(tags, indent=2))
 
     if db.is_available():
-        tbl_st = db.client_table("session_tags")
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(f"""
-                    INSERT INTO {tbl_st} (project, phase, feature, bug_ref, extra, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, NOW())
-                    ON CONFLICT (project) DO UPDATE SET
+                cur.execute("""
+                    INSERT INTO mng_session_tags (client_id, project, phase, feature, bug_ref, extra, updated_at)
+                    VALUES (1, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (client_id, project) DO UPDATE SET
                         phase = EXCLUDED.phase,
                         feature = EXCLUDED.feature,
                         bug_ref = EXCLUDED.bug_ref,
@@ -558,26 +554,26 @@ async def session_commits(
     commits: list[dict] = []
 
     if db.is_available():
-        c_table = db.project_table("commits", p)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Build query: always match by session_id; add time window if available
                 if created_at and updated_at:
                     cur.execute(
-                        f"""SELECT commit_hash, commit_msg, phase, feature, source, committed_at
-                              FROM {c_table}
-                             WHERE session_id = %s
-                                OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz)
+                        """SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+                              FROM pr_commits
+                             WHERE client_id=1 AND project=%s
+                               AND (session_id = %s
+                                OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz))
                              ORDER BY committed_at""",
-                        (session_id, created_at, updated_at),
+                        (p, session_id, created_at, updated_at),
                     )
                 else:
                     cur.execute(
-                        f"""SELECT commit_hash, commit_msg, phase, feature, source, committed_at
-                              FROM {c_table}
-                             WHERE session_id = %s
+                        """SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+                              FROM pr_commits
+                             WHERE client_id=1 AND project=%s AND session_id = %s
                              ORDER BY committed_at""",
-                        (session_id,),
+                        (p, session_id),
                     )
                 cols = [d[0] for d in cur.description]
                 for row in cur.fetchall():

@@ -83,7 +83,6 @@ def _append_history(
     # Upsert event in per-project PostgreSQL table so tag suggestions work immediately
     if db.is_available():
         try:
-            ev_table = db.project_table("events", project)
             meta = json.dumps({
                 "provider": provider,
                 "source": "ui",
@@ -93,28 +92,27 @@ def _append_history(
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"""INSERT INTO {ev_table}
-                               (event_type, source_id, title, content, metadata, created_at)
-                           VALUES ('prompt',%s,%s,%s,%s::jsonb,%s::timestamptz)
-                           ON CONFLICT (event_type, source_id) DO NOTHING""",
-                        (ts, (user_msg or "")[:120],
+                        """INSERT INTO pr_events
+                               (client_id, project, event_type, source_id, title, content, metadata, created_at)
+                           VALUES (1, %s, 'prompt', %s, %s, %s, %s::jsonb, %s::timestamptz)
+                           ON CONFLICT (client_id, project, event_type, source_id) DO NOTHING""",
+                        (project, ts, (user_msg or "")[:120],
                          (user_msg or "")[:2000], meta, ts),
                     )
         except Exception:
             pass
 
-        tbl_int = db.project_table("interactions", project)
         # Mirror to shared interactions table (feeds memory distillation pipeline)
         try:
             phase = (tags or {}).get("phase") or None
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"""INSERT INTO {tbl_int}
-                               (project_id, session_id, llm_source, event_type, source_id,
+                        """INSERT INTO pr_interactions
+                               (client_id, project, session_id, llm_source, event_type, source_id,
                                 prompt, response, phase, metadata, created_at)
-                           VALUES (%s,%s,%s,'prompt',%s,%s,%s,%s,%s::jsonb,%s::timestamptz)
-                           ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL DO NOTHING""",
+                           VALUES (1, %s, %s, %s, 'prompt', %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+                           ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING""",
                         (
                             project, session_id, provider, ts,
                             (user_msg or "")[:4000], (response or "")[:8000],
@@ -321,12 +319,11 @@ async def _stream_response(
 async def _auto_suggest_tags_for_event(ts: str, project: str, user_msg: str) -> None:
     """Look up the event_id by ts then fire auto-tag suggestions. Silent on error."""
     try:
-        ev_table = db.project_table("events", project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT id FROM {ev_table} WHERE event_type='prompt' AND source_id=%s",
-                    (ts,),
+                    "SELECT id FROM pr_events WHERE client_id=1 AND project=%s AND event_type='prompt' AND source_id=%s",
+                    (project, ts),
                 )
                 row = cur.fetchone()
         if row:
@@ -357,13 +354,10 @@ async def _auto_detect_session_feature(
             return
 
         # Guard: skip if session already has a feature tag
-        tbl_st = db.client_table("session_tags")
-        tbl_ev = db.client_table("entity_values")
-        tbl_ec = db.client_table("entity_categories")
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT feature FROM {tbl_st} WHERE project=%s",
+                    "SELECT feature FROM mng_session_tags WHERE client_id=1 AND project=%s",
                     (project,),
                 )
                 row = cur.fetchone()
@@ -379,9 +373,9 @@ async def _auto_detect_session_feature(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""SELECT v.name FROM {tbl_ev} v
-                       JOIN {tbl_ec} c ON c.id = v.category_id
-                       WHERE v.project=%s AND c.name='feature' AND v.status='active'
+                    """SELECT v.name FROM mng_entity_values v
+                       JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+                       WHERE v.client_id=1 AND v.project=%s AND c.name='feature' AND v.status='active'
                        ORDER BY v.name""",
                     (project,),
                 )
@@ -420,8 +414,9 @@ async def _auto_detect_session_feature(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""INSERT INTO {tbl_st} (project, feature) VALUES (%s,%s)
-                       ON CONFLICT (project) DO UPDATE SET feature=%s, updated_at=NOW()""",
+                    """INSERT INTO mng_session_tags (client_id, project, feature)
+                       VALUES (1, %s, %s)
+                       ON CONFLICT (client_id, project) DO UPDATE SET feature=%s, updated_at=NOW()""",
                     (project, feature_name, feature_name),
                 )
 
@@ -601,13 +596,12 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
     if db.is_available():
         import logging as _log
         _logger = _log.getLogger(__name__)
-        c_table = db.project_table("commits", project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"UPDATE {c_table} SET phase=%s WHERE session_id=%s",
-                        (phase, session_id),
+                        "UPDATE pr_commits SET phase=%s WHERE client_id=1 AND project=%s AND session_id=%s",
+                        (phase, project, session_id),
                     )
                     c_rows = cur.rowcount
             _logger.info(
