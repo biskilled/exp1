@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- PROJECT.md load performance optimization (2026-03-17) — >1 minute load time on free Railway tier when opening aiCli project; investigating DB query latency vs file I/O bottleneck; considering pagination/lazy-loading
-- Project visibility issue (2026-03-17) — aiCli project disappeared from recent projects list; requires verification of openProject() function and project listing query logic
+- Project visibility and listing issues (2026-03-18) — Recent projects list shows 'aiCli' but doesn't display it as selectable project; investigating openProject() function and project query logic; backend startup delay on free tier acceptable
+- PROJECT.md load performance optimization (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under consideration
+- _continueToApp retry logic (2026-03-18) — Added race condition handling if projects load succeeds but returns empty; retry mechanism to ensure reliable app startup
 - Multi-agent workflow system (2026-03-16) — Async DAG executor integration with Cytoscape.js visualization + YAML config for multi-agent prompt orchestration
-- Config externalization and MCP readiness (2026-03-16) — Moved backend_url, haiku_model, db_pool_max to config.py; added /health check for MCP server initialization
 - Dual-layer memory distillation (2026-03-16) — Raw JSONL → interaction_tags → 5 memory files pipeline; fixed session_bulk_tag() for consistency across both tables
 - Session phase persistence and tag deduplication (2026-03-15) — Phase loads from DB on init, saves via PATCH; 149 tags with 0 duplicates; removal propagates across all views

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-18 18:24 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-18 20:12 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -38,17 +38,17 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
+- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
+- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-18] I would like to make sure the client table are also aligned - for example mng_session_tags - is related to client (that 
 - [2026-03-18] I would like to know what do you think about the architecure ? Assuming there might be diffrent clients (for each clinet
 - [2026-03-18] That is correct. it is bed pattern to use clinet name. there is already mng_users table that can manage client as well (
 - [2026-03-18] it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did
 - [2026-03-18] There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
+- [2026-03-18] Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 

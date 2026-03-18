@@ -35,12 +35,12 @@ You are a senior Python software architect with deep expertise in:
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
+- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
+- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-18] `claude_cli`: I would like to make sure the client table are also aligned - for example mng_session_tags - is rela
 - [2026-03-18] `claude_cli`: I would like to know what do you think about the architecure ? Assuming there might be diffrent clie
 - [2026-03-18] `claude_cli`: That is correct. it is bed pattern to use clinet name. there is already mng_users table that can man
 - [2026-03-18] `claude_cli`: it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_
 - [2026-03-18] `claude_cli`: There are some error - on the first load, it lookls like Backend is failing (after thay it succeed).
+- [2026-03-18] `claude_cli`: Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not se
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

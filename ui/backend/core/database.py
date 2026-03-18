@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Generator
 
 import psycopg2
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS mng_clients (
 _DDL_CORE = """
 CREATE TABLE IF NOT EXISTS mng_users (
     id                 VARCHAR(36)    PRIMARY KEY,
+    client_id          INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     email              VARCHAR(255)   UNIQUE NOT NULL,
     password_hash      TEXT           NOT NULL,
     is_admin           BOOLEAN        NOT NULL DEFAULT FALSE,
@@ -66,12 +68,14 @@ CREATE TABLE IF NOT EXISTS mng_users (
     coupons_used       TEXT[]         NOT NULL DEFAULT '{}',
     stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT ''
 );
+ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS client_id          INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
 ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS role               VARCHAR(20)    NOT NULL DEFAULT 'free';
 ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS balance_added_usd  NUMERIC(14, 8) NOT NULL DEFAULT 0;
 ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS balance_used_usd   NUMERIC(14, 8) NOT NULL DEFAULT 0;
 ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS coupons_used       TEXT[]         NOT NULL DEFAULT '{}';
 ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT '';
-CREATE INDEX IF NOT EXISTS idx_users_email ON mng_users(email);
+CREATE INDEX IF NOT EXISTS idx_users_email    ON mng_users(email);
+CREATE INDEX IF NOT EXISTS idx_users_client   ON mng_users(client_id);
 
 CREATE TABLE IF NOT EXISTS mng_usage_logs (
     id            SERIAL         PRIMARY KEY,
@@ -1001,6 +1005,47 @@ class _Database:
                        valid_from, valid_until, source_memory_id
                 FROM {_tbl("project_facts")} ON CONFLICT DO NOTHING
             """)
+
+        # Backfill pr_interactions from history.jsonl if table is empty
+        # (handles the case where old interactions table was empty or failed migration)
+        cur.execute(
+            "SELECT 1 FROM pr_interactions WHERE client_id=1 AND project=%s LIMIT 1",
+            (p,),
+        )
+        if not cur.fetchone():
+            import json as _json
+            hist_file = Path(settings.workspace_dir) / p / "_system" / "history.jsonl"
+            if hist_file.exists():
+                for line in hist_file.read_text().splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        e = _json.loads(line)
+                    except Exception:
+                        continue
+                    ts = e.get("ts")
+                    if not ts or not e.get("user_input"):
+                        continue
+                    try:
+                        cur.execute(
+                            """INSERT INTO pr_interactions
+                                   (client_id, project, session_id, llm_source, event_type,
+                                    source_id, prompt, response, phase, metadata, created_at)
+                               VALUES (1,%s,%s,%s,'prompt',%s,%s,%s,%s,%s::jsonb,%s::timestamptz)
+                               ON CONFLICT (client_id, project, source_id)
+                               WHERE source_id IS NOT NULL DO NOTHING""",
+                            (p, e.get("session_id"), e.get("provider", "claude"), ts,
+                             (e.get("user_input") or "")[:4000],
+                             (e.get("output") or "")[:8000],
+                             e.get("phase"),
+                             _json.dumps({"user": e.get("user"), "source": e.get("source"),
+                                          "feature": e.get("feature")}),
+                             ts),
+                        )
+                    except Exception:
+                        conn.rollback()
+                conn.commit()
+                log.info(f"Backfilled pr_interactions for '{p}' from history.jsonl")
 
         # Graph tables: schema changed too significantly (int → uuid IDs, column renames).
         # Skip data migration — just drop the old tables below.

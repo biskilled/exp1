@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-18 20:00 UTC — do not edit manually.
+> Auto-generated 2026-03-18 20:13 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 140
-- **Last active**: 2026-03-18T18:22:51Z
+- **Sessions**: 141
+- **Last active**: 2026-03-18T20:12:41Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -34,10 +34,10 @@
 
 ## In Progress
 
-- PROJECT.md load performance optimization (2026-03-17) — >1 minute load time on free Railway tier when opening aiCli project; investigating DB query latency vs file I/O bottleneck; considering pagination/lazy-loading
-- Project visibility issue (2026-03-17) — aiCli project disappeared from recent projects list; requires verification of openProject() function and project listing query logic
+- Project visibility and listing issues (2026-03-18) — Recent projects list shows 'aiCli' but doesn't display it as selectable project; investigating openProject() function and project query logic; backend startup delay on free tier acceptable
+- PROJECT.md load performance optimization (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under consideration
+- _continueToApp retry logic (2026-03-18) — Added race condition handling if projects load succeeds but returns empty; retry mechanism to ensure reliable app startup
 - Multi-agent workflow system (2026-03-16) — Async DAG executor integration with Cytoscape.js visualization + YAML config for multi-agent prompt orchestration
-- Config externalization and MCP readiness (2026-03-16) — Moved backend_url, haiku_model, db_pool_max to config.py; added /health check for MCP server initialization
 - Dual-layer memory distillation (2026-03-16) — Raw JSONL → interaction_tags → 5 memory files pipeline; fixed session_bulk_tag() for consistency across both tables
 - Session phase persistence and tag deduplication (2026-03-15) — Phase loads from DB on init, saves via PATCH; 149 tags with 0 duplicates; removal propagates across all views
 
@@ -52,12 +52,12 @@
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
+- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
+- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
 
 ---
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-18 20:03]** `claude_cli/claude`  
+→ Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
+← _Now also fix `_continueToApp` — if projects load succeeds but returns empty (e.g. race condition), retry once:_
+
 **[2026-03-18 18:15]** `claude_cli/claude`  
 → There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
 ← _Memory endpoint works. Now let me check the "first load backend failing" and "aicli not shown as current project" issues:_
@@ -204,7 +208,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-17 18:28]** `claude_cli/claude`  
 → What is the claude agent sdk is uded for can it be used for my use cases for mutli agents (project manager (high design)
 ← _## Claude Agent SDK vs Your Current Multi-Agent System  ### What is the Claude Agent SDK?  The **Claude Agent SDK** is Anthropic's official Python/TypeScript framework for building AI agents that can:_
-
-**[2026-03-17 18:18]** `claude_cli/claude`  
-→ can you use the mcp tool and explain what the code is doing ?
-← _Here's what **aicli** does:  ## aicli — Shared AI Memory Platform  **Core idea**: When you switch between different AI tools (Claude CLI, Cursor, ChatGPT, the aicli web UI), they all forget your proje_

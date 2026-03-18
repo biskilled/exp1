@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-18 18:24 UTC by aicli /memory_
+_Generated: 2026-03-18 20:12 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to provide persistent semantic memory, project tracking, and multi-agent workflow orchestration across LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok). Currently at version 2.2.0, it uses PostgreSQL+pgvector for semantic search, JSONL for history with rotation, and an MCP server for tool integration; active focus is resolving PROJECT.md load performance issues and a project visibility regression on the free Railway tier.
+aicli is a shared AI memory platform that integrates with Claude CLI and LLM platforms, combining flat-file JSONL history with PostgreSQL pgvector semantic search and a nested tagging system. It features an Electron desktop UI with xterm.js and Monaco, multi-agent workflow orchestration via async DAG execution, and a stdio MCP server for project state/memory queries. Current focus: resolving project visibility/listing bugs and load performance on Railway free tier while maintaining dual-layer memory synthesis and tag consistency across sessions.
 
 ## Tech Stack
 
@@ -38,19 +38,19 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
+- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
+- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
 
 ## In Progress
 
-- PROJECT.md load performance optimization (2026-03-17) — >1 minute load time on free Railway tier when opening aiCli project; investigating DB query latency vs file I/O bottleneck; considering pagination/lazy-loading
-- Project visibility issue (2026-03-17) — aiCli project disappeared from recent projects list; requires verification of openProject() function and project listing query logic
+- Project visibility and listing issues (2026-03-18) — Recent projects list shows 'aiCli' but doesn't display it as selectable project; investigating openProject() function and project query logic; backend startup delay on free tier acceptable
+- PROJECT.md load performance optimization (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under consideration
+- _continueToApp retry logic (2026-03-18) — Added race condition handling if projects load succeeds but returns empty; retry mechanism to ensure reliable app startup
 - Multi-agent workflow system (2026-03-16) — Async DAG executor integration with Cytoscape.js visualization + YAML config for multi-agent prompt orchestration
-- Config externalization and MCP readiness (2026-03-16) — Moved backend_url, haiku_model, db_pool_max to config.py; added /health check for MCP server initialization
 - Dual-layer memory distillation (2026-03-16) — Raw JSONL → interaction_tags → 5 memory files pipeline; fixed session_bulk_tag() for consistency across both tables
 - Session phase persistence and tag deduplication (2026-03-15) — Phase loads from DB on init, saves via PATCH; 149 tags with 0 duplicates; removal propagates across all views
 
@@ -58,7 +58,7 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ### Bug
 
-- **hooks** `(2 events)`
+- **hooks** `(7 events, 5 commits)`
 
 ### Doc_type
 
@@ -94,22 +94,12 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - **memory** `(1 events)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
-**[2026-03-17]** `issue_report` — PROJECT.md load time exceeds 1 minute on free Railway tier; investigating whether root cause is DB query latency or file I/O; requires pagination/lazy-loading analysis.
+**[2026-03-18]** `session_log` — Project visibility issue identified: aiCli appears in Recent but not as selectable project; requires openProject() and listing query debugging. Backend startup delay on free tier acceptable; _continueToApp retry logic implemented for race conditions.
 
-**[2026-03-17]** `bug_report` — aiCli project disappeared from recent projects list; underlying cause unclear (UI state bug vs DB query regression); openProject() function verification needed.
+**[2026-03-17]** `performance_audit` — PROJECT.md load time exceeds 1 minute on Railway free tier; investigating DB query latency vs file I/O; pagination/lazy-loading proposed.
 
-**[2026-03-16]** `feature_complete` — Multi-agent workflow system analyzed and approved; async DAG executor with Cytoscape.js visualization and YAML config for orchestrating multi-agent prompt chains.
+**[2026-03-16]** `feature_integration` — Multi-agent workflow system with async DAG executor and Cytoscape.js visualization approved; dual-layer memory distillation (JSONL → interaction_tags → 5 output files) fixed for consistency.
 
-**[2026-03-16]** `refactor_complete` — Config externalization finished: backend_url, haiku_model, db_pool_max moved to config.py; /health check endpoint added for MCP server readiness verification.
+**[2026-03-15]** `persistence_fix` — Session phase now persists via DB load on init and PATCH save; 149 tags deduplicated (0 duplicates); removal propagates across Chat/History/Commits views.
 
-**[2026-03-16]** `feature_complete` — Dual-layer memory distillation pipeline implemented: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules); session_bulk_tag() fixed for table consistency.
-
-**[2026-03-15]** `bug_fix` — Session phase persistence resolved: phase loads from DB on init and persists via PATCH /chat/sessions/{id}/tags; tag deduplication audit found 149 tags with zero duplicates; removal propagates across Chat/History/Commits.
-
-**[2026-03-10]** `performance_optimization` — Eliminated redundant SQL calls by implementing load-once-on-access pattern; tag cache loaded once per project tab and updated only on explicit save.
-
-**[2026-03-10]** `feature_approved` — Nested tags hierarchy expanded beyond 2-level limit via parent_id FK; login remains first-level only; tree UI implemented in Planner with unlimited depth support.
-
-**[2026-03-10]** `ux_improvement` — Planner action visibility increased via 3-dot menu button replacing small action buttons; unarchive capability added; AI suggestions marked clearly as requiring approval.
-
-**[2026-03-10]** `bug_identified` — Tags saved in UI disappear on session switch; unknown if UI rendering issue or DB save failure; root cause investigation deferred.
+**[2026-03-10]** `architecture_review` — Nested tag hierarchy expanded beyond 2 levels via parent_id FK; load-once-on-access pattern eliminated redundant SQL calls; 3-dot menu pattern adopted for Planner UI; port binding conflicts resolved via freePort() cleanup.
