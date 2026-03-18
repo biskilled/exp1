@@ -119,6 +119,8 @@ CREATE TABLE IF NOT EXISTS mng_session_tags (
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project)
 );
+ALTER TABLE mng_session_tags ADD COLUMN IF NOT EXISTS
+    client_id INT NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
 CREATE INDEX IF NOT EXISTS idx_mst_cp ON mng_session_tags(client_id, project);
 
 -- Entity categories per client+project
@@ -152,6 +154,8 @@ CREATE TABLE IF NOT EXISTS mng_entity_values (
     lifecycle_status VARCHAR(20)  NOT NULL DEFAULT 'idea',
     UNIQUE(client_id, project, name)
 );
+ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS
+    client_id INT NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
 CREATE INDEX IF NOT EXISTS idx_mev_cp  ON mng_entity_values(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mev_cat ON mng_entity_values(category_id);
 CREATE INDEX IF NOT EXISTS idx_mev_par ON mng_entity_values(parent_id);
@@ -536,21 +540,40 @@ class _Database:
     # ── Schema creation ────────────────────────────────────────────────────────
 
     @staticmethod
+    @staticmethod
+    def _run_ddl_statements(conn, sql: str, label: str) -> None:
+        """Run each semicolon-separated SQL statement individually.
+
+        This prevents a single failed statement (e.g. CREATE INDEX on a column
+        that doesn't exist yet) from rolling back an entire DDL block.
+        """
+        for stmt in sql.split(";"):
+            stmt = stmt.strip()
+            if not stmt or stmt.startswith("--"):
+                continue
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(stmt)
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                msg = str(e).strip()
+                # Silence noise for expected "already exists" situations
+                if "already exists" not in msg.lower():
+                    log.debug(f"{label} stmt skipped: {msg[:120]}")
+
+    @staticmethod
     def _ensure_schema(conn) -> None:
         """Create / migrate mng_* tables. Safe to run repeatedly."""
+        # Run each DDL block statement-by-statement so one failure doesn't
+        # roll back the entire block (e.g. CREATE INDEX after ALTER TABLE ADD COLUMN).
         for label, sql in [
             ("mng_clients", _DDL_CLIENTS),
             ("mng_core (users/usage/tx)", _DDL_CORE),
             ("mng_entity+session+role tables", _DDL_MNG_TABLES),
         ]:
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(sql)
-                conn.commit()
-                log.debug(f"✅ {label} DDL ok")
-            except Exception as e:
-                conn.rollback()
-                log.warning(f"{label} DDL skipped: {e}")
+            _Database._run_ddl_statements(conn, sql, label)
+            log.debug(f"✅ {label} DDL done")
 
         # Seed built-in global agent roles (idempotent)
         _Database._seed_agent_roles(conn)
@@ -899,17 +922,18 @@ class _Database:
                 (wi_id, proj, cat_name, old_cat, name, desc, status, lc, due, par,
                  ac, impl, run_id, a_status, tags, ts, upd) = row
                 new_cat = cat_id_map.get(old_cat) if old_cat else None
+                # agent_run_id changed from int → uuid; pass NULL to avoid type errors
                 try:
                     cur.execute(
                         """INSERT INTO pr_work_items
                                (id, client_id, project, category_name, category_id,
                                 name, description, status, lifecycle_status, due_date,
                                 parent_id, acceptance_criteria, implementation_plan,
-                                agent_run_id, agent_status, tags, created_at, updated_at)
-                           VALUES (%s,1,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                agent_status, tags, created_at, updated_at)
+                           VALUES (%s,1,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                            ON CONFLICT DO NOTHING""",
                         (wi_id, proj, cat_name, new_cat, name, desc, status, lc, due, par,
-                         ac, impl, run_id, a_status, tags, ts, upd),
+                         ac, impl, a_status, tags, ts, upd),
                     )
                 except Exception:
                     conn.rollback()
@@ -941,13 +965,17 @@ class _Database:
                     conn.rollback()
             conn.commit()
 
-        # Interaction tags (IDs preserved from work items/interactions above)
+        # Interaction tags — only copy rows whose interaction_id exists in pr_interactions
         if _exists(_tbl("interaction_tags")):
             _run(f"""
                 INSERT INTO pr_interaction_tags
                     (interaction_id, work_item_id, auto_tagged, created_at)
-                SELECT interaction_id, work_item_id, auto_tagged, created_at
-                FROM {_tbl("interaction_tags")} ON CONFLICT DO NOTHING
+                SELECT it.interaction_id, it.work_item_id, it.auto_tagged, it.created_at
+                FROM {_tbl("interaction_tags")} it
+                WHERE EXISTS (
+                    SELECT 1 FROM pr_interactions i WHERE i.id = it.interaction_id
+                )
+                ON CONFLICT DO NOTHING
             """)
 
         # Memory items (project_id → project)
@@ -974,80 +1002,8 @@ class _Database:
                 FROM {_tbl("project_facts")} ON CONFLICT DO NOTHING
             """)
 
-        # Graph workflows
-        if _exists(_tbl("graph_workflows")):
-            _run(f"""
-                INSERT INTO pr_graph_workflows
-                    (id, client_id, project, name, description,
-                     max_iterations, created_at, updated_at)
-                SELECT id, 1, project, name, description,
-                       max_iterations, created_at, updated_at
-                FROM {_tbl("graph_workflows")} ON CONFLICT DO NOTHING
-            """)
-
-        # Graph nodes (role_id remapping)
-        if _exists(_tbl("graph_nodes")):
-            cur.execute(f"""
-                SELECT id, workflow_id, name, role_id, role_file, role_prompt,
-                       provider, model, output_schema, inject_context,
-                       require_approval, approval_msg, position_x, position_y,
-                       created_at, updated_at
-                FROM {_tbl("graph_nodes")}
-            """)
-            for row in cur.fetchall():
-                (gn_id, wf_id, name, old_rid, role_file, role_prompt, prov, model,
-                 out_schema, inj, req_app, app_msg, px, py, ts, upd) = row
-                new_rid = ar_id_map.get(old_rid) if old_rid else None
-                try:
-                    cur.execute(
-                        """INSERT INTO pr_graph_nodes
-                               (id, workflow_id, name, role_id, role_file, role_prompt,
-                                provider, model, output_schema, inject_context,
-                                require_approval, approval_msg, position_x, position_y,
-                                created_at, updated_at)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                           ON CONFLICT DO NOTHING""",
-                        (gn_id, wf_id, name, new_rid, role_file, role_prompt, prov, model,
-                         out_schema, inj, req_app, app_msg, px, py, ts, upd),
-                    )
-                except Exception:
-                    conn.rollback()
-            conn.commit()
-
-        # Graph edges
-        if _exists(_tbl("graph_edges")):
-            _run(f"""
-                INSERT INTO pr_graph_edges
-                    (id, workflow_id, source_node_id, target_node_id,
-                     condition, label, created_at, updated_at)
-                SELECT id, workflow_id, source_node_id, target_node_id,
-                       condition, label, created_at, updated_at
-                FROM {_tbl("graph_edges")} ON CONFLICT DO NOTHING
-            """)
-
-        # Graph runs
-        if _exists(_tbl("graph_runs")):
-            _run(f"""
-                INSERT INTO pr_graph_runs
-                    (id, client_id, project, workflow_id, status, user_input,
-                     context, started_at, finished_at, total_cost_usd, error)
-                SELECT id, 1, project, workflow_id, status, user_input,
-                       context, started_at, finished_at, total_cost_usd, error
-                FROM {_tbl("graph_runs")} ON CONFLICT DO NOTHING
-            """)
-
-        # Graph node results
-        if _exists(_tbl("graph_node_results")):
-            _run(f"""
-                INSERT INTO pr_graph_node_results
-                    (id, run_id, node_id, node_name, status, output, structured,
-                     input_tokens, output_tokens, cost_usd,
-                     started_at, finished_at, iteration)
-                SELECT id, run_id, node_id, node_name, status, output, structured,
-                       input_tokens, output_tokens, cost_usd,
-                       started_at, finished_at, iteration
-                FROM {_tbl("graph_node_results")} ON CONFLICT DO NOTHING
-            """)
+        # Graph tables: schema changed too significantly (int → uuid IDs, column renames).
+        # Skip data migration — just drop the old tables below.
 
         # DROP per-project tables (children before parents)
         _drop_order = [
@@ -1069,7 +1025,7 @@ class _Database:
         ]
         for tbl_name in _drop_order:
             try:
-                cur.execute(f"DROP TABLE IF EXISTS {tbl_name}")
+                cur.execute(f"DROP TABLE IF EXISTS {tbl_name} CASCADE")
                 conn.commit()
             except Exception:
                 conn.rollback()

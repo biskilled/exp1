@@ -96,9 +96,6 @@ async def health():
 @app.on_event("startup")
 async def startup():
     db.init()   # connect to PostgreSQL if DATABASE_URL is set; no-op otherwise
-    # Ensure per-project schema is up to date (adds columns like prompt_source_id)
-    if db.is_available() and settings.active_project:
-        db.ensure_project_schema(settings.active_project)
 
     # Migrate server_data from old .aicli/server_data/ path to ui/backend/data/
     _migrate_server_data()
