@@ -326,6 +326,20 @@ api.agentRoles = {
   restore: (id, versionId)       => _post(`/agent-roles/${id}/restore/${versionId}`, {}),
 };
 
+// ── System Roles API ──────────────────────────────────────────────────────────
+
+api.systemRoles = {
+  list:      ()                    => _get('/system-roles/'),
+  create:    (body)                => _post('/system-roles/', body),
+  patch:     (id, body)            => fetch(_base() + `/system-roles/${id}`, {
+    method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  delete:    (id)                  => _del(`/system-roles/${id}`),
+  listLinks: (roleId)              => _get(`/system-roles/agent-roles/${roleId}/links`),
+  attach:    (roleId, body)        => _post(`/system-roles/agent-roles/${roleId}/links`, body),
+  detach:    (roleId, systemRoleId) => _del(`/system-roles/agent-roles/${roleId}/links/${systemRoleId}`),
+};
+
 // ── Graph Workflows API ───────────────────────────────────────────────────────
 
 api.graphWorkflows = {

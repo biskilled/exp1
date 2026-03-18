@@ -107,6 +107,26 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         except Exception as _re:
             log.warning(f"Could not load role {node['role_id']}: {_re}")
 
+    # Prepend linked system roles (coding standards, security, etc.) in order
+    role_id = node.get("role_id")
+    if role_id and db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT sr.content
+                           FROM mng_system_roles sr
+                           JOIN mng_role_system_links l ON l.system_role_id = sr.id
+                           WHERE l.role_id = %s AND sr.is_active = TRUE
+                           ORDER BY l.order_index ASC, l.id ASC""",
+                        (role_id,),
+                    )
+                    blocks = [r[0] for r in cur.fetchall() if r[0]]
+            if blocks:
+                role_prompt = "\n\n---\n\n".join(blocks) + "\n\n---\n\n" + (role_prompt or "")
+        except Exception as _se:
+            log.warning(f"Could not load system roles for role {role_id}: {_se}")
+
     # Build user message
     user_parts = []
     if inject_context and ctx:

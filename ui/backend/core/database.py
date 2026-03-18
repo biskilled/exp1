@@ -208,6 +208,33 @@ CREATE TABLE IF NOT EXISTS mng_agent_role_versions (
     note          TEXT         NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_marv_role ON mng_agent_role_versions(role_id);
+
+-- System roles (reusable prompt fragments, admin-managed)
+CREATE TABLE IF NOT EXISTS mng_system_roles (
+    id          SERIAL        PRIMARY KEY,
+    client_id   INT           NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    name        VARCHAR(255)  NOT NULL,
+    description TEXT          NOT NULL DEFAULT '',
+    content     TEXT          NOT NULL DEFAULT '',
+    category    VARCHAR(50)   NOT NULL DEFAULT 'general',
+    is_active   BOOLEAN       NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    UNIQUE(client_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_msr_client ON mng_system_roles(client_id);
+
+-- Junction: agent role ↔ system roles (ordered)
+CREATE TABLE IF NOT EXISTS mng_role_system_links (
+    id             SERIAL      PRIMARY KEY,
+    role_id        INT         NOT NULL REFERENCES mng_agent_roles(id) ON DELETE CASCADE,
+    system_role_id INT         NOT NULL REFERENCES mng_system_roles(id) ON DELETE CASCADE,
+    order_index    INT         NOT NULL DEFAULT 0,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(role_id, system_role_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mrsl_role   ON mng_role_system_links(role_id);
+CREATE INDEX IF NOT EXISTS idx_mrsl_sysrol ON mng_role_system_links(system_role_id);
 """
 
 # ─── DDL: pr_* flat project tables (15) ──────────────────────────────────────
@@ -579,8 +606,9 @@ class _Database:
             _Database._run_ddl_statements(conn, sql, label)
             log.debug(f"✅ {label} DDL done")
 
-        # Seed built-in global agent roles (idempotent)
+        # Seed built-in global agent roles + system roles (idempotent)
         _Database._seed_agent_roles(conn)
+        _Database._seed_system_roles(conn)
 
     def _ensure_shared_schema(self, conn) -> None:
         """Create all 15 pr_* flat tables. Runs once per process lifetime."""
@@ -1253,6 +1281,85 @@ class _Database:
         except Exception as e:
             conn.rollback()
             log.warning(f"Agent roles seed skipped: {e}")
+
+    @staticmethod
+    def _seed_system_roles(conn) -> None:
+        """Insert 4 built-in system roles (client_id=1). Idempotent."""
+        _DEFAULT_SYSTEM_ROLES = [
+            (
+                "coding_standards",
+                "quality",
+                "Clean code conventions, OOP, type hints, docstrings, DRY/SOLID principles.",
+                "## Coding Standards\n\n"
+                "- Follow clean code principles: meaningful names, small focused functions, "
+                "no magic numbers\n"
+                "- Apply OOP where appropriate: encapsulation, inheritance, polymorphism\n"
+                "- Add type hints to all functions and methods\n"
+                "- Write docstrings for all public classes and functions\n"
+                "- Apply DRY (Don't Repeat Yourself) and SOLID principles\n"
+                "- Keep functions under 30 lines; break complex logic into helpers\n"
+                "- Prefer composition over inheritance\n"
+                "- Use descriptive variable names that reveal intent",
+            ),
+            (
+                "output_format",
+                "output",
+                "Save all outputs to output/[feature]_YYMMDD_HHMMSS.md.",
+                "## Output Format\n\n"
+                "- Save all generated outputs to a file named: "
+                "`output/[feature]_YYMMDD_HHMMSS.md` where YYMMDD_HHMMSS is the current "
+                "timestamp\n"
+                "- Use clear Markdown headings (##, ###) to structure the output\n"
+                "- Include a brief summary at the top\n"
+                "- List all files created or modified with their full paths\n"
+                "- End with a 'Next Steps' section if applicable",
+            ),
+            (
+                "security_principles",
+                "security",
+                "OWASP Top 10, parameterised SQL, no hardcoded secrets.",
+                "## Security Principles\n\n"
+                "- Guard against OWASP Top 10: injection, broken auth, XSS, CSRF, "
+                "insecure direct object references, security misconfiguration, "
+                "sensitive data exposure, XXE, broken access control, "
+                "using components with known vulnerabilities\n"
+                "- Always use parameterised queries — never string-interpolate SQL\n"
+                "- Never hardcode secrets, API keys, or passwords in code\n"
+                "- Use environment variables or a secrets manager for all credentials\n"
+                "- Validate and sanitize all user inputs at system boundaries\n"
+                "- Apply principle of least privilege to all access controls\n"
+                "- Use HTTPS everywhere; set secure, httpOnly, sameSite cookie flags",
+            ),
+            (
+                "reviewer_standards",
+                "review",
+                "Verify all ACs, list tested items, score 1-10, return JSON.",
+                "## Reviewer Standards\n\n"
+                "- Verify every acceptance criterion is met — list each with PASS/FAIL\n"
+                "- Check for edge cases, error handling, and boundary conditions\n"
+                "- Assess code quality: readability, maintainability, test coverage\n"
+                "- Provide a score from 1–10 (>= 7 means passed)\n"
+                "- Return ONLY valid JSON in this exact format:\n"
+                '{"score": <1-10>, "passed": <true|false>, '
+                '"ac_results": [{"criterion": "...", "status": "PASS|FAIL", "note": "..."}], '
+                '"issues": ["..."], "suggestions": ["..."]}',
+            ),
+        ]
+        try:
+            with conn.cursor() as cur:
+                for name, category, description, content in _DEFAULT_SYSTEM_ROLES:
+                    cur.execute(
+                        """INSERT INTO mng_system_roles
+                               (client_id, name, category, description, content)
+                           VALUES (1, %s, %s, %s, %s)
+                           ON CONFLICT (client_id, name) DO NOTHING""",
+                        (name, category, description, content),
+                    )
+            conn.commit()
+            log.debug("✅ System roles seeded")
+        except Exception as e:
+            conn.rollback()
+            log.warning(f"System roles seed skipped: {e}")
 
     @staticmethod
     def _seed_client_defaults(client_id: int, conn) -> None:

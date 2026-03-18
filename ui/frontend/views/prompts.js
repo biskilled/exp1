@@ -12,12 +12,16 @@ import { toast }    from '../utils/toast.js';
 import { renderMd } from '../utils/markdown.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let _activeFile = '';
-let _fileOrig   = '';
-let _editMode   = false;
-let _activeRole = null;   // {id, name, provider, model, description, system_prompt, ...}
-let _roles      = [];
-let _project    = null;
+let _activeFile    = '';
+let _fileOrig      = '';
+let _editMode      = false;
+let _activeRole    = null;   // {id, name, provider, model, description, system_prompt, ...}
+let _roles         = [];
+let _project       = null;
+let _isAdmin       = false;
+let _systemRoles   = [];     // all available system roles loaded once at tab init
+let _roleLinks     = {};     // {roleId: [{id, name, category, order_index}]}
+let _activeSysRole = null;   // system role being edited (admin panel)
 
 const PROVIDERS = ['anthropic', 'openai', 'deepseek', 'gemini', 'xai', 'ollama'];
 const MODELS    = {
@@ -32,11 +36,15 @@ const MODELS    = {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function renderPrompts(container, projectName) {
-  _activeFile = '';
-  _fileOrig   = '';
-  _editMode   = false;
-  _activeRole = null;
-  _project    = projectName;
+  _activeFile    = '';
+  _fileOrig      = '';
+  _editMode      = false;
+  _activeRole    = null;
+  _activeSysRole = null;
+  _project       = projectName;
+  _isAdmin       = false;
+  _systemRoles   = [];
+  _roleLinks     = {};
 
   const savedW = parseInt(localStorage.getItem('aicli_prompts_tree_w') || '220', 10);
 
@@ -47,6 +55,18 @@ export async function renderPrompts(container, projectName) {
     <div class="prompts-view" style="flex:1;overflow:hidden">
       <!-- Left panel -->
       <div class="prompts-tree" id="prompts-tree-panel" style="width:${savedW}px;display:flex;flex-direction:column">
+
+        <!-- System Roles section (admin only — shown after load if _isAdmin) -->
+        <div id="sys-roles-section" style="display:none;flex-shrink:0">
+          <div class="prompts-tree-header" style="flex-shrink:0">
+            <span class="prompts-tree-label" style="font-size:0.6rem">System Roles</span>
+            <button class="btn btn-ghost btn-sm" style="padding:0.12rem 0.35rem;font-size:0.6rem"
+              onclick="window._sysRolesNew()" title="New system role">+</button>
+          </div>
+          <div id="sys-roles-list-body" style="overflow-y:auto;max-height:30%;flex-shrink:0;border-bottom:1px solid var(--border)">
+            <div style="padding:1rem;font-size:0.68rem;color:var(--muted)">Loading…</div>
+          </div>
+        </div>
 
         <!-- Agent Roles section -->
         <div class="prompts-tree-header" style="flex-shrink:0">
@@ -91,15 +111,21 @@ export async function renderPrompts(container, projectName) {
   `;
 
   // Wire globals
-  window._rolesNew         = _rolesNew;
-  window._rolesSelect      = _rolesSelect;
-  window._rolesDelete      = _rolesDelete;
-  window._rolesSave        = _rolesSave;
+  window._rolesNew            = _rolesNew;
+  window._rolesSelect         = _rolesSelect;
+  window._rolesDelete         = _rolesDelete;
+  window._rolesSave           = _rolesSave;
   window._rolesProviderChange = _rolesProviderChange;
-  window._promptsNew       = _promptsNew;
-  window._promptsSave      = _promptsSave;
-  window._promptsToggleMode = _promptsToggleMode;
-  window._openPromptFile   = (p) => { _activeRole = null; _openFile(p, projectName); };
+  window._sysRolesNew         = _sysRolesNew;
+  window._sysRolesSelect      = _sysRolesSelect;
+  window._sysRolesSave        = _sysRolesSave;
+  window._sysRolesDelete      = _sysRolesDelete;
+  window._sysRolesAttach      = _sysRolesAttach;
+  window._sysRolesDetach      = _sysRolesDetach;
+  window._promptsNew          = _promptsNew;
+  window._promptsSave         = _promptsSave;
+  window._promptsToggleMode   = _promptsToggleMode;
+  window._openPromptFile      = (p) => { _activeRole = null; _openFile(p, projectName); };
   window._toggleFolder     = (id) => {
     const ch = document.getElementById(`folder-children-${id}`);
     const fo = document.getElementById(`folder-${id}`);
@@ -129,9 +155,20 @@ async function _loadRoles(projectName) {
   const body = document.getElementById('roles-list-body');
   if (!body) return;
   try {
-    const data = await api.agentRoles.list(projectName || '_global');
-    _roles = data.roles || data || [];
+    const [rolesData, sysData] = await Promise.all([
+      api.agentRoles.list(projectName || '_global'),
+      api.systemRoles.list().catch(() => ({ system_roles: [], is_admin: false })),
+    ]);
+    _roles       = rolesData.roles || rolesData || [];
+    _isAdmin     = rolesData.is_admin || sysData.is_admin || false;
+    _systemRoles = sysData.system_roles || [];
+
+    // Show system roles section for admins
+    const sysSection = document.getElementById('sys-roles-section');
+    if (sysSection) sysSection.style.display = _isAdmin ? 'block' : 'none';
+
     _renderRolesList();
+    if (_isAdmin) _renderSysRolesList();
   } catch (e) {
     body.innerHTML = `<div style="padding:0.75rem 1rem;font-size:0.68rem;color:var(--red)">${_esc(e.message)}</div>`;
   }
@@ -179,8 +216,9 @@ async function _rolesNew() {
   } catch (e) { toast('Create failed: ' + e.message, 'error'); }
 }
 
-function _rolesSelect(id) {
-  _activeFile = '';
+async function _rolesSelect(id) {
+  _activeFile    = '';
+  _activeSysRole = null;
   const role = _roles.find(r => r.id === id);
   if (!role) return;
   _activeRole = role;
@@ -188,6 +226,81 @@ function _rolesSelect(id) {
   _renderRoleEditor(role);
   const pathEl = document.getElementById('prompts-path');
   if (pathEl) pathEl.textContent = `Role: ${role.name}`;
+
+  // Load linked system roles
+  try {
+    const data = await api.systemRoles.listLinks(id);
+    _roleLinks[id] = data.links || [];
+  } catch (_) {
+    _roleLinks[id] = [];
+  }
+  _renderRoleSystemRolesSection(id);
+}
+
+function _renderRoleSystemRolesSection(roleId) {
+  const container = document.getElementById('role-sys-roles-list');
+  if (!container) return;
+  const links = _roleLinks[roleId] || [];
+
+  if (!_isAdmin) {
+    // Read-only: name chips
+    if (!links.length) {
+      container.innerHTML = `<div style="font-size:0.65rem;color:var(--muted)">No system roles attached</div>`;
+      return;
+    }
+    container.innerHTML = links.map(l => `
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;
+                   background:var(--surface2);border:1px solid var(--border);
+                   border-radius:var(--radius);padding:0.2rem 0.5rem;
+                   font-size:0.65rem;color:var(--text)">
+        ${_esc(l.name)}
+        <span style="font-size:0.55rem;opacity:0.6">[${_esc(l.category)}]</span>
+      </span>
+    `).join('');
+    return;
+  }
+
+  // Admin: ordered list with remove + add dropdown
+  const attachedIds = new Set(links.map(l => l.id));
+  const available   = _systemRoles.filter(sr => !attachedIds.has(sr.id));
+
+  let html = '';
+  if (links.length) {
+    html += links.map(l => `
+      <div style="display:flex;align-items:center;gap:0.5rem;
+                  background:var(--surface2);border:1px solid var(--border);
+                  border-radius:var(--radius);padding:0.3rem 0.6rem;
+                  font-size:0.68rem">
+        <span style="color:var(--muted);cursor:default" title="Drag to reorder">⠿</span>
+        <span style="flex:1;color:var(--text)">${_esc(l.name)}</span>
+        <span style="font-size:0.55rem;padding:0.1rem 0.35rem;background:var(--surface3);
+                     border-radius:3px;color:var(--muted)">${_esc(l.category)}</span>
+        <button onclick="window._sysRolesDetach(${roleId},${l.id})"
+          style="background:none;border:none;cursor:pointer;color:var(--muted);
+                 font-size:0.8rem;padding:0 0.2rem;line-height:1" title="Remove">×</button>
+      </div>
+    `).join('');
+  } else {
+    html += `<div style="font-size:0.65rem;color:var(--muted)">No system roles attached</div>`;
+  }
+
+  if (available.length) {
+    html += `
+      <div style="display:flex;gap:0.4rem;margin-top:0.3rem">
+        <select id="sys-role-add-select"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);
+                 color:var(--text);font-family:var(--font);font-size:0.65rem;
+                 padding:0.25rem 0.4rem;border-radius:var(--radius);outline:none">
+          <option value="">─ add a system role ─</option>
+          ${available.map(sr => `<option value="${sr.id}">${_esc(sr.name)} [${_esc(sr.category)}]</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="window._sysRolesAttach(${roleId})"
+          style="font-size:0.62rem;white-space:nowrap">Add</button>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
 }
 
 function _renderRoleEditor(role) {
@@ -248,6 +361,16 @@ function _renderRoleEditor(role) {
                  border-radius:var(--radius);outline:none">
       </div>
 
+      <!-- System Roles (prepended fragments) -->
+      <div id="role-sys-roles-section">
+        <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.4rem">
+          System Roles <span style="text-transform:none;font-weight:400;opacity:0.7">(prepended to prompt)</span>
+        </div>
+        <div id="role-sys-roles-list" style="display:flex;flex-direction:column;gap:0.3rem">
+          <div style="font-size:0.65rem;color:var(--muted)">Loading…</div>
+        </div>
+      </div>
+
       <!-- System Prompt -->
       <div style="flex:1">
         <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">System Prompt</label>
@@ -305,6 +428,172 @@ function _rolesProviderChange(provider) {
   const datalist = document.getElementById('role-model-list');
   if (!datalist) return;
   datalist.innerHTML = (MODELS[provider] || []).map(m => `<option value="${_esc(m)}">`).join('');
+}
+
+// ── System Roles (admin panel) ────────────────────────────────────────────────
+
+function _renderSysRolesList() {
+  const body = document.getElementById('sys-roles-list-body');
+  if (!body) return;
+  if (!_systemRoles.length) {
+    body.innerHTML = `<div style="padding:0.75rem 1rem;font-size:0.68rem;color:var(--muted)">
+      No system roles — click <strong>+</strong> to create one</div>`;
+    return;
+  }
+  const CATEGORY_COLORS = { quality: '#4a90e2', security: '#e25c4a', output: '#4ae29b', review: '#e2b44a', general: '#999' };
+  body.innerHTML = _systemRoles.map(sr => `
+    <div onclick="window._sysRolesSelect(${sr.id})"
+         style="padding:0.35rem 0.75rem;cursor:pointer;border-bottom:1px solid var(--border);
+                display:flex;align-items:center;gap:0.45rem;
+                background:${_activeSysRole?.id === sr.id ? 'var(--accent)18' : 'transparent'};
+                border-left:2px solid ${_activeSysRole?.id === sr.id ? 'var(--accent)' : 'transparent'}"
+         onmouseenter="if(${_activeSysRole?.id !== sr.id})this.style.background='var(--surface2)'"
+         onmouseleave="if(${_activeSysRole?.id !== sr.id})this.style.background='transparent'">
+      <span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;
+                   background:${CATEGORY_COLORS[sr.category] || '#999'}"></span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.68rem;font-weight:500;color:var(--text);
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(sr.name)}</div>
+        <div style="font-size:0.55rem;color:var(--muted)">${_esc(sr.category)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function _sysRolesSelect(id) {
+  _activeFile = '';
+  _activeRole = null;
+  const sr = _systemRoles.find(s => s.id === id);
+  if (!sr) return;
+  _activeSysRole = sr;
+  _renderSysRolesList();
+  _renderSysRoleEditor(sr);
+  const pathEl = document.getElementById('prompts-path');
+  if (pathEl) pathEl.textContent = `System Role: ${sr.name}`;
+}
+
+function _renderSysRoleEditor(sr) {
+  const body    = document.getElementById('prompts-editor-body');
+  const toolbar = document.getElementById('prompts-toolbar');
+  if (!body) return;
+
+  if (toolbar) toolbar.innerHTML = `
+    <span class="prompts-editor-path" id="prompts-path">System Role: ${_esc(sr.name)}</span>
+    <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);font-size:0.62rem"
+      onclick="window._sysRolesDelete(${sr.id})">Delete</button>
+    <button class="btn btn-primary btn-sm" onclick="window._sysRolesSave(${sr.id})">Save</button>
+  `;
+
+  const CATEGORIES = ['quality', 'security', 'output', 'review', 'general'];
+  body.style.cssText = 'flex:1;overflow-y:auto;padding:1.5rem';
+  body.innerHTML = `
+    <div style="max-width:700px;display:flex;flex-direction:column;gap:1rem">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <div>
+          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">Name</label>
+          <input id="sysrole-name" value="${_esc(sr.name)}"
+            style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);
+                   color:var(--text);font-family:var(--font);font-size:0.72rem;padding:0.35rem 0.5rem;
+                   border-radius:var(--radius);outline:none">
+        </div>
+        <div>
+          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">Category</label>
+          <select id="sysrole-category"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);
+                   color:var(--text);font-family:var(--font);font-size:0.72rem;padding:0.35rem 0.5rem;
+                   border-radius:var(--radius);outline:none">
+            ${CATEGORIES.map(c => `<option value="${c}" ${sr.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">Description</label>
+        <input id="sysrole-description" value="${_esc(sr.description || '')}" placeholder="Short description…"
+          style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);
+                 color:var(--text);font-family:var(--font);font-size:0.72rem;padding:0.35rem 0.5rem;
+                 border-radius:var(--radius);outline:none">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">Content (prepended as Markdown)</label>
+        <textarea id="sysrole-content"
+          style="width:100%;box-sizing:border-box;min-height:300px;resize:vertical;
+                 background:var(--bg);border:1px solid var(--border);
+                 color:var(--text);font-family:var(--font);font-size:0.72rem;
+                 padding:0.5rem;border-radius:var(--radius);outline:none;line-height:1.55"
+          placeholder="## Coding Standards\n- …">${_esc(sr.content || '')}</textarea>
+      </div>
+      <div style="font-size:0.6rem;color:var(--muted)">
+        ID: ${sr.id} · category: ${_esc(sr.category)} · created: ${sr.created_at ? new Date(sr.created_at).toLocaleDateString() : '—'}
+      </div>
+    </div>
+  `;
+}
+
+async function _sysRolesNew() {
+  const name = prompt('System role name (e.g. "coding_standards"):');
+  if (!name?.trim()) return;
+  try {
+    const sr = await api.systemRoles.create({ name: name.trim(), category: 'general', description: '', content: '' });
+    _systemRoles.push(sr);
+    _renderSysRolesList();
+    _sysRolesSelect(sr.id);
+    toast(`System role "${name}" created`, 'success');
+  } catch (e) { toast('Create failed: ' + e.message, 'error'); }
+}
+
+async function _sysRolesSave(id) {
+  const name        = document.getElementById('sysrole-name')?.value?.trim();
+  const category    = document.getElementById('sysrole-category')?.value;
+  const description = document.getElementById('sysrole-description')?.value?.trim();
+  const content     = document.getElementById('sysrole-content')?.value;
+  if (!name) { toast('Name required', 'error'); return; }
+  try {
+    const updated = await api.systemRoles.patch(id, { name, category, description, content });
+    const idx = _systemRoles.findIndex(s => s.id === id);
+    if (idx !== -1) _systemRoles[idx] = { ..._systemRoles[idx], ...updated };
+    _activeSysRole = _systemRoles[idx] || _activeSysRole;
+    _renderSysRolesList();
+    toast('System role saved', 'success');
+  } catch (e) { toast('Save failed: ' + e.message, 'error'); }
+}
+
+async function _sysRolesDelete(id) {
+  if (!confirm('Delete this system role? Roles using it will no longer have it prepended.')) return;
+  try {
+    await api.systemRoles.delete(id);
+    _systemRoles = _systemRoles.filter(s => s.id !== id);
+    _activeSysRole = null;
+    _renderSysRolesList();
+    const body    = document.getElementById('prompts-editor-body');
+    const toolbar = document.getElementById('prompts-toolbar');
+    if (body) body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;
+      height:100%;color:var(--muted);font-size:0.72rem">System role deleted</div>`;
+    if (toolbar) toolbar.innerHTML = `<span class="prompts-editor-path" id="prompts-path">Select a role or file</span>`;
+    toast('System role deleted', 'success');
+  } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
+}
+
+async function _sysRolesAttach(roleId) {
+  const sel = document.getElementById('sys-role-add-select');
+  const systemRoleId = parseInt(sel?.value || '0');
+  if (!systemRoleId) { toast('Select a system role to add', 'error'); return; }
+  const orderIndex = (_roleLinks[roleId] || []).length;
+  try {
+    await api.systemRoles.attach(roleId, { system_role_id: systemRoleId, order_index: orderIndex });
+    const data = await api.systemRoles.listLinks(roleId);
+    _roleLinks[roleId] = data.links || [];
+    _renderRoleSystemRolesSection(roleId);
+    toast('System role attached', 'success');
+  } catch (e) { toast('Attach failed: ' + e.message, 'error'); }
+}
+
+async function _sysRolesDetach(roleId, systemRoleId) {
+  try {
+    await api.systemRoles.detach(roleId, systemRoleId);
+    _roleLinks[roleId] = (_roleLinks[roleId] || []).filter(l => l.id !== systemRoleId);
+    _renderRoleSystemRolesSection(roleId);
+    toast('System role removed', 'success');
+  } catch (e) { toast('Remove failed: ' + e.message, 'error'); }
 }
 
 // ── File browser (existing prompt files) ─────────────────────────────────────
