@@ -10,7 +10,7 @@ import { renderChat } from './views/chat.js';
 import { renderPrompts } from './views/prompts.js';
 import { renderCode } from './views/code.js';
 import { renderDocuments } from './views/documents.js';
-import { renderWorkflow } from './views/workflow.js';
+import { renderGraphWorkflow } from './views/graph_workflow.js';
 import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
 import { renderEntities } from './views/entities.js';
@@ -470,7 +470,7 @@ export function navigateTo(viewId, opts = {}) {
     case 'prompts':  renderPrompts(view, proj?.name);         break;
     case 'code':      renderCode(view, proj?.name, proj);           break;
     case 'documents': renderDocuments(view, proj?.name);            break;
-    case 'workflow':  renderWorkflow(view);                         break;
+    case 'workflow':  renderGraphWorkflow(view);                     break;
     case 'history':  renderHistory(view);                     break;
     case 'settings': renderSettings(view);                    break;
     case 'admin':    _renderAdminView(view);                  break;

@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
+- Role extensibility and input/output type definition (2026-03-19) — Add configurable input types (prompts, MD files from documents folder, JSON) and output targets (MD files, JSON, LLM response, GitHub code); support stateful (history-accumulating) vs stateless reviewer roles
 - Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles (PM, engineer, etc.) uploading docs
 - Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected
 - UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; requires UI refactor
-- System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP) addable to agent roles like UI/backend developer
-- AttributeError fixes and race condition handling (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping; added retry logic for empty projects
+- System roles feature design (2026-03-18) — Architecting composable system roles; removing stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 01:59 UTC — do not edit manually.
+> Auto-generated 2026-03-19 02:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 149
-- **Last active**: 2026-03-19T01:57:35Z
+- **Sessions**: 150
+- **Last active**: 2026-03-19T02:25:43Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -34,11 +34,11 @@
 
 ## In Progress
 
+- Role extensibility and input/output type definition (2026-03-19) — Add configurable input types (prompts, MD files from documents folder, JSON) and output targets (MD files, JSON, LLM response, GitHub code); support stateful (history-accumulating) vs stateless reviewer roles
 - Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles (PM, engineer, etc.) uploading docs
 - Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected
 - UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; requires UI refactor
-- System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP) addable to agent roles like UI/backend developer
-- AttributeError fixes and race condition handling (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping; added retry logic for empty projects
+- System roles feature design (2026-03-18) — Architecting composable system roles; removing stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism
 
 ## Key Decisions
@@ -55,9 +55,9 @@
 - Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits on save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
+- Composable system roles (e.g., 'coding' with clean code/comments/OOP) addable to agent roles; input/output types configurable (prompts, MD files, JSON, GitHub code)
+- Stateful vs stateless reviewer roles: stateful accumulates history across interactions; stateless operates on fresh context per request
 - Port binding safety: freePort() kills stale uvicorn processes; Electron cleanup via process.exit()
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase
-- System roles composable into agent roles (e.g., 'coding' role with clean code/comments/OOP principles)
 
 ---
 
@@ -151,6 +151,9 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 02:02]** `claude_cli/claude`  
+→ I would like to extend the roles and add a way to define input type (prompts, md file located under document folder, jso
+
 **[2026-03-19 01:43]** `claude_cli/claude`  
 → I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be mapped to docusmnet fo
 
@@ -202,7 +205,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-18 11:51]** `claude_cli/claude`  
 → I do see the table mng_session_tags, I also see session_tags.json file at the project workspace - is it in used , what i
 ← _Everything is working. Here's the final state:  **Database — 24 tables, clean split:**  | Prefix | Count | Tables | |--------|-------|--------| | `mng_` | 14 | Global config: users, billing, entity ta_
-
-**[2026-03-18 10:46]** `claude_cli/claude`  
-→ looks better. why memory_items and project_facts are under systeme managament tables? there are not part of project ?
-← _All endpoints working. Let me update MEMORY.md to reflect the final table structure:_

@@ -38,9 +38,9 @@ You are a senior Python software architect with deep expertise in:
 - Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits on save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
+- Composable system roles (e.g., 'coding' with clean code/comments/OOP) addable to agent roles; input/output types configurable (prompts, MD files, JSON, GitHub code)
+- Stateful vs stateless reviewer roles: stateful accumulates history across interactions; stateless operates on fresh context per request
 - Port binding safety: freePort() kills stale uvicorn processes; Electron cleanup via process.exit()
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase
-- System roles composable into agent roles (e.g., 'coding' role with clean code/comments/OOP principles)
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-18] `claude_cli`: I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, l
 - [2026-03-18] `claude_cli`: I would like to start to work on the Roles. by adding system roles that can be added into any Agent 
 - [2026-03-19] `claude_cli`:  I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is n
 - [2026-03-19] `claude_cli`: When app is stsrting - I still cannot see all project in prject page (only after I open the project)
 - [2026-03-19] `claude_cli`: I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be ma
+- [2026-03-19] `claude_cli`: I would like to extend the roles and add a way to define input type (prompts, md file located under 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
