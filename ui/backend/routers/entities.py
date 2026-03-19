@@ -44,6 +44,7 @@ from pydantic import BaseModel
 
 from config import settings
 from core.database import db
+from core.seq import next_seq
 
 log = logging.getLogger(__name__)
 
@@ -224,6 +225,7 @@ async def list_values(
             cur.execute(
                 """SELECT v.id, v.category_id, v.name, v.description, v.status,
                           v.created_at, v.due_date, v.parent_id, v.lifecycle_status,
+                          v.seq_num,
                           (SELECT COUNT(*) FROM pr_event_tags et
                            WHERE et.entity_value_id = v.id) AS event_count,
                           c.name AS category_name, c.color, c.icon
@@ -350,14 +352,54 @@ async def create_value(body: ValueCreate):
                 if not cur.fetchone():
                     raise HTTPException(404, "Category not found")
             lc = body.lifecycle_status or "idea"
+            # Resolve category name for seq counter
+            cat_name_for_seq = body.category_name or ""
+            if not cat_name_for_seq:
+                cur.execute(
+                    "SELECT name FROM mng_entity_categories WHERE client_id=1 AND id=%s",
+                    (cat_id,),
+                )
+                r2 = cur.fetchone()
+                if r2:
+                    cat_name_for_seq = r2[0]
+            seq = next_seq(cur, p, cat_name_for_seq)
             cur.execute(
-                "INSERT INTO mng_entity_values (client_id, category_id, project, name, description, due_date, parent_id, lifecycle_status) "
-                "VALUES (1, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                "INSERT INTO mng_entity_values (client_id, category_id, project, name, description, due_date, parent_id, lifecycle_status, seq_num) "
+                "VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
                 (cat_id, p, body.name, body.description, body.due_date or None,
-                 body.parent_id or None, lc),
+                 body.parent_id or None, lc, seq),
             )
             new_id = cur.fetchone()[0]
-            return {"id": new_id, "name": body.name, "project": p, "category_id": cat_id}
+            return {"id": new_id, "name": body.name, "project": p, "category_id": cat_id, "seq_num": seq}
+
+
+@router.get("/values/number/{seq_num}")
+async def get_value_by_number(seq_num: int, project: str | None = Query(None)):
+    """Resolve a short sequential number (e.g. #10005) to the full entity value."""
+    _require_db()
+    p = _project(project)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT v.id, v.name, v.description, v.status, v.created_at,
+                          v.due_date, v.parent_id, v.lifecycle_status, v.seq_num,
+                          c.name AS category_name, c.color, c.icon
+                   FROM mng_entity_values v
+                   JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+                   WHERE v.client_id=1 AND v.project=%s AND v.seq_num=%s
+                   LIMIT 1""",
+                (p, seq_num),
+            )
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(404, f"Entity #{seq_num} not found in project {p!r}")
+            cols = [d[0] for d in cur.description]
+            row = dict(zip(cols, r))
+            if row.get("created_at"):
+                row["created_at"] = row["created_at"].isoformat()
+            if row.get("due_date"):
+                row["due_date"] = row["due_date"].isoformat()
+            return row
 
 
 @router.patch("/values/{val_id}")

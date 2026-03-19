@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Document folder abstraction (2026-03-19) — Remove direct IO; implement prompt-driven workflows for role-based document access (PM writes to Document/feature-name, Dev queries memory for latest file)
+- Pipeline execution progress tracking (2026-03-19) — Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage during pipeline runs
 - Pipeline UI node properties (2026-03-19) — Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation
-- Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; MEMORY.md updates pending
+- Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue under investigation
+- Graph workflow UI routing (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
 - Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
-- Graph workflow UI routing fix (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing

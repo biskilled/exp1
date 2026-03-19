@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 14:20 UTC — do not edit manually.
+> Auto-generated 2026-03-19 14:25 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 159
-- **Last active**: 2026-03-19T13:29:25Z
+- **Sessions**: 160
+- **Last active**: 2026-03-19T14:25:02Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -34,17 +34,17 @@
 
 ## In Progress
 
-- Document folder abstraction (2026-03-19) — Remove direct IO; implement prompt-driven workflows for role-based document access (PM writes to Document/feature-name, Dev queries memory for latest file)
+- Pipeline execution progress tracking (2026-03-19) — Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage during pipeline runs
 - Pipeline UI node properties (2026-03-19) — Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation
-- Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; MEMORY.md updates pending
+- Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue under investigation
+- Graph workflow UI routing (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
 - Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
-- Graph workflow UI routing fix (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file primary (JSONL with rotation on /memory); PostgreSQL 15+ with pgvector for semantic search; per-project DB tables with indexed columns (phase/feature/session_id)
+- Flat file primary (JSONL with rotation on /memory); PostgreSQL 15+ with pgvector for semantic search; per-project DB tables indexed on phase/feature/session_id
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework, no bundler); Vite dev server for local dev
 - JWT auth via python-jose + bcrypt; DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends NO keys
@@ -56,8 +56,8 @@
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
-- Backend startup race condition fix: retry logic handles empty project list on first load
-- Document folder IO abstraction: prompt-driven workflows instead of direct file I/O; role-based (PM writes, Dev reads) via memory queries
+- Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors
+- Document folder abstraction: prompt-driven workflows instead of direct IO; role-based access (PM writes, Dev reads) via memory queries
 
 ---
 
@@ -153,6 +153,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-19 14:12]** `claude_cli/claude`  
 → I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see any status/progress
+← _All clean._
 
 **[2026-03-19 13:24]** `claude_cli/claude`  
 → I would like to remove the IO. is it possible just to mainatin that using prompt. for example how doas prject manager wi

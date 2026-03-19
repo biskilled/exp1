@@ -18,6 +18,7 @@ Tools:
     get_db_schema        — return complete database table schema reference
     list_work_items      — list work items with pipeline status
     run_work_item_pipeline — trigger 4-agent PM→Architect→Dev→Reviewer pipeline
+    get_item_by_number   — resolve #NNNNN sequential ref to full work item or entity
 
 Database naming convention:
     mng_TABLE  — global/shared tables (users, billing, entity categories, agent roles, etc.)
@@ -322,6 +323,23 @@ async def list_tools() -> list[mcp_types.Tool]:
             },
         ),
         mcp_types.Tool(
+            name="get_item_by_number",
+            description=(
+                "Resolve a short sequential number (e.g. #10005) to the full work item or entity value. "
+                "Features start at #10000, bugs at #20000, tasks at #30000, components at #40000. "
+                "Use this when a user or another AI references an item by its #NNNNN number. "
+                "Returns full item details including acceptance criteria, implementation plan, and pipeline status."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "seq_num":  {"type": "integer", "description": "The sequential number, e.g. 10005"},
+                    "project":  {"type": "string"},
+                },
+                "required": ["seq_num"],
+            },
+        ),
+        mcp_types.Tool(
             name="get_db_schema",
             description=(
                 "Return the complete database table schema for this project. "
@@ -529,6 +547,8 @@ async def _dispatch(name: str, args: dict) -> Any:
         result = await _post("/entities/values", body)
         return {
             "id": result.get("id"),
+            "seq_num": result.get("seq_num"),
+            "ref": f"#{result['seq_num']}" if result.get("seq_num") else None,
             "name": result.get("name"),
             "category": cat_name,
             "project": project,
@@ -563,6 +583,8 @@ async def _dispatch(name: str, args: dict) -> Any:
             "work_items": [
                 {
                     "id": wi["id"],
+                    "seq_num": wi.get("seq_num"),
+                    "ref": f"#{wi['seq_num']}" if wi.get("seq_num") else None,
                     "name": wi["name"],
                     "category": wi.get("category_name"),
                     "lifecycle": wi.get("lifecycle_status", "idea"),
@@ -591,6 +613,44 @@ async def _dispatch(name: str, args: dict) -> Any:
             wi_id = matches[0]["id"]
         result = await _post(f"/work-items/{wi_id}/run-pipeline?project={_up.quote(project)}", {})
         return {"work_item_id": wi_id, "status": result.get("status"), "project": project}
+
+    elif name == "get_item_by_number":
+        import urllib.parse as _up
+        seq = int(args["seq_num"])
+        # Try work_items first, then entity_values
+        try:
+            wi = await _get(f"/work-items/number/{seq}", {"project": project})
+            return {
+                "found_in": "work_items",
+                "seq_num": seq,
+                "id": wi.get("id"),
+                "name": wi.get("name"),
+                "category": wi.get("category_name"),
+                "lifecycle": wi.get("lifecycle_status", "idea"),
+                "status": wi.get("status", "active"),
+                "agent_status": wi.get("agent_status"),
+                "description": (wi.get("description") or "")[:500],
+                "acceptance_criteria": (wi.get("acceptance_criteria") or "")[:800],
+                "implementation_plan": (wi.get("implementation_plan") or "")[:800],
+                "due_date": wi.get("due_date"),
+                "created_at": wi.get("created_at"),
+            }
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code != 404:
+                raise
+        # Fallback to entity_values
+        ev = await _get(f"/entities/values/number/{seq}", {"project": project})
+        return {
+            "found_in": "entity_values",
+            "seq_num": seq,
+            "id": ev.get("id"),
+            "name": ev.get("name"),
+            "category": ev.get("category_name"),
+            "lifecycle": ev.get("lifecycle_status", "idea"),
+            "status": ev.get("status", "active"),
+            "description": (ev.get("description") or "")[:500],
+            "due_date": ev.get("due_date"),
+        }
 
     elif name == "get_db_schema":
         p = project

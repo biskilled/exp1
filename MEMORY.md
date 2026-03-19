@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 13:29 UTC by aicli /memory_
+_Generated: 2026-03-19 14:25 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform built on Python 3.12 + FastAPI backend, Vanilla JS + Electron frontend, and PostgreSQL semantic storage with pgvector. It enables multi-role teams (PM, Dev, Admin) to collaboratively develop features through prompt-driven workflows, graph-based task execution, and dual-layer memory synthesis (raw JSONL → Claude Haiku → 5 output files). Current focus: removing direct IO dependency, fixing project visibility race conditions, and populating memory_items/project_facts tables for enhanced context.
+aicli is a shared AI memory platform providing multi-LLM integration (Claude, OpenAI, DeepSeek, Gemini, Grok) with persistent project context via JSONL + PostgreSQL/pgvector, Electron desktop UI, and MCP-based automation. Currently in active development (v2.2.0) with focus on pipeline execution progress visualization, multi-agent workflow robustness, and resolving project visibility timing issues during backend initialization.
 
 ## Project Facts
 
@@ -50,7 +50,7 @@ aicli is a shared AI memory platform built on Python 3.12 + FastAPI backend, Van
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file primary (JSONL with rotation on /memory); PostgreSQL 15+ with pgvector for semantic search; per-project DB tables with indexed columns (phase/feature/session_id)
+- Flat file primary (JSONL with rotation on /memory); PostgreSQL 15+ with pgvector for semantic search; per-project DB tables indexed on phase/feature/session_id
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework, no bundler); Vite dev server for local dev
 - JWT auth via python-jose + bcrypt; DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends NO keys
@@ -62,17 +62,17 @@ aicli is a shared AI memory platform built on Python 3.12 + FastAPI backend, Van
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
-- Backend startup race condition fix: retry logic handles empty project list on first load
-- Document folder IO abstraction: prompt-driven workflows instead of direct file I/O; role-based (PM writes, Dev reads) via memory queries
+- Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors
+- Document folder abstraction: prompt-driven workflows instead of direct IO; role-based access (PM writes, Dev reads) via memory queries
 
 ## In Progress
 
-- Document folder abstraction (2026-03-19) — Remove direct IO; implement prompt-driven workflows for role-based document access (PM writes to Document/feature-name, Dev queries memory for latest file)
+- Pipeline execution progress tracking (2026-03-19) — Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage during pipeline runs
 - Pipeline UI node properties (2026-03-19) — Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation
-- Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; MEMORY.md updates pending
+- Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue under investigation
+- Graph workflow UI routing (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
 - Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
-- Graph workflow UI routing fix (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
 
 ## Active Features / Bugs / Tasks
 
@@ -90,10 +90,10 @@ aicli is a shared AI memory platform built on Python 3.12 + FastAPI backend, Van
 
 ### Feature
 
-- **UI** `(22 events, 19 commits)`
+- **UI** `(23 events, 20 commits)`
 - **shared-memory** `(14 events, 10 commits)`
 - **auth** `(13 events, 11 commits)`
-- **graph-workflow** `(11 events, 9 commits)`
+- **graph-workflow** `(12 events, 10 commits)`
 - **tagging**
 - **billing**
 - **embeddings**
@@ -184,4 +184,4 @@ aicli is a shared AI memory platform built on Python 3.12 + FastAPI backend, Van
 
 ## AI Synthesis
 
-**[2026-03-19]** `claude_cli` — Question raised: Remove direct IO from document folder management; use prompt-driven workflows instead. Problem: How do PM and Dev roles know where to write/read documents without explicit file paths? Proposed solution: Memory-backed queries and role-based access patterns. **[2026-03-19]** `graph_workflow.js` — Fixed routing case statements in main.js; corrected imports for proper graph workflow renderer dispatch. **[2026-03-19]** `project_visibility_bug` — Projects appear in Recent list but fail to become active in main view; identified as backend initialization race condition; retry logic partially addresses empty project list edge case. **[2026-03-18]** `memory_endpoint` — Fixed undefined `code_dir` variable at line 1120 in CLAUDE.md template; corrected variable scoping from config. **[2026-03-18]** `main.py` — Removed stale `db.ensure_project_schema()` call; corrected to use `_ensure_shared_schema()`. **[2026-03-10]** `database_performance` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; cache synced only on explicit save. **[2026-03-10]** `tag_hierarchy` — Approved nested tags via parent_id FK for unlimited depth; login remains first-level only. **[2026-03-10]** `data_persistence_bug` — Tags saved in UI disappear on session switch; root cause unclear (rendering vs DB save); requires investigation. **[2026-03-10]** `backend_stability` — Port binding conflicts on 127.0.0.1:8000 during restart; freePort() kills stale uvicorn processes. **[2026-03-10]** `ui_ux_improvements` — Increased visibility of planner actions; replaced small buttons with 3-dot menu; added unarchive capability.
+**[2026-03-19]** `chat` — User reported missing pipeline execution progress/status display; identified need to show current node, execution state, and completion percentage in workflow UI. **[2026-03-19]** `session` — Fixed graph workflow UI routing in main.js; corrected case statements and imports for proper graph_workflow.js renderer. **[2026-03-19]** `session` — Investigated project visibility bug where Recent projects don't display as active in main view; confirmed backend initialization timing issue. **[2026-03-18]** `memory` — Fixed AttributeError in main.py by removing stale `db.ensure_project_schema()` call; clarified to use `_ensure_shared_schema()` instead. **[2026-03-18]** `memory` — Fixed memory endpoint CLAUDE.md template error; resolved undefined `code_dir` variable scoping at line 1120. **[2026-03-18]** `memory` — Enhanced backend startup retry logic to handle edge case where project list load succeeds but returns empty result. **[2026-03-10]** `memory` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags now loaded into memory on project access and synced to DB only on explicit save. **[2026-03-10]** `memory` — Approved nested tag hierarchy expansion beyond 2-level structure; confirmed login as first-level only in hierarchy. **[2026-03-10]** `memory` — Identified tag persistence bug across session switches; tags saved in UI disappear when changing sessions (cause unclear—UI rendering vs. database save). **[Earlier]** `design` — Established document folder abstraction pattern: prompt-driven workflows replace direct IO; role-based access via memory queries (PM writes, Dev reads).

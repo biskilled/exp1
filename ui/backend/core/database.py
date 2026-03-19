@@ -522,6 +522,20 @@ CREATE TABLE IF NOT EXISTS pr_graph_node_results (
 );
 CREATE INDEX IF NOT EXISTS idx_pr_gnr_run  ON pr_graph_node_results(run_id);
 CREATE INDEX IF NOT EXISTS idx_pr_gnr_node ON pr_graph_node_results(node_id);
+
+-- Sequential ID counters (atomic per project+category)
+CREATE TABLE IF NOT EXISTS pr_seq_counters (
+    client_id INT          NOT NULL REFERENCES mng_clients(id),
+    project   VARCHAR(255) NOT NULL,
+    category  VARCHAR(100) NOT NULL,
+    next_val  INT          NOT NULL DEFAULT 10000,
+    PRIMARY KEY (client_id, project, category)
+);
+ALTER TABLE pr_work_items     ADD COLUMN IF NOT EXISTS seq_num         INT;
+ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS seq_num         INT;
+ALTER TABLE pr_work_items     ADD COLUMN IF NOT EXISTS entity_value_id INT REFERENCES mng_entity_values(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_pr_wi_seq   ON pr_work_items(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mev_seq     ON mng_entity_values(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
 """
 
 

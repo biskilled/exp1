@@ -32,6 +32,7 @@ from pydantic import BaseModel
 
 from config import settings
 from core.database import db
+from core.seq import next_seq
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ async def list_work_items(
                           w.parent_id, w.acceptance_criteria, w.implementation_plan,
                           w.agent_run_id, w.agent_status, w.tags,
                           w.created_at, w.updated_at,
+                          w.seq_num, w.entity_value_id,
                           ec.color, ec.icon,
                           (SELECT COUNT(*) FROM pr_interaction_tags it
                            WHERE it.work_item_id = w.id) AS interaction_count
@@ -152,24 +154,26 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
             if row:
                 category_id = row[0]
 
+            seq = next_seq(cur, p, body.category_name)
             cur.execute(
                 """INSERT INTO pr_work_items
                        (client_id, project, category_name, category_id, name, description,
                         status, lifecycle_status, due_date, parent_id,
-                        acceptance_criteria, implementation_plan, tags)
-                   VALUES (1, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        acceptance_criteria, implementation_plan, tags, seq_num)
+                   VALUES (1, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (client_id, project, category_name, name) DO NOTHING
-                   RETURNING id, name, category_name, created_at""",
+                   RETURNING id, name, category_name, created_at, seq_num""",
                 (p, body.category_name, category_id, body.name, body.description,
                  body.status, body.lifecycle_status, body.due_date or None,
                  body.parent_id or None,
                  body.acceptance_criteria, body.implementation_plan,
-                 body.tags),
+                 body.tags, seq),
             )
             r = cur.fetchone()
     return {
         "id": str(r[0]), "name": r[1], "category_name": r[2],
         "created_at": r[3].isoformat(), "project": p,
+        "seq_num": r[4],
     }
 
 
@@ -235,6 +239,44 @@ async def delete_work_item(item_id: str, project: str | None = Query(None)):
             if not cur.fetchone():
                 raise HTTPException(404, "Work item not found")
     return {"ok": True}
+
+
+# ── Lookup by sequential number ───────────────────────────────────────────────
+
+@router.get("/number/{seq_num}")
+async def get_work_item_by_number(seq_num: int, project: str | None = Query(None)):
+    """Resolve a short sequential number (e.g. #10005) to the full work item."""
+    _require_db()
+    p = _project(project)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT w.id, w.category_name, w.name, w.description,
+                          w.status, w.lifecycle_status, w.due_date,
+                          w.acceptance_criteria, w.implementation_plan,
+                          w.agent_run_id, w.agent_status, w.tags,
+                          w.created_at, w.updated_at, w.seq_num, w.entity_value_id
+                   FROM pr_work_items w
+                   WHERE w.client_id=1 AND w.project=%s AND w.seq_num=%s
+                   LIMIT 1""",
+                (p, seq_num),
+            )
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(404, f"Work item #{seq_num} not found in project {p!r}")
+            cols = [d[0] for d in cur.description]
+            row = dict(zip(cols, r))
+            row["id"] = str(row["id"])
+            for dt_field in ("created_at", "updated_at"):
+                if row.get(dt_field):
+                    row[dt_field] = row[dt_field].isoformat()
+            if row.get("due_date"):
+                row["due_date"] = row["due_date"].isoformat()
+            if row.get("agent_run_id"):
+                row["agent_run_id"] = str(row["agent_run_id"])
+            if row.get("tags") is None:
+                row["tags"] = []
+            return row
 
 
 # ── Interactions for a work item ──────────────────────────────────────────────

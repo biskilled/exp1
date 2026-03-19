@@ -344,6 +344,13 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
                title="${expanded ? 'Collapse' : 'Expand'}">${expanded ? '▾' : '▸'}</span>`
       : `<span style="display:inline-block;width:14px;margin-right:3px;flex-shrink:0"></span>`;
 
+    const seqBadge = wi.seq_num
+      ? `<span style="font-size:0.52rem;color:var(--muted);background:var(--surface2);
+                      border:1px solid var(--border);padding:0.05rem 0.28rem;
+                      border-radius:6px;white-space:nowrap;margin-right:4px;flex-shrink:0"
+               title="Seq #${wi.seq_num}">#${wi.seq_num}</span>`
+      : '';
+
     let html = `
       <tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
           data-wi-id="${wi.id}"
@@ -354,6 +361,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
                    color:var(--text);font-weight:${depth === 0 ? '500' : '400'}">
           <div style="display:flex;align-items:center">
             ${toggleBtn}
+            ${seqBadge}
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                   title="${_esc(wi.name)}">${_esc(wi.name)}</span>
           </div>
@@ -447,9 +455,16 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
     if (!wi) { inner.innerHTML = '<div style="padding:1rem;color:var(--muted)">Not found</div>'; return; }
 
     const lc_col = _LIFECYCLE_COLORS[wi.lifecycle_status || 'idea'] || '#888';
+    const drawerSeqBadge = wi.seq_num
+      ? `<span style="font-size:0.55rem;color:var(--muted);background:var(--surface2);
+                       border:1px solid var(--border);padding:0.1rem 0.35rem;
+                       border-radius:6px;white-space:nowrap;cursor:default"
+              title="Reference this item as #${wi.seq_num}">#${wi.seq_num}</span>`
+      : '';
     inner.innerHTML = `
       <div style="padding:0.9rem 1rem;border-bottom:1px solid var(--border);
                   display:flex;align-items:center;gap:0.5rem">
+        ${drawerSeqBadge}
         <strong style="font-size:0.75rem;flex:1;overflow:hidden;text-overflow:ellipsis">${_esc(wi.name)}</strong>
         <button onclick="window._plannerCloseDrawer()"
           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem">✕</button>
