@@ -28,3 +28,6 @@ httpx>=0.27.0
 
 # MCP server (model context protocol)
 mcp>=1.0.0
+
+# LangGraph workflow runtime
+langgraph>=0.2.0

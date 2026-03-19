@@ -32,15 +32,15 @@ You are a senior Python software architect with deep expertise in:
 - JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits
-- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
+- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
+- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits on save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
-- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- System roles composable into agent roles (e.g., 'coding' system role with clean code/comment/OOP principles addable to UI/backend developer roles)
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
+- Port binding safety: freePort() kills stale uvicorn processes; Electron cleanup via process.exit()
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase
+- System roles composable into agent roles (e.g., 'coding' role with clean code/comments/OOP principles)
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-18] `claude_cli`: Few more strucure - users are also part of client (client can have mutiple users). Also I would like
 - [2026-03-18] `claude_cli`: I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, l
 - [2026-03-18] `claude_cli`: I would like to start to work on the Roles. by adding system roles that can be added into any Agent 
 - [2026-03-19] `claude_cli`:  I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is n
 - [2026-03-19] `claude_cli`: When app is stsrting - I still cannot see all project in prject page (only after I open the project)
+- [2026-03-19] `claude_cli`: I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be ma
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

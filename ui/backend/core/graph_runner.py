@@ -1,13 +1,18 @@
 """
-graph_runner.py — Async DAG execution engine for graph-based multi-LLM workflows.
+graph_runner.py — LangGraph-based execution engine for multi-LLM workflow DAGs.
 
-Nodes with no unresolved predecessors run in parallel via asyncio.gather.
-Loop-back edges are supported via an iteration counter capped at workflow.max_iterations.
-Every completed node output is appended to a shared context dict and persisted to
-pr_graph_node_results + pr_graph_runs in PostgreSQL.
+Replaces the custom async work-queue runner with LangGraph StateGraph.
+Every node is wrapped in an async LangGraph node function; conditional edges
+use LangGraph's add_conditional_edges; MemorySaver enables pause/resume for
+approval gates.
+
+Stateless nodes receive only {user_input} as context (no accumulated history).
+Stateful nodes receive the full accumulated context dict.
 
 Public API:
-    run_graph_workflow(workflow_id, user_input, run_id, project) -> dict
+    run_graph_workflow(workflow_id, user_input, run_id, project, work_item_id) -> dict
+    resume_graph_workflow(run_id, workflow_id, project, ctx, start_node_ids,
+                          approved, retry, reason) -> dict
 """
 from __future__ import annotations
 
@@ -16,14 +21,25 @@ import json
 import logging
 import re
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from config import settings
 from core.database import db
 
 log = logging.getLogger(__name__)
+
+# ── LangGraph imports (optional — falls back to legacy runner if not installed) ─
+
+try:
+    from langgraph.graph import StateGraph, END
+    from langgraph.checkpoint.memory import MemorySaver
+    _LANGGRAPH_AVAILABLE = True
+except ImportError:
+    _LANGGRAPH_AVAILABLE = False
+    log.warning("langgraph not installed — graph_runner will use legacy DAG mode")
 
 
 # ── Condition evaluation ───────────────────────────────────────────────────────
@@ -269,7 +285,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
     }
 
 
-# ── Main DAG runner ───────────────────────────────────────────────────────────
+# ── Document output saver ─────────────────────────────────────────────────────
 
 def _save_node_output(project: str, work_item: dict, node_name: str, output: str) -> None:
     """Save a node's text output to the documents folder."""
@@ -282,31 +298,141 @@ def _save_node_output(project: str, work_item: dict, node_name: str, output: str
     log.info(f"Saved node output → documents/{rel}")
 
 
-async def run_graph_workflow(
-    workflow_id: str,
-    user_input: str,
+# ── LangGraph state type ───────────────────────────────────────────────────────
+
+class WorkflowState(TypedDict):
+    user_input: str
+    context: dict          # {node_name: output}
+    messages: list         # accumulated history for stateful nodes
+    run_id: str
+    project: str
+    total_cost: float
+    _work_item: Any        # work item dict or None
+
+
+# ── In-memory registry of compiled LangGraph apps ─────────────────────────────
+# run_id → (app, checkpointer)
+_APP_REGISTRY: dict[str, tuple] = {}
+
+
+def _make_node_fn(node: dict, run_id: str, project: str):
+    """Return an async LangGraph node function from a DB node dict."""
+    node_copy = dict(node)
+
+    async def fn(state: WorkflowState) -> dict:
+        # Stateless: only pass user_input (no accumulated prior outputs)
+        if node_copy.get("stateless"):
+            effective_ctx: dict = {"user_input": state["user_input"]}
+        else:
+            effective_ctx = dict(state["context"])
+        effective_ctx["_work_item"] = state.get("_work_item")
+
+        result = await _execute_node(node_copy, run_id, effective_ctx, 0, project)
+        output = result.get("structured") or result.get("output", "")
+        new_ctx = {**state["context"], node_copy["name"]: output}
+
+        if node_copy.get("stateless"):
+            new_msgs: list = []
+        else:
+            new_msgs = list(state.get("messages", [])) + [
+                {"role": "assistant", "content": str(output)}
+            ]
+
+        return {
+            **state,
+            "context": new_ctx,
+            "messages": new_msgs,
+            "total_cost": state.get("total_cost", 0.0) + result.get("cost_usd", 0.0),
+        }
+
+    fn.__name__ = re.sub(r"[^a-z0-9_]", "_", node_copy["name"].lower().replace(" ", "_"))
+    return fn
+
+
+def _make_router(out_edges: list, nodes: dict):
+    """Return a router function that maps state → next node name (or END)."""
+    def router(state: WorkflowState) -> str:
+        for e in out_edges:
+            condition = e.get("condition")
+            if not condition or _eval_condition(condition, state["context"]):
+                tgt = nodes.get(e["target"])
+                return tgt["name"] if tgt else END
+        return END
+    return router
+
+
+def _build_langgraph(
+    nodes: dict[str, dict],
+    edges: list[dict],
     run_id: str,
     project: str,
-    work_item_id: str | None = None,
-) -> dict:
-    """Execute a graph workflow asynchronously.
+) -> tuple:
+    """Construct, compile, and return (app, approval_node_names, checkpointer).
 
-    Nodes run in parallel when they have no unresolved predecessors.
-    Loop-back edges are supported up to workflow.max_iterations iterations.
-
-    Returns the final context dict {node_name: output_or_structured}.
+    nodes: {node_id: node_dict}
+    edges: list of {id, source, target, condition, label}
     """
-    if not db.is_available():
-        raise RuntimeError("PostgreSQL required for graph workflows")
+    builder: StateGraph = StateGraph(WorkflowState)  # type: ignore[type-arg]
 
-    # ── 1. Load workflow, nodes, edges ────────────────────────────────────────
+    edges_by_src: dict[str, list] = defaultdict(list)
+    for e in edges:
+        edges_by_src[e["source"]].append(e)
+
+    # Forward in-degree (for entry-point detection)
+    fwd_in_degree: dict[str, int] = {nid: 0 for nid in nodes}
+    for e in edges:
+        if e["source"] in nodes and e["target"] in nodes:
+            fwd_in_degree[e["target"]] += 1
+
+    approval_names: list[str] = []
+
+    for nid, node in nodes.items():
+        builder.add_node(node["name"], _make_node_fn(node, run_id, project))
+        if node.get("require_approval"):
+            approval_names.append(node["name"])
+
+    entry_nodes = [n["name"] for nid, n in nodes.items() if fwd_in_degree[nid] == 0]
+    if entry_nodes:
+        builder.set_entry_point(entry_nodes[0])
+
+    for nid, node in nodes.items():
+        out = edges_by_src.get(nid, [])
+        if not out:
+            builder.add_edge(node["name"], END)
+        elif len(out) == 1 and not out[0].get("condition"):
+            tgt = nodes.get(out[0]["target"])
+            builder.add_edge(node["name"], tgt["name"] if tgt else END)
+        else:
+            router = _make_router(out, nodes)
+            targets: dict[str, str] = {}
+            for e in out:
+                tgt = nodes.get(e["target"])
+                if tgt:
+                    targets[tgt["name"]] = tgt["name"]
+            targets[END] = END
+            builder.add_conditional_edges(node["name"], router, targets)
+
+    cp = MemorySaver()
+    interrupt_after = approval_names if approval_names else None
+    app = builder.compile(
+        checkpointer=cp,
+        interrupt_after=interrupt_after,  # type: ignore[arg-type]
+    )
+    return app, approval_names, cp
+
+
+def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], list[dict]]:
+    """Load workflow, nodes (id→dict), edges from DB."""
     workflow: dict = {}
-    nodes: dict[str, dict] = {}   # id → node
+    nodes: dict[str, dict] = {}
     edges: list[dict] = []
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, project, name, max_iterations FROM pr_graph_workflows WHERE id=%s", (workflow_id,))
+            cur.execute(
+                "SELECT id, project, name, max_iterations FROM pr_graph_workflows WHERE id=%s",
+                (workflow_id,),
+            )
             row = cur.fetchone()
             if not row:
                 raise ValueError(f"Workflow not found: {workflow_id}")
@@ -314,7 +440,8 @@ async def run_graph_workflow(
 
             cur.execute(
                 """SELECT id, name, role_file, role_prompt, provider, model,
-                          output_schema, inject_context, require_approval, approval_msg, role_id
+                          output_schema, inject_context, require_approval, approval_msg, role_id,
+                          stateless, retry_config, success_criteria
                    FROM pr_graph_nodes WHERE workflow_id=%s""",
                 (workflow_id,),
             )
@@ -326,6 +453,9 @@ async def run_graph_workflow(
                     "require_approval": r[8] if len(r) > 8 else False,
                     "approval_msg": r[9] if len(r) > 9 else "",
                     "role_id": r[10] if len(r) > 10 else None,
+                    "stateless": r[11] if len(r) > 11 else False,
+                    "retry_config": r[12] if len(r) > 12 else {},
+                    "success_criteria": r[13] if len(r) > 13 else "",
                 }
 
             cur.execute(
@@ -338,28 +468,242 @@ async def run_graph_workflow(
                     "condition": r[3], "label": r[4],
                 })
 
+    return workflow, nodes, edges
+
+
+def _update_run_db(run_id: str, status: str, ctx: dict | None = None,
+                   total_cost: float = 0.0, error: str | None = None) -> None:
+    if not db.is_available():
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                if status in ("done", "stopped", "error"):
+                    cur.execute(
+                        """UPDATE pr_graph_runs SET status=%s, context=%s,
+                           total_cost_usd=%s, finished_at=NOW(), error=%s WHERE id=%s""",
+                        (status, json.dumps(ctx or {}), total_cost, error, run_id),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE pr_graph_runs SET status=%s, context=%s, total_cost_usd=%s WHERE id=%s",
+                        (status, json.dumps(ctx or {}), total_cost, run_id),
+                    )
+    except Exception as e:
+        log.warning(f"Could not update run {run_id} status={status}: {e}")
+
+
+# ── LangGraph-based main runner ────────────────────────────────────────────────
+
+async def run_graph_workflow(
+    workflow_id: str,
+    user_input: str,
+    run_id: str,
+    project: str,
+    work_item_id: str | None = None,
+) -> dict:
+    """Build a LangGraph StateGraph from DB workflow and run it asynchronously.
+
+    Falls back to legacy DAG runner if langgraph is not installed.
+    Returns the final context dict {node_name: output_or_structured}.
+    """
+    if not db.is_available():
+        raise RuntimeError("PostgreSQL required for graph workflows")
+
+    if not _LANGGRAPH_AVAILABLE:
+        return await _run_graph_workflow_legacy(
+            workflow_id, user_input, run_id, project, work_item_id=work_item_id
+        )
+
+    # 1. Load workflow, nodes, edges
+    workflow, nodes, edges = _load_workflow_from_db(workflow_id)
+
+    # 2. Load work item if provided
+    work_item: dict | None = None
+    if work_item_id and db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid",
+                        (work_item_id,),
+                    )
+                    wi = cur.fetchone()
+            if wi:
+                slug = re.sub(r"[^a-z0-9_]", "", wi[1].lower().replace(" ", "_"))
+                work_item = {"id": work_item_id, "category": wi[0], "name": wi[1], "slug": slug}
+        except Exception as _we:
+            log.warning(f"Could not load work_item {work_item_id}: {_we}")
+
+    # 3. Build LangGraph
+    app, approval_names, cp = _build_langgraph(nodes, edges, run_id, project)
+    _APP_REGISTRY[run_id] = (app, cp)
+
+    # 4. Build initial state
+    initial_state: WorkflowState = {
+        "user_input": user_input,
+        "context": {"user_input": user_input},
+        "messages": [],
+        "run_id": run_id,
+        "project": project,
+        "total_cost": 0.0,
+        "_work_item": work_item,
+    }
+
+    config = {"configurable": {"thread_id": run_id}}
+
+    # 5. Run
+    try:
+        final_state = await app.ainvoke(initial_state, config)
+    except Exception as e:
+        log.error(f"LangGraph run {run_id} failed: {e}")
+        _update_run_db(run_id, "error", error=str(e))
+        return {"error": str(e)}
+
+    ctx = dict(final_state.get("context", {}))
+    total_cost = float(final_state.get("total_cost", 0.0))
+
+    # 6. Check if waiting at approval interrupt
+    snapshot = app.get_state(config)
+    if snapshot.next:
+        # Paused at approval node
+        waiting_name = snapshot.next[0]
+        ctx["_waiting"] = {
+            "node_name": waiting_name,
+            "output": ctx.get(waiting_name, ""),
+            "approval_msg": next(
+                (n.get("approval_msg", "") for n in nodes.values() if n["name"] == waiting_name),
+                "",
+            ),
+        }
+        _update_run_db(run_id, "waiting_approval", ctx=ctx, total_cost=total_cost)
+        log.info(f"Run {run_id} paused at '{waiting_name}' — waiting for approval")
+        return ctx
+
+    # 7. Finalize
+    _update_run_db(run_id, "done", ctx=ctx, total_cost=total_cost)
+
+    # 8. Fire-and-forget: embed + memory refresh
+    _fire_background(run_id, project)
+
+    return ctx
+
+
+async def resume_graph_workflow(
+    run_id: str,
+    workflow_id: str,
+    project: str,
+    ctx: dict,
+    start_node_ids: list[str],
+    approved: bool = True,
+    retry: bool = False,
+    reason: str = "",
+) -> dict:
+    """Resume a paused (waiting_approval) LangGraph run.
+
+    approved=True  → continue from the interrupted node
+    retry=True     → re-run the waiting node (clear its output from context)
+    approved=False → stop the run
+    """
+    if not db.is_available():
+        raise RuntimeError("PostgreSQL required for graph workflows")
+
+    if not _LANGGRAPH_AVAILABLE:
+        return await _resume_graph_workflow_legacy(run_id, start_node_ids, project)
+
+    if not approved and not retry:
+        _update_run_db(run_id, "stopped", ctx=ctx)
+        _APP_REGISTRY.pop(run_id, None)
+        return {"status": "stopped"}
+
+    # Rebuild app if not in registry (server restart recovery)
+    if run_id not in _APP_REGISTRY:
+        _, nodes, edges = _load_workflow_from_db(workflow_id)
+        app, _, cp = _build_langgraph(nodes, edges, run_id, project)
+        _APP_REGISTRY[run_id] = (app, cp)
+
+    app, cp = _APP_REGISTRY[run_id]
+    config = {"configurable": {"thread_id": run_id}}
+
+    if retry:
+        # Remove the waiting node's output so it re-executes cleanly
+        snapshot = app.get_state(config)
+        if snapshot.next:
+            waiting_name = snapshot.next[0]
+            new_ctx = {k: v for k, v in snapshot.values.get("context", {}).items()
+                       if k != waiting_name}
+            new_ctx.pop("_waiting", None)
+            app.update_state(config, {"context": new_ctx, "messages": []})
+
+    try:
+        final_state = await app.ainvoke(None, config)
+    except Exception as e:
+        log.error(f"LangGraph resume {run_id} failed: {e}")
+        _update_run_db(run_id, "error", error=str(e))
+        return {"error": str(e)}
+
+    result_ctx = dict(final_state.get("context", {}))
+    total_cost = float(final_state.get("total_cost", 0.0))
+
+    snapshot = app.get_state(config)
+    if snapshot.next:
+        waiting_name = snapshot.next[0]
+        result_ctx["_waiting"] = {
+            "node_name": waiting_name,
+            "output": result_ctx.get(waiting_name, ""),
+        }
+        _update_run_db(run_id, "waiting_approval", ctx=result_ctx, total_cost=total_cost)
+        return result_ctx
+
+    _update_run_db(run_id, "done", ctx=result_ctx, total_cost=total_cost)
+    _APP_REGISTRY.pop(run_id, None)
+    _fire_background(run_id, project)
+    return result_ctx
+
+
+def _fire_background(run_id: str, project: str) -> None:
+    """Fire-and-forget: embed node outputs + refresh project memory."""
+    try:
+        from core.embeddings import embed_node_outputs
+        asyncio.create_task(embed_node_outputs(run_id, project))
+    except Exception:
+        pass
+
+    try:
+        import httpx
+        async def _refresh_memory():
+            async with httpx.AsyncClient() as client:
+                await client.post(f"{settings.backend_url}/projects/{project}/memory")
+        asyncio.create_task(_refresh_memory())
+    except Exception:
+        pass
+
+
+# ── Legacy DAG runner (fallback when langgraph not installed) ──────────────────
+
+async def _run_graph_workflow_legacy(
+    workflow_id: str,
+    user_input: str,
+    run_id: str,
+    project: str,
+    work_item_id: str | None = None,
+) -> dict:
+    """Original async DAG work-queue runner — used as fallback."""
+    workflow, nodes, edges = _load_workflow_from_db(workflow_id)
     max_iter = workflow.get("max_iterations", 5)
 
-    # ── 2. Build in-degree map and successors ─────────────────────────────────
     in_degree: dict[str, int] = {nid: 0 for nid in nodes}
     successors: dict[str, list[dict]] = {nid: [] for nid in nodes}
-
-    for edge in edges:
-        src, tgt = edge["source"], edge["target"]
-        if src in nodes and tgt in nodes:
-            # Only count forward edges for initial in_degree (loop-backs handled separately)
-            successors[src].append(edge)
-
-    # Forward-only in_degree (exclude back-edges for root detection)
     fwd_in_degree: dict[str, int] = {nid: 0 for nid in nodes}
+
     for edge in edges:
         src, tgt = edge["source"], edge["target"]
         if src in nodes and tgt in nodes:
+            successors[src].append(edge)
             fwd_in_degree[tgt] += 1
 
     ctx: dict[str, Any] = {"user_input": user_input}
 
-    # Load work item context for document auto-save
     if work_item_id and db.is_available():
         try:
             with db.conn() as conn:
@@ -380,228 +724,7 @@ async def run_graph_workflow(
     total_cost = 0.0
     done_nodes: set[str] = set()
     iteration_count: dict[str, int] = {nid: 0 for nid in nodes}
-
-    # Root nodes = those with no incoming edges
     ready: list[str] = [nid for nid, deg in fwd_in_degree.items() if deg == 0]
-
-    # ── 3. Work-queue loop ────────────────────────────────────────────────────
-    global_iter = 0
-    while ready and global_iter < max_iter * len(nodes) + len(nodes):
-        global_iter += 1
-
-        # Execute all ready nodes in parallel
-        results = await asyncio.gather(
-            *[
-                _execute_node(
-                    nodes[nid], run_id, ctx,
-                    iteration_count[nid], project,
-                )
-                for nid in ready
-            ],
-            return_exceptions=True,
-        )
-
-        next_ready: list[str] = []
-
-        for nid, result in zip(ready, results):
-            if isinstance(result, Exception):
-                log.error(f"Node {nid} raised: {result}")
-                ctx[nodes[nid]["name"]] = f"error: {result}"
-                done_nodes.add(nid)
-                continue
-
-            node_name = result["node_name"]
-            ctx[node_name] = result["structured"] if result["structured"] else result["output"]
-            total_cost += result.get("cost_usd", 0)
-            done_nodes.add(nid)
-
-            # ── User approval gate ────────────────────────────────────────────
-            if nodes[nid].get("require_approval") and result["status"] != "error":
-                # Collect successor node IDs for the decision endpoint
-                successor_ids = [e["target"] for e in successors.get(nid, [])]
-                ctx["_waiting"] = {
-                    "node_id": nid,
-                    "node_name": node_name,
-                    "output": result["output"],
-                    "successors": successor_ids,
-                    "approval_msg": nodes[nid].get("approval_msg", ""),
-                }
-                if db.is_available():
-                    try:
-                        with db.conn() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    """UPDATE pr_graph_runs SET status='waiting_approval',
-                                       context=%s, total_cost_usd=%s WHERE id=%s""",
-                                    (json.dumps(ctx), total_cost, run_id),
-                                )
-                        with db.conn() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    """UPDATE pr_graph_node_results SET status='waiting_approval'
-                                       WHERE run_id=%s AND node_id=%s
-                                       ORDER BY id DESC LIMIT 1""",
-                                    (run_id, nid),
-                                )
-                    except Exception as e:
-                        log.warning(f"Could not save approval pause state: {e}")
-                log.info(f"Run {run_id} paused at node '{node_name}' — waiting for user approval")
-                return ctx  # Stop execution; decision endpoint will resume
-
-            # Evaluate outgoing edges
-            for edge in successors.get(nid, []):
-                tgt = edge["target"]
-                if tgt not in nodes:
-                    continue
-                condition = edge.get("condition")
-                if not _eval_condition(condition, ctx):
-                    continue
-
-                # Loop-back detection: target already done → re-enqueue if under limit
-                if tgt in done_nodes:
-                    if iteration_count[tgt] < max_iter:
-                        iteration_count[tgt] += 1
-                        done_nodes.discard(tgt)
-                        next_ready.append(tgt)
-                else:
-                    # Check all predecessors done (forward edges only)
-                    preds_done = all(
-                        e["source"] in done_nodes
-                        for e in edges
-                        if e["target"] == tgt and e["source"] != tgt
-                    )
-                    if preds_done and tgt not in next_ready:
-                        next_ready.append(tgt)
-
-        ready = next_ready
-
-    # ── 4. Finalize run ───────────────────────────────────────────────────────
-    if db.is_available():
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """UPDATE pr_graph_runs SET
-                           status='done', context=%s, total_cost_usd=%s, finished_at=NOW()
-                           WHERE id=%s""",
-                        (json.dumps(ctx), total_cost, run_id),
-                    )
-        except Exception as e:
-            log.error(f"Could not finalize run {run_id}: {e}")
-
-    # ── 5. Fire-and-forget: embed outputs + refresh memory ───────────────────
-    try:
-        from core.embeddings import embed_node_outputs
-        asyncio.create_task(embed_node_outputs(run_id, project))
-    except Exception:
-        pass
-
-    try:
-        import httpx
-        async def _refresh_memory():
-            async with httpx.AsyncClient() as client:
-                await client.post(f"{settings.backend_url}/projects/{project}/memory")
-        asyncio.create_task(_refresh_memory())
-    except Exception:
-        pass
-
-    return ctx
-
-
-# ── Resume after user approval ────────────────────────────────────────────────
-
-async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project: str) -> dict:
-    """Resume a paused run from the given node IDs.
-
-    Called by the decision endpoint after user approves a node.
-    Reconstructs done_nodes from the existing context and continues execution.
-    """
-    if not db.is_available():
-        raise RuntimeError("PostgreSQL required for graph workflows")
-
-    # Load run state
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT workflow_id, context, total_cost_usd FROM pr_graph_runs WHERE id=%s",
-                (run_id,),
-            )
-            row = cur.fetchone()
-            if not row:
-                raise ValueError(f"Run not found: {run_id}")
-            workflow_id, ctx, total_cost = row[0], row[1] or {}, float(row[2])
-
-    ctx.pop("_waiting", None)
-
-    # Load workflow, nodes, edges
-    workflow: dict = {}
-    nodes: dict[str, dict] = {}
-    edges: list[dict] = []
-
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, project, name, max_iterations FROM pr_graph_workflows WHERE id=%s",
-                (workflow_id,),
-            )
-            r = cur.fetchone()
-            if not r:
-                raise ValueError(f"Workflow not found: {workflow_id}")
-            workflow = {"id": r[0], "project": r[1], "name": r[2], "max_iterations": r[3]}
-
-            cur.execute(
-                """SELECT id, name, role_file, role_prompt, provider, model,
-                          output_schema, inject_context, require_approval, approval_msg, role_id
-                   FROM pr_graph_nodes WHERE workflow_id=%s""",
-                (workflow_id,),
-            )
-            for r in cur.fetchall():
-                nodes[r[0]] = {
-                    "id": r[0], "name": r[1], "role_file": r[2],
-                    "role_prompt": r[3], "provider": r[4], "model": r[5],
-                    "output_schema": r[6], "inject_context": r[7],
-                    "require_approval": r[8] if len(r) > 8 else False,
-                    "approval_msg": r[9] if len(r) > 9 else "",
-                    "role_id": r[10] if len(r) > 10 else None,
-                }
-
-            cur.execute(
-                "SELECT id, source_node_id, target_node_id, condition, label FROM pr_graph_edges WHERE workflow_id=%s",
-                (workflow_id,),
-            )
-            for r in cur.fetchall():
-                edges.append({"id": r[0], "source": r[1], "target": r[2], "condition": r[3], "label": r[4]})
-
-    max_iter = workflow.get("max_iterations", 5)
-    successors: dict[str, list[dict]] = {nid: [] for nid in nodes}
-    for edge in edges:
-        src, tgt = edge["source"], edge["target"]
-        if src in nodes and tgt in nodes:
-            successors[src].append(edge)
-
-    # Reconstruct done_nodes from ctx keys (node names that have outputs)
-    name_to_id = {n["name"]: nid for nid, n in nodes.items()}
-    done_nodes: set[str] = set()
-    for key in ctx:
-        if key.startswith("_"):
-            continue
-        nid = name_to_id.get(key)
-        if nid:
-            done_nodes.add(nid)
-
-    iteration_count: dict[str, int] = {nid: 0 for nid in nodes}
-
-    # Only start from valid, non-done nodes
-    ready = [nid for nid in start_node_ids if nid in nodes and nid not in done_nodes]
-    if not ready:
-        # All start nodes already done — nothing to do
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE pr_graph_runs SET status='done', context=%s, total_cost_usd=%s, finished_at=NOW() WHERE id=%s",
-                    (json.dumps(ctx), total_cost, run_id),
-                )
-        return ctx
 
     global_iter = 0
     while ready and global_iter < max_iter * len(nodes) + len(nodes):
@@ -633,22 +756,8 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
                     "output": result["output"], "successors": successor_ids,
                     "approval_msg": nodes[nid].get("approval_msg", ""),
                 }
-                if db.is_available():
-                    try:
-                        with db.conn() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    "UPDATE pr_graph_runs SET status='waiting_approval', context=%s, total_cost_usd=%s WHERE id=%s",
-                                    (json.dumps(ctx), total_cost, run_id),
-                                )
-                        with db.conn() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    "UPDATE pr_graph_node_results SET status='waiting_approval' WHERE run_id=%s AND node_id=%s ORDER BY id DESC LIMIT 1",
-                                    (run_id, nid),
-                                )
-                    except Exception as e:
-                        log.warning(f"Could not save approval pause: {e}")
+                _update_run_db(run_id, "waiting_approval", ctx=ctx, total_cost=total_cost)
+                log.info(f"Run {run_id} paused at '{node_name}' — waiting for user approval")
                 return ctx
 
             for edge in successors.get(nid, []):
@@ -673,16 +782,104 @@ async def resume_graph_workflow(run_id: str, start_node_ids: list[str], project:
 
         ready = next_ready
 
-    # Finalize
-    if db.is_available():
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE pr_graph_runs SET status='done', context=%s, total_cost_usd=%s, finished_at=NOW() WHERE id=%s",
-                        (json.dumps(ctx), total_cost, run_id),
-                    )
-        except Exception as e:
-            log.error(f"Could not finalize resumed run {run_id}: {e}")
+    _update_run_db(run_id, "done", ctx=ctx, total_cost=total_cost)
+    _fire_background(run_id, project)
+    return ctx
 
+
+async def _resume_graph_workflow_legacy(
+    run_id: str, start_node_ids: list[str], project: str
+) -> dict:
+    """Legacy resume — called by decision endpoint when langgraph not installed."""
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT workflow_id, context, total_cost_usd FROM pr_graph_runs WHERE id=%s",
+                (run_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Run not found: {run_id}")
+            workflow_id, ctx, total_cost = row[0], row[1] or {}, float(row[2])
+
+    ctx.pop("_waiting", None)
+    workflow, nodes, edges = _load_workflow_from_db(workflow_id)
+    max_iter = workflow.get("max_iterations", 5)
+
+    successors: dict[str, list[dict]] = {nid: [] for nid in nodes}
+    for edge in edges:
+        src, tgt = edge["source"], edge["target"]
+        if src in nodes and tgt in nodes:
+            successors[src].append(edge)
+
+    name_to_id = {n["name"]: nid for nid, n in nodes.items()}
+    done_nodes: set[str] = set()
+    for key in ctx:
+        if key.startswith("_"):
+            continue
+        nid = name_to_id.get(key)
+        if nid:
+            done_nodes.add(nid)
+
+    iteration_count: dict[str, int] = {nid: 0 for nid in nodes}
+    ready = [nid for nid in start_node_ids if nid in nodes and nid not in done_nodes]
+
+    if not ready:
+        _update_run_db(run_id, "done", ctx=ctx, total_cost=total_cost)
+        return ctx
+
+    global_iter = 0
+    while ready and global_iter < max_iter * len(nodes) + len(nodes):
+        global_iter += 1
+        results = await asyncio.gather(
+            *[_execute_node(nodes[nid], run_id, ctx, iteration_count[nid], project) for nid in ready],
+            return_exceptions=True,
+        )
+        next_ready: list[str] = []
+
+        for nid, result in zip(ready, results):
+            if isinstance(result, Exception):
+                log.error(f"Node {nid} raised: {result}")
+                ctx[nodes[nid]["name"]] = f"error: {result}"
+                done_nodes.add(nid)
+                continue
+
+            node_name = result["node_name"]
+            ctx[node_name] = result["structured"] if result["structured"] else result["output"]
+            total_cost += result.get("cost_usd", 0)
+            done_nodes.add(nid)
+
+            if nodes[nid].get("require_approval") and result["status"] != "error":
+                successor_ids = [e["target"] for e in successors.get(nid, [])]
+                ctx["_waiting"] = {
+                    "node_id": nid, "node_name": node_name,
+                    "output": result["output"], "successors": successor_ids,
+                    "approval_msg": nodes[nid].get("approval_msg", ""),
+                }
+                _update_run_db(run_id, "waiting_approval", ctx=ctx, total_cost=total_cost)
+                return ctx
+
+            for edge in successors.get(nid, []):
+                tgt = edge["target"]
+                if tgt not in nodes:
+                    continue
+                if not _eval_condition(edge.get("condition"), ctx):
+                    continue
+                if tgt in done_nodes:
+                    if iteration_count[tgt] < max_iter:
+                        iteration_count[tgt] += 1
+                        done_nodes.discard(tgt)
+                        next_ready.append(tgt)
+                else:
+                    preds_done = all(
+                        e["source"] in done_nodes
+                        for e in edges
+                        if e["target"] == tgt and e["source"] != tgt
+                    )
+                    if preds_done and tgt not in next_ready:
+                        next_ready.append(tgt)
+
+        ready = next_ready
+
+    _update_run_db(run_id, "done", ctx=ctx, total_cost=total_cost)
     return ctx

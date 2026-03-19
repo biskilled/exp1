@@ -1,1004 +1,930 @@
 /**
- * graph_workflow.js — Multi-agent workflow editor (Cytoscape.js).
+ * graph_workflow.js — Horizontal CSS pipeline designer (v2).
  *
- * Sidebar: Graph Flows (PostgreSQL) + YAML Workflows (file-based).
- * Node config: role selector from prompts/roles/, approval toggle, output schema.
- * Edge config: condition type (always / score_gte / score_lt / needs_approval).
- * Run log: real-time polling + approval panel when run.status==='waiting_approval'.
- * Templates: Web Dev, Trading Algo, AWS Design pipelines.
+ * Replaces Cytoscape.js with a pure-CSS horizontal card-based layout.
+ * Left sidebar: saved workflows + role library + IO type legend.
+ * Center canvas: scrollable horizontal pipeline with connector arrows.
+ * Right detail panel: full node config (slides in on node click).
+ * Bottom run log: collapsible, approval panel overlay.
  */
 
 import { state } from '../stores/state.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── IO type definitions ────────────────────────────────────────────────────────
 
-const PROVIDER_COLORS = {
-  claude: 'var(--claude)', openai: 'var(--openai)', deepseek: 'var(--deepseek)',
-  gemini: 'var(--gemini)', grok: 'var(--grok)',
+const IO_TYPES = {
+  prompt:   { color: '#9b7ef8', bg: 'rgba(155,126,248,0.15)', label: 'Prompt' },
+  md:       { color: '#5b8ef0', bg: 'rgba(91,142,240,0.15)',  label: 'Markdown' },
+  code:     { color: '#3ecf8e', bg: 'rgba(62,207,142,0.15)',  label: 'Code' },
+  github:   { color: '#3ecf8e', bg: 'rgba(62,207,142,0.15)',  label: 'GitHub' },
+  tests:    { color: '#f5a623', bg: 'rgba(245,166,35,0.15)',  label: 'Tests' },
+  report:   { color: '#f5a623', bg: 'rgba(245,166,35,0.15)',  label: 'Report' },
+  feedback: { color: '#e85d75', bg: 'rgba(232,93,117,0.15)', label: 'Feedback' },
+  score:    { color: '#2dd4bf', bg: 'rgba(45,212,191,0.15)', label: 'Score' },
+  json:     { color: '#2dd4bf', bg: 'rgba(45,212,191,0.15)', label: 'JSON' },
 };
-const PROVIDER_BG = {
-  claude: '#fff3ee', openai: '#e6f7f0', deepseek: '#e6f4fb',
-  gemini: '#e6f9ee', grok: '#fdf6e3',
+
+// ── Role presets ───────────────────────────────────────────────────────────────
+
+const ROLE_PRESETS = {
+  planner: {
+    label: 'Planner', color: '#9b7ef8', badge: 'SDD', stateless: false,
+    inputs:  [{ name: 'prompt',  type: 'prompt' }],
+    outputs: [{ name: 'spec.md', type: 'md' }],
+    success_criteria: 'reviewer_approved',
+    role_prompt: 'You are a senior product manager. Produce a detailed spec document.',
+  },
+  developer: {
+    label: 'Developer', color: '#3ecf8e', badge: 'DEV', stateless: false,
+    inputs:  [{ name: 'spec.md', type: 'md' }],
+    outputs: [{ name: 'code', type: 'code' }, { name: 'github_pr', type: 'github' }],
+    success_criteria: 'tests_pass',
+    role_prompt: 'You are a senior software engineer. Implement the spec.',
+  },
+  tester: {
+    label: 'Tester', color: '#f5a623', badge: 'QA', stateless: false,
+    inputs:  [{ name: 'code', type: 'code' }],
+    outputs: [{ name: 'test_report.md', type: 'tests' }, { name: 'score', type: 'score' }],
+    success_criteria: 'score >= 80',
+    role_prompt: 'You are a QA engineer. Test the code and provide a score out of 100.',
+  },
+  reviewer_stateless: {
+    label: 'Reviewer', color: '#2dd4bf', badge: '∅', stateless: true,
+    inputs:  [{ name: 'code', type: 'code' }, { name: 'spec.md', type: 'md' }],
+    outputs: [{ name: 'feedback.md', type: 'feedback' }, { name: 'approved', type: 'score' }],
+    success_criteria: 'approved == true',
+    role_prompt: 'You are a code reviewer. Review with fresh eyes (no history).',
+  },
+  reviewer_stateful: {
+    label: 'Reviewer', color: '#e85d75', badge: '●', stateless: false,
+    inputs:  [{ name: 'code', type: 'code' }, { name: 'prev_feedback', type: 'feedback' }],
+    outputs: [{ name: 'feedback.md', type: 'feedback' }, { name: 'score', type: 'score' }],
+    success_criteria: 'score >= 85',
+    role_prompt: 'You are a stateful code reviewer. Track your feedback across iterations.',
+  },
+  custom: {
+    label: 'Custom', color: '#6b7490', badge: 'NEW', stateless: false,
+    inputs:  [{ name: 'input', type: 'prompt' }],
+    outputs: [{ name: 'output', type: 'json' }],
+    success_criteria: '',
+    role_prompt: '',
+  },
 };
 
-const TEMPLATES = [
-  {
-    id: 'web_dev',
-    name: 'Web Dev Pipeline',
-    description: 'PM → Architect → Developer → Reviewer → QA',
-    nodes: [
-      { name: 'Product Manager', provider: 'openai',    role_file: 'roles/product_manager.md', position_x: 80,  position_y: 150 },
-      { name: 'Architect',       provider: 'claude',    role_file: 'roles/architect.md',       position_x: 260, position_y: 150 },
-      { name: 'Developer',       provider: 'deepseek',  role_file: 'roles/developer.md',       position_x: 440, position_y: 150 },
-      { name: 'Reviewer',        provider: 'claude',    role_file: 'roles/reviewer.md',        position_x: 620, position_y: 150, require_approval: true, approval_msg: 'Review complete. Approve to proceed to QA?' },
-      { name: 'QA Engineer',     provider: 'openai',    role_file: 'roles/qa.md',              position_x: 800, position_y: 150 },
-    ],
-    edges: [
-      { from: 0, to: 1 },
-      { from: 1, to: 2 },
-      { from: 2, to: 3 },
-      { from: 3, to: 4, condition: { field: 'score', op: 'gte', value: 7 }, label: 'score≥7' },
-      { from: 3, to: 2, condition: { field: 'score', op: 'lt',  value: 7 }, label: 'rework'  },
-    ],
-  },
-  {
-    id: 'trading',
-    name: 'Trading Algo Pipeline',
-    description: 'Strategist → Algo Dev → Backtester → Risk Review',
-    nodes: [
-      { name: 'Strategist',    provider: 'claude',   role_file: 'roles/product_manager.md', position_x: 80,  position_y: 150 },
-      { name: 'Algo Dev',      provider: 'deepseek', role_file: 'roles/developer.md',       position_x: 280, position_y: 150 },
-      { name: 'Backtester',    provider: 'claude',   role_file: 'roles/qa.md',              position_x: 480, position_y: 150 },
-      { name: 'Risk Reviewer', provider: 'openai',   role_file: 'roles/reviewer.md',        position_x: 680, position_y: 150, require_approval: true, approval_msg: 'Backtesting complete. Approve strategy for deployment?' },
-    ],
-    edges: [
-      { from: 0, to: 1 },
-      { from: 1, to: 2 },
-      { from: 2, to: 3, condition: { field: 'score', op: 'gte', value: 6 }, label: 'score≥6' },
-      { from: 2, to: 1, condition: { field: 'score', op: 'lt',  value: 6 }, label: 'rework'  },
-    ],
-  },
-  {
-    id: 'aws',
-    name: 'AWS Architecture Review',
-    description: 'Requirements → Architect → Infra Dev → Security Review',
-    nodes: [
-      { name: 'Requirements',   provider: 'openai',   role_file: 'roles/product_manager.md', position_x: 80,  position_y: 150 },
-      { name: 'Architect',      provider: 'claude',   role_file: 'roles/architect.md',       position_x: 260, position_y: 150 },
-      { name: 'Infra Developer',provider: 'deepseek', role_file: 'roles/developer.md',       position_x: 440, position_y: 150 },
-      { name: 'Security Review',provider: 'claude',   role_file: 'roles/security.md',        position_x: 620, position_y: 150, require_approval: true, approval_msg: 'Security review done. Approve for deployment?' },
-    ],
-    edges: [
-      { from: 0, to: 1 },
-      { from: 1, to: 2 },
-      { from: 2, to: 3 },
-    ],
-  },
-];
+// ── Module state ───────────────────────────────────────────────────────────────
 
-// ── Module state ──────────────────────────────────────────────────────────────
-
-let _cy = null;
+let _project = '';
 let _currentWf = null;
-let _connectMode = false;
-let _connectSourceId = null;
+let _selectedNodeId = null;
 let _pollInterval = null;
 let _currentRunId = null;
-let _roles = [];       // cached DB agent roles [{id, name, description, provider, model}]
-let _rolesIsAdmin = false;  // whether current user can see system_prompt
+let _roles = [];
 
-// ── Main render ───────────────────────────────────────────────────────────────
+// ── Entry point ───────────────────────────────────────────────────────────────
 
 export function renderGraphWorkflow(container) {
   container.className = 'view active gw-view';
-  const projectName = state.currentProject?.name;
+  _project = state.currentProject?.name || '';
 
-  // Stop any running poll from previous view
   if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
   _currentWf = null;
-  _cy = null;
+  _selectedNodeId = null;
 
   container.innerHTML = `
-    <div class="gw-toolbar">
-      <button class="btn btn-primary btn-sm" onclick="window._gwNewWorkflow()">+ New Flow</button>
-      <button class="btn btn-ghost btn-sm" onclick="window._gwFromTemplate()">From Template</button>
+    <style>
+      .gw-view { display:flex; flex-direction:column; height:100%; overflow:hidden; }
+
+      /* Layout */
+      .gw-body2 { display:flex; flex:1; overflow:hidden; }
+      .gw-sidebar2 { width:220px; min-width:180px; border-right:1px solid var(--border);
+        overflow-y:auto; display:flex; flex-direction:column; gap:0; }
+      .gw-main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+      .gw-detail { width:320px; border-left:1px solid var(--border); overflow-y:auto;
+        display:none; flex-direction:column; }
+      .gw-detail.open { display:flex; }
+
+      /* Sidebar */
+      .gw-sb-section { border-bottom:1px solid var(--border); padding:0.5rem 0; }
+      .gw-sb-label { font-size:0.65rem; font-weight:600; text-transform:uppercase;
+        letter-spacing:0.05em; color:var(--muted); padding:0.25rem 0.75rem 0.1rem; }
+      .gw-wf-item { padding:0.35rem 0.75rem; cursor:pointer; font-size:0.8rem;
+        border-left:3px solid transparent; transition:background 0.1s; }
+      .gw-wf-item:hover { background:var(--hover); }
+      .gw-wf-item.active { border-left-color:var(--accent); background:var(--hover); font-weight:500; }
+      .gw-role-card { display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0.75rem;
+        cursor:pointer; font-size:0.78rem; border-radius:0; transition:background 0.1s; }
+      .gw-role-card:hover { background:var(--hover); }
+      .gw-role-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+      .gw-role-badge { font-size:0.6rem; background:var(--border); border-radius:3px;
+        padding:0.05rem 0.25rem; color:var(--muted); }
+      .gw-io-legend { display:flex; flex-wrap:wrap; gap:0.25rem; padding:0.35rem 0.5rem; }
+      .gw-io-pill { font-size:0.62rem; border-radius:8px; padding:0.1rem 0.4rem;
+        font-weight:500; cursor:default; }
+
+      /* Toolbar */
+      .gw-toolbar2 { display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem;
+        border-bottom:1px solid var(--border); flex-shrink:0; }
+      .gw-wf-name { font-size:0.85rem; font-weight:600; padding:0.25rem 0.5rem;
+        border:1px solid transparent; border-radius:4px; background:transparent;
+        color:var(--fg); min-width:120px; max-width:240px; }
+      .gw-wf-name:focus { border-color:var(--accent); outline:none; background:var(--bg2); }
+
+      /* Canvas area */
+      .gw-canvas-area { flex:1; overflow:hidden; display:flex; flex-direction:column; }
+      .gw-pipeline-scroll { flex:1; overflow-x:auto; overflow-y:auto; padding:2rem; }
+      .gw-pipeline { display:flex; align-items:flex-start; gap:0; min-height:200px; }
+
+      /* Node cards */
+      .gw-node-card { width:180px; flex-shrink:0; border:2px solid var(--border);
+        border-radius:8px; background:var(--bg1); cursor:pointer; transition:all 0.15s;
+        position:relative; }
+      .gw-node-card:hover { border-color:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+      .gw-node-card.selected { border-color:var(--accent); box-shadow:0 0 0 3px rgba(100,108,255,0.2); }
+      .gw-node-header { display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.6rem 0.35rem;
+        border-bottom:1px solid var(--border); }
+      .gw-node-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+      .gw-node-name { flex:1; font-size:0.78rem; font-weight:600; white-space:nowrap;
+        overflow:hidden; text-overflow:ellipsis; }
+      .gw-node-badge { font-size:0.58rem; padding:0.1rem 0.3rem; border-radius:3px;
+        background:var(--border); color:var(--muted); flex-shrink:0; }
+      .gw-node-del { display:none; position:absolute; top:4px; right:4px; background:none;
+        border:none; color:var(--muted); cursor:pointer; font-size:0.7rem; padding:2px 4px; }
+      .gw-node-card:hover .gw-node-del { display:block; }
+      .gw-node-body { padding:0.4rem 0.6rem; }
+      .gw-node-io-section { margin-bottom:0.3rem; }
+      .gw-node-io-label { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.04em;
+        color:var(--muted); margin-bottom:0.15rem; }
+      .gw-node-io-tags { display:flex; flex-wrap:wrap; gap:0.2rem; }
+      .gw-node-footer { padding:0.3rem 0.6rem 0.4rem; border-top:1px solid var(--border);
+        font-size:0.65rem; color:var(--muted); display:flex; justify-content:space-between; }
+      .gw-stateless-badge { font-size:0.6rem; color:var(--muted); }
+      .gw-node-status { position:absolute; bottom:4px; right:6px; width:8px; height:8px;
+        border-radius:50%; }
+      .gw-node-status.running  { background:#f5a623; animation:pulse 1s infinite; }
+      .gw-node-status.done     { background:#3ecf8e; }
+      .gw-node-status.error    { background:#e85d75; }
+      @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+      /* Connectors */
+      .gw-connector { display:flex; align-items:center; padding:0 0.2rem; flex-shrink:0;
+        position:relative; }
+      .gw-conn-line { width:32px; height:2px; background:var(--border); position:relative; }
+      .gw-conn-line::after { content:'▶'; position:absolute; right:-6px; top:-7px;
+        font-size:0.75rem; color:var(--border); }
+      .gw-conn-label { position:absolute; top:-14px; left:50%; transform:translateX(-50%);
+        font-size:0.6rem; color:var(--muted); white-space:nowrap; background:var(--bg1);
+        padding:0 2px; }
+      .gw-add-btn { width:36px; height:36px; border-radius:50%; border:2px dashed var(--border);
+        background:none; color:var(--muted); cursor:pointer; font-size:1.1rem; display:flex;
+        align-items:center; justify-content:center; margin:auto 0.5rem; transition:all 0.15s; }
+      .gw-add-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+      /* Run log */
+      .gw-log { border-top:1px solid var(--border); flex-shrink:0; max-height:220px;
+        display:none; flex-direction:column; }
+      .gw-log.open { display:flex; }
+      .gw-log-hdr { display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.75rem;
+        cursor:pointer; background:var(--bg2); font-size:0.78rem; font-weight:600; }
+      .gw-log-body { overflow-y:auto; flex:1; font-size:0.75rem; padding:0.5rem 0.75rem; }
+      .gw-log-entry { padding:0.2rem 0; border-bottom:1px solid var(--border); }
+      .gw-log-entry:last-child { border:none; }
+
+      /* Approval panel */
+      .gw-approval { background:rgba(245,166,35,0.08); border:1px solid rgba(245,166,35,0.4);
+        border-radius:6px; padding:0.75rem; margin-bottom:0.5rem; }
+      .gw-approval h4 { margin:0 0 0.4rem; font-size:0.8rem; }
+      .gw-approval pre { max-height:100px; overflow:auto; font-size:0.7rem;
+        background:var(--bg2); border-radius:4px; padding:0.4rem; margin:0.4rem 0; }
+      .gw-approval-btns { display:flex; gap:0.5rem; margin-top:0.5rem; }
+
+      /* Detail panel */
+      .gw-detail-hdr { display:flex; align-items:center; justify-content:space-between;
+        padding:0.6rem 0.75rem; border-bottom:1px solid var(--border); font-weight:600;
+        font-size:0.82rem; }
+      .gw-detail-body { padding:0.75rem; overflow-y:auto; flex:1; }
+      .gw-field { margin-bottom:0.75rem; }
+      .gw-field label { display:block; font-size:0.72rem; font-weight:600; margin-bottom:0.25rem;
+        color:var(--muted); text-transform:uppercase; letter-spacing:0.03em; }
+      .gw-field input, .gw-field select, .gw-field textarea {
+        width:100%; box-sizing:border-box; padding:0.3rem 0.5rem; border:1px solid var(--border);
+        border-radius:4px; background:var(--bg1); color:var(--fg); font-size:0.8rem; }
+      .gw-field textarea { resize:vertical; min-height:60px; }
+      .gw-io-editor { display:flex; flex-direction:column; gap:0.3rem; }
+      .gw-io-row { display:flex; align-items:center; gap:0.3rem; }
+      .gw-io-row input { flex:1; }
+      .gw-io-row select { width:90px; flex-shrink:0; }
+      .gw-io-row button { padding:0.2rem 0.4rem; border:none; background:none;
+        color:var(--muted); cursor:pointer; font-size:0.75rem; }
+      .gw-add-io-btn { font-size:0.72rem; color:var(--accent); background:none; border:none;
+        cursor:pointer; padding:0.15rem 0; }
+      .gw-toggle-row { display:flex; align-items:center; justify-content:space-between; }
+      .gw-detail-footer { padding:0.6rem 0.75rem; border-top:1px solid var(--border); }
+
+      /* Empty state */
+      .gw-empty { flex:1; display:flex; align-items:center; justify-content:center;
+        flex-direction:column; gap:0.5rem; color:var(--muted); font-size:0.85rem; }
+    </style>
+
+    <div class="gw-toolbar2">
+      <button class="btn btn-primary btn-sm" id="gw-new-btn" onclick="window._gwNew()">+ New Flow</button>
+      <div id="gw-wf-name-wrap" style="display:none">
+        <input class="gw-wf-name" id="gw-wf-name" placeholder="Flow name" onblur="window._gwSaveName(this.value)" />
+      </div>
       <div style="flex:1"></div>
-      <button class="btn btn-ghost btn-sm" id="gw-add-node-btn" onclick="window._gwAddNode()" style="display:none">+ Node</button>
-      <button class="btn btn-ghost btn-sm" id="gw-run-btn" onclick="window._gwStartRun()" style="display:none">▶ Run</button>
-      <button class="btn btn-ghost btn-sm" id="gw-layout-btn" onclick="window._gwRelayout()" style="display:none">⟳ Layout</button>
+      <div id="gw-run-controls" style="display:none;display:none;gap:0.4rem;align-items:center" class="flex">
+        <button class="btn btn-ghost btn-sm" id="gw-export-yaml-btn" onclick="window._gwExportYAML()">Export YAML</button>
+        <button class="btn btn-ghost btn-sm" id="gw-export-lg-btn" onclick="window._gwExportLG()">Export LangGraph</button>
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          Import YAML <input type="file" accept=".yaml,.yml" style="display:none" onchange="window._gwImportYAML(this)">
+        </label>
+        <button class="btn btn-primary btn-sm" onclick="window._gwStartRun()">▶ Run</button>
+      </div>
     </div>
-    <div class="gw-body">
-      <div class="gw-sidebar" id="gw-sidebar">
-        <div class="gw-sidebar-section">
-          <div class="nav-section-label" style="padding:0.4rem 0.75rem 0.2rem">Graph Flows</div>
-          <div id="gw-list"></div>
+
+    <div class="gw-body2">
+      <div class="gw-sidebar2">
+        <div class="gw-sb-section">
+          <div class="gw-sb-label">Saved Flows</div>
+          <div id="gw-wf-list"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
         </div>
-        <div class="gw-sidebar-section" style="border-top:1px solid var(--border);padding-top:0.25rem;margin-top:0.25rem">
-          <div class="nav-section-label" style="padding:0.4rem 0.75rem 0.2rem">YAML Workflows</div>
-          <div id="gw-yaml-list"></div>
+        <div class="gw-sb-section">
+          <div class="gw-sb-label">Role Library</div>
+          ${Object.entries(ROLE_PRESETS).map(([key, p]) => `
+            <div class="gw-role-card" onclick="window._gwAddPreset('${key}')" title="Add to pipeline">
+              <div class="gw-role-dot" style="background:${p.color}"></div>
+              <span style="flex:1">${_esc(p.label)}</span>
+              <span class="gw-role-badge">${_esc(p.badge)}</span>
+            </div>
+          `).join('')}
         </div>
-      </div>
-      <div class="gw-canvas-wrap" id="gw-canvas-wrap">
-        <div id="cy-container" style="flex:1;height:100%;min-height:300px"></div>
-        <div class="gw-log-panel" id="gw-log-panel" style="display:none">
-          <div class="gw-log-header" onclick="window._gwToggleLog()">
-            <span>Run Log</span>
-            <span id="gw-log-status" style="margin-left:0.5rem;font-size:0.75rem;color:var(--muted)"></span>
-            <button class="btn btn-ghost btn-sm" id="gw-cancel-btn"
-                    style="display:none;margin-left:0.5rem;font-size:0.7rem;color:var(--red)"
-                    onclick="event.stopPropagation();window._gwCancelRun()">✕ Cancel</button>
-            <span class="gw-log-toggle">▲</span>
+        <div class="gw-sb-section">
+          <div class="gw-sb-label">IO Types</div>
+          <div class="gw-io-legend">
+            ${Object.entries(IO_TYPES).map(([t, d]) => `
+              <span class="gw-io-pill" style="background:${d.bg};color:${d.color}">${t}</span>
+            `).join('')}
           </div>
-          <div id="gw-approval-panel" style="display:none;border-bottom:1px solid var(--border)"></div>
-          <div class="gw-log-body" id="gw-log-body"></div>
         </div>
       </div>
-      <div class="gw-config-panel" id="gw-config-panel" style="display:none">
-        <div class="gw-config-header">
-          <span id="gw-config-title">Config</span>
-          <button class="btn btn-ghost btn-sm" onclick="window._gwCloseConfig()">✕</button>
+
+      <div class="gw-main">
+        <div class="gw-canvas-area">
+          <div class="gw-pipeline-scroll" id="gw-pipeline-scroll">
+            <div class="gw-empty" id="gw-empty-state">
+              <div style="font-size:2rem">🔧</div>
+              <div>Select a flow or create a new one</div>
+              <div style="font-size:0.75rem">Then drag roles from the sidebar to build your pipeline</div>
+            </div>
+            <div class="gw-pipeline" id="gw-pipeline" style="display:none"></div>
+          </div>
+          <div class="gw-log" id="gw-log">
+            <div class="gw-log-hdr" onclick="window._gwToggleLog()">
+              <span>Run Log</span>
+              <span id="gw-log-status" style="font-size:0.72rem;color:var(--muted)"></span>
+              <div style="flex:1"></div>
+              <button id="gw-cancel-btn" class="btn btn-ghost btn-sm"
+                style="display:none;color:var(--red);font-size:0.7rem"
+                onclick="event.stopPropagation();window._gwCancelRun()">✕ Cancel</button>
+              <span id="gw-log-toggle">▼</span>
+            </div>
+            <div id="gw-approval-wrap" style="display:none;padding:0.5rem 0.75rem 0"></div>
+            <div class="gw-log-body" id="gw-log-body"></div>
+          </div>
         </div>
-        <div id="gw-config-body" style="overflow-y:auto;flex:1"></div>
+      </div>
+
+      <div class="gw-detail" id="gw-detail">
+        <div class="gw-detail-hdr">
+          <span id="gw-detail-title">Node Config</span>
+          <button class="btn btn-ghost btn-sm" onclick="window._gwCloseDetail()">✕</button>
+        </div>
+        <div class="gw-detail-body" id="gw-detail-body"></div>
+        <div class="gw-detail-footer">
+          <button class="btn btn-primary btn-sm" style="width:100%" onclick="window._gwSaveNode()">Save Changes</button>
+        </div>
       </div>
     </div>
   `;
 
-  window._gwNewWorkflow   = () => _showNewWorkflowModal(projectName);
-  window._gwFromTemplate  = () => _showTemplateModal(projectName);
-  window._gwAddNode       = () => _addNodeAtCenter();
-  window._gwStartRun      = () => _startRun(projectName);
-  window._gwCancelRun     = () => _cancelRun();
-  window._gwRelayout      = () => _cy?.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 60, rankSep: 120 }).run();
-  window._gwToggleLog     = _toggleLog;
-  window._gwCloseConfig   = _closeConfig;
-  window._gwOpenWf        = _openWorkflow;
+  // Register globals
+  window._gwNew         = () => _newWorkflow();
+  window._gwSaveName    = (v) => _saveWorkflowName(v);
+  window._gwAddPreset   = (key) => _addFromPreset(key);
+  window._gwStartRun    = () => _startRun();
+  window._gwCancelRun   = () => _cancelRun();
+  window._gwToggleLog   = _toggleLog;
+  window._gwCloseDetail = _closeDetail;
+  window._gwSaveNode    = _saveNodeFromForm;
+  window._gwExportYAML  = _exportYAML;
+  window._gwExportLG    = _exportLangGraph;
+  window._gwImportYAML  = _importYAML;
 
-  _loadRoles(projectName);
-  _loadList(projectName);
-  _loadYamlList(projectName);
+  _loadList();
 }
 
-// ── Sidebar ───────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function _loadList(project) {
-  const el = document.getElementById('gw-list');
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _ioTag(io) {
+  const def = IO_TYPES[io.type] || { color: '#888', bg: 'rgba(136,136,136,0.15)' };
+  return `<span class="gw-io-pill" style="background:${def.bg};color:${def.color}" title="${_esc(io.name)}">${_esc(io.name)}</span>`;
+}
+
+function _download(filename, text) {
+  const a = document.createElement('a');
+  a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
+  a.download = filename;
+  a.click();
+}
+
+// ── Sidebar workflow list ─────────────────────────────────────────────────────
+
+async function _loadList() {
+  const el = document.getElementById('gw-wf-list');
   if (!el) return;
-  el.innerHTML = '<div class="gw-sidebar-loading">Loading…</div>';
   try {
-    const { workflows } = await api.graphWorkflows.list(project || '');
+    const { workflows } = await api.graphWorkflows.list(_project || '');
     if (!workflows.length) {
-      el.innerHTML = '<div class="gw-sidebar-empty">No flows yet</div>';
+      el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No flows yet</div>';
       return;
     }
     el.innerHTML = workflows.map(wf => `
-      <div class="gw-list-item ${_currentWf?.id === wf.id ? 'active' : ''}"
+      <div class="gw-wf-item ${_currentWf?.id === wf.id ? 'active' : ''}"
            onclick="window._gwOpenWf('${wf.id}')">
-        <div style="font-weight:500;font-size:0.8rem">${_esc(wf.name)}</div>
-        <div style="color:var(--muted);font-size:0.7rem">${_esc(wf.description || '')}</div>
+        ${_esc(wf.name)}
       </div>
     `).join('');
+    window._gwOpenWf = _openWorkflow;
   } catch (e) {
-    el.innerHTML = `<div class="gw-sidebar-empty" style="color:var(--red)">${_esc(e.message)}</div>`;
+    el.innerHTML = `<div style="padding:0.4rem 0.75rem;color:var(--red);font-size:0.75rem">${_esc(e.message)}</div>`;
   }
 }
 
-async function _loadYamlList(project) {
-  const el = document.getElementById('gw-yaml-list');
-  if (!el) return;
-  el.innerHTML = '<div class="gw-sidebar-loading">Loading…</div>';
-  try {
-    const data = await api.listWorkflows(project || '');
-    const workflows = data.workflows || data || [];
-    if (!workflows.length) {
-      el.innerHTML = '<div class="gw-sidebar-empty">No YAML workflows</div>';
-      return;
-    }
-    el.innerHTML = workflows.map(wf => {
-      const name = typeof wf === 'string' ? wf : (wf.name || wf.id || String(wf));
-      return `<div class="gw-list-item" onclick="window._nav && window._nav('yaml-workflow')"
-                   title="Open in YAML editor">
-        <div style="font-size:0.8rem">⌨ ${_esc(name)}</div>
-      </div>`;
-    }).join('');
-  } catch {
-    el.innerHTML = '<div class="gw-sidebar-empty">—</div>';
-  }
-}
-
-async function _loadRoles(project) {
-  try {
-    const data = await api.agentRoles.list(project || '_global');
-    _roles = data.roles || [];
-    _rolesIsAdmin = data.is_admin || false;
-  } catch {
-    _roles = [];
-    _rolesIsAdmin = false;
-  }
-}
+// ── Workflow open / create ────────────────────────────────────────────────────
 
 async function _openWorkflow(id) {
   try {
     const wf = await api.graphWorkflows.get(id);
     _currentWf = wf;
-    _showToolbarButtons();
-    _renderCanvas(wf);
-    _loadList(state.currentProject?.name);
+    _showWorkflow(wf);
+    _loadList(); // refresh active highlight
   } catch (e) {
     toast(`Failed to load flow: ${e.message}`, 'error');
   }
 }
 
-function _showToolbarButtons() {
-  ['gw-run-btn', 'gw-layout-btn', 'gw-add-node-btn'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = '';
-  });
+function _showWorkflow(wf) {
+  const nameEl = document.getElementById('gw-wf-name');
+  const nameWrap = document.getElementById('gw-wf-name-wrap');
+  const runControls = document.getElementById('gw-run-controls');
+  if (nameEl) nameEl.value = wf.name;
+  if (nameWrap) nameWrap.style.display = '';
+  if (runControls) runControls.style.display = 'flex';
+  _renderPipeline(wf);
 }
 
-// ── Canvas ────────────────────────────────────────────────────────────────────
-
-function _renderCanvas(wf) {
-  const container = document.getElementById('cy-container');
-  if (!container) return;
-  if (_cy) { _cy.destroy(); _cy = null; }
-
-  const elements = [];
-  (wf.nodes || []).forEach(n => {
-    elements.push({
-      group: 'nodes',
-      data: { id: n.id, label: n.name, provider: n.provider, nodeData: n },
-      position: { x: n.position_x || 100, y: n.position_y || 100 },
-    });
-  });
-  (wf.edges || []).forEach(e => {
-    elements.push({
-      group: 'edges',
-      data: { id: e.id, source: e.source_node_id, target: e.target_node_id, label: e.label || '', condition: e.condition },
-    });
-  });
-
-  _cy = window.cytoscape({
-    container, elements,
-    style: _cytoscapeStyle(),
-    layout: elements.filter(e => e.group === 'nodes').length
-      ? { name: 'preset' }
-      : { name: 'dagre', rankDir: 'LR', nodeSep: 60, rankSep: 120 },
-    minZoom: 0.25, maxZoom: 3,
-  });
-
-  _cy.on('tap', 'node', evt => {
-    const node = evt.target;
-    if (_connectMode && _connectSourceId) {
-      _createEdge(_connectSourceId, node.id());
-      _exitConnectMode();
-    } else {
-      _openNodeConfig(node.data('nodeData'));
-    }
-  });
-
-  _cy.on('tap', 'edge', evt => _openEdgeConfig(evt.target.data()));
-
-  _cy.on('tap', evt => {
-    if (evt.target === _cy) _exitConnectMode();
-  });
-
-  _cy.on('dragfree', 'node', evt => {
-    const node = evt.target;
-    const pos = node.position();
-    api.graphWorkflows.updateNode(_currentWf.id, node.id(), { position_x: pos.x, position_y: pos.y }).catch(() => {});
-    const nd = node.data('nodeData');
-    if (nd) { nd.position_x = pos.x; nd.position_y = pos.y; }
-  });
-
-  _cy.on('dbltap', evt => {
-    if (evt.target === _cy) _addNodeAt(evt.position.x, evt.position.y);
-  });
-}
-
-function _cytoscapeStyle() {
-  return [
-    {
-      selector: 'node',
-      style: {
-        label: 'data(label)',
-        'text-valign': 'center', 'text-halign': 'center',
-        'font-size': '11px', 'font-family': 'JetBrains Mono, monospace',
-        width: '130px', height: '55px', shape: 'round-rectangle',
-        'background-color': ele => PROVIDER_BG[ele.data('provider')] || '#f0f4f8',
-        'border-color': ele => PROVIDER_COLORS[ele.data('provider')] || '#888',
-        'border-width': '2px', color: '#1a1a2e',
-        'text-wrap': 'wrap', 'text-max-width': '120px', padding: '8px',
-      },
-    },
-    { selector: 'node[status="running"]',          style: { 'border-width': '3px', 'border-color': 'var(--accent)', 'border-style': 'dashed' } },
-    { selector: 'node[status="waiting_approval"]', style: { 'border-width': '3px', 'border-color': '#f59e0b', 'border-style': 'solid', 'background-color': '#fffbeb' } },
-    { selector: 'node[status="done"]',             style: { 'border-width': '3px', 'border-color': 'var(--green)' } },
-    { selector: 'node[status="error"]',            style: { 'border-width': '3px', 'border-color': 'var(--red)' } },
-    { selector: 'node.connect-source',             style: { 'border-width': '4px', 'border-color': 'var(--accent)' } },
-    {
-      selector: 'edge',
-      style: {
-        'curve-style': 'bezier', 'target-arrow-shape': 'triangle',
-        'target-arrow-color': 'var(--muted)', 'line-color': 'var(--border)',
-        width: 2, label: 'data(label)', 'font-size': '9px', color: 'var(--muted)',
-        'text-background-color': 'var(--bg)', 'text-background-opacity': 1,
-        'text-background-padding': '2px',
-      },
-    },
-    { selector: 'edge[?condition]', style: { 'line-style': 'dashed', 'line-color': 'var(--accent)' } },
-  ];
-}
-
-// ── Node config panel ─────────────────────────────────────────────────────────
-
-function _openNodeConfig(nodeData) {
-  const panel = document.getElementById('gw-config-panel');
-  const title = document.getElementById('gw-config-title');
-  const body  = document.getElementById('gw-config-body');
-  if (!panel) return;
-  panel.style.display = '';
-  title.textContent = 'Node: ' + (nodeData?.name || 'New');
-
-  const n = nodeData || {};
-  // role_id takes priority; fall back to role_file for legacy nodes
-  const hasDbRole   = !!n.role_id;
-  const hasFileRole = !hasDbRole && !!n.role_file;
-
-  // Build role dropdown options from DB roles
-  const PROV_COL = { claude: '#e67e22', openai: '#27ae60', deepseek: '#2980b9', gemini: '#16a085', grok: '#8e44ad' };
-  const roleOpts = _roles.map(r => {
-    const sel = hasDbRole && String(n.role_id) === String(r.id);
-    return `<option value="${r.id}" ${sel ? 'selected' : ''}
-      data-provider="${_esc(r.provider)}" data-model="${_esc(r.model || '')}"
-      title="${_esc(r.description)}">${_esc(r.name)} [${_esc(r.provider)}]</option>`;
-  }).join('');
-
-  // Find currently selected role for description display
-  const selRole = hasDbRole ? _roles.find(r => String(r.id) === String(n.role_id)) : null;
-
-  body.innerHTML = `
-    <div class="gw-config-form">
-      <label>Name</label>
-      <input class="field-input" id="cfg-name" value="${_esc(n.name || '')}" />
-
-      <label>Agent Role <span style="font-size:0.6rem;color:var(--muted)">(prompt loaded from role library)</span></label>
-      <select class="field-input" id="cfg-role-select" onchange="window._gwOnRoleChange(this.value)">
-        <option value="" ${!hasDbRole ? 'selected' : ''}>— inline / custom prompt —</option>
-        ${roleOpts}
-      </select>
-      <div id="cfg-role-desc" style="font-size:0.62rem;color:var(--muted);margin-top:0.15rem;min-height:0.9rem">
-        ${selRole ? _esc(selRole.description) : ''}
-      </div>
-
-      <label>Provider <span style="font-size:0.6rem;color:var(--muted)">(role default used when blank)</span></label>
-      <select class="field-input" id="cfg-provider">
-        ${['claude','openai','deepseek','gemini','grok'].map(p =>
-          `<option value="${p}" ${n.provider === p ? 'selected' : ''}>${p}</option>`
-        ).join('')}
-      </select>
-
-      <label>Model (blank = provider default)</label>
-      <input class="field-input" id="cfg-model" value="${_esc(n.model || '')}" />
-
-      <div id="cfg-prompt-wrap" style="${hasDbRole ? 'display:none' : ''}">
-        <label>Inline system prompt ${hasFileRole ? `<span style="font-size:0.6rem;color:var(--muted)">(from ${_esc(n.role_file)})</span>` : ''}</label>
-        <textarea class="field-input" id="cfg-role-prompt" rows="5" style="font-size:0.72rem;font-family:monospace">${_esc(n.role_prompt || '')}</textarea>
-      </div>
-
-      ${_rolesIsAdmin ? `
-      <div id="cfg-role-prompt-preview"
-           style="font-size:0.62rem;color:var(--muted);background:var(--surface2);
-                  border:1px solid var(--border);border-radius:var(--radius);padding:0.4rem 0.5rem;
-                  font-family:monospace;white-space:pre-wrap;max-height:80px;overflow:hidden;cursor:pointer;
-                  ${selRole ? '' : 'display:none'}"
-           title="Click to view full prompt"
-           onclick="this.style.maxHeight=this.style.maxHeight==='none'?'80px':'none'">
-        ${selRole ? _esc((selRole.system_prompt||'').slice(0,300)) + ((selRole.system_prompt||'').length>300?'…':'') : ''}
-      </div>` : ''}
-
-
-      <label style="display:flex;align-items:center;gap:0.4rem;margin-top:0.35rem">
-        <input type="checkbox" id="cfg-inject" ${n.inject_context !== false ? 'checked' : ''} />
-        Inject context from previous nodes
-      </label>
-
-      <label style="display:flex;align-items:center;gap:0.4rem;margin-top:0.35rem">
-        <input type="checkbox" id="cfg-approval" ${n.require_approval ? 'checked' : ''}
-               onchange="window._gwOnApprovalToggle(this.checked)" />
-        Pause for user approval
-      </label>
-
-      <div id="cfg-approval-wrap" style="${n.require_approval ? '' : 'display:none'}">
-        <label>Message shown to user</label>
-        <input class="field-input" id="cfg-approval-msg" value="${_esc(n.approval_msg || '')}"
-               placeholder="Review and approve to continue?" />
-      </div>
-
-      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
-        <button class="btn btn-primary btn-sm" onclick="window._gwSaveNode('${n.id || ''}')">Save</button>
-        <button class="btn btn-ghost btn-sm" onclick="window._gwConnectFrom('${n.id || ''}')">Connect →</button>
-        ${n.id ? `<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="window._gwDeleteNode('${n.id}')">Delete</button>` : ''}
-      </div>
-    </div>
-  `;
-
-  window._gwOnRoleChange = (val) => {
-    const wrap = document.getElementById('cfg-prompt-wrap');
-    if (wrap) wrap.style.display = val ? 'none' : '';
-    const descEl = document.getElementById('cfg-role-desc');
-    const previewEl = document.getElementById('cfg-role-prompt-preview');
-    if (val) {
-      const role = _roles.find(r => String(r.id) === String(val));
-      if (role) {
-        if (descEl) descEl.textContent = role.description || '';
-        // Auto-populate provider/model from role defaults
-        const provEl = document.getElementById('cfg-provider');
-        const modEl  = document.getElementById('cfg-model');
-        if (provEl && role.provider) provEl.value = role.provider;
-        if (modEl)  modEl.value = role.model || '';
-        // Update admin prompt preview
-        if (previewEl) {
-          const txt = role.system_prompt || '';
-          previewEl.textContent = txt.slice(0, 300) + (txt.length > 300 ? '…' : '');
-          previewEl.style.display = '';
-        }
-      }
-    } else {
-      if (descEl) descEl.textContent = '';
-      if (previewEl) previewEl.style.display = 'none';
-    }
-  };
-  window._gwOnApprovalToggle = (checked) => {
-    const wrap = document.getElementById('cfg-approval-wrap');
-    if (wrap) wrap.style.display = checked ? '' : 'none';
-  };
-  window._gwSaveNode    = (nodeId) => _saveNodeConfig(nodeId, nodeData);
-  window._gwConnectFrom = (nodeId) => _enterConnectMode(nodeId);
-  window._gwDeleteNode  = (nodeId) => _deleteNode(nodeId);
-}
-
-async function _saveNodeConfig(nodeId, existingData) {
-  if (!_currentWf) return;
-  const name          = document.getElementById('cfg-name')?.value.trim() || '';
-  const provider      = document.getElementById('cfg-provider')?.value || 'claude';
-  const model         = document.getElementById('cfg-model')?.value.trim() || '';
-  const roleIdRaw     = document.getElementById('cfg-role-select')?.value || '';
-  const roleId        = roleIdRaw ? parseInt(roleIdRaw, 10) : null;
-  const rolePrompt    = roleId ? '' : (document.getElementById('cfg-role-prompt')?.value || '');
-  const injectContext = document.getElementById('cfg-inject')?.checked !== false;
-  const reqApproval   = document.getElementById('cfg-approval')?.checked || false;
-  const approvalMsg   = document.getElementById('cfg-approval-msg')?.value.trim() || '';
-
-  const body = {
-    name, provider, model,
-    role_id: roleId,
-    role_file: null,
-    role_prompt: rolePrompt,
-    inject_context: injectContext,
-    require_approval: reqApproval,
-    approval_msg: approvalMsg,
-  };
-
+async function _newWorkflow() {
+  const name = prompt('Flow name:', 'My Pipeline');
+  if (!name) return;
   try {
-    if (nodeId) {
-      await api.graphWorkflows.updateNode(_currentWf.id, nodeId, body);
-      const cyNode = _cy?.getElementById(nodeId);
-      if (cyNode) {
-        cyNode.data('label', name);
-        cyNode.data('provider', provider);
-        const nd = cyNode.data('nodeData');
-        if (nd) Object.assign(nd, body);
-      }
-    } else {
-      const node = await api.graphWorkflows.createNode(_currentWf.id, body);
-      _cy?.add({ group: 'nodes', data: { id: node.id, label: node.name, provider: node.provider, nodeData: node }, position: { x: 200, y: 200 } });
-      if (_currentWf.nodes) _currentWf.nodes.push(node);
-    }
-    toast('Saved', 'success');
+    const wf = await api.graphWorkflows.create({ name, project: _project, max_iterations: 5 });
+    _currentWf = wf;
+    _showWorkflow(wf);
+    _loadList();
+  } catch (e) {
+    toast(`Could not create flow: ${e.message}`, 'error');
+  }
+}
+
+async function _saveWorkflowName(value) {
+  if (!_currentWf || !value) return;
+  try {
+    await api.graphWorkflows.update(_currentWf.id, { name: value });
+    _currentWf.name = value;
+    _loadList();
   } catch (e) {
     toast(`Save failed: ${e.message}`, 'error');
   }
 }
 
-async function _deleteNode(nodeId) {
-  if (!_currentWf || !confirm('Delete this node and its edges?')) return;
-  try {
-    await api.graphWorkflows.deleteNode(_currentWf.id, nodeId);
-    _cy?.getElementById(nodeId).remove();
-    if (_currentWf.nodes) _currentWf.nodes = _currentWf.nodes.filter(n => n.id !== nodeId);
-    _closeConfig();
-    toast('Node deleted', 'success');
-  } catch (e) {
-    toast(`Delete failed: ${e.message}`, 'error');
+// ── Pipeline rendering ─────────────────────────────────────────────────────────
+
+function _renderPipeline(wf) {
+  const empty = document.getElementById('gw-empty-state');
+  const pipeline = document.getElementById('gw-pipeline');
+  if (!pipeline) return;
+
+  if (empty) empty.style.display = 'none';
+  pipeline.style.display = 'flex';
+
+  const nodes = wf.nodes || [];
+  const edges = wf.edges || [];
+
+  // Build edge map source→target for connectors
+  const edgeMap = new Map(); // source_node_id → [edge, ...]
+  for (const e of edges) {
+    if (!edgeMap.has(e.source_node_id)) edgeMap.set(e.source_node_id, []);
+    edgeMap.get(e.source_node_id).push(e);
   }
+
+  let html = '';
+  nodes.forEach((n, i) => {
+    html += _renderNodeCard(n);
+    if (i < nodes.length - 1) {
+      const outEdges = edgeMap.get(n.id) || [];
+      const label = outEdges[0]?.label || '';
+      html += `
+        <div class="gw-connector">
+          <div class="gw-conn-line">
+            ${label ? `<div class="gw-conn-label">${_esc(label)}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+  });
+
+  // Add button at end
+  html += `
+    <div style="display:flex;align-items:center;padding-left:${nodes.length ? '0.5rem' : '0'}">
+      <button class="gw-add-btn" onclick="window._gwShowAddMenu(event)" title="Add node">+</button>
+    </div>
+  `;
+
+  pipeline.innerHTML = html;
+
+  // Attach click handlers
+  pipeline.querySelectorAll('.gw-node-card').forEach(card => {
+    const nodeId = card.dataset.nodeId;
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.gw-node-del')) return;
+      _selectNode(nodeId);
+    });
+  });
+
+  window._gwShowAddMenu = (evt) => {
+    evt.stopPropagation();
+    _showAddMenu(evt);
+  };
+  window._gwDeleteNode = (nodeId, evt) => {
+    evt && evt.stopPropagation();
+    _deleteNode(nodeId);
+  };
 }
 
-// ── Edge config panel ─────────────────────────────────────────────────────────
+function _renderNodeCard(node) {
+  const preset = Object.values(ROLE_PRESETS).find(p => p.label === node.name) || ROLE_PRESETS.custom;
+  const dotColor = preset.color;
+  const badge = node.stateless ? '∅' : (preset.badge || 'DEV');
+  const inputs = node.inputs || [];
+  const outputs = node.outputs || [];
+  const criteria = node.success_criteria || '';
+  const isSelected = node.id === _selectedNodeId;
 
-function _openEdgeConfig(edgeData) {
-  const panel = document.getElementById('gw-config-panel');
-  const title = document.getElementById('gw-config-title');
-  const body  = document.getElementById('gw-config-body');
-  if (!panel) return;
-  panel.style.display = '';
-  title.textContent = 'Edge Config';
+  return `
+    <div class="gw-node-card ${isSelected ? 'selected' : ''}" data-node-id="${node.id}">
+      <button class="gw-node-del" onclick="window._gwDeleteNode('${node.id}', event)">✕</button>
+      <div class="gw-node-header">
+        <div class="gw-node-dot" style="background:${dotColor}"></div>
+        <div class="gw-node-name">${_esc(node.name)}</div>
+        <div class="gw-node-badge">${_esc(badge)}</div>
+      </div>
+      <div class="gw-node-body">
+        ${inputs.length ? `
+          <div class="gw-node-io-section">
+            <div class="gw-node-io-label">In</div>
+            <div class="gw-node-io-tags">${inputs.map(_ioTag).join('')}</div>
+          </div>
+        ` : ''}
+        ${outputs.length ? `
+          <div class="gw-node-io-section">
+            <div class="gw-node-io-label">Out</div>
+            <div class="gw-node-io-tags">${outputs.map(_ioTag).join('')}</div>
+          </div>
+        ` : ''}
+        ${!inputs.length && !outputs.length ? '<div style="color:var(--muted);font-size:0.72rem">No IO configured</div>' : ''}
+      </div>
+      <div class="gw-node-footer">
+        <span>${_esc(criteria.slice(0, 24))}${criteria.length > 24 ? '…' : ''}</span>
+        ${node.stateless ? '<span class="gw-stateless-badge">stateless</span>' : ''}
+      </div>
+      <div class="gw-node-status" id="status-${node.id}" style="display:none"></div>
+    </div>
+  `;
+}
 
-  const cond = edgeData.condition || {};
-  // Determine condition type for UI
-  let condType = 'always';
-  if (cond.op === 'gte' || cond.op === 'gt')      condType = 'score_gte';
-  else if (cond.op === 'lt' || cond.op === 'lte') condType = 'score_lt';
+// ── Node selection + detail panel ─────────────────────────────────────────────
 
-  const threshold = cond.value ?? '';
-  const field     = cond.field || 'score';
+function _selectNode(nodeId) {
+  _selectedNodeId = nodeId;
+  const node = _currentWf?.nodes?.find(n => n.id === nodeId);
+  if (!node) return;
+
+  // Update selection border
+  document.querySelectorAll('.gw-node-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.nodeId === nodeId);
+  });
+
+  _renderDetailPanel(node);
+  const detail = document.getElementById('gw-detail');
+  if (detail) detail.classList.add('open');
+}
+
+function _closeDetail() {
+  _selectedNodeId = null;
+  document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
+  const detail = document.getElementById('gw-detail');
+  if (detail) detail.classList.remove('open');
+}
+
+function _renderDetailPanel(node) {
+  const title = document.getElementById('gw-detail-title');
+  const body = document.getElementById('gw-detail-body');
+  if (!body) return;
+  if (title) title.textContent = node.name;
+
+  const ioTypeOptions = Object.keys(IO_TYPES).map(t => `<option value="${t}">${t}</option>`).join('');
+  const providerOptions = ['claude','openai','deepseek','gemini','grok'].map(p =>
+    `<option value="${p}" ${node.provider===p?'selected':''}>${p}</option>`
+  ).join('');
+
+  const inputsHtml = (node.inputs || []).map((io, i) => `
+    <div class="gw-io-row" data-io-idx="${i}" data-io-type="input">
+      <input value="${_esc(io.name)}" placeholder="name" data-io-name />
+      <select data-io-type-sel>${ioTypeOptions.replace(`value="${io.type}"`,`value="${io.type}" selected`)}</select>
+      <button onclick="this.closest('.gw-io-row').remove()">−</button>
+    </div>
+  `).join('');
+
+  const outputsHtml = (node.outputs || []).map((io, i) => `
+    <div class="gw-io-row" data-io-idx="${i}" data-io-type="output">
+      <input value="${_esc(io.name)}" placeholder="name" data-io-name />
+      <select data-io-type-sel>${ioTypeOptions.replace(`value="${io.type}"`,`value="${io.type}" selected`)}</select>
+      <button onclick="this.closest('.gw-io-row').remove()">−</button>
+    </div>
+  `).join('');
+
+  const criteriaOptions = ['','reviewer_approved','tests_pass','score >= 80','score >= 85','approved == true'].map(v =>
+    `<option value="${v}" ${node.success_criteria===v?'selected':''}>${v||'—'}</option>`
+  ).join('');
 
   body.innerHTML = `
-    <div class="gw-config-form">
-      <label>Label</label>
-      <input class="field-input" id="cfg-edge-label" value="${_esc(edgeData.label || '')}" />
-
-      <label>Condition</label>
-      <select class="field-input" id="cfg-cond-type" onchange="window._gwOnCondChange(this.value)">
-        <option value="always"    ${condType === 'always'    ? 'selected' : ''}>Always proceed</option>
-        <option value="score_gte" ${condType === 'score_gte' ? 'selected' : ''}>Score ≥ threshold</option>
-        <option value="score_lt"  ${condType === 'score_lt'  ? 'selected' : ''}>Score &lt; threshold (rework)</option>
-      </select>
-
-      <div id="cfg-cond-threshold-wrap" style="${condType === 'always' ? 'display:none' : ''}">
-        <label>Output field</label>
-        <input class="field-input" id="cfg-cond-field" value="${_esc(field)}" placeholder="score" />
-        <label>Threshold value</label>
-        <input class="field-input" id="cfg-cond-value" type="number" value="${_esc(String(threshold))}" placeholder="7" />
+    <div class="gw-field">
+      <label>Name</label>
+      <input id="dn-name" value="${_esc(node.name)}" />
+    </div>
+    <div class="gw-field">
+      <label>Provider</label>
+      <select id="dn-provider">${providerOptions}</select>
+    </div>
+    <div class="gw-field">
+      <label>Model (optional)</label>
+      <input id="dn-model" value="${_esc(node.model||'')}" placeholder="leave blank for default" />
+    </div>
+    <div class="gw-field">
+      <label>System Prompt</label>
+      <textarea id="dn-prompt" rows="5">${_esc(node.role_prompt||'')}</textarea>
+    </div>
+    <div class="gw-field">
+      <label>Inputs</label>
+      <div class="gw-io-editor" id="dn-inputs">${inputsHtml}</div>
+      <button class="gw-add-io-btn" onclick="window._gwAddIO('input')">+ Add input</button>
+    </div>
+    <div class="gw-field">
+      <label>Outputs</label>
+      <div class="gw-io-editor" id="dn-outputs">${outputsHtml}</div>
+      <button class="gw-add-io-btn" onclick="window._gwAddIO('output')">+ Add output</button>
+    </div>
+    <div class="gw-field">
+      <label>Success Criteria</label>
+      <select id="dn-criteria">${criteriaOptions}</select>
+    </div>
+    <div class="gw-field">
+      <label>Retry Config (JSON)</label>
+      <input id="dn-retry" value="${_esc(JSON.stringify(node.retry_config||{}))}" />
+    </div>
+    <div class="gw-field">
+      <div class="gw-toggle-row">
+        <label style="margin:0">Stateless (fresh context each run)</label>
+        <input type="checkbox" id="dn-stateless" ${node.stateless?'checked':''} />
       </div>
-
-      <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
-        <button class="btn btn-primary btn-sm" onclick="window._gwSaveEdge('${edgeData.id}')">Save</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="window._gwDeleteEdge('${edgeData.id}')">Delete</button>
+    </div>
+    <div class="gw-field">
+      <div class="gw-toggle-row">
+        <label style="margin:0">Require Approval</label>
+        <input type="checkbox" id="dn-approval" ${node.require_approval?'checked':''} />
       </div>
     </div>
   `;
 
-  window._gwOnCondChange = (val) => {
-    const wrap = document.getElementById('cfg-cond-threshold-wrap');
-    if (wrap) wrap.style.display = val === 'always' ? 'none' : '';
-  };
-  window._gwSaveEdge   = (edgeId) => _saveEdgeConfig(edgeId);
-  window._gwDeleteEdge = (edgeId) => _deleteEdge(edgeId);
+  window._gwAddIO = (type) => _addIORow(type);
 }
 
-async function _saveEdgeConfig(edgeId) {
-  if (!_currentWf) return;
-  const label     = document.getElementById('cfg-edge-label')?.value.trim() || '';
-  const condType  = document.getElementById('cfg-cond-type')?.value || 'always';
-  const fieldVal  = document.getElementById('cfg-cond-field')?.value.trim() || 'score';
-  const threshold = parseFloat(document.getElementById('cfg-cond-value')?.value || '0');
+function _addIORow(type) {
+  const containerId = type === 'input' ? 'dn-inputs' : 'dn-outputs';
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const ioTypeOptions = Object.keys(IO_TYPES).map(t => `<option value="${t}">${t}</option>`).join('');
+  const row = document.createElement('div');
+  row.className = 'gw-io-row';
+  row.innerHTML = `
+    <input value="" placeholder="name" data-io-name />
+    <select data-io-type-sel>${ioTypeOptions}</select>
+    <button onclick="this.closest('.gw-io-row').remove()">−</button>
+  `;
+  container.appendChild(row);
+}
 
-  let condition = null;
-  if (condType === 'score_gte') condition = { field: fieldVal, op: 'gte', value: threshold };
-  if (condType === 'score_lt')  condition = { field: fieldVal, op: 'lt',  value: threshold };
+function _readIORows(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('.gw-io-row')).map(row => ({
+    name: (row.querySelector('[data-io-name]')?.value || '').trim(),
+    type: row.querySelector('[data-io-type-sel]')?.value || 'prompt',
+  })).filter(io => io.name);
+}
+
+async function _saveNodeFromForm() {
+  if (!_selectedNodeId || !_currentWf) return;
+  let retryConfig = {};
+  try { retryConfig = JSON.parse(document.getElementById('dn-retry')?.value || '{}'); } catch {}
+
+  const data = {
+    name:             document.getElementById('dn-name')?.value || '',
+    provider:         document.getElementById('dn-provider')?.value || 'claude',
+    model:            document.getElementById('dn-model')?.value || '',
+    role_prompt:      document.getElementById('dn-prompt')?.value || '',
+    success_criteria: document.getElementById('dn-criteria')?.value || '',
+    stateless:        document.getElementById('dn-stateless')?.checked || false,
+    require_approval: document.getElementById('dn-approval')?.checked || false,
+    retry_config:     retryConfig,
+    inputs:           _readIORows('dn-inputs'),
+    outputs:          _readIORows('dn-outputs'),
+  };
 
   try {
-    await api.graphWorkflows.updateEdge(_currentWf.id, edgeId, { label, condition });
-    const cyEdge = _cy?.getElementById(edgeId);
-    if (cyEdge) { cyEdge.data('label', label); cyEdge.data('condition', condition); }
-    toast('Edge updated', 'success');
-    _closeConfig();
+    await api.graphWorkflows.updateNode(_currentWf.id, _selectedNodeId, data);
+    // Refresh workflow and re-render
+    const wf = await api.graphWorkflows.get(_currentWf.id);
+    _currentWf = wf;
+    _renderPipeline(wf);
+    // Re-select to keep detail open
+    _selectNode(_selectedNodeId);
+    toast('Node saved', 'success');
   } catch (e) {
-    toast(`Update failed: ${e.message}`, 'error');
+    toast(`Save failed: ${e.message}`, 'error');
   }
 }
 
-async function _deleteEdge(edgeId) {
-  if (!_currentWf || !confirm('Delete this edge?')) return;
+// ── Add node ──────────────────────────────────────────────────────────────────
+
+function _showAddMenu(evt) {
+  // Simple: show a popup with preset choices
+  const existing = document.getElementById('_gw-add-menu');
+  if (existing) { existing.remove(); return; }
+
+  const menu = document.createElement('div');
+  menu.id = '_gw-add-menu';
+  menu.style.cssText = `position:fixed;z-index:1000;background:var(--bg1);border:1px solid var(--border);
+    border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:0.25rem 0;min-width:140px;
+    left:${evt.clientX}px;top:${evt.clientY}px`;
+
+  Object.entries(ROLE_PRESETS).forEach(([key, p]) => {
+    const item = document.createElement('div');
+    item.style.cssText = 'padding:0.35rem 0.75rem;cursor:pointer;font-size:0.8rem;display:flex;align-items:center;gap:0.4rem';
+    item.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${p.color};display:inline-block"></span>${_esc(p.label)}`;
+    item.onmouseenter = () => item.style.background = 'var(--hover)';
+    item.onmouseleave = () => item.style.background = '';
+    item.onclick = () => { menu.remove(); _addFromPreset(key); };
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  setTimeout(() => document.addEventListener('click', function h() {
+    menu.remove(); document.removeEventListener('click', h);
+  }), 0);
+}
+
+async function _addFromPreset(presetKey) {
+  if (!_currentWf) {
+    toast('Open or create a flow first', 'error');
+    return;
+  }
+  const preset = ROLE_PRESETS[presetKey] || ROLE_PRESETS.custom;
+  const nodeCount = (_currentWf.nodes || []).length;
+
   try {
-    await api.graphWorkflows.deleteEdge(_currentWf.id, edgeId);
-    _cy?.getElementById(edgeId).remove();
-    if (_currentWf.edges) _currentWf.edges = _currentWf.edges.filter(e => e.id !== edgeId);
-    _closeConfig();
-    toast('Edge deleted', 'success');
+    const node = await api.graphWorkflows.createNode(_currentWf.id, {
+      name: preset.label,
+      provider: 'claude',
+      role_prompt: preset.role_prompt || '',
+      stateless: preset.stateless,
+      success_criteria: preset.success_criteria || '',
+      inputs: preset.inputs || [],
+      outputs: preset.outputs || [],
+      position_x: 100 + nodeCount * 200,
+      position_y: 150,
+    });
+
+    // Auto-connect to last node
+    const existingNodes = _currentWf.nodes || [];
+    if (existingNodes.length > 0) {
+      const lastNode = existingNodes[existingNodes.length - 1];
+      try {
+        await api.graphWorkflows.createEdge(_currentWf.id, {
+          source_node_id: lastNode.id,
+          target_node_id: node.id,
+        });
+      } catch {}
+    }
+
+    const wf = await api.graphWorkflows.get(_currentWf.id);
+    _currentWf = wf;
+    _renderPipeline(wf);
+  } catch (e) {
+    toast(`Failed to add node: ${e.message}`, 'error');
+  }
+}
+
+async function _deleteNode(nodeId) {
+  if (!_currentWf) return;
+  if (!confirm('Delete this node?')) return;
+  try {
+    await api.graphWorkflows.deleteNode(_currentWf.id, nodeId);
+    if (_selectedNodeId === nodeId) _closeDetail();
+    const wf = await api.graphWorkflows.get(_currentWf.id);
+    _currentWf = wf;
+    _renderPipeline(wf);
   } catch (e) {
     toast(`Delete failed: ${e.message}`, 'error');
   }
 }
 
-function _closeConfig() {
-  const panel = document.getElementById('gw-config-panel');
-  if (panel) panel.style.display = 'none';
-}
+// ── Run ───────────────────────────────────────────────────────────────────────
 
-// ── Connect mode ──────────────────────────────────────────────────────────────
-
-function _enterConnectMode(sourceId) {
-  _connectMode = true;
-  _connectSourceId = sourceId;
-  _closeConfig();
-  const cyNode = _cy?.getElementById(sourceId);
-  if (cyNode) cyNode.addClass('connect-source');
-  toast('Click target node to connect', 'info');
-}
-
-function _exitConnectMode() {
-  if (_connectSourceId) {
-    const cyNode = _cy?.getElementById(_connectSourceId);
-    if (cyNode) cyNode.removeClass('connect-source');
-  }
-  _connectMode = false;
-  _connectSourceId = null;
-}
-
-async function _createEdge(sourceId, targetId) {
+async function _startRun() {
   if (!_currentWf) return;
-  try {
-    const edge = await api.graphWorkflows.createEdge(_currentWf.id, {
-      source_node_id: sourceId,
-      target_node_id: targetId,
-    });
-    _cy?.add({ group: 'edges', data: { id: edge.id, source: sourceId, target: targetId, label: '', condition: null } });
-    if (_currentWf.edges) _currentWf.edges.push(edge);
-  } catch (e) {
-    toast(`Connect failed: ${e.message}`, 'error');
-  }
-}
-
-// ── Node add helpers ──────────────────────────────────────────────────────────
-
-async function _addNodeAt(x, y) {
-  if (!_currentWf) return;
-  const name = prompt('Agent name (e.g. "QA Engineer"):');
-  if (!name) return;
-  try {
-    const node = await api.graphWorkflows.createNode(_currentWf.id, { name, position_x: x, position_y: y });
-    _cy?.add({ group: 'nodes', data: { id: node.id, label: node.name, provider: node.provider, nodeData: node }, position: { x, y } });
-    if (_currentWf.nodes) _currentWf.nodes.push(node);
-    _openNodeConfig(node);
-  } catch (e) {
-    toast(`Add node failed: ${e.message}`, 'error');
-  }
-}
-
-function _addNodeAtCenter() {
-  if (!_currentWf) return;
-  const ext = _cy?.extent();
-  const x = ext ? (ext.x1 + ext.x2) / 2 : 300;
-  const y = ext ? (ext.y1 + ext.y2) / 2 : 200;
-  _addNodeAt(x, y);
-}
-
-// ── Run workflow ──────────────────────────────────────────────────────────────
-
-async function _startRun(project) {
-  if (!_currentWf) return;
-  if (!(_currentWf.nodes || []).length) {
-    toast('Add at least one node before running', 'error');
-    return;
-  }
-
-  const userInput = prompt('Task / user input for this run (describes what agents should work on):') || '';
+  const userInput = prompt('Pipeline input (user prompt):', '');
+  if (userInput === null) return;
 
   try {
     const { run_id } = await api.graphWorkflows.startRun(_currentWf.id, {
       user_input: userInput,
-      project: project || '',
+      project: _project,
     });
     _currentRunId = run_id;
-    _showLog();
+    _openLog();
     _pollRun(run_id);
+    document.getElementById('gw-cancel-btn').style.display = '';
   } catch (e) {
     toast(`Run failed: ${e.message}`, 'error');
   }
 }
 
-async function _cancelRun() {
-  if (!_currentRunId) return;
-  try {
-    await api.graphWorkflows.cancel(_currentRunId);
-    if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
-    document.getElementById('gw-log-status').textContent = ' — cancelled';
-    const cancelBtn = document.getElementById('gw-cancel-btn');
-    if (cancelBtn) cancelBtn.style.display = 'none';
-    toast('Run cancelled', 'info');
-  } catch (e) {
-    toast(`Cancel failed: ${e.message}`, 'error');
-  }
-}
-
-function _showLog() {
-  const panel  = document.getElementById('gw-log-panel');
-  const body   = document.getElementById('gw-log-body');
-  const status = document.getElementById('gw-log-status');
-  const cancel = document.getElementById('gw-cancel-btn');
-  if (!panel) return;
-  panel.style.display = '';
-  if (body)   body.innerHTML = '<div class="gw-log-entry">Starting run…</div>';
-  if (status) status.textContent = ' — running';
-  if (cancel) cancel.style.display = '';
+function _openLog() {
+  const log = document.getElementById('gw-log');
+  const toggle = document.getElementById('gw-log-toggle');
+  if (log) { log.classList.add('open'); }
+  if (toggle) toggle.textContent = '▼';
 }
 
 function _toggleLog() {
-  const body   = document.getElementById('gw-log-body');
-  const toggle = document.querySelector('.gw-log-toggle');
-  if (!body) return;
-  const hidden = body.style.display === 'none';
-  body.style.display = hidden ? '' : 'none';
-  if (toggle) toggle.textContent = hidden ? '▲' : '▼';
+  const log = document.getElementById('gw-log');
+  const toggle = document.getElementById('gw-log-toggle');
+  if (!log) return;
+  const open = log.querySelector('.gw-log-body').style.display !== 'none';
+  log.querySelector('.gw-log-body').style.display = open ? 'none' : '';
+  if (toggle) toggle.textContent = open ? '▶' : '▼';
 }
 
 function _pollRun(runId) {
   if (_pollInterval) clearInterval(_pollInterval);
-
   _pollInterval = setInterval(async () => {
     try {
       const run = await api.graphWorkflows.getRun(runId);
-      _updateCanvasNodeStatuses(run);
       _updateRunLog(run);
-
-      if (run.status === 'waiting_approval') {
-        _showApprovalPanel(run);
-      } else {
-        const ap = document.getElementById('gw-approval-panel');
-        if (ap) ap.style.display = 'none';
+      if (['done','error','stopped','cancelled'].includes(run.status)) {
+        clearInterval(_pollInterval); _pollInterval = null;
+        document.getElementById('gw-cancel-btn').style.display = 'none';
       }
-
-      if (run.status !== 'running' && run.status !== 'waiting_approval') {
-        clearInterval(_pollInterval);
-        _pollInterval = null;
-        const status = document.getElementById('gw-log-status');
-        const cancel = document.getElementById('gw-cancel-btn');
-        if (status) status.textContent = run.status === 'done'
-          ? ` — done ($${Number(run.total_cost_usd || 0).toFixed(4)})`
-          : ` — ${run.status}`;
-        if (cancel) cancel.style.display = 'none';
+      if (run.status === 'waiting_approval') {
+        clearInterval(_pollInterval); _pollInterval = null;
+        _showApprovalPanel(run);
       }
     } catch {
-      clearInterval(_pollInterval);
-      _pollInterval = null;
+      clearInterval(_pollInterval); _pollInterval = null;
     }
   }, 2000);
 }
 
-function _updateCanvasNodeStatuses(run) {
-  (run.node_results || []).forEach(nr => {
-    const cyNode = _cy?.getElementById(nr.node_id);
-    if (cyNode) cyNode.data('status', nr.status);
-  });
-}
-
 function _updateRunLog(run) {
-  const body = document.getElementById('gw-log-body');
-  if (!body) return;
-  const results = run.node_results || [];
-  if (!results.length) {
-    body.innerHTML = '<div style="padding:0.5rem;color:var(--muted);font-size:0.8rem">Waiting for first node to start…</div>';
-    return;
-  }
-  body.innerHTML = results.map(nr => `
-    <div class="gw-log-entry gw-log-${nr.status}">
-      <div class="gw-log-node-header">
-        <strong>${_esc(nr.node_name)}</strong>
-        <span class="gw-log-badge gw-log-badge-${nr.status}">${nr.status}</span>
-        ${nr.iteration > 0 ? `<span style="font-size:0.65rem;color:var(--muted)">iter ${nr.iteration}</span>` : ''}
-        <span style="color:var(--muted);font-size:0.7rem;margin-left:auto">$${Number(nr.cost_usd || 0).toFixed(4)}</span>
-      </div>
-      ${nr.output ? `<pre class="gw-log-output">${_esc(nr.output.slice(0, 600))}${nr.output.length > 600 ? '\n…' : ''}</pre>` : ''}
+  const statusEl = document.getElementById('gw-log-status');
+  const bodyEl = document.getElementById('gw-log-body');
+  if (statusEl) statusEl.textContent = run.status;
+
+  // Update node status indicators
+  (run.node_results || []).forEach(nr => {
+    const statusDot = document.getElementById(`status-${nr.node_id}`);
+    if (statusDot) {
+      statusDot.style.display = '';
+      statusDot.className = `gw-node-status ${nr.status}`;
+    }
+  });
+
+  if (!bodyEl) return;
+  const entries = (run.node_results || []).map(nr => `
+    <div class="gw-log-entry">
+      <span style="font-weight:600">${_esc(nr.node_name)}</span>
+      <span style="color:var(--muted);margin-left:0.4rem">[${nr.status}]</span>
+      <span style="margin-left:0.4rem;color:var(--muted);font-size:0.7rem">$${nr.cost_usd?.toFixed(4)||'0'}</span>
+      ${nr.output ? `<div style="color:var(--muted);font-size:0.72rem;margin-top:0.15rem;white-space:pre-wrap;max-height:80px;overflow:auto">${_esc(nr.output.slice(0, 300))}</div>` : ''}
     </div>
   `).join('');
+  bodyEl.innerHTML = entries || '<div style="color:var(--muted)">Waiting for results…</div>';
 }
 
 function _showApprovalPanel(run) {
-  const panel = document.getElementById('gw-approval-panel');
-  if (!panel) return;
-  panel.style.display = '';
-
+  const wrap = document.getElementById('gw-approval-wrap');
+  if (!wrap) return;
   const waiting = run.context?._waiting || {};
-  const nodeName  = _esc(waiting.node_name || 'Node');
-  const msg       = _esc(waiting.approval_msg || 'Review the output and choose how to continue.');
-  const output    = _esc((waiting.output || '').slice(0, 400));
-  const successors = waiting.successors || [];
-
-  // Build successor node names from _currentWf
-  const nodeMap = {};
-  (_currentWf?.nodes || []).forEach(n => { nodeMap[n.id] = n.name; });
-
-  const goToOpts = successors.length > 1
-    ? `<select id="ap-goto-select" class="field-input" style="font-size:0.75rem;padding:0.2rem">
-        ${successors.map(nid => `<option value="${_esc(nid)}">${_esc(nodeMap[nid] || nid)}</option>`).join('')}
-       </select>`
-    : '';
-
-  panel.innerHTML = `
-    <div style="padding:0.75rem;background:rgba(245,158,11,0.08);border-bottom:1px solid #f59e0b">
-      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem">
-        <span style="font-size:1rem">⏸</span>
-        <strong style="font-size:0.8rem">Waiting — ${nodeName}</strong>
-      </div>
-      <div style="color:var(--muted);font-size:0.75rem;margin-bottom:0.4rem">${msg}</div>
-      ${output ? `<pre style="font-size:0.72rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.4rem;max-height:100px;overflow-y:auto;margin-bottom:0.5rem">${output}</pre>` : ''}
-      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
-        <button class="btn btn-primary btn-sm" style="font-size:0.75rem" onclick="window._gwDecide('approve')">✓ Continue</button>
-        ${goToOpts}
-        ${successors.length > 1 ? `<button class="btn btn-ghost btn-sm" style="font-size:0.75rem" onclick="window._gwDecide('goto')">→ Go to</button>` : ''}
-        <button class="btn btn-ghost btn-sm" style="font-size:0.75rem" onclick="window._gwDecide('retry')">↺ Retry</button>
-        <button class="btn btn-ghost btn-sm" style="font-size:0.75rem;color:var(--red)" onclick="window._gwDecide('stop')">✗ Stop</button>
+  wrap.style.display = '';
+  wrap.innerHTML = `
+    <div class="gw-approval">
+      <h4>⏸ Approval Required: ${_esc(waiting.node_name || 'Node')}</h4>
+      <div style="font-size:0.75rem;color:var(--muted)">${_esc(waiting.approval_msg || 'Review output and approve or reject.')}</div>
+      ${waiting.output ? `<pre>${_esc(String(waiting.output).slice(0, 400))}</pre>` : ''}
+      <div class="gw-approval-btns">
+        <button class="btn btn-primary btn-sm" onclick="window._gwDecide(true, false)">✓ Approve</button>
+        <button class="btn btn-ghost btn-sm" onclick="window._gwDecide(true, true)">↩ Retry</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="window._gwDecide(false, false)">✕ Stop</button>
       </div>
     </div>
   `;
-
-  window._gwDecide = async (action) => {
-    let body = {};
-    if (action === 'approve') {
-      body = { approved: true };
-    } else if (action === 'goto') {
-      const sel = document.getElementById('ap-goto-select');
-      const nextNodeId = sel?.value || (successors[0] || null);
-      body = { approved: true, next_node_id: nextNodeId };
-    } else if (action === 'retry') {
-      body = { approved: false, retry: true };
-    } else {
-      body = { approved: false };
-    }
-
+  window._gwDecide = async (approved, retry) => {
     try {
-      await api.graphWorkflows.makeDecision(_currentRunId, body);
-      panel.style.display = 'none';
-      // Resume polling (might have stopped)
-      if (!_pollInterval && _currentRunId) {
-        document.getElementById('gw-cancel-btn').style.display = '';
-        _pollRun(_currentRunId);
-      }
+      await api.graphWorkflows.decide(_currentRunId, { approved, retry });
+      wrap.innerHTML = '';
+      wrap.style.display = 'none';
+      _pollRun(_currentRunId);
     } catch (e) {
       toast(`Decision failed: ${e.message}`, 'error');
     }
   };
 }
 
-// ── New workflow modal ────────────────────────────────────────────────────────
-
-function _showNewWorkflowModal(project) {
-  const modal = _createModal(`
-    <h3 style="margin-bottom:1rem;font-size:0.95rem">New Graph Flow</h3>
-    <label style="font-size:0.75rem;color:var(--muted)">Name</label>
-    <input class="field-input" id="modal-wf-name" style="margin-bottom:0.75rem" placeholder="e.g. Web Dev Pipeline" autofocus />
-    <label style="font-size:0.75rem;color:var(--muted)">Description</label>
-    <input class="field-input" id="modal-wf-desc" style="margin-bottom:0.75rem" placeholder="What does this flow do?" />
-    <label style="font-size:0.75rem;color:var(--muted)">Max iterations</label>
-    <input class="field-input" id="modal-wf-iter" type="number" value="5" style="margin-bottom:1rem" min="1" max="20" />
-    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
-      <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancel</button>
-      <button class="btn btn-primary btn-sm" id="modal-create">Create</button>
-    </div>
-  `);
-
-  modal.querySelector('#modal-cancel').onclick = () => modal.remove();
-  modal.querySelector('#modal-create').onclick = async () => {
-    const name = modal.querySelector('#modal-wf-name').value.trim();
-    if (!name) { toast('Name required', 'error'); return; }
-    const desc = modal.querySelector('#modal-wf-desc').value.trim();
-    const maxIter = parseInt(modal.querySelector('#modal-wf-iter').value || '5', 10);
-    try {
-      const wf = await api.graphWorkflows.create({ name, description: desc, project: project || '', max_iterations: maxIter });
-      modal.remove();
-      _currentWf = { ...wf, nodes: [], edges: [] };
-      _showToolbarButtons();
-      _renderCanvas(_currentWf);
-      await _loadList(project);
-      toast('Flow created — double-click canvas or click "+ Node" to add agents', 'success');
-    } catch (e) {
-      toast(`Create failed: ${e.message}`, 'error');
-    }
-  };
-}
-
-// ── Template modal ────────────────────────────────────────────────────────────
-
-function _showTemplateModal(project) {
-  const modal = _createModal(`
-    <h3 style="margin-bottom:0.75rem;font-size:0.95rem">New Flow from Template</h3>
-    <p style="font-size:0.75rem;color:var(--muted);margin-bottom:0.75rem">
-      Templates create a pre-configured flow with agents and edges.<br>
-      Edit role files in the Prompts tab to customise each agent.
-    </p>
-    <div id="template-list" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem">
-      ${TEMPLATES.map(t => `
-        <label class="gw-template-option" style="display:flex;gap:0.75rem;align-items:flex-start;padding:0.6rem;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer">
-          <input type="radio" name="tpl" value="${t.id}" style="margin-top:3px" />
-          <div>
-            <div style="font-weight:600;font-size:0.8rem">${_esc(t.name)}</div>
-            <div style="color:var(--muted);font-size:0.72rem">${_esc(t.description)}</div>
-          </div>
-        </label>
-      `).join('')}
-    </div>
-    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
-      <button class="btn btn-ghost btn-sm" id="tpl-cancel">Cancel</button>
-      <button class="btn btn-primary btn-sm" id="tpl-create">Create</button>
-    </div>
-  `);
-
-  // Select first by default
-  const firstRadio = modal.querySelector('input[type=radio]');
-  if (firstRadio) firstRadio.checked = true;
-
-  modal.querySelector('#tpl-cancel').onclick = () => modal.remove();
-  modal.querySelector('#tpl-create').onclick = async () => {
-    const selected = modal.querySelector('input[name=tpl]:checked');
-    if (!selected) { toast('Select a template', 'error'); return; }
-    const tpl = TEMPLATES.find(t => t.id === selected.value);
-    if (!tpl) return;
-    modal.remove();
-    await _applyTemplate(tpl, project);
-  };
-}
-
-async function _applyTemplate(tpl, project) {
-  toast(`Creating "${tpl.name}"…`, 'info');
+async function _cancelRun() {
+  if (!_currentRunId) return;
   try {
-    // 1. Create workflow
-    const wf = await api.graphWorkflows.create({
-      name: tpl.name, description: tpl.description, project: project || '', max_iterations: 5,
-    });
-
-    // 2. Create nodes in order, collect IDs
-    const nodeIds = [];
-    for (const nSpec of tpl.nodes) {
-      const node = await api.graphWorkflows.createNode(wf.id, {
-        name: nSpec.name, provider: nSpec.provider,
-        role_file: nSpec.role_file || null,
-        role_prompt: nSpec.role_prompt || '',
-        inject_context: true,
-        position_x: nSpec.position_x || 100,
-        position_y: nSpec.position_y || 150,
-        require_approval: nSpec.require_approval || false,
-        approval_msg: nSpec.approval_msg || '',
-      });
-      nodeIds.push(node.id);
-    }
-
-    // 3. Create edges using index-based references
-    for (const eSpec of tpl.edges) {
-      const sourceId = nodeIds[eSpec.from];
-      const targetId = nodeIds[eSpec.to];
-      if (!sourceId || !targetId) continue;
-      await api.graphWorkflows.createEdge(wf.id, {
-        source_node_id: sourceId,
-        target_node_id: targetId,
-        condition: eSpec.condition || null,
-        label: eSpec.label || '',
-      });
-    }
-
-    // 4. Load full workflow and render
-    const full = await api.graphWorkflows.get(wf.id);
-    _currentWf = full;
-    _showToolbarButtons();
-    _renderCanvas(full);
-    _cy?.layout({ name: 'preset' }).run();
-    await _loadList(project);
-    toast(`"${tpl.name}" created with ${nodeIds.length} agents`, 'success');
+    await api.graphWorkflows.cancelRun(_currentRunId);
+    if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+    document.getElementById('gw-cancel-btn').style.display = 'none';
+    const s = document.getElementById('gw-log-status');
+    if (s) s.textContent = 'cancelled';
   } catch (e) {
-    toast(`Template failed: ${e.message}`, 'error');
+    toast(`Cancel failed: ${e.message}`, 'error');
   }
 }
 
-// ── Modal helper ──────────────────────────────────────────────────────────────
+// ── Export / Import ───────────────────────────────────────────────────────────
 
-function _createModal(innerHTML) {
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45)';
-  overlay.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;min-width:340px;max-width:520px;width:92%;max-height:80vh;overflow-y:auto">
-      ${innerHTML}
-    </div>
-  `;
-  // Click overlay background to close
-  overlay.addEventListener('click', evt => { if (evt.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-  return overlay;
+async function _exportYAML() {
+  if (!_currentWf) return;
+  try {
+    const yaml = await api.graphWorkflows.exportYAML(_currentWf.id);
+    const safe = (_currentWf.name || 'workflow').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    _download(`${safe}_graph.yaml`, yaml);
+  } catch (e) {
+    toast(`Export failed: ${e.message}`, 'error');
+  }
 }
 
-// ── Utility ───────────────────────────────────────────────────────────────────
+async function _exportLangGraph() {
+  if (!_currentWf) return;
+  try {
+    const py = await api.graphWorkflows.exportLangGraph(_currentWf.id);
+    const safe = (_currentWf.name || 'workflow').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    _download(`${safe}_langgraph.py`, py);
+  } catch (e) {
+    toast(`Export failed: ${e.message}`, 'error');
+  }
+}
 
-function _esc(str) {
-  return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+async function _importYAML(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const text = await file.text();
+  try {
+    const wf = await api.graphWorkflows.importYAML(_project, text);
+    _currentWf = wf;
+    _showWorkflow(wf);
+    _loadList();
+    toast('Workflow imported', 'success');
+  } catch (e) {
+    toast(`Import failed: ${e.message}`, 'error');
+  }
+  input.value = '';
 }

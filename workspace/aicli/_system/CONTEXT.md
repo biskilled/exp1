@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 01:37 UTC — do not edit manually.
+> Auto-generated 2026-03-19 01:59 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 148
-- **Last active**: 2026-03-19T01:36:16Z
+- **Sessions**: 149
+- **Last active**: 2026-03-19T01:57:35Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -21,25 +21,25 @@
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking), agent_roles, system_roles
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- **mcp**: Standalone stdio MCP server with 12+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity, update_entity, list_entities, get_feature_status)
+- **mcp**: Standalone stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, and MCP integration settings
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
 
 ## In Progress
 
-- Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected; _continueToApp retry logic needs timing refinement
-- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; unclear purpose of 'Prompt Files' section; requires UI refactor for clarity and functional buttons
-- System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP standards) that can be added to agent roles like UI developer or backend developer
-- AttributeError fixes and race condition handling (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping; added retry logic for empty projects query response
-- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism per original specification
-- PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O; pagination/lazy-loading under evaluation
+- Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles (PM, engineer, etc.) uploading docs
+- Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected
+- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; requires UI refactor
+- System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP) addable to agent roles like UI/backend developer
+- AttributeError fixes and race condition handling (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping; added retry logic for empty projects
+- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism
 
 ## Key Decisions
 
@@ -49,15 +49,15 @@
 - JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - All LLM providers as independent adapters; server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits
-- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
+- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits views on save
+- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits on save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
-- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
-- Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
-- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- System roles composable into agent roles (e.g., 'coding' system role with clean code/comment/OOP principles addable to UI/backend developer roles)
+- Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
+- Port binding safety: freePort() kills stale uvicorn processes; Electron cleanup via process.exit()
+- Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase
+- System roles composable into agent roles (e.g., 'coding' role with clean code/comments/OOP principles)
 
 ---
 
@@ -151,6 +151,9 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 01:43]** `claude_cli/claude`  
+→ I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be mapped to docusmnet fo
+
 **[2026-03-19 01:25]** `claude_cli/claude`  
 → When app is stsrting - I still cannot see all project in prject page (only after I open the project). also it seems tha 
 ← _Now add the `_togglePromptFiles` global:_
@@ -203,7 +206,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-18 10:46]** `claude_cli/claude`  
 → looks better. why memory_items and project_facts are under systeme managament tables? there are not part of project ?
 ← _All endpoints working. Let me update MEMORY.md to reflect the final table structure:_
-
-**[2026-03-17 21:06]** `claude_cli/claude`  
-→ Can you run the command as well, as I dont see any change in the database . also I think that there are old tables that 
-← _Clean. Here's the complete summary:  **Before:** 29 tables (mixed naming, 5 stale bare tables)   **After:** 24 tables — perfectly organized  ### Dropped (stale legacy tables) `commits`, `embeddings`, _

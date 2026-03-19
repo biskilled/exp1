@@ -459,6 +459,11 @@ CREATE TABLE IF NOT EXISTS pr_graph_nodes (
     updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_pr_gn_workflow ON pr_graph_nodes(workflow_id);
+ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS inputs           JSONB   DEFAULT '[]';
+ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS outputs          JSONB   DEFAULT '[]';
+ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS stateless        BOOLEAN DEFAULT FALSE;
+ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS retry_config     JSONB   DEFAULT '{}';
+ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS success_criteria TEXT    DEFAULT '';
 
 -- Graph edges (scoped via workflow FK)
 CREATE TABLE IF NOT EXISTS pr_graph_edges (
