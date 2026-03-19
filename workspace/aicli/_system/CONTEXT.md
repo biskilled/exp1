@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 12:32 UTC — do not edit manually.
+> Auto-generated 2026-03-19 13:03 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 156
-- **Last active**: 2026-03-19T12:30:43Z
+- **Sessions**: 157
+- **Last active**: 2026-03-19T13:00:01Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -24,7 +24,7 @@
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
-- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; inline modal for pipeline creation
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server with 12+ tools
@@ -34,12 +34,12 @@
 
 ## In Progress
 
+- Pipeline UI enhancements (2026-03-19) — Added node properties display (max_retry, stateless, continue_on_fail); implemented node removal with confirmation dialog; renamed '+ New Flow' to '+ New Pipeline'; replaced native dialogs with inline modal
 - Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS removed; MEMORY.md updates pending
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project; backend init timing issue; requires investigation of project.md loading vs app startup
 - Graph workflow UI import fix (2026-03-19) — Fixed main.js imports for graph_workflow.js; corrected case statements for proper renderer routing
-- Pipeline/workflow creation and sampling (2026-03-19) — No sample pipelines available; unable to create new pipelines; requires UI/backend workflow instantiation and example workflows
-- Documents tab feature (2026-03-19) — Add Documents tab mapped to per-project folder; auto-create for new projects; support multiple roles uploading docs
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context; requires implementation and testing
+- Documents tab feature (2026-03-19) — Add Documents tab mapped to per-project folder; auto-create for new projects; support multiple roles uploading docs
 
 ## Key Decisions
 
@@ -57,7 +57,7 @@
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 - Backend startup race condition fix: retry logic handles empty project list on first load
-- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
+- Pipeline/workflow nodes support max_retry, stateless mode, continue_on_fail flags; visual node removal with confirmation dialog
 
 ---
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 12:46]** `claude_cli/claude`  
+→ UI improvmenet - in pipeline for each node - can you add more properties (max retry, stateless, continue on fail - so us
+← _Done. Here's a summary of all changes made to `graph_workflow.js`:  **Buttons & labels:** - `+ New Flow` → `+ New Pipeline` (toolbar button, empty state button, modal title) - `Saved Flows` → `Saved P_
+
 **[2026-03-19 12:29]** `claude_cli/claude`  
 →  can you update /memory as well to make sure this feature is stored 
 ← _Also update the `See Also` section at the bottom:_
@@ -203,7 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-18 20:03]** `claude_cli/claude`  
 → Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
 ← _Now also fix `_continueToApp` — if projects load succeeds but returns empty (e.g. race condition), retry once:_
-
-**[2026-03-18 18:15]** `claude_cli/claude`  
-→ There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
-← _Memory endpoint works. Now let me check the "first load backend failing" and "aicli not shown as current project" issues:_

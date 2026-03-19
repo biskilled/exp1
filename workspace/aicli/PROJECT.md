@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
+- Pipeline UI enhancements (2026-03-19) — Added node properties display (max_retry, stateless, continue_on_fail); implemented node removal with confirmation dialog; renamed '+ New Flow' to '+ New Pipeline'; replaced native dialogs with inline modal
 - Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS removed; MEMORY.md updates pending
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project; backend init timing issue; requires investigation of project.md loading vs app startup
 - Graph workflow UI import fix (2026-03-19) — Fixed main.js imports for graph_workflow.js; corrected case statements for proper renderer routing
-- Pipeline/workflow creation and sampling (2026-03-19) — No sample pipelines available; unable to create new pipelines; requires UI/backend workflow instantiation and example workflows
-- Documents tab feature (2026-03-19) — Add Documents tab mapped to per-project folder; auto-create for new projects; support multiple roles uploading docs
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context; requires implementation and testing
+- Documents tab feature (2026-03-19) — Add Documents tab mapped to per-project folder; auto-create for new projects; support multiple roles uploading docs

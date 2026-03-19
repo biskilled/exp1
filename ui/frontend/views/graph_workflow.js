@@ -105,54 +105,64 @@ export function renderGraphWorkflow(container) {
       .gw-pipeline { display:flex; align-items:flex-start; gap:0; min-height:200px; }
 
       /* Node cards */
-      .gw-node-card { width:180px; flex-shrink:0; border:2px solid var(--border);
-        border-radius:8px; background:var(--bg1); cursor:pointer; transition:all 0.15s;
-        position:relative; }
-      .gw-node-card:hover { border-color:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,0.1); }
-      .gw-node-card.selected { border-color:var(--accent); box-shadow:0 0 0 3px rgba(100,108,255,0.2); }
-      .gw-node-header { display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.6rem 0.35rem;
+      .gw-node-card { width:210px; flex-shrink:0; border:2px solid var(--border);
+        border-radius:8px; background:var(--bg1); cursor:pointer; transition:all 0.15s; }
+      .gw-node-card:hover { border-color:var(--accent); box-shadow:0 2px 12px rgba(0,0,0,0.18); }
+      .gw-node-card.selected { border-color:var(--accent); box-shadow:0 0 0 3px rgba(100,108,255,0.25); }
+      .gw-node-header { display:flex; align-items:center; gap:0.35rem; padding:0.45rem 0.6rem;
         border-bottom:1px solid var(--border); }
-      .gw-node-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+      .gw-node-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
       .gw-node-name { flex:1; font-size:0.78rem; font-weight:600; white-space:nowrap;
         overflow:hidden; text-overflow:ellipsis; }
-      .gw-node-badge { font-size:0.58rem; padding:0.1rem 0.3rem; border-radius:3px;
+      .gw-node-badge { font-size:0.57rem; padding:0.1rem 0.28rem; border-radius:3px;
         background:var(--border); color:var(--muted); flex-shrink:0; }
-      .gw-node-del { display:none; position:absolute; top:4px; right:4px; background:none;
-        border:none; color:var(--muted); cursor:pointer; font-size:0.7rem; padding:2px 4px;
-        line-height:1; border-radius:3px; }
-      .gw-node-del:hover { color:var(--red); background:rgba(232,93,117,0.12); }
-      .gw-node-card:hover .gw-node-del { display:block; }
-      .gw-node-body { padding:0.4rem 0.6rem; min-height:32px; }
-      .gw-node-cfg-badges { display:flex; flex-wrap:wrap; gap:0.2rem; }
+      .gw-node-del { background:rgba(232,93,117,0.12); border:1px solid rgba(232,93,117,0.3);
+        border-radius:4px; color:#e85d75; cursor:pointer; font-size:0.68rem; font-weight:700;
+        padding:1px 5px; line-height:1.4; flex-shrink:0; opacity:0; transition:opacity 0.15s; }
+      .gw-node-card:hover .gw-node-del { opacity:1; }
+      .gw-node-del:hover { background:rgba(232,93,117,0.25) !important; }
+      .gw-node-body { padding:0.45rem 0.6rem; display:flex; flex-direction:column; gap:0.3rem; }
+      .gw-node-row { display:flex; align-items:baseline; gap:0.3rem; }
+      .gw-node-row-lbl { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.04em;
+        color:var(--muted); flex-shrink:0; width:28px; }
+      .gw-node-row-val { font-size:0.7rem; color:var(--fg); overflow:hidden;
+        text-overflow:ellipsis; white-space:nowrap; }
+      .gw-node-row-val.muted { color:var(--muted); font-style:italic; }
+      .gw-node-cfg-badges { display:flex; flex-wrap:wrap; gap:0.2rem; padding-top:0.1rem; }
       .gw-cfg-badge { font-size:0.58rem; padding:0.1rem 0.35rem; border-radius:10px;
         background:var(--border); color:var(--muted); }
-      .gw-cfg-stateless { background:rgba(45,212,191,0.15); color:#2dd4bf; }
-      .gw-cfg-warn      { background:rgba(245,166,35,0.15);  color:#f5a623; }
-      .gw-cfg-approval  { background:rgba(155,126,248,0.15); color:#9b7ef8; }
+      .gw-cfg-stateless { background:rgba(45,212,191,0.18); color:#2dd4bf; }
+      .gw-cfg-warn      { background:rgba(245,166,35,0.18);  color:#f5a623; }
+      .gw-cfg-approval  { background:rgba(155,126,248,0.18); color:#9b7ef8; }
       .gw-node-footer { padding:0.3rem 0.6rem 0.4rem; border-top:1px solid var(--border);
-        font-size:0.65rem; color:var(--muted); }
-      .gw-node-status { position:absolute; bottom:4px; right:6px; width:8px; height:8px;
-        border-radius:50%; }
-      .gw-node-status.running  { background:#f5a623; animation:pulse 1s infinite; }
-      .gw-node-status.done     { background:#3ecf8e; }
-      .gw-node-status.error    { background:#e85d75; }
+        font-size:0.63rem; color:var(--muted); display:flex; align-items:center; gap:0.4rem; }
+      .gw-node-status { width:7px; height:7px; border-radius:50%; flex-shrink:0; display:none; }
+      .gw-node-status.running  { background:#f5a623; animation:pulse 1s infinite; display:inline-block; }
+      .gw-node-status.done     { background:#3ecf8e; display:inline-block; }
+      .gw-node-status.error    { background:#e85d75; display:inline-block; }
       @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
       /* Inline modal */
-      .gw-modal-overlay { position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.45);
+      .gw-modal-overlay { position:fixed;inset:0;z-index:9000;
+        background:rgba(0,0,0,0.72);backdrop-filter:blur(2px);
         display:flex;align-items:center;justify-content:center; }
-      .gw-modal-box { background:var(--bg1);border:1px solid var(--border);border-radius:8px;
-        padding:1.25rem;min-width:320px;max-width:480px;width:90%;
-        box-shadow:0 8px 32px rgba(0,0,0,0.3); }
-      .gw-modal-title { font-size:0.9rem;font-weight:600;margin-bottom:0.75rem; }
-      .gw-modal-field { margin-bottom:0.6rem; }
-      .gw-modal-field label { display:block;font-size:0.72rem;color:var(--muted);
-        margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.03em; }
+      .gw-modal-box { background:#1e2130;border:1px solid rgba(255,255,255,0.14);border-radius:10px;
+        padding:1.5rem;min-width:340px;max-width:500px;width:92%;
+        box-shadow:0 24px 64px rgba(0,0,0,0.7); }
+      .gw-modal-title { font-size:0.95rem;font-weight:700;margin-bottom:1rem;color:#fff; }
+      .gw-modal-desc { font-size:0.8rem;color:rgba(255,255,255,0.5);margin:-0.5rem 0 0.9rem; }
+      .gw-modal-field { margin-bottom:0.75rem; }
+      .gw-modal-field label { display:block;font-size:0.7rem;color:rgba(255,255,255,0.5);
+        margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.05em;font-weight:600; }
       .gw-modal-field input, .gw-modal-field textarea {
-        width:100%;box-sizing:border-box;padding:0.4rem;border:1px solid var(--border);
-        border-radius:4px;background:var(--bg2);color:var(--fg);font-size:0.82rem; }
-      .gw-modal-field textarea { resize:vertical; }
-      .gw-modal-footer { display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem; }
+        width:100%;box-sizing:border-box;padding:0.5rem 0.6rem;
+        border:1px solid rgba(255,255,255,0.18);border-radius:6px;
+        background:rgba(255,255,255,0.07);color:#fff;font-size:0.84rem; }
+      .gw-modal-field input:focus, .gw-modal-field textarea:focus {
+        outline:none;border-color:var(--accent);background:rgba(255,255,255,0.1); }
+      .gw-modal-field textarea { resize:vertical; font-family:inherit; }
+      .gw-modal-footer { display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;
+        padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.08); }
 
       /* Connectors */
       .gw-connector { display:flex; align-items:center; padding:0 0.2rem; flex-shrink:0;
@@ -714,41 +724,66 @@ function _renderPipeline(wf) {
 }
 
 function _renderNodeCard(node) {
-  // Get color from matched DB role or fall back to type-based color
   const TYPE_COLORS = { agent: '#3ecf8e', system_designer: '#9b7ef8', reviewer: '#2dd4bf' };
   const matchedRole = _roles.find(r => r.id === node.role_id || r.name === node.name);
   const roleType = matchedRole?.role_type || 'agent';
   const dotColor = TYPE_COLORS[roleType] || '#6b7490';
   const badge = roleType === 'system_designer' ? 'SYS' : roleType === 'reviewer' ? 'REV' : 'AGT';
-  const criteria = node.success_criteria || '';
   const isSelected = node.id === _selectedNodeId;
+
+  // Provider + model row
+  const modelLabel = node.model ? `${node.provider} / ${node.model}` : (node.provider || 'claude');
+
+  // IO rows (names only — no type colour needed on card)
+  const inputs  = (node.inputs  || []).map(io => _esc(io.name)).filter(Boolean);
+  const outputs = (node.outputs || []).map(io => _esc(io.name)).filter(Boolean);
 
   // Config badges
   const cfgBadges = [];
-  if (node.stateless) cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-stateless" title="Stateless: runs with fresh context">stateless</span>`);
-  if ((node.max_retry ?? 3) !== 3) cfgBadges.push(`<span class="gw-cfg-badge" title="Max retries">retry:${node.max_retry}</span>`);
+  if (node.stateless)        cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-stateless" title="Runs with fresh context each time">stateless</span>`);
+  if ((node.max_retry ?? 3) !== 3) cfgBadges.push(`<span class="gw-cfg-badge" title="Max retry attempts">retry:${node.max_retry}</span>`);
   if (node.continue_on_fail) cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-warn" title="Pipeline continues even if this node fails">cont.fail</span>`);
-  if (node.require_approval) cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-approval" title="Requires human approval before continuing">approval</span>`);
+  if (node.require_approval) cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-approval" title="Requires human approval before next node">approval</span>`);
+
+  const criteria = node.success_criteria || '';
 
   return `
     <div class="gw-node-card ${isSelected ? 'selected' : ''}" data-node-id="${node.id}">
-      <button class="gw-node-del" onclick="window._gwDeleteNode('${node.id}', event)" title="Delete node">✕</button>
       <div class="gw-node-header">
         <div class="gw-node-dot" style="background:${dotColor}"></div>
         <div class="gw-node-name">${_esc(node.name)}</div>
         <div class="gw-node-badge">${_esc(badge)}</div>
+        <button class="gw-node-del" onclick="window._gwDeleteNode('${node.id}', event)" title="Delete node">✕</button>
       </div>
       <div class="gw-node-body">
-        ${cfgBadges.length
-          ? `<div class="gw-node-cfg-badges">${cfgBadges.join('')}</div>`
-          : `<div style="color:var(--muted);font-size:0.7rem;font-style:italic">click to configure</div>`
-        }
+        <div class="gw-node-row">
+          <span class="gw-node-row-lbl">model</span>
+          <span class="gw-node-row-val">${_esc(modelLabel)}</span>
+        </div>
+        ${inputs.length ? `
+        <div class="gw-node-row">
+          <span class="gw-node-row-lbl">in</span>
+          <span class="gw-node-row-val" title="${inputs.join(', ')}">${inputs.join(', ')}</span>
+        </div>` : ''}
+        ${outputs.length ? `
+        <div class="gw-node-row">
+          <span class="gw-node-row-lbl">out</span>
+          <span class="gw-node-row-val" title="${outputs.join(', ')}">${outputs.join(', ')}</span>
+        </div>` : ''}
+        <div class="gw-node-row">
+          <span class="gw-node-row-lbl">retry</span>
+          <span class="gw-node-row-val">${node.max_retry ?? 3}</span>
+        </div>
+        ${cfgBadges.length ? `<div class="gw-node-cfg-badges">${cfgBadges.join('')}</div>` : ''}
       </div>
       ${criteria ? `
-        <div class="gw-node-footer">
-          <span title="Success criteria">${_esc(criteria.slice(0, 28))}${criteria.length > 28 ? '…' : ''}</span>
-        </div>` : ''}
-      <div class="gw-node-status" id="status-${node.id}" style="display:none"></div>
+      <div class="gw-node-footer">
+        <div class="gw-node-status" id="status-${node.id}"></div>
+        <span title="Success criteria">${_esc(criteria.slice(0, 30))}${criteria.length > 30 ? '…' : ''}</span>
+      </div>` : `
+      <div class="gw-node-footer" style="padding-top:0.2rem;padding-bottom:0.25rem">
+        <div class="gw-node-status" id="status-${node.id}"></div>
+      </div>`}
     </div>
   `;
 }

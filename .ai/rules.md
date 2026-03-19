@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 12:30 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 13:00 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -19,7 +19,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
-- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; inline modal for pipeline creation
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server with 12+ tools
@@ -43,12 +43,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 - Backend startup race condition fix: retry logic handles empty project list on first load
-- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
+- Pipeline/workflow nodes support max_retry, stateless mode, continue_on_fail flags; visual node removal with confirmation dialog
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-19] It seems that project list is loading after the app is running as I cannot see any project when app start to run, but se
 - [2026-03-19] Lets fix that - currently there are 2 tabs - Roles - this one is used for changing roles, update roles and add some inou
 - [2026-03-19] Yamel config need to be simple . at the moment all flows are sequece - node A -> Node B -> Node C it can have max rettry
 - [2026-03-19] system designer - only run of explicitly placed of course . retry is per node, continue is per node (default is False). 
 - [2026-03-19] can you update /memory as well to make sure this feature is stored
+- [2026-03-19] UI improvmenet - in pipeline for each node - can you add more properties (max retry, stateless, continue on fail - so us
