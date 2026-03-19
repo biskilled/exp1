@@ -1,21 +1,21 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 16:18 UTC — do not edit manually.
+> Auto-generated 2026-03-19 16:21 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 162
-- **Last active**: 2026-03-19T15:48:57Z
+- **Sessions**: 163
+- **Last active**: 2026-03-19T16:20:50Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
 ## Tech Stack
 
 - **cli**: Python 3.12 + prompt_toolkit + rich
-- **backend**: FastAPI + uvicorn + python-jose + bcrypt
+- **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
@@ -31,14 +31,15 @@
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
+- **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 
 ## In Progress
 
 - Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status
+- UUID validation error in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation on 'recent' string passed to UUID field in pr_graph_runs WHERE clause; requires UUID object conversion or string validation
 - Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle still under investigation
 - Pipeline UI node properties display (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation
 - Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure
-- Backend startup retry logic edge case (2026-03-18) — Modified to handle empty project list on first load; prevents false 'project not found' errors
 - Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Key Decisions
@@ -50,14 +51,14 @@
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth with tree UI; tags synced across Chat/History/Commits on save
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
-- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
+- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE/copilot/aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
-- Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors
 - Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
+- Hierarchical data model: Clients contain multiple Users; per-project tables with shared authentication/billing tables
 
 ---
 
@@ -153,6 +154,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-19 16:12]** `claude_cli/claude`  
 → Start to looks better. Now I do see the _work_item_pipeline but all I can see is an error saying - psycopg2.errors.Inval
+← _Since the run panel is now at the bottom, there's no need to close the detail panel — they can both be open simultaneously. Let me remove that:_
 
 **[2026-03-19 15:40]** `claude_cli/claude`  
 → I am starting a pipeline from my feature tab (auth) - it looks like something is satring, but I do not see any update pr

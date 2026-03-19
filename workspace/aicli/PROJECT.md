@@ -376,8 +376,8 @@ All tables follow a structured naming convention:
 ## Recent Work
 
 - Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status
+- UUID validation error in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation on 'recent' string passed to UUID field in pr_graph_runs WHERE clause; requires UUID object conversion or string validation
 - Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle still under investigation
 - Pipeline UI node properties display (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation
 - Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure
-- Backend startup retry logic edge case (2026-03-18) — Modified to handle empty project list on first load; prevents false 'project not found' errors
 - Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism

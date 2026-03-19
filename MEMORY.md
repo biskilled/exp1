@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 15:49 UTC by aicli /memory_
+_Generated: 2026-03-19 16:20 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform integrating Claude CLI with multi-LLM support (OpenAI, DeepSeek, Gemini, Grok) via server-side adapters. It uses PostgreSQL+pgvector for semantic search, JSONL for primary storage, and a dual-layer memory system (raw JSONL → interaction_tags → 5 synthesized outputs). The platform features Electron desktop UI with workflow visualization (Cytoscape.js), nested tag hierarchies, JWT authentication, and an MCP server for project state management. Current focus is fixing project visibility race conditions, completing pipeline execution progress tracking, and populating memory_items/project_facts tables for improved context.
+aicli is a shared AI memory platform enabling Claude CLI and other LLMs to maintain persistent, semantic context across development sessions. It combines flat-file JSONL history with PostgreSQL pgvector for semantic search, a Node-based async DAG workflow engine with Cytoscape.js visualization, and JWT authentication with nested tagging. Current focus: fixing pipeline execution UI progress tracking, resolving UUID validation errors in database queries, investigating project visibility race conditions during backend startup, and implementing memory_items/project_facts table population for improved context retrieval.
 
 ## Project Facts
 
@@ -21,7 +21,7 @@ aicli is a shared AI memory platform integrating Claude CLI with multi-LLM suppo
 - **pending_implementation**: memory_items_and_project_facts_table_population
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
 - **performance_optimization**: redundant_SQL_calls_eliminated
-- **stale_code_removed**: db.ensure_project_schema_call_replaced_with_ensure_shared_schema
+- **stale_code_removed**: db_ensure_project_schema_call_replaced_with_ensure_shared_schema
 - **tagging_system**: nested_hierarchy_beyond_2_levels
 - **ui_library**: 3_dot_menu_pattern
 - **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
@@ -30,7 +30,7 @@ aicli is a shared AI memory platform integrating Claude CLI with multi-LLM suppo
 ## Tech Stack
 
 - **cli**: Python 3.12 + prompt_toolkit + rich
-- **backend**: FastAPI + uvicorn + python-jose + bcrypt
+- **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
@@ -46,6 +46,7 @@ aicli is a shared AI memory platform integrating Claude CLI with multi-LLM suppo
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
+- **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 
 ## Key Decisions
 
@@ -56,22 +57,22 @@ aicli is a shared AI memory platform integrating Claude CLI with multi-LLM suppo
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth with tree UI; tags synced across Chat/History/Commits on save
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
-- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
+- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE/copilot/aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
-- Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors
 - Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
+- Hierarchical data model: Clients contain multiple Users; per-project tables with shared authentication/billing tables
 
 ## In Progress
 
 - Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status
+- UUID validation error in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation on 'recent' string passed to UUID field in pr_graph_runs WHERE clause; requires UUID object conversion or string validation
 - Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle still under investigation
 - Pipeline UI node properties display (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation
 - Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure
-- Backend startup retry logic edge case (2026-03-18) — Modified to handle empty project list on first load; prevents false 'project not found' errors
 - Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
@@ -90,12 +91,12 @@ aicli is a shared AI memory platform integrating Claude CLI with multi-LLM suppo
 
 ### Feature
 
-- **UI** `(25 events, 22 commits)`
-- **graph-workflow** `(15 events, 12 commits)`
+- **UI** `(27 events, 23 commits)`
+- **graph-workflow** `(16 events, 13 commits)`
+- **workflow-runner** `(14 events, 13 commits)`
+- **auth** `(14 events, 11 commits)`
+- **embeddings** `(14 events, 13 commits)`
 - **shared-memory** `(14 events, 10 commits)`
-- **auth** `(13 events, 11 commits)`
-- **workflow-runner** `(1 events)`
-- **embeddings** `(1 events)`
 - **tagging**
 - **billing**
 - **mcp**
@@ -184,4 +185,4 @@ aicli is a shared AI memory platform integrating Claude CLI with multi-LLM suppo
 
 ## AI Synthesis
 
-**[2026-03-19]** `claude_cli` — Fixed pipeline execution progress UI: _wiRunPipeline now displays active run panel with real-time node status instead of just showing toast notification. **[2026-03-18]** `session_summary` — Removed stale `ensure_project_schema()` call in main.py and fixed undefined `code_dir` variable in CLAUDE.md template generation at line 1120. **[2026-03-18]** `session_summary` — Enhanced backend startup retry logic to handle empty project list edge case on first load, preventing false 'project not found' errors. **[2026-03-19]** `in_progress` — Project visibility race condition identified: projects appear in Recent tab but fail to load as active project in main view; timing issue in backend initialization suspected. **[2026-03-10]** `session_summary` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags now loaded into memory on project access and synced only on explicit save. **[2026-03-10]** `session_summary` — Approved nested tag hierarchy expansion beyond 2-level structure via parent_id FK; confirmed login as first-level hierarchy anchor. **[Pending]** `in_progress` — memory_items and project_facts table update logic not yet implemented; blocks improved context mechanism and work item summaries. **[2026-03-10]** `session_summary` — Data persistence bug discovered: tags saved in UI disappear on session switch; root cause (rendering vs. database) requires investigation. **[2026-03-10]** `session_summary` — Intermittent backend stability issues with port 127.0.0.1:8000 binding conflicts addressed via freePort() killing stale uvicorn processes. **[Design]** `decisions` — Features now linked to work_items with sequence numbering (10000+) for improved memory and workflow status tracking across multi-agent workflows.
+**[2026-03-19]** `pipeline-ui` — Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status. **[2026-03-19]** `db-validation` — UUID validation error in pipeline run queries; 'recent' string passed to UUID field causes psycopg2 InvalidTextRepresentation in pr_graph_runs WHERE clause. **[2026-03-19]** `project-visibility` — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle under investigation. **[2026-03-19]** `workflow-ui` — Node properties display (max_retry, stateless, continue_on_fail), node removal with confirmation, and inline modal creation pending. **[2026-03-18]** `memory-endpoint` — Fixed undefined code_dir template variable at line 1120 causing CLAUDE.md generation failure; variable now properly scoped from config. **[2026-03-18]** `backend-startup` — Modified _continueToApp() retry logic to handle edge case where project list loads but returns empty (prevents false 'project not found' errors). **[2026-03-10]** `tag-hierarchy` — Approved nested tags feature via parent_id FK to expand beyond 2-level hierarchy; confirmed login as first-level only. **[2026-03-10]** `performance` — Identified redundant SQL calls; implemented load-once-on-access pattern with tag cache synced on explicit save. **[2026-03-10]** `data-persistence` — Discovered tags saved in UI disappear when switching sessions; requires investigation for UI rendering vs. database save failure. **[pending]** `memory-tables` — memory_items and project_facts table population logic unimplemented; blocks improved memory/context mechanism.

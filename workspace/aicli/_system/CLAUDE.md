@@ -33,14 +33,14 @@ You are a senior Python software architect with deep expertise in:
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends NO keys
 - Nested tags via parent_id FK: unlimited depth with tree UI; tags synced across Chat/History/Commits on save
 - History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
-- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
+- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE/copilot/aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
-- Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors
 - Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
+- Hierarchical data model: Clients contain multiple Users; per-project tables with shared authentication/billing tables
 
 ---
 

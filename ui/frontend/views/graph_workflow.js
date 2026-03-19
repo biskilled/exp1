@@ -103,8 +103,9 @@ export function renderGraphWorkflow(container) {
 
       /* Canvas area */
       .gw-canvas-area { flex:1; overflow:hidden; display:flex; flex-direction:column; }
-      .gw-pipeline-scroll { flex:1; overflow-x:auto; overflow-y:auto; padding:2rem; }
-      .gw-pipeline { display:flex; align-items:flex-start; gap:0; min-height:200px; }
+      .gw-pipeline-scroll { flex-shrink:0; overflow-x:auto; overflow-y:hidden;
+        padding:1.5rem 2rem; max-height:260px; min-height:120px; }
+      .gw-pipeline { display:flex; align-items:flex-start; gap:0; min-height:160px; }
 
       /* Node cards */
       .gw-node-card { width:210px; flex-shrink:0; border:2px solid var(--border);
@@ -225,9 +226,9 @@ export function renderGraphWorkflow(container) {
       .gw-empty { flex:1; display:flex; align-items:center; justify-content:center;
         flex-direction:column; gap:0.5rem; color:var(--muted); font-size:0.85rem; }
 
-      /* Run progress panel (bottom of canvas, full-width) */
+      /* Run progress panel (directly below nodes, fills remaining canvas space) */
       .gw-run-panel { border-top:1px solid var(--border); display:none;
-        flex-direction:column; overflow:hidden; max-height:42vh; flex-shrink:0; }
+        flex-direction:column; overflow:hidden; flex:1; min-height:0; }
       .gw-run-panel.open { display:flex; }
       .gw-rp-hdr { padding:0.45rem 0.75rem; border-bottom:1px solid var(--border); flex-shrink:0;
         display:flex; align-items:center; gap:0.75rem; }
@@ -330,21 +331,7 @@ export function renderGraphWorkflow(container) {
             </div>
             <div class="gw-pipeline" id="gw-pipeline" style="display:none"></div>
           </div>
-          <div class="gw-log" id="gw-log">
-            <div class="gw-log-hdr" onclick="window._gwToggleLog()">
-              <span>Run Log</span>
-              <span id="gw-log-status" style="font-size:0.72rem;color:var(--muted)"></span>
-              <div style="flex:1"></div>
-              <button id="gw-cancel-btn" class="btn btn-ghost btn-sm"
-                style="display:none;color:var(--red);font-size:0.7rem"
-                onclick="event.stopPropagation();window._gwCancelRun()">✕ Cancel</button>
-              <span id="gw-log-toggle">▼</span>
-            </div>
-            <div id="gw-approval-wrap" style="display:none;padding:0.5rem 0.75rem 0"></div>
-            <div class="gw-log-body" id="gw-log-body"></div>
-          </div>
-
-          <!-- Run progress panel (bottom of canvas, full-width) -->
+          <!-- Run progress panel (directly below nodes, fills remaining canvas space) -->
           <div class="gw-run-panel" id="gw-run-panel">
             <div class="gw-rp-hdr">
               <div style="display:flex;align-items:center;gap:0.75rem;flex:1;min-width:0">
@@ -364,9 +351,15 @@ export function renderGraphWorkflow(container) {
                   onclick="window._gwCloseRunPanel()">✕ Close</button>
               </div>
             </div>
+            <!-- Approval panel shown here when waiting -->
+            <div id="gw-approval-wrap" style="display:none;padding:0.5rem 0.75rem 0;flex-shrink:0"></div>
             <div style="display:flex;flex:1;overflow:hidden">
               <div class="gw-rp-timeline" id="gw-rp-timeline" style="flex:1;overflow-y:auto"></div>
               <div class="gw-rp-deliverables" id="gw-rp-deliverables" style="display:none;width:220px;border-left:1px solid var(--border)"></div>
+            </div>
+            <!-- Legacy log body (hidden, kept for backward compat) -->
+            <div id="gw-log" style="display:none">
+              <div class="gw-log-body" id="gw-log-body"></div>
             </div>
           </div>
         </div>

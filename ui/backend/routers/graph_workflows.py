@@ -258,6 +258,10 @@ async def get_run_deliverables(
     user=Depends(get_optional_user),
 ):
     """List files saved to documents/pipelines/... for this run."""
+    try:
+        uuid.UUID(run_id)
+    except ValueError:
+        raise HTTPException(400, f"Invalid run ID: {run_id!r}")
     _require_db()
     import re as _re
     from pathlib import Path
@@ -300,6 +304,10 @@ async def get_run(
     project: str = Query(""),
     user=Depends(get_optional_user),
 ):
+    try:
+        uuid.UUID(run_id)
+    except ValueError:
+        raise HTTPException(400, f"Invalid run ID: {run_id!r}")
     _require_db()
     p = _active_project(project)
     with db.conn() as conn:
