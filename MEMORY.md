@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 16:36 UTC by aicli /memory_
+_Generated: 2026-03-19 21:05 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform built on Python/FastAPI backend with PostgreSQL+pgvector semantic search, Electron/Vanilla JS frontend, and Claude Haiku synthesis. It enables multi-agent workflow execution via DAG-based graph pipelines, hierarchical project tagging, and persistent memory across sessions with dual-layer JSONL-to-synthesis processing. Currently in active development with 15+ features/tasks in progress; recent work focused on fixing UUID validation in pipeline queries, race conditions in project visibility, and memory synthesis template scoping.
 
 ## Project Facts
 
@@ -22,7 +18,24 @@ aicli is a shared AI memory platform built on Python/FastAPI backend with Postgr
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
 - **performance_optimization**: redundant_SQL_calls_eliminated
 - **pipeline/auth**: Acceptance criteria:
-error: No module named 'core.cost_tracker'
+# Feature: Authentication (auth)
+
+## User Stories
+
+- As a user, I want to create an account with email and password so that I can access the application securely
+- As a registered user, I want to log in with my credentials so that I can access my personalized account and data
+- As a user, I want to reset my forgotten password so that I can regain access to my account
+
+## Acceptance Criteria
+
+- [ ]
+
+Reviewer: ```json
+{
+  "score": 4,
+  "passed": false,
+  "issues": [
+    "CRITICAL: Implementation is incomplete - file `core/auth/password_service.py` cuts off mid-function, leaving the codebase in a non-functio
 - **stale_code_removed**: db_ensure_project_schema_call_replaced_with_ensure_shared_schema
 - **tagging_system**: nested_hierarchy_beyond_2_levels
 - **ui_library**: 3_dot_menu_pattern
@@ -81,7 +94,7 @@ error: No module named 'core.cost_tracker'
 
 ### Bug
 
-- **hooks** `(16 events, 13 commits)`
+- **hooks** `(17 events, 13 commits)`
 
 ### Doc_type
 
@@ -184,7 +197,3 @@ error: No module named 'core.cost_tracker'
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-19]** `graph_workflow` — UUID validation error in pipeline run queries: psycopg2 InvalidTextRepresentation when 'recent' string passed to UUID field; requires guard conversion before SQL execution. **[2026-03-19]** `workflow_ui` — Pipeline execution progress tracking UI fixed; _wiRunPipeline now displays active run with real-time status; flow visibility at bottom UI requires confirmation. **[2026-03-19]** `backend` — Project visibility race condition identified: projects appear in Recent but fail to display as active; timing issue during backend initialization on first load cycle. **[2026-03-19]** `workflow_ui` — Pipeline node properties (max_retry, stateless, continue_on_fail) display/configuration pending; inline modal creation and node removal with confirmation needed. **[2026-03-18]** `memory` — Fixed undefined code_dir template variable at line 1120 causing CLAUDE.md generation failure; variable now properly scoped from config. **[2026-03-18]** `backend` — Stale db.ensure_project_schema call removed from main.py; confirmed should use _ensure_shared_schema instead. **[2026-03-18]** `backend` — Backend startup race condition mitigated: retry logic updated to handle empty project list on successful fetch (prevents false 'project not found' errors). **[2026-03-10]** `database` — Redundant SQL calls eliminated via load-once-on-access pattern; tags loaded into memory on project access, synced to DB only on explicit save. **[2026-03-10]** `tagging` — Nested tags feature approved: expanded beyond 2-level hierarchy (category → tag) with unlimited depth via parent_id FK. **[pending]** `memory` — memory_items and project_facts tables exist but update logic not implemented; blocks improved memory/context mechanism.

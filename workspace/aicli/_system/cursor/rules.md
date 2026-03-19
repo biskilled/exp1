@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 16:36 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 21:05 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -48,8 +48,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-19] I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see any status/progress
-- [2026-03-19] Anotehr topic about Features, and I would like feature to be linked in Claude cli and aiCli, also I would feature top be
 - [2026-03-19] I am starting a pipeline from my feature tab (auth) - it looks like something is satring, but I do not see any update pr
 - [2026-03-19] Start to looks better. Now I do see the _work_item_pipeline but all I can see is an error saying - psycopg2.errors.Inval
 - [2026-03-19] I still have the same error - psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type uuid: "recent" [1
+- [2026-03-19] it looks better, but workflow complated after 2 seconds. I do not see any outcomes in my Documents, not even something m
+- [2026-03-19] There are some UI improvement - I do see that GET /projects/ take some time to load and that is why I dont see projects 
