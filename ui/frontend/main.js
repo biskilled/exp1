@@ -97,8 +97,8 @@ async function boot() {
 }
 
 async function _continueToApp(user) {
-  // Load project list — one retry if first attempt returns empty (backend warming up)
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Load project list — retry up to 4× in case the backend workspace scan is still warming
+  for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const data = await api.listProjects();
       const projects = data.projects || [];
@@ -107,7 +107,7 @@ async function _continueToApp(user) {
     } catch (e) {
       console.warn('Could not load projects:', e.message);
     }
-    if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
+    if (attempt < 3) await new Promise(r => setTimeout(r, 1200));
   }
 
   updateStatusDot();
@@ -116,14 +116,14 @@ async function _continueToApp(user) {
   // Show home screen immediately so the user can see all projects
   navigateTo('home');
 
-  // Auto-restore last open project in the background — home stays visible while loading
+  // Auto-restore last open project — delayed so the home list is visible first
   const recent = getRecentProjects();
   const allNames = (state.projects || []).map(p => p.name);
   const lastProject = recent.find(n => allNames.includes(n));
   if (lastProject) {
-    // Mark the project card as "restoring" then open it
     _markProjectRestoring(lastProject);
-    openProject(lastProject).catch(() => {});
+    // 800ms delay: gives home page time to render + background refresh to populate
+    setTimeout(() => openProject(lastProject).catch(() => {}), 800);
   }
 
   // Load balance chip — only when a real user is logged in

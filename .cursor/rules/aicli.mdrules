@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 02:25 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 02:33 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -30,25 +30,25 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables with indexed columns (phase/feature/session_id)
-- Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server for local dev
-- JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free; login as first-level hierarchy
-- All LLM providers as independent adapters; server holds API keys; client sends NO keys
-- Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits
-- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive
-- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
+- Flat file primary (JSONL with rotation on /memory); PostgreSQL 15+ with pgvector for semantic search; per-project DB tables with indexed columns (phase/feature/session_id)
+- Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework, no bundler); Vite dev server for local dev
+- JWT auth via python-jose + bcrypt; DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
+- All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends NO keys
+- Nested tags via parent_id FK: unlimited depth with tree UI; tags synced across Chat/History/Commits on save
+- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
+- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits on save
+- Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
-- Composable system roles (e.g., 'coding' with clean code/comments/OOP) addable to agent roles; input/output types configurable (prompts, MD files, JSON, GitHub code)
-- Stateful vs stateless reviewer roles: stateful accumulates history across interactions; stateless operates on fresh context per request
-- Port binding safety: freePort() kills stale uvicorn processes; Electron cleanup via process.exit()
+- Composable system roles (e.g., 'coding' with clean code/comments/OOP); input/output types configurable (prompts, MD files, JSON, GitHub code)
+- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
+- Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-18] I would like to start to work on the Roles. by adding system roles that can be added into any Agent roles. for example s
 - [2026-03-19] I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is not working. also I am
 - [2026-03-19] When app is stsrting - I still cannot see all project in prject page (only after I open the project). also it seems tha 
 - [2026-03-19] I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be mapped to docusmnet fo
 - [2026-03-19] I would like to extend the roles and add a way to define input type (prompts, md file located under document folder, jso
+- [2026-03-19] I dont see any change in the UI . can you check all is done properly

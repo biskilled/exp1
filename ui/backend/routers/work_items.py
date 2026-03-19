@@ -344,7 +344,8 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
 
             async def _run_graph():
                 try:
-                    ctx = await run_graph_workflow(str(workflow_id), user_input, run_id_str, p)
+                    ctx = await run_graph_workflow(str(workflow_id), user_input, run_id_str, p,
+                                                   work_item_id=item_id)
                     ac   = ctx.get("PM") or ctx.get("pm") or ""
                     impl = ctx.get("Architect") or ctx.get("architect") or ""
                     dev  = ctx.get("Developer") or ctx.get("developer") or ""
@@ -440,9 +441,13 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
                 cur.execute(
                     """INSERT INTO pr_graph_workflows (client_id, project, name, description, max_iterations, created_at, updated_at)
                        VALUES (1, %s, %s, %s, 3, NOW(), NOW())
-                       ON CONFLICT (client_id, project, name) DO NOTHING
-                       RETURNING id""",
+                       ON CONFLICT (client_id, project, name) DO NOTHING""",
                     (project, WF_NAME, "4-agent PM → Architect → Developer → Reviewer pipeline for work items"),
+                )
+                # Fetch whether inserted or already existed
+                cur.execute(
+                    "SELECT id FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND name=%s",
+                    (project, WF_NAME),
                 )
                 wf_id = cur.fetchone()[0]
 

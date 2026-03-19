@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Role extensibility and input/output type definition (2026-03-19) — Add configurable input types (prompts, MD files from documents folder, JSON) and output targets (MD files, JSON, LLM response, GitHub code); support stateful (history-accumulating) vs stateless reviewer roles
-- Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles (PM, engineer, etc.) uploading docs
-- Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected
-- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; requires UI refactor
-- System roles feature design (2026-03-18) — Architecting composable system roles; removing stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping
+- Graph workflow UI import fix (2026-03-19) — Corrected main.js to import renderGraphWorkflow from graph_workflow.js instead of stale workflow.js; fixed case statement to call correct renderer
+- Role extensibility and input/output type definition (2026-03-19) — Design configurable input types (prompts, MD files, JSON) and output targets; support stateful vs stateless reviewer roles
+- Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles uploading docs
+- Project visibility in main view (2026-03-19) — Projects load in Recent but not selectable/visible as active project in main panel; suspected race condition during backend init
+- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) non-functional; system prompts not displaying; requires UI refactor
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism

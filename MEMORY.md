@@ -1,20 +1,22 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 02:25 UTC by aicli /memory_
+_Generated: 2026-03-19 02:33 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates CLI, web, and desktop UIs with multi-LLM support (Claude, OpenAI, DeepSeek, Gemini, Grok) for collaborative development workflows. It features PostgreSQL+pgvector semantic search, nested tag hierarchies, role-based access control (admin/paid/free), MCP server integration, and node-based workflow execution with Cytoscape visualization. Current focus: extending role system with configurable input/output types, implementing Documents tab, resolving project visibility race conditions, and populating memory_items/project_facts tables for improved context delivery.
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron/Vanilla JS frontend to enable AI-assisted development workflows across multiple LLM providers. Currently at v2.2.0 with core features (auth, shared memory, tagging, embeddings, MCP integration) implemented but facing UI integration bugs (graph workflow renderer, project visibility) and pending feature completion (Documents tab, role extensibility, memory population logic).
 
 ## Project Facts
 
 - **auth_pattern**: login_as_first_level_hierarchy
+- **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
 - **data_model_hierarchy**: clients_contain_multiple_users
 - **data_persistence_issue**: tags_disappear_on_session_switch
 - **db_engine**: SQL
 - **deployment_target**: Claude_CLI_and_LLM_platforms
 - **mcp_integration**: embedding_and_data_retrieval
+- **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
 - **memory_management_pattern**: load_once_on_access_update_on_save
 - **pending_implementation**: memory_items_and_project_facts_table_population
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
@@ -48,35 +50,35 @@ aicli is a shared AI memory platform that integrates CLI, web, and desktop UIs w
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables with indexed columns (phase/feature/session_id)
-- Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server for local dev
-- JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free; login as first-level hierarchy
-- All LLM providers as independent adapters; server holds API keys; client sends NO keys
-- Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits
-- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive
-- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
+- Flat file primary (JSONL with rotation on /memory); PostgreSQL 15+ with pgvector for semantic search; per-project DB tables with indexed columns (phase/feature/session_id)
+- Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework, no bundler); Vite dev server for local dev
+- JWT auth via python-jose + bcrypt; DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
+- All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends NO keys
+- Nested tags via parent_id FK: unlimited depth with tree UI; tags synced across Chat/History/Commits on save
+- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
+- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits on save
+- Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
-- Composable system roles (e.g., 'coding' with clean code/comments/OOP) addable to agent roles; input/output types configurable (prompts, MD files, JSON, GitHub code)
-- Stateful vs stateless reviewer roles: stateful accumulates history across interactions; stateless operates on fresh context per request
-- Port binding safety: freePort() kills stale uvicorn processes; Electron cleanup via process.exit()
+- Composable system roles (e.g., 'coding' with clean code/comments/OOP); input/output types configurable (prompts, MD files, JSON, GitHub code)
+- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
+- Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 
 ## In Progress
 
-- Role extensibility and input/output type definition (2026-03-19) — Add configurable input types (prompts, MD files from documents folder, JSON) and output targets (MD files, JSON, LLM response, GitHub code); support stateful (history-accumulating) vs stateless reviewer roles
-- Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles (PM, engineer, etc.) uploading docs
-- Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected
-- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; requires UI refactor
-- System roles feature design (2026-03-18) — Architecting composable system roles; removing stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping
+- Graph workflow UI import fix (2026-03-19) — Corrected main.js to import renderGraphWorkflow from graph_workflow.js instead of stale workflow.js; fixed case statement to call correct renderer
+- Role extensibility and input/output type definition (2026-03-19) — Design configurable input types (prompts, MD files, JSON) and output targets; support stateful vs stateless reviewer roles
+- Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles uploading docs
+- Project visibility in main view (2026-03-19) — Projects load in Recent but not selectable/visible as active project in main panel; suspected race condition during backend init
+- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) non-functional; system prompts not displaying; requires UI refactor
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(13 events, 10 commits)`
+- **hooks** `(16 events, 13 commits)`
 
 ### Doc_type
 
@@ -89,8 +91,8 @@ aicli is a shared AI memory platform that integrates CLI, web, and desktop UIs w
 ### Feature
 
 - **shared-memory** `(14 events, 10 commits)`
+- **auth** `(12 events, 10 commits)`
 - **UI** `(11 events, 10 commits)`
-- **auth** `(11 events, 10 commits)`
 - **tagging**
 - **graph-workflow**
 - **billing**
@@ -182,4 +184,4 @@ aicli is a shared AI memory platform that integrates CLI, web, and desktop UIs w
 
 ## AI Synthesis
 
-**[2026-03-19]** `dev_history` — Initiated role extensibility architecture to support configurable input types (prompts, MD files, JSON) and output targets (MD files, JSON, LLM response, GitHub code); designed stateful vs stateless reviewer role patterns for handling history accumulation vs fresh-context processing. **[2026-03-19]** `in_progress` — Documents tab feature scoped: add per-project document folder with auto-creation for new projects; support multi-role uploads (PM, engineer). **[2026-03-19]** `bug_tracking` — Project visibility race condition identified: projects appear in Recent but not selectable as active in main panel; backend initialization timing suspected. **[2026-03-18]** `fixed_bugs` — Removed stale db.ensure_project_schema() call causing AttributeError; scoped code_dir variable in CLAUDE.md template; added retry logic for empty project edge case during startup. **[2026-03-18]** `design_gaps` — memory_items and project_facts table population logic remains unimplemented despite table schema existence; blocks improved memory/context delivery. **[2026-03-10]** `performance` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tag cache now synced across Chat/History/Commits on explicit save. **[2026-03-10]** `ui_improvements` — Increased action button visibility in Planner; replaced small action buttons with 3-dot menu; added unarchive capability for archived items. **[2026-03-10]** `data_bug` — Tags saved in UI disappear on session switch; root cause unclear (rendering vs database persistence); requires investigation. **[2026-03-10]** `architecture` — Approved nested tag hierarchy expansion beyond 2 levels (category → tag); confirmed login as first-level-only constraint. **[2026-03-10]** `stability` — Port binding conflicts on 127.0.0.1:8000 causing intermittent restart failures; freePort() process cleanup strategy in place.
+**[2026-03-19]** `claude_cli` — Fixed graph workflow UI import bug: main.js was importing renderWorkflow from stale workflow.js instead of renderGraphWorkflow from graph_workflow.js; corrected import statement and case handler. **[2026-03-19]** `structured_state` — Identified three parallel work streams: (1) role extensibility with configurable input/output types and stateful/stateless reviewer modes, (2) Documents tab feature with per-project folder and multi-role support, (3) project visibility bug where Recent projects don't display as active in main panel. **[2026-03-18]** `memory_summary` — Fixed AttributeError by removing stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template with proper code_dir variable scoping at line 1120; improved backend startup race condition handling for empty project list on first load. **[2026-03-18]** `design_decision` — Confirmed hierarchical data model (clients contain multiple users); identified that memory_items and project_facts tables exist but lack update logic, blocking improved memory/context mechanism. **[2026-03-10]** `session_summary` — Eliminated redundant SQL calls via load-once-on-access pattern with explicit save syncing; approved nested tags feature beyond 2-level hierarchy; identified data persistence bug where tags disappear on session switch; noted port binding conflicts and need for improved /memory suggestion visibility.

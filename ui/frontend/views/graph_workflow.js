@@ -92,6 +92,18 @@ export function renderGraphWorkflow(container) {
   _currentWf = null;
   _selectedNodeId = null;
 
+  // Guard: must have a project open
+  if (!_project) {
+    container.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                  height:100%;gap:1rem;color:var(--muted);text-align:center;padding:2rem">
+        <div style="font-size:2.5rem">◈</div>
+        <div style="font-size:1rem;font-weight:600;color:var(--fg)">No project open</div>
+        <div style="font-size:0.82rem">Open a project first, then come back to Pipelines to create and run workflows.</div>
+      </div>`;
+    return;
+  }
+
   container.innerHTML = `
     <style>
       .gw-view { display:flex; flex-direction:column; height:100%; overflow:hidden; }
@@ -229,13 +241,14 @@ export function renderGraphWorkflow(container) {
 
     <div class="gw-toolbar2">
       <button class="btn btn-primary btn-sm" id="gw-new-btn" onclick="window._gwNew()">+ New Flow</button>
+      <button class="btn btn-ghost btn-sm" onclick="window._gwFromTemplate(event)" title="Create from template">From Template ▾</button>
       <div id="gw-wf-name-wrap" style="display:none">
         <input class="gw-wf-name" id="gw-wf-name" placeholder="Flow name" onblur="window._gwSaveName(this.value)" />
       </div>
       <div style="flex:1"></div>
-      <div id="gw-run-controls" style="display:none;display:none;gap:0.4rem;align-items:center" class="flex">
-        <button class="btn btn-ghost btn-sm" id="gw-export-yaml-btn" onclick="window._gwExportYAML()">Export YAML</button>
-        <button class="btn btn-ghost btn-sm" id="gw-export-lg-btn" onclick="window._gwExportLG()">Export LangGraph</button>
+      <div id="gw-run-controls" style="display:none;gap:0.4rem;align-items:center" class="flex">
+        <button class="btn btn-ghost btn-sm" onclick="window._gwExportYAML()">Export YAML</button>
+        <button class="btn btn-ghost btn-sm" onclick="window._gwExportLG()">Export LangGraph</button>
         <label class="btn btn-ghost btn-sm" style="cursor:pointer">
           Import YAML <input type="file" accept=".yaml,.yml" style="display:none" onchange="window._gwImportYAML(this)">
         </label>
@@ -273,9 +286,14 @@ export function renderGraphWorkflow(container) {
         <div class="gw-canvas-area">
           <div class="gw-pipeline-scroll" id="gw-pipeline-scroll">
             <div class="gw-empty" id="gw-empty-state">
-              <div style="font-size:2rem">🔧</div>
-              <div>Select a flow or create a new one</div>
-              <div style="font-size:0.75rem">Then drag roles from the sidebar to build your pipeline</div>
+              <div style="font-size:2rem">◈</div>
+              <div style="font-weight:600">Select a flow or create a new one</div>
+              <div style="font-size:0.78rem">Use <b>From Template</b> to instantly create a PM→Dev→Reviewer pipeline</div>
+              <div style="font-size:0.78rem">or drag roles from the sidebar onto the canvas</div>
+              <div style="margin-top:0.5rem;display:flex;gap:0.5rem">
+                <button class="btn btn-primary btn-sm" onclick="window._gwNew()">+ New Flow</button>
+                <button class="btn btn-ghost btn-sm" onclick="window._gwFromTemplate(event)">From Template ▾</button>
+              </div>
             </div>
             <div class="gw-pipeline" id="gw-pipeline" style="display:none"></div>
           </div>
@@ -312,6 +330,7 @@ export function renderGraphWorkflow(container) {
   window._gwNew         = () => _newWorkflow();
   window._gwSaveName    = (v) => _saveWorkflowName(v);
   window._gwAddPreset   = (key) => _addFromPreset(key);
+  window._gwFromTemplate = (evt) => _showTemplateMenu(evt);
   window._gwStartRun    = () => _startRun();
   window._gwCancelRun   = () => _cancelRun();
   window._gwToggleLog   = _toggleLog;
@@ -350,15 +369,23 @@ async function _loadList() {
   try {
     const { workflows } = await api.graphWorkflows.list(_project || '');
     if (!workflows.length) {
-      el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No flows yet</div>';
+      el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No flows yet — use "From Template" to start</div>';
       return;
     }
-    el.innerHTML = workflows.map(wf => `
-      <div class="gw-wf-item ${_currentWf?.id === wf.id ? 'active' : ''}"
-           onclick="window._gwOpenWf('${wf.id}')">
-        ${_esc(wf.name)}
-      </div>
-    `).join('');
+    el.innerHTML = workflows.map(wf => {
+      const isWiPipeline = wf.name === '_work_item_pipeline';
+      const label = isWiPipeline ? '⚙ Work Item Pipeline' : _esc(wf.name);
+      const note  = isWiPipeline
+        ? '<div style="font-size:0.65rem;color:var(--accent)">Triggered from Planner ▶ Run</div>'
+        : (wf.description ? `<div style="font-size:0.65rem;color:var(--muted)">${_esc(wf.description.slice(0,40))}</div>` : '');
+      return `
+        <div class="gw-wf-item ${_currentWf?.id === wf.id ? 'active' : ''}"
+             onclick="window._gwOpenWf('${wf.id}')">
+          <div style="font-size:0.8rem">${label}</div>
+          ${note}
+        </div>
+      `;
+    }).join('');
     window._gwOpenWf = _openWorkflow;
   } catch (e) {
     el.innerHTML = `<div style="padding:0.4rem 0.75rem;color:var(--red);font-size:0.75rem">${_esc(e.message)}</div>`;
@@ -389,6 +416,7 @@ function _showWorkflow(wf) {
 }
 
 async function _newWorkflow() {
+  if (!_project) { toast('Open a project first', 'error'); return; }
   const name = prompt('Flow name:', 'My Pipeline');
   if (!name) return;
   try {
@@ -398,6 +426,140 @@ async function _newWorkflow() {
     _loadList();
   } catch (e) {
     toast(`Could not create flow: ${e.message}`, 'error');
+  }
+}
+
+// ── Template menu ─────────────────────────────────────────────────────────────
+
+const PIPELINE_TEMPLATES = [
+  {
+    key: 'pm_dev_reviewer',
+    label: 'PM → Dev → Reviewer',
+    description: 'Standard feature pipeline with approval gate',
+    nodes: [
+      { ...ROLE_PRESETS.planner,            name: 'Product Manager' },
+      { ...ROLE_PRESETS.developer,          name: 'Developer'       },
+      { ...ROLE_PRESETS.reviewer_stateless, name: 'Reviewer'        },
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 1, condition: { field: 'approved', op: 'neq', value: true }, label: 'rework' },
+    ],
+  },
+  {
+    key: 'pm_arch_dev_reviewer',
+    label: 'PM → Architect → Dev → Reviewer',
+    description: 'Full 4-agent work item pipeline (same as Planner ▶ Run)',
+    nodes: [
+      { ...ROLE_PRESETS.planner,            name: 'Product Manager' },
+      { label: 'Architect', color: '#5b8ef0', badge: 'ARC', stateless: false,
+        inputs: [{ name: 'spec.md', type: 'md' }],
+        outputs: [{ name: 'arch.md', type: 'md' }],
+        success_criteria: '', role_prompt: 'You are a Senior Architect. Write a technical implementation plan.' },
+      { ...ROLE_PRESETS.developer,          name: 'Developer'       },
+      { ...ROLE_PRESETS.reviewer_stateless, name: 'Reviewer'        },
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 2, condition: { field: 'score', op: 'lt', value: 7 }, label: 'rework' },
+    ],
+  },
+  {
+    key: 'dev_tester',
+    label: 'Dev → Tester',
+    description: 'Simple code generation + test scoring',
+    nodes: [
+      { ...ROLE_PRESETS.developer, name: 'Developer' },
+      { ...ROLE_PRESETS.tester,    name: 'Tester'    },
+    ],
+    edges: [{ from: 0, to: 1 }],
+  },
+];
+
+function _showTemplateMenu(evt) {
+  const existing = document.getElementById('_gw-tmpl-menu');
+  if (existing) { existing.remove(); return; }
+
+  const btn = evt?.currentTarget || evt?.target;
+  const rect = btn?.getBoundingClientRect?.() || { left: 100, bottom: 50 };
+
+  const menu = document.createElement('div');
+  menu.id = '_gw-tmpl-menu';
+  menu.style.cssText = `position:fixed;z-index:2000;background:var(--bg1);border:1px solid var(--border);
+    border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.18);padding:0.4rem 0;min-width:260px;
+    left:${rect.left}px;top:${(rect.bottom || 50) + 4}px`;
+
+  PIPELINE_TEMPLATES.forEach(tmpl => {
+    const item = document.createElement('div');
+    item.style.cssText = 'padding:0.5rem 0.85rem;cursor:pointer;';
+    item.innerHTML = `
+      <div style="font-size:0.82rem;font-weight:600">${_esc(tmpl.label)}</div>
+      <div style="font-size:0.7rem;color:var(--muted)">${_esc(tmpl.description)}</div>
+    `;
+    item.onmouseenter = () => item.style.background = 'var(--hover)';
+    item.onmouseleave = () => item.style.background = '';
+    item.onclick = () => { menu.remove(); _createFromTemplate(tmpl); };
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  setTimeout(() => document.addEventListener('click', function h() {
+    menu.remove(); document.removeEventListener('click', h);
+  }), 0);
+}
+
+async function _createFromTemplate(tmpl) {
+  if (!_project) { toast('Open a project first', 'error'); return; }
+  try {
+    // 1. Create workflow
+    const wf = await api.graphWorkflows.create({
+      name: tmpl.label,
+      description: tmpl.description,
+      project: _project,
+      max_iterations: 5,
+    });
+
+    // 2. Create nodes and track IDs
+    const nodeIds = [];
+    for (let i = 0; i < tmpl.nodes.length; i++) {
+      const n = tmpl.nodes[i];
+      const created = await api.graphWorkflows.createNode(wf.id, {
+        name:             n.name || n.label,
+        provider:         'claude',
+        role_prompt:      n.role_prompt || '',
+        stateless:        n.stateless || false,
+        success_criteria: n.success_criteria || '',
+        inputs:           n.inputs  || [],
+        outputs:          n.outputs || [],
+        position_x:       100 + i * 220,
+        position_y:       150,
+      });
+      nodeIds.push(created.id);
+    }
+
+    // 3. Create edges
+    for (const e of tmpl.edges) {
+      if (nodeIds[e.from] && nodeIds[e.to]) {
+        await api.graphWorkflows.createEdge(wf.id, {
+          source_node_id: nodeIds[e.from],
+          target_node_id: nodeIds[e.to],
+          condition:       e.condition || null,
+          label:           e.label    || '',
+        });
+      }
+    }
+
+    // 4. Open it
+    const full = await api.graphWorkflows.get(wf.id);
+    _currentWf = full;
+    _showWorkflow(full);
+    _loadList();
+    toast(`Created "${tmpl.label}"`, 'success');
+  } catch (e) {
+    toast(`Template failed: ${e.message}`, 'error');
   }
 }
 
@@ -824,9 +986,16 @@ function _pollRun(runId) {
 function _updateRunLog(run) {
   const statusEl = document.getElementById('gw-log-status');
   const bodyEl = document.getElementById('gw-log-body');
-  if (statusEl) statusEl.textContent = run.status;
+  if (statusEl) {
+    const statusColors = { done: '#3ecf8e', error: '#e85d75', running: '#f5a623', stopped: '#888' };
+    const c = statusColors[run.status] || 'var(--muted)';
+    statusEl.innerHTML = `<span style="color:${c}">${run.status}</span>`;
+    if (run.total_cost_usd > 0) {
+      statusEl.innerHTML += ` <span style="color:var(--muted);font-size:0.7rem">$${Number(run.total_cost_usd).toFixed(4)}</span>`;
+    }
+  }
 
-  // Update node status indicators
+  // Update node status indicators on cards
   (run.node_results || []).forEach(nr => {
     const statusDot = document.getElementById(`status-${nr.node_id}`);
     if (statusDot) {
@@ -836,15 +1005,41 @@ function _updateRunLog(run) {
   });
 
   if (!bodyEl) return;
-  const entries = (run.node_results || []).map(nr => `
-    <div class="gw-log-entry">
-      <span style="font-weight:600">${_esc(nr.node_name)}</span>
-      <span style="color:var(--muted);margin-left:0.4rem">[${nr.status}]</span>
-      <span style="margin-left:0.4rem;color:var(--muted);font-size:0.7rem">$${nr.cost_usd?.toFixed(4)||'0'}</span>
-      ${nr.output ? `<div style="color:var(--muted);font-size:0.72rem;margin-top:0.15rem;white-space:pre-wrap;max-height:80px;overflow:auto">${_esc(nr.output.slice(0, 300))}</div>` : ''}
-    </div>
-  `).join('');
-  bodyEl.innerHTML = entries || '<div style="color:var(--muted)">Waiting for results…</div>';
+
+  // Show "where results go" info when done
+  let doneMsg = '';
+  if (run.status === 'done') {
+    doneMsg = `
+      <div style="background:rgba(62,207,142,0.1);border:1px solid rgba(62,207,142,0.3);border-radius:6px;
+                  padding:0.6rem 0.75rem;margin-bottom:0.5rem;font-size:0.76rem">
+        <b>✓ Pipeline complete.</b> Results are saved in:
+        <ul style="margin:0.25rem 0 0;padding-left:1.2rem">
+          <li><b>Run context</b> — poll again or check the run log above</li>
+          <li><b>Documents tab</b> — <code>workspace/${_esc(_project)}/documents/</code></li>
+          ${_currentWf?.name === '_work_item_pipeline'
+            ? '<li><b>Planner tab</b> — open the work item to see updated Acceptance Criteria &amp; Implementation Plan</li>'
+            : ''}
+        </ul>
+      </div>`;
+  }
+
+  const entries = (run.node_results || []).map(nr => {
+    const statusColor = nr.status === 'done' ? '#3ecf8e' : nr.status === 'error' ? '#e85d75' : '#f5a623';
+    return `
+      <div class="gw-log-entry">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span style="font-weight:600;font-size:0.8rem">${_esc(nr.node_name)}</span>
+          <span style="color:${statusColor};font-size:0.72rem">${nr.status}</span>
+          <span style="color:var(--muted);font-size:0.7rem;margin-left:auto">$${nr.cost_usd?.toFixed(4)||'0.0000'}</span>
+        </div>
+        ${nr.output ? `<div style="color:var(--muted);font-size:0.72rem;margin-top:0.2rem;
+          white-space:pre-wrap;max-height:80px;overflow:auto;background:var(--bg2);
+          border-radius:4px;padding:0.3rem 0.4rem">${_esc(nr.output.slice(0, 400))}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  bodyEl.innerHTML = doneMsg + (entries || '<div style="color:var(--muted);padding:0.25rem 0">Waiting for results…</div>');
 }
 
 function _showApprovalPanel(run) {

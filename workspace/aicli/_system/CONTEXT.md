@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 02:28 UTC — do not edit manually.
+> Auto-generated 2026-03-19 02:36 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 150
-- **Last active**: 2026-03-19T02:25:43Z
+- **Sessions**: 151
+- **Last active**: 2026-03-19T02:33:48Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -34,30 +34,30 @@
 
 ## In Progress
 
-- Role extensibility and input/output type definition (2026-03-19) — Add configurable input types (prompts, MD files from documents folder, JSON) and output targets (MD files, JSON, LLM response, GitHub code); support stateful (history-accumulating) vs stateless reviewer roles
-- Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles (PM, engineer, etc.) uploading docs
-- Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected
-- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; requires UI refactor
-- System roles feature design (2026-03-18) — Architecting composable system roles; removing stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping
+- Graph workflow UI import fix (2026-03-19) — Corrected main.js to import renderGraphWorkflow from graph_workflow.js instead of stale workflow.js; fixed case statement to call correct renderer
+- Role extensibility and input/output type definition (2026-03-19) — Design configurable input types (prompts, MD files, JSON) and output targets; support stateful vs stateless reviewer roles
+- Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles uploading docs
+- Project visibility in main view (2026-03-19) — Projects load in Recent but not selectable/visible as active project in main panel; suspected race condition during backend init
+- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) non-functional; system prompts not displaying; requires UI refactor
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state
-- Flat file primary (JSONL with rotation on /memory); PostgreSQL + pgvector for semantic search; per-project DB tables with indexed columns (phase/feature/session_id)
-- Electron UI with xterm.js + Monaco; Vanilla JS frontend (no React/Vue/bundler); Vite dev server for local dev
-- JWT auth via python-jose + bcrypt; dev_mode toggle; 3 roles: admin/paid/free; login as first-level hierarchy
-- All LLM providers as independent adapters; server holds API keys; client sends NO keys
-- Nested tags via parent_id FK: unlimited depth with tree UI in Planner; tags synced across Chat/History/Commits
-- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive
-- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules)
+- Flat file primary (JSONL with rotation on /memory); PostgreSQL 15+ with pgvector for semantic search; per-project DB tables with indexed columns (phase/feature/session_id)
+- Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework, no bundler); Vite dev server for local dev
+- JWT auth via python-jose + bcrypt; DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
+- All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends NO keys
+- Nested tags via parent_id FK: unlimited depth with tree UI; tags synced across Chat/History/Commits on save
+- History rotation on /memory: configurable max_rows (default 500), creates timestamped archive (history_YYMMDDHHSS.jsonl)
+- Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- Load-once-on-access pattern eliminates redundant SQL; tag cache synced across Chat/History/Commits on save
+- Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
-- Composable system roles (e.g., 'coding' with clean code/comments/OOP) addable to agent roles; input/output types configurable (prompts, MD files, JSON, GitHub code)
-- Stateful vs stateless reviewer roles: stateful accumulates history across interactions; stateless operates on fresh context per request
-- Port binding safety: freePort() kills stale uvicorn processes; Electron cleanup via process.exit()
+- Composable system roles (e.g., 'coding' with clean code/comments/OOP); input/output types configurable (prompts, MD files, JSON, GitHub code)
+- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
+- Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 
 ---
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 02:31]** `claude_cli/claude`  
+→ I dont see any change in the UI . can you check all is done properly 
+← _The root cause was that `main.js` was importing `renderWorkflow` from the old `workflow.js` (YAML editor), while the new pipeline designer lives in `graph_workflow.js` and exports `renderGraphWorkflow_
+
 **[2026-03-19 02:02]** `claude_cli/claude`  
 → I would like to extend the roles and add a way to define input type (prompts, md file located under document folder, jso
 
@@ -201,7 +205,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-18 12:00]** `claude_cli/claude`  
 → clean that up . also I do remember there was graph support for memroy usage, but I dont see any record in. how graph tab
 ← _All endpoints working correctly. Here's a summary of everything done:  **All `mng_graph_*` references eliminated** across 4 files:  | File | Changes | |------|---------| | `routers/graph_workflows.py`_
-
-**[2026-03-18 11:51]** `claude_cli/claude`  
-→ I do see the table mng_session_tags, I also see session_tags.json file at the project workspace - is it in used , what i
-← _Everything is working. Here's the final state:  **Database — 24 tables, clean split:**  | Prefix | Count | Tables | |--------|-------|--------| | `mng_` | 14 | Global config: users, billing, entity ta_
