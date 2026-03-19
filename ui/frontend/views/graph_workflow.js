@@ -731,21 +731,18 @@ function _renderNodeCard(node) {
   const badge = roleType === 'system_designer' ? 'SYS' : roleType === 'reviewer' ? 'REV' : 'AGT';
   const isSelected = node.id === _selectedNodeId;
 
-  // Provider + model row
   const modelLabel = node.model ? `${node.provider} / ${node.model}` : (node.provider || 'claude');
+  const criteria   = node.success_criteria || '';
 
-  // IO rows (names only — no type colour needed on card)
-  const inputs  = (node.inputs  || []).map(io => _esc(io.name)).filter(Boolean);
-  const outputs = (node.outputs || []).map(io => _esc(io.name)).filter(Boolean);
-
-  // Config badges
+  // Config badges (only non-default values shown)
   const cfgBadges = [];
-  if (node.stateless)        cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-stateless" title="Runs with fresh context each time">stateless</span>`);
-  if ((node.max_retry ?? 3) !== 3) cfgBadges.push(`<span class="gw-cfg-badge" title="Max retry attempts">retry:${node.max_retry}</span>`);
-  if (node.continue_on_fail) cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-warn" title="Pipeline continues even if this node fails">cont.fail</span>`);
-  if (node.require_approval) cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-approval" title="Requires human approval before next node">approval</span>`);
+  if (node.stateless)            cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-stateless" title="Runs with fresh context each time">stateless</span>`);
+  if ((node.max_retry ?? 3) > 1) cfgBadges.push(`<span class="gw-cfg-badge" title="Max retry attempts">retry:${node.max_retry ?? 3}</span>`);
+  if (node.continue_on_fail)     cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-warn"     title="Pipeline continues even if this node fails">cont.fail</span>`);
+  if (node.require_approval)     cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-approval" title="Requires human approval before next node">approval</span>`);
 
-  const criteria = node.success_criteria || '';
+  // Prompt preview (first 60 chars of role_prompt)
+  const promptPreview = (node.role_prompt || '').trim().slice(0, 72);
 
   return `
     <div class="gw-node-card ${isSelected ? 'selected' : ''}" data-node-id="${node.id}">
@@ -760,30 +757,17 @@ function _renderNodeCard(node) {
           <span class="gw-node-row-lbl">model</span>
           <span class="gw-node-row-val">${_esc(modelLabel)}</span>
         </div>
-        ${inputs.length ? `
-        <div class="gw-node-row">
-          <span class="gw-node-row-lbl">in</span>
-          <span class="gw-node-row-val" title="${inputs.join(', ')}">${inputs.join(', ')}</span>
-        </div>` : ''}
-        ${outputs.length ? `
-        <div class="gw-node-row">
-          <span class="gw-node-row-lbl">out</span>
-          <span class="gw-node-row-val" title="${outputs.join(', ')}">${outputs.join(', ')}</span>
-        </div>` : ''}
-        <div class="gw-node-row">
-          <span class="gw-node-row-lbl">retry</span>
-          <span class="gw-node-row-val">${node.max_retry ?? 3}</span>
-        </div>
-        ${cfgBadges.length ? `<div class="gw-node-cfg-badges">${cfgBadges.join('')}</div>` : ''}
+        ${promptPreview ? `
+        <div style="margin-top:0.3rem;font-size:0.68rem;color:var(--muted);line-height:1.35;
+                    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"
+             title="${_esc(node.role_prompt||'')}">${_esc(promptPreview)}${(node.role_prompt||'').length > 72 ? '…' : ''}</div>
+        ` : `<div style="font-size:0.68rem;color:var(--muted);font-style:italic">no prompt — click to configure</div>`}
+        ${cfgBadges.length ? `<div class="gw-node-cfg-badges" style="margin-top:0.3rem">${cfgBadges.join('')}</div>` : ''}
       </div>
-      ${criteria ? `
       <div class="gw-node-footer">
         <div class="gw-node-status" id="status-${node.id}"></div>
-        <span title="Success criteria">${_esc(criteria.slice(0, 30))}${criteria.length > 30 ? '…' : ''}</span>
-      </div>` : `
-      <div class="gw-node-footer" style="padding-top:0.2rem;padding-bottom:0.25rem">
-        <div class="gw-node-status" id="status-${node.id}"></div>
-      </div>`}
+        ${criteria ? `<span title="Success criteria">${_esc(criteria.slice(0, 30))}${criteria.length > 30 ? '…' : ''}</span>` : ''}
+      </div>
     </div>
   `;
 }
@@ -818,30 +802,22 @@ function _renderDetailPanel(node) {
   if (!body) return;
   if (title) title.textContent = node.name;
 
-  const ioTypeOptions = Object.keys(IO_TYPES).map(t => `<option value="${t}">${t}</option>`).join('');
   const providerOptions = ['claude','openai','deepseek','gemini','grok'].map(p =>
     `<option value="${p}" ${node.provider===p?'selected':''}>${p}</option>`
   ).join('');
 
-  const inputsHtml = (node.inputs || []).map((io, i) => `
-    <div class="gw-io-row" data-io-idx="${i}" data-io-type="input">
-      <input value="${_esc(io.name)}" placeholder="name" data-io-name />
-      <select data-io-type-sel>${ioTypeOptions.replace(`value="${io.type}"`,`value="${io.type}" selected`)}</select>
-      <button onclick="this.closest('.gw-io-row').remove()">−</button>
-    </div>
-  `).join('');
-
-  const outputsHtml = (node.outputs || []).map((io, i) => `
-    <div class="gw-io-row" data-io-idx="${i}" data-io-type="output">
-      <input value="${_esc(io.name)}" placeholder="name" data-io-name />
-      <select data-io-type-sel>${ioTypeOptions.replace(`value="${io.type}"`,`value="${io.type}" selected`)}</select>
-      <button onclick="this.closest('.gw-io-row').remove()">−</button>
-    </div>
-  `).join('');
-
   const criteriaOptions = ['','reviewer_approved','tests_pass','score >= 80','score >= 85','approved == true'].map(v =>
     `<option value="${v}" ${node.success_criteria===v?'selected':''}>${v||'—'}</option>`
   ).join('');
+
+  // Build context hint: names of nodes that run before this one
+  const nodeIndex = _currentWf?.nodes?.findIndex(n => n.id === node.id) ?? -1;
+  const priorNames = nodeIndex > 0
+    ? (_currentWf.nodes.slice(0, nodeIndex).map(n => `"${n.name}"`).join(', '))
+    : null;
+  const ctxHint = priorNames
+    ? `Previous nodes available in context: ${priorNames}. Reference their output in your prompt.`
+    : `This is the first node. It receives the user's task as input.`;
 
   body.innerHTML = `
     <div class="gw-field">
@@ -856,27 +832,20 @@ function _renderDetailPanel(node) {
       <label>Model (optional)</label>
       <input id="dn-model" value="${_esc(node.model||'')}" placeholder="leave blank for default" />
     </div>
+    <div style="background:rgba(100,108,255,0.07);border:1px solid rgba(100,108,255,0.2);
+                border-radius:6px;padding:0.5rem 0.65rem;margin-bottom:0.75rem;font-size:0.72rem;
+                color:var(--muted);line-height:1.5">
+      <b style="color:var(--fg)">Context flow:</b> ${_esc(ctxHint)}<br>
+      Outputs from all previous nodes are automatically injected before your prompt.
+      Each node's output is also saved to <code>documents/pipelines/…</code> after the run.
+    </div>
     <div class="gw-field">
       <label>System Prompt</label>
-      <textarea id="dn-prompt" rows="5">${_esc(node.role_prompt||'')}</textarea>
-    </div>
-    <div class="gw-field">
-      <label>Inputs</label>
-      <div class="gw-io-editor" id="dn-inputs">${inputsHtml}</div>
-      <button class="gw-add-io-btn" onclick="window._gwAddIO('input')">+ Add input</button>
-    </div>
-    <div class="gw-field">
-      <label>Outputs</label>
-      <div class="gw-io-editor" id="dn-outputs">${outputsHtml}</div>
-      <button class="gw-add-io-btn" onclick="window._gwAddIO('output')">+ Add output</button>
+      <textarea id="dn-prompt" rows="8" placeholder="You are a senior product manager. The user will describe a feature — write a complete technical specification for it.">${_esc(node.role_prompt||'')}</textarea>
     </div>
     <div class="gw-field">
       <label>Success Criteria</label>
       <select id="dn-criteria">${criteriaOptions}</select>
-    </div>
-    <div class="gw-field">
-      <label>Retry Config (JSON)</label>
-      <input id="dn-retry" value="${_esc(JSON.stringify(node.retry_config||{}))}" />
     </div>
     <div class="gw-field">
       <label>Max Retry</label>
@@ -884,7 +853,7 @@ function _renderDetailPanel(node) {
     </div>
     <div class="gw-field">
       <div class="gw-toggle-row">
-        <label style="margin:0">Stateless (fresh context each run)</label>
+        <label style="margin:0">Stateless <span style="font-weight:400;color:var(--muted)">(ignore prior context)</span></label>
         <input type="checkbox" id="dn-stateless" ${node.stateless?'checked':''} />
       </div>
     </div>
@@ -901,8 +870,6 @@ function _renderDetailPanel(node) {
       </div>
     </div>
   `;
-
-  window._gwAddIO = (type) => _addIORow(type);
 }
 
 function _addIORow(type) {
@@ -931,8 +898,6 @@ function _readIORows(containerId) {
 
 async function _saveNodeFromForm() {
   if (!_selectedNodeId || !_currentWf) return;
-  let retryConfig = {};
-  try { retryConfig = JSON.parse(document.getElementById('dn-retry')?.value || '{}'); } catch {}
 
   const data = {
     name:             document.getElementById('dn-name')?.value || '',
@@ -944,9 +909,6 @@ async function _saveNodeFromForm() {
     continue_on_fail: document.getElementById('dn-continue-fail')?.checked || false,
     require_approval: document.getElementById('dn-approval')?.checked || false,
     max_retry:        parseInt(document.getElementById('dn-max-retry')?.value || '3', 10),
-    retry_config:     retryConfig,
-    inputs:           _readIORows('dn-inputs'),
-    outputs:          _readIORows('dn-outputs'),
   };
 
   try {

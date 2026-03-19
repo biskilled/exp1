@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 13:03 UTC — do not edit manually.
+> Auto-generated 2026-03-19 13:17 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 157
-- **Last active**: 2026-03-19T13:00:01Z
+- **Sessions**: 158
+- **Last active**: 2026-03-19T13:16:29Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -34,12 +34,12 @@
 
 ## In Progress
 
-- Pipeline UI enhancements (2026-03-19) — Added node properties display (max_retry, stateless, continue_on_fail); implemented node removal with confirmation dialog; renamed '+ New Flow' to '+ New Pipeline'; replaced native dialogs with inline modal
-- Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS removed; MEMORY.md updates pending
-- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project; backend init timing issue; requires investigation of project.md loading vs app startup
-- Graph workflow UI import fix (2026-03-19) — Fixed main.js imports for graph_workflow.js; corrected case statements for proper renderer routing
-- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context; requires implementation and testing
-- Documents tab feature (2026-03-19) — Add Documents tab mapped to per-project folder; auto-create for new projects; support multiple roles uploading docs
+- Pipeline UI node properties (2026-03-19) — Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation
+- Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; MEMORY.md updates pending
+- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue under investigation
+- Graph workflow UI routing fix (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
+- Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
+- Documents tab feature — Add per-project folder mapping; auto-create for new projects; support multi-role document uploads
 
 ## Key Decisions
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 13:13]** `claude_cli/claude`  
+→ UI improvement - new nodes in Pipeline we need to show more details at the node (same as it was) like model, input/outpu
+← _Good — the polling code at line 1158 still finds the element by ID, and `className` assignment will trigger the `.running`/`.done`/`.error` CSS which now uses `display:inline-block`. Everything is con_
+
 **[2026-03-19 12:46]** `claude_cli/claude`  
 → UI improvmenet - in pipeline for each node - can you add more properties (max retry, stateless, continue on fail - so us
 ← _Done. Here's a summary of all changes made to `graph_workflow.js`:  **Buttons & labels:** - `+ New Flow` → `+ New Pipeline` (toolbar button, empty state button, modal title) - `Saved Flows` → `Saved P_
@@ -203,7 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-18 20:17]** `claude_cli/claude`  
 → Few more strucure - users are also part of client (client can have mutiple users). Also I would like to understand if yo
 ← _Both fixes are in place. The `from pathlib import Path` import is now added, `mng_users.client_id` FK is defined, and the `history.jsonl` backfill code at line 1017 will now work correctly.  The backe_
-
-**[2026-03-18 20:03]** `claude_cli/claude`  
-→ Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
-← _Now also fix `_continueToApp` — if projects load succeeds but returns empty (e.g. race condition), retry once:_

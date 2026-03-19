@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 13:00 UTC by aicli /memory_
+_Generated: 2026-03-19 13:16 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron UI to manage multi-agent workflows, semantic memory search, and project state across multiple LLM providers. Currently at v2.2.0, the project focuses on resolving workflow visualization, project initialization timing issues, and completing table population logic for enhanced context-aware memory synthesis.
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to manage multi-agent workflows, project context, and semantic memory across LLM platforms. It uses flat-file JSONL for primary storage with PostgreSQL/pgvector for semantic search, supports nested tagging, multi-agent async DAG workflows with visual graph editor, and MCP integration for memory/entity management. Current focus: fixing project visibility race conditions, completing pipeline UI enhancements, and implementing memory_items/project_facts population for improved context synthesis.
 
 ## Project Facts
 
@@ -67,12 +67,12 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ## In Progress
 
-- Pipeline UI enhancements (2026-03-19) — Added node properties display (max_retry, stateless, continue_on_fail); implemented node removal with confirmation dialog; renamed '+ New Flow' to '+ New Pipeline'; replaced native dialogs with inline modal
-- Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS removed; MEMORY.md updates pending
-- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project; backend init timing issue; requires investigation of project.md loading vs app startup
-- Graph workflow UI import fix (2026-03-19) — Fixed main.js imports for graph_workflow.js; corrected case statements for proper renderer routing
-- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context; requires implementation and testing
-- Documents tab feature (2026-03-19) — Add Documents tab mapped to per-project folder; auto-create for new projects; support multiple roles uploading docs
+- Pipeline UI node properties (2026-03-19) — Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation
+- Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; MEMORY.md updates pending
+- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue under investigation
+- Graph workflow UI routing fix (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
+- Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
+- Documents tab feature — Add per-project folder mapping; auto-create for new projects; support multi-role document uploads
 
 ## Active Features / Bugs / Tasks
 
@@ -82,19 +82,19 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ### Doc_type
 
-- **low-level-design** `(1 events)`
 - **high-level-design** `(1 events)`
-- **Test**
-- **customer-meeting** — dsds
+- **low-level-design** `(1 events)`
 - **retrospective**
+- **customer-meeting** — dsds
+- **Test**
 
 ### Feature
 
 - **shared-memory** `(14 events, 10 commits)`
 - **auth** `(13 events, 11 commits)`
-- **UI** `(11 events, 10 commits)`
+- **UI** `(12 events, 10 commits)`
+- **graph-workflow** `(1 events)`
 - **tagging**
-- **graph-workflow**
 - **billing**
 - **embeddings**
 - **mcp**
@@ -184,4 +184,4 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ## AI Synthesis
 
-**[2026-03-19]** `development_history` — Pipeline UI enhanced with node property display (max_retry, stateless, continue_on_fail flags) and visual node removal with confirmation; renamed workflow UI labels from 'Flow' to 'Pipeline'; replaced native dialogs with inline modals for better UX. **[2026-03-19]** `in_progress` — Multi-agent workflow execution continues with retry/continue logic per node; graph workflow UI routing fixed; identified project visibility race condition where active project fails to display despite appearing in Recent list; backend startup timing issue requires investigation. **[2026-03-18]** `development_history` — Fixed critical backend issues: removed stale `db.ensure_project_schema()` call in main.py; fixed undefined `code_dir` variable in CLAUDE.md template at line 1120; improved startup race condition handling to account for empty project list edge case. **[2026-03-10]** `development_history` — Identified database performance bottleneck from redundant SQL calls; implemented load-once-on-access pattern with explicit save-only updates; approved nested tag hierarchy expansion; discovered tag persistence bug across session switches; recommended UI visibility improvements for memory suggestions and action buttons. **[2026-03-10]** `development_history` — Addressed backend stability issue with port 127.0.0.1:8000 binding conflicts causing intermittent restart failures; confirmed data model hierarchy (clients contain multiple users); marked memory_items/project_facts table population as pending implementation.
+**[2026-03-19]** `claude_cli` — Pipeline UI enhanced with inline node property display (model, input/output, max_retry, stateless, continue_on_fail flags); node removal dialog and modal-based pipeline creation implemented; visibility of (x) button improved via CSS inline-block. **[2026-03-19]** `claude_cli` — Multi-agent workflow execution logic refined; retry/continue per-node flags now functional; MEMORY.md updates pending. **[2026-03-19]** `investigation` — Project visibility race condition identified: projects appear in Recent list but not selectable as active project; suspected backend initialization timing issue during project list load. **[2026-03-19]** `fix` — Graph workflow UI routing corrected; main.js case statements now properly delegate to graph_workflow.js renderer. **[2026-03-18]** `fix` — Backend startup race condition resolved; retry logic in _continueToApp() now handles empty project list returns on first load. **[2026-03-18]** `fix` — Memory endpoint CLAUDE.md template error fixed; code_dir variable properly scoped from config (line 1120). **[2026-03-18]** `fix` — AttributeError in main.py resolved; removed stale db.ensure_project_schema() call. **[2026-03-10]** `architecture` — Database performance optimized via load-once-on-access pattern; redundant SQL calls eliminated; tags loaded into memory on project access, updated only on explicit save. **[2026-03-10]** `feature` — Nested tag hierarchy expanded beyond 2-level; parent_id FK enables unlimited depth with tree UI; login confirmed as first-level only. **[unresolved]** `pending` — memory_items and project_facts tables exist but update logic not implemented; blocks improved context mechanism.

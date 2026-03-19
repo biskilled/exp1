@@ -224,7 +224,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         work_item = ctx.get("_work_item")
         if work_item and output and status != "error":
             try:
-                _save_node_output(project, work_item, node_name, output)
+                _save_node_output_work_item(project, work_item, node_name, output)
             except Exception as _ds:
                 log.warning(f"Could not save doc for node {node_name}: {_ds}")
 
@@ -287,8 +287,20 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
 
 # ── Document output saver ─────────────────────────────────────────────────────
 
-def _save_node_output(project: str, work_item: dict, node_name: str, output: str) -> None:
-    """Save a node's text output to the documents folder."""
+def _save_node_output(project: str, pipeline_name: str, run_id: str, node_name: str, output: str) -> None:
+    """Auto-save a node's text output to documents/pipelines/{pipeline}/{run_prefix}/{node}.md."""
+    safe_pipeline = re.sub(r"[^a-z0-9_-]", "_", pipeline_name.lower().replace(" ", "_"))[:40]
+    safe_node = re.sub(r"[^a-z0-9_]", "_", node_name.lower().replace(" ", "_"))[:40]
+    run_prefix = run_id[:8]
+    rel = f"pipelines/{safe_pipeline}/{run_prefix}/{safe_node}.md"
+    dest = Path(settings.workspace_dir) / project / "documents" / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(f"# {node_name}\n\n{output}\n")
+    log.info(f"Saved node output → documents/{rel}")
+
+
+def _save_node_output_work_item(project: str, work_item: dict, node_name: str, output: str) -> None:
+    """Save a node's text output when triggered from a Planner work item."""
     ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
     safe_name = re.sub(r"[^a-z0-9_]", "", node_name.lower().replace(" ", "_"))[:50]
     rel = f"{work_item['category']}/{work_item['slug']}/{safe_name}_{ts}.md"
@@ -315,11 +327,12 @@ class WorkflowState(TypedDict):
 _APP_REGISTRY: dict[str, tuple] = {}
 
 
-def _make_node_fn(node: dict, run_id: str, project: str, log_dir: str = ""):
+def _make_node_fn(node: dict, run_id: str, project: str, log_dir: str = "", pipeline_name: str = ""):
     """Return an async LangGraph node function from a DB node dict.
 
     Applies per-node retry (max_retry) and continue_on_fail semantics.
     If log_dir is set, appends node output to the run log file.
+    Every node's output is auto-saved to documents/pipelines/{pipeline_name}/...
     """
     node_copy = dict(node)
     max_retry = int(node_copy.get("max_retry", 3))
@@ -348,6 +361,17 @@ def _make_node_fn(node: dict, run_id: str, project: str, log_dir: str = ""):
 
         output = last_result.get("structured") or last_result.get("output", "")
         new_ctx = {**state["context"], node_copy["name"]: output}
+
+        # Auto-save to documents/pipelines/... for every successful node
+        if pipeline_name and output and last_result.get("status") != "error":
+            try:
+                _save_node_output(
+                    project, pipeline_name, run_id,
+                    node_copy["name"],
+                    output if isinstance(output, str) else json.dumps(output),
+                )
+            except Exception as _ds:
+                log.warning(f"Could not auto-save node output: {_ds}")
 
         # Append to run log file if log_dir is configured
         if log_dir:
@@ -395,6 +419,7 @@ def _build_langgraph(
     run_id: str,
     project: str,
     log_dir: str = "",
+    pipeline_name: str = "",
 ) -> tuple:
     """Construct, compile, and return (app, approval_node_names, checkpointer).
 
@@ -416,7 +441,7 @@ def _build_langgraph(
     approval_names: list[str] = []
 
     for nid, node in nodes.items():
-        builder.add_node(node["name"], _make_node_fn(node, run_id, project, log_dir=log_dir))
+        builder.add_node(node["name"], _make_node_fn(node, run_id, project, log_dir=log_dir, pipeline_name=pipeline_name))
         if node.get("require_approval"):
             approval_names.append(node["name"])
 
@@ -575,7 +600,7 @@ async def run_graph_workflow(
     log_dir = workflow.get("log_directory", "")
     if not log_dir and project:
         log_dir = str(Path(settings.workspace_dir) / project / "pipeline_logs")
-    app, approval_names, cp = _build_langgraph(nodes, edges, run_id, project, log_dir=log_dir)
+    app, approval_names, cp = _build_langgraph(nodes, edges, run_id, project, log_dir=log_dir, pipeline_name=workflow.get("name", ""))
     _APP_REGISTRY[run_id] = (app, cp)
 
     # 4. Build initial state

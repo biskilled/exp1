@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 13:00 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 13:16 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-19] Lets fix that - currently there are 2 tabs - Roles - this one is used for changing roles, update roles and add some inou
 - [2026-03-19] Yamel config need to be simple . at the moment all flows are sequece - node A -> Node B -> Node C it can have max rettry
 - [2026-03-19] system designer - only run of explicitly placed of course . retry is per node, continue is per node (default is False). 
 - [2026-03-19] can you update /memory as well to make sure this feature is stored
 - [2026-03-19] UI improvmenet - in pipeline for each node - can you add more properties (max retry, stateless, continue on fail - so us
+- [2026-03-19] UI improvement - new nodes in Pipeline we need to show more details at the node (same as it was) like model, input/outpu

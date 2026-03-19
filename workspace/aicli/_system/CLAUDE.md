@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-19] `claude_cli`: Lets fix that - currently there are 2 tabs - Roles - this one is used for changing roles, update rol
 - [2026-03-19] `claude_cli`: Yamel config need to be simple . at the moment all flows are sequece - node A -> Node B -> Node C it
 - [2026-03-19] `claude_cli`: system designer - only run of explicitly placed of course . retry is per node, continue is per node 
 - [2026-03-19] `claude_cli`:  can you update /memory as well to make sure this feature is stored 
 - [2026-03-19] `claude_cli`: UI improvmenet - in pipeline for each node - can you add more properties (max retry, stateless, cont
+- [2026-03-19] `claude_cli`: UI improvement - new nodes in Pipeline we need to show more details at the node (same as it was) lik
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
