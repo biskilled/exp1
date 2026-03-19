@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 12:02 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 12:25 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -15,10 +15,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking), agent_roles, system_roles
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
-- **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
+- **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-19] I would like to extend the roles and add a way to define input type (prompts, md file located under document folder, jso
 - [2026-03-19] I dont see any change in the UI . can you check all is done properly
 - [2026-03-19] It seems that project list is loading after the app is running as I cannot see any project when app start to run, but se
 - [2026-03-19] Lets fix that - currently there are 2 tabs - Roles - this one is used for changing roles, update roles and add some inou
 - [2026-03-19] Yamel config need to be simple . at the moment all flows are sequece - node A -> Node B -> Node C it can have max rettry
+- [2026-03-19] system designer - only run of explicitly placed of course . retry is per node, continue is per node (default is False). 

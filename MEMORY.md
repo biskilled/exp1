@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 12:02 UTC by aicli /memory_
+_Generated: 2026-03-19 12:25 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining Python CLI, FastAPI backend, and Electron frontend with PostgreSQL semantic search, multi-LLM provider support, and node-based workflow execution. Currently at v2.2.0 with active development on multi-agent workflows, project visibility fixes, and document management features; primary blocking issues are project selection race conditions, memory table population logic, and workflow UI instantiation.
 
 ## Project Facts
 
@@ -31,10 +35,10 @@ _Generated: 2026-03-19 12:02 UTC by aicli /memory_
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking), agent_roles, system_roles
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
-- **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
+- **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
@@ -63,12 +67,12 @@ _Generated: 2026-03-19 12:02 UTC by aicli /memory_
 
 ## In Progress
 
-- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project in main panel; backend init timing issue suspected; requires investigation of project.md loading timing vs app startup
-- Graph workflow UI import fix (2026-03-19) — Corrected main.js to import renderGraphWorkflow from graph_workflow.js; fixed case statement to call correct renderer
-- Pipeline/workflow creation and sampling (2026-03-19) — No sample pipelines available; unable to create new pipelines; unclear which pipelines are connected; requires UI/backend workflow instantiation and example workflows
-- Role extensibility and input/output type definition (2026-03-19) — Design configurable input types (prompts, MD files, JSON) and output targets; support stateful vs stateless reviewer roles
-- Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles uploading docs
-- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism; requires implementation and testing
+- Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS and exportLangGraph references removed; MEMORY.md updates pending
+- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project; backend init timing issue; requires investigation of project.md loading vs app startup
+- Graph workflow UI import fix (2026-03-19) — Fixed main.js imports for graph_workflow.js; corrected case statements for proper renderer routing
+- Pipeline/workflow creation and sampling (2026-03-19) — No sample pipelines available; unable to create new pipelines; requires UI/backend workflow instantiation and example workflows
+- Documents tab feature (2026-03-19) — Add Documents tab mapped to per-project folder; auto-create for new projects; support multiple roles uploading docs
+- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context; requires implementation and testing
 
 ## Active Features / Bugs / Tasks
 
@@ -177,3 +181,7 @@ _Generated: 2026-03-19 12:02 UTC by aicli /memory_
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-19]** `dev_session` — Completed multi-agent workflow node execution logic; removed stale ROLE_PRESETS/exportLangGraph references; confirmed per-node retry/continue behavior and chat/run capability scoping to current phase. **[2026-03-19]** `bug_fix` — Fixed graph workflow UI rendering by correcting main.js imports from graph_workflow.js and aligning case statement routing to proper renderer functions. **[2026-03-19]** `in_progress` — Identified project visibility race condition where projects appear in Recent list but fail to become active in main panel; suspected backend project.md loading timing issue during app startup. **[2026-03-19]** `feature_gap` — Pipeline/workflow creation UI and sample pipelines not yet implemented; blocks workflow instantiation and visibility of pipeline connections. **[2026-03-19]** `feature_gap` — Documents tab not yet implemented; requires folder mapping, auto-creation for new projects, and multi-role upload support. **[2026-03-18]** `bug_fix` — Resolved AttributeError in main.py by removing non-existent db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template variable scoping for code_dir; enhanced backend retry logic to handle empty project list on first load.
