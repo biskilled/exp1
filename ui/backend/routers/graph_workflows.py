@@ -726,6 +726,33 @@ async def make_run_decision(
     waiting_node_id = waiting.get("node_id")
     successors = waiting.get("successors", [])
 
+    # Detect work-item pipeline so we can finalize the work item when done
+    is_wi_pipeline = False
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT name FROM pr_graph_workflows WHERE id=%s", (workflow_id,))
+                wf_row = cur.fetchone()
+                is_wi_pipeline = bool(wf_row and wf_row[0] == "_work_item_pipeline")
+    except Exception:
+        pass
+
+    def _try_finalize_wi(final_ctx: dict) -> None:
+        """Call work-item pipeline finalization when the pipeline completes fully."""
+        if not is_wi_pipeline:
+            return
+        try:
+            work_item = final_ctx.get("_work_item")
+            if not work_item:
+                return
+            from routers.work_items import _finalize_work_item_pipeline
+            _finalize_work_item_pipeline(
+                project, str(work_item["id"]), run_id,
+                work_item.get("name", ""), final_ctx,
+            )
+        except Exception as _fe:
+            log.warning(f"Work-item finalization failed for run {run_id}: {_fe}")
+
     if not body.approved and not body.retry:
         # Stop the run
         with db.conn() as conn:
@@ -752,20 +779,26 @@ async def make_run_decision(
         next_nodes = successors
 
     if not next_nodes:
-        # No successors — run is done
+        # No successors — pipeline fully done
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "UPDATE pr_graph_runs SET status='done', context=%s, finished_at=NOW() WHERE id=%s",
                     (json.dumps(ctx), run_id),
                 )
+        _try_finalize_wi(ctx)
         return {"status": "done", "run_id": run_id}
 
-    asyncio.create_task(
-        resume_graph_workflow(run_id, workflow_id, project, ctx,
-                              start_node_ids=next_nodes,
-                              approved=True, retry=False, reason=body.reason)
-    )
+    async def _resume_and_finalize():
+        final_ctx = await resume_graph_workflow(
+            run_id, workflow_id, project, ctx,
+            start_node_ids=next_nodes, approved=True, retry=False, reason=body.reason,
+        )
+        # If pipeline completed (no more approval waits), finalize the work item
+        if not final_ctx.get("_waiting"):
+            _try_finalize_wi(final_ctx)
+
+    asyncio.create_task(_resume_and_finalize())
     return {"status": "resuming", "next_nodes": next_nodes, "run_id": run_id}
 
 

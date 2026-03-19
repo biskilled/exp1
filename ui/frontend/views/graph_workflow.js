@@ -1465,11 +1465,12 @@ function _showApprovalPanel(run) {
   if (!wrap) return;
   const waiting = run.context?._waiting || {};
   wrap.style.display = '';
+  const nextLabel = waiting.next_node ? ` → ${_esc(waiting.next_node)}` : '';
   wrap.innerHTML = `
     <div class="gw-approval">
-      <h4>⏸ Approval Required: ${_esc(waiting.node_name || 'Node')}</h4>
+      <h4>⏸ Review: ${_esc(waiting.node_name || 'Node')} output${nextLabel}</h4>
       <div style="font-size:0.75rem;color:var(--muted)">${_esc(waiting.approval_msg || 'Review output and approve or reject.')}</div>
-      ${waiting.output ? `<pre>${_esc(String(waiting.output).slice(0, 400))}</pre>` : ''}
+      ${waiting.output ? `<pre style="max-height:240px;overflow-y:auto;font-size:0.72rem;line-height:1.5;white-space:pre-wrap;word-break:break-word">${_esc(String(waiting.output).slice(0, 1200))}</pre>` : ''}
       <div class="gw-approval-btns">
         <button class="btn btn-primary btn-sm" onclick="window._gwDecide(true, false)">✓ Approve</button>
         <button class="btn btn-ghost btn-sm" onclick="window._gwDecide(true, true)">↩ Retry</button>

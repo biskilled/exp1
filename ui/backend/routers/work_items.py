@@ -380,41 +380,13 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                 try:
                     ctx = await run_graph_workflow(str(workflow_id), user_input, run_id_str, p,
                                                    work_item_id=item_id)
-                    # Extract node outputs by actual node names from _ensure_pipeline_workflow
-                    ac   = ctx.get("PM") or ctx.get("pm") or ctx.get("planner") or ""
-                    impl = ctx.get("Architect") or ctx.get("architect") or ""
-                    dev  = ctx.get("Developer") or ctx.get("developer") or ""
-                    rev  = ctx.get("Reviewer") or ctx.get("reviewer") or ""
-                    if isinstance(ac, dict):   ac   = ac.get("output", str(ac))
-                    if isinstance(impl, dict): impl = impl.get("output", str(impl))
-                    if isinstance(dev, dict):  dev  = dev.get("output", str(dev))
-                    if dev and impl:
-                        impl = f"{impl}\n\n## Implementation Output\n{dev}"
-                    with db.conn() as conn2:
-                        with conn2.cursor() as cur2:
-                            cur2.execute(
-                                """UPDATE pr_work_items
-                                   SET agent_status='done',
-                                       acceptance_criteria=COALESCE(NULLIF(%s,''), acceptance_criteria),
-                                       implementation_plan=COALESCE(NULLIF(%s,''), implementation_plan),
-                                       updated_at=NOW()
-                                   WHERE id=%s::uuid""",
-                                (str(ac), str(impl) if impl else "", item_id),
-                            )
-                    # Upsert a project fact so MCP / /memory picks this up
-                    if ac:
-                        _upsert_pipeline_fact(p, name, ac, rev)
-                    # Trigger feature memory synthesis in background
-                    try:
-                        from routers.projects import _summarize_feature_memory
-                        asyncio.create_task(_summarize_feature_memory(p, item_id))
-                    except Exception as _me:
-                        log.debug(f"Memory synthesis skipped: {_me}")
-                    # Save pipeline run as an interaction in history
-                    _save_pipeline_interaction(p, item_id, run_id_str, name, ac, rev)
-                    # If reviewer approved → close the feature
-                    if rev:
-                        _maybe_close_feature(p, item_id, rev)
+                    # If paused at an approval gate, don't finalize yet — wait for user approval
+                    if ctx.get("_waiting"):
+                        log.info(f"Pipeline {run_id_str} paused for approval at "
+                                 f"'{ctx['_waiting'].get('node_name')}' — awaiting user decision")
+                        return
+                    # Pipeline completed all stages — finalize the work item
+                    _finalize_work_item_pipeline(p, item_id, run_id_str, name, ctx)
                 except Exception as exc:
                     log.error(f"run_pipeline graph failed for {item_id}: {exc}", exc_info=True)
                     # Mark work item as error so it doesn't stay stuck at 'running'
@@ -632,92 +604,198 @@ def _upsert_pipeline_fact(project: str, item_name: str, ac: str, reviewer_output
         log.debug(f"Could not upsert pipeline fact: {_fe}")
 
 
-async def _ensure_pipeline_workflow(project: str) -> int | None:
-    """Find or create the '_work_item_pipeline' graph workflow for this project.
+def _finalize_work_item_pipeline(
+    project: str, item_id: str, run_id: str, item_name: str, ctx: dict
+) -> None:
+    """Finalize a completed work item pipeline run.
 
-    Returns the workflow id (int), or None if DB is unavailable.
-    Seeds the workflow with 4 nodes (PM, Architect, Developer, Reviewer) using
-    agent_roles if they exist, otherwise inline prompts.
-    f"""
+    Called after all approval gates pass and the pipeline is fully done.
+    Updates the work item, saves a project fact, writes to interaction history,
+    and closes the feature if the reviewer approved.
+    """
+    ac   = ctx.get("PM")       or ctx.get("pm")       or ""
+    impl = ctx.get("Architect") or ctx.get("architect") or ""
+    dev  = ctx.get("Developer") or ctx.get("developer") or ""
+    rev  = ctx.get("Reviewer")  or ctx.get("reviewer")  or ""
+    if isinstance(ac,   dict): ac   = ac.get("output",   str(ac))
+    if isinstance(impl, dict): impl = impl.get("output", str(impl))
+    if isinstance(dev,  dict): dev  = dev.get("output",  str(dev))
+    if isinstance(rev,  dict): rev  = rev.get("output",  str(rev))
+    if dev and impl:
+        impl = f"{impl}\n\n## Implementation Output\n{dev}"
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE pr_work_items
+                       SET agent_status='done',
+                           acceptance_criteria=COALESCE(NULLIF(%s,''), acceptance_criteria),
+                           implementation_plan=COALESCE(NULLIF(%s,''), implementation_plan),
+                           updated_at=NOW()
+                       WHERE id=%s::uuid""",
+                    (str(ac), str(impl) if impl else "", item_id),
+                )
+    except Exception as e:
+        log.error(f"Could not update work item {item_id} after pipeline: {e}")
+
+    if ac:
+        _upsert_pipeline_fact(project, item_name, ac, rev)
+
+    try:
+        from routers.projects import _summarize_feature_memory
+        asyncio.create_task(_summarize_feature_memory(project, item_id))
+    except Exception as _me:
+        log.debug(f"Memory synthesis skipped: {_me}")
+
+    _save_pipeline_interaction(project, item_id, run_id, item_name, ac, rev)
+
+    if rev:
+        _maybe_close_feature(project, item_id, rev)
+
+
+async def _ensure_pipeline_workflow(project: str) -> int | None:
+    """Find or create the '_work_item_pipeline' workflow with approval gates.
+
+    Stages:  PM (approval) → Architect (approval) → Developer → Reviewer (approval)
+    All stages use pre-defined agent roles from the DB (matched via ILIKE).
+    Nodes are always deleted and recreated on each trigger so any role/approval
+    changes are applied immediately.
+    """
     WF_NAME = "_work_item_pipeline"
     if not db.is_available():
         return None
     try:
-        existing_wf_id = None
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND name=%s",
-                    (project, WF_NAME),
-                )
-                row = cur.fetchone()
-                if row:
-                    existing_wf_id = row[0]
-
-        # Load agent_roles for the 4 stages
-        role_ids: dict[str, int] = {}
+        # ── 1. Look up agent roles via ILIKE pattern matching ─────────────────
+        role_map: dict[str, int | None] = {
+            "pm": None, "architect": None, "developer": None, "reviewer": None
+        }
+        ROLE_PATTERNS: dict[str, list[str]] = {
+            "pm":        ["%product manager%", "%pm%"],
+            "architect": ["%architect%"],
+            "developer": ["%backend developer%", "%backend dev%", "%web developer%", "%developer%"],
+            "reviewer":  ["%stateless reviewer%", "%reviewer%"],
+        }
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT name, id FROM mng_agent_roles
-                           WHERE client_id=1 AND is_active=TRUE AND project='_global'
-                           AND name IN ('Product Manager','Sr. Architect','Web Developer','Code Reviewer')"""
+                        "SELECT id, name FROM mng_agent_roles WHERE client_id=1 AND is_active=TRUE"
                     )
-                    for r in cur.fetchall():
-                        role_ids[r[0]] = r[1]
-        except Exception:
-            pass
+                    all_roles = cur.fetchall()
+            # Match each stage using patterns in order of specificity (most specific first).
+            # For each pattern, scan all roles — first matching role wins.
+            for key, patterns in ROLE_PATTERNS.items():
+                for pat in patterns:
+                    substr = pat.strip("%")
+                    for rid, rname in all_roles:
+                        if substr in (rname or "").lower():
+                            role_map[key] = rid
+                            break
+                    if role_map[key] is not None:
+                        break
+        except Exception as _re:
+            log.warning(f"Role lookup failed: {_re}")
 
+        log.info(f"_work_item_pipeline role_map for {project}: {role_map}")
         claude_model = getattr(settings, "claude_model", settings.haiku_model)
 
+        # ── 2. Stage definitions: role + approval + task instructions ─────────
         stages = [
-            ("PM", "claude", settings.haiku_model, role_ids.get("Product Manager"),
-             """You are a Product Manager analyzing a work item. You will receive:
-- The work item name, description, and any existing criteria
-- Tagged chat history, commits, and memory summaries related to this feature
-
-Your job:
-1. Briefly summarize what context you received (mention the tagged history/commits you found)
-2. Identify any ambiguities or missing information
-3. Write 3-8 clear, testable acceptance criteria (bullet list starting with '- [ ]')
-4. If critical information is missing, state what questions you would ask the team
-
-Be concise but thorough. Your output feeds directly into the Architect and Developer stages."""),
-            ("Architect", "claude", settings.haiku_model, role_ids.get("Sr. Architect"),
-             """You are a Senior Software Architect. Based on the PM's acceptance criteria and the original work item context, write a concise technical implementation plan:
-- Numbered steps
-- Specific files/modules to change or create
-- Key functions/classes to add or modify
-- Any dependencies or risks to flag
-Keep it actionable for a developer."""),
-            ("Developer", "claude", claude_model, role_ids.get("Web Developer"),
-             """You are a Senior Developer. Implement the work item according to:
-- The acceptance criteria (from PM)
-- The implementation plan (from Architect)
-- The original work item context
-
-Provide specific code changes, file edits, and explanations. If the task requires UI + backend + DB changes, cover all layers. Be concrete and complete."""),
-            ("Reviewer", "claude", settings.haiku_model, role_ids.get("Code Reviewer"),
-             """You are a Code Reviewer evaluating the Developer's output against the acceptance criteria.
-
-1. Check each acceptance criterion — is it addressed?
-2. Note any issues, gaps, or improvements needed
-3. Give an overall score 1-10
-
-Respond with valid JSON:
-{"passed": true/false, "score": 1-10, "issues": ["...", "..."], "summary": "One sentence verdict"}
-
-If score >= 7, the feature is considered done. If score < 7, list specific issues for the Developer to fix."""),
+            {
+                "name": "PM", "provider": "claude", "model": settings.haiku_model,
+                "role_key": "pm", "require_approval": True, "stateless": False,
+                "approval_msg": (
+                    "Review the PM analysis and acceptance criteria. "
+                    "Approve to proceed to Architect, or Retry to regenerate."
+                ),
+                "task_instructions": (
+                    "## Pipeline Task: Product Manager Analysis\n\n"
+                    "You have received tagged context for this work item "
+                    "(chat history, commits, prior summaries).\n\n"
+                    "Your deliverable:\n"
+                    "1. **Context Summary** — Briefly describe what you found "
+                    "in the tagged history and commits.\n"
+                    "2. **Feature Understanding** — What is this feature? "
+                    "What problem does it solve?\n"
+                    "3. **Acceptance Criteria** — Write 3-8 clear, testable criteria "
+                    "(format: `- [ ] criterion`).\n"
+                    "4. **Open Questions** — List anything unclear or missing.\n\n"
+                    "> 📋 PM analysis complete. Awaiting approval before Architect phase."
+                ),
+            },
+            {
+                "name": "Architect", "provider": "claude", "model": settings.haiku_model,
+                "role_key": "architect", "require_approval": True, "stateless": False,
+                "approval_msg": (
+                    "Review the technical implementation plan. "
+                    "Approve to start development, or Retry to regenerate."
+                ),
+                "task_instructions": (
+                    "## Pipeline Task: Technical Architecture\n\n"
+                    "Based on the PM's acceptance criteria and the original work item "
+                    "context, produce:\n\n"
+                    "1. **Implementation Plan** — Numbered steps in execution order.\n"
+                    "2. **Files to Change** — Specific paths and what changes are needed.\n"
+                    "3. **New Components** — Functions, classes, endpoints, or DB changes.\n"
+                    "4. **Risks & Dependencies** — Non-obvious decisions or risks.\n\n"
+                    "Be precise. The Developer will follow this plan exactly.\n\n"
+                    "> 🏗 Architecture plan complete. Awaiting approval before Developer phase."
+                ),
+            },
+            {
+                "name": "Developer", "provider": "claude", "model": claude_model,
+                "role_key": "developer", "require_approval": False, "stateless": False,
+                "approval_msg": "",
+                "task_instructions": (
+                    "## Pipeline Task: Implementation\n\n"
+                    "Implement the work item based on:\n"
+                    "- PM's acceptance criteria\n"
+                    "- Architect's implementation plan\n"
+                    "- Original work item context\n\n"
+                    "Provide complete, runnable code with:\n"
+                    "- File paths for each change\n"
+                    "- Full function/class implementations (not pseudocode)\n"
+                    "- Explanations for non-obvious decisions\n"
+                    "- Coverage of all layers (backend, frontend, DB) as needed"
+                ),
+            },
+            {
+                "name": "Reviewer", "provider": "claude", "model": settings.haiku_model,
+                "role_key": "reviewer", "require_approval": True, "stateless": False,
+                "approval_msg": (
+                    "Review the code assessment. "
+                    "Approve to mark this feature as Done, or Retry for another review cycle."
+                ),
+                "task_instructions": (
+                    "## Pipeline Task: Code Review (Stateless)\n\n"
+                    "You are reviewing the Developer's implementation. "
+                    "You have no prior conversation history.\n\n"
+                    "Review the implementation against the PM's acceptance criteria:\n"
+                    "1. Check each criterion — addressed? Yes/No.\n"
+                    "2. List specific issues, gaps, or improvements needed.\n"
+                    "3. Assign an overall quality score 1–10.\n\n"
+                    "Respond with valid JSON only:\n"
+                    '{"passed": true/false, "score": 1-10, '
+                    '"issues": ["...", "..."], "summary": "One sentence verdict"}\n\n'
+                    "Score ≥ 7 = passed. If the user approves this review, "
+                    "the work item will be marked Done."
+                ),
+            },
         ]
 
+        # ── 3. Upsert workflow; delete + recreate nodes so all changes apply ──
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO pr_graph_workflows (client_id, project, name, description, max_iterations, created_at, updated_at)
+                    """INSERT INTO pr_graph_workflows
+                           (client_id, project, name, description, max_iterations,
+                            created_at, updated_at)
                        VALUES (1, %s, %s, %s, 3, NOW(), NOW())
-                       ON CONFLICT (client_id, project, name) DO UPDATE SET updated_at=NOW()""",
-                    (project, WF_NAME, "4-agent PM → Architect → Developer → Reviewer pipeline for work items"),
+                       ON CONFLICT (client_id, project, name) DO UPDATE
+                           SET updated_at=NOW()""",
+                    (project, WF_NAME,
+                     "4-agent PM → Architect → Developer → Reviewer pipeline (approval gates)"),
                 )
                 cur.execute(
                     "SELECT id FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND name=%s",
@@ -725,54 +803,41 @@ If score >= 7, the feature is considered done. If score < 7, list specific issue
                 )
                 wf_id = cur.fetchone()[0]
 
-                # If workflow already existed, update node prompts (refresh with improved prompts)
-                if existing_wf_id:
-                    for node_name, provider, model, role_id, fallback_prompt in stages:
-                        prompt_to_use = "" if role_id else fallback_prompt
-                        cur.execute(
-                            """UPDATE pr_graph_nodes SET role_prompt=%s, model=%s, updated_at=NOW()
-                               WHERE workflow_id=%s AND name=%s AND (role_id IS NULL OR role_id=%s)""",
-                            (prompt_to_use, model, wf_id, node_name, role_id or 0),
-                        )
-                    log.info(f"Refreshed _work_item_pipeline node prompts for project {project}")
-                    return wf_id
+                # Always delete and recreate so role assignments + approval flags apply
+                cur.execute("DELETE FROM pr_graph_edges WHERE workflow_id=%s", (wf_id,))
+                cur.execute("DELETE FROM pr_graph_nodes WHERE workflow_id=%s", (wf_id,))
 
                 node_ids = []
-                for i, (node_name, provider, model, role_id, fallback_prompt) in enumerate(stages):
+                for i, stage in enumerate(stages):
+                    role_id = role_map.get(stage["role_key"])
                     cur.execute(
                         """INSERT INTO pr_graph_nodes
                                (workflow_id, name, provider, model, role_id, role_prompt,
-                                inject_context, require_approval, approval_msg,
+                                inject_context, require_approval, approval_msg, stateless,
                                 position_x, position_y, created_at, updated_at)
-                           VALUES (%s,%s,%s,%s,%s,%s, TRUE, FALSE, '', %s, 100, NOW(), NOW())
+                           VALUES (%s,%s,%s,%s,%s,%s, TRUE, %s, %s, %s, %s, 100, NOW(), NOW())
                            RETURNING id""",
-                        (wf_id, node_name, provider, model,
-                         role_id, "" if role_id else fallback_prompt,
-                         i * 220),
+                        (wf_id, stage["name"], stage["provider"], stage["model"],
+                         role_id, stage["task_instructions"],
+                         stage["require_approval"], stage["approval_msg"],
+                         stage["stateless"], i * 220),
                     )
                     node_ids.append(cur.fetchone()[0])
 
-                # Edges: PM→Arch, Arch→Dev, Dev→Rev, Rev→Dev (loop if score<7)
-                edge_defs = [
-                    (node_ids[0], node_ids[1], None, ""),
-                    (node_ids[1], node_ids[2], None, ""),
-                    (node_ids[2], node_ids[3], None, ""),
-                    (node_ids[3], node_ids[2],
-                     json.dumps({"op": "lt", "field": "score", "value": 7}), "retry"),
-                ]
-                for src, tgt, cond, label in edge_defs:
+                # Linear edges: PM→Arch→Dev→Rev (no automatic loop-back; user controls retry)
+                for src, tgt in zip(node_ids, node_ids[1:]):
                     cur.execute(
                         """INSERT INTO pr_graph_edges
                                (workflow_id, source_node_id, target_node_id, condition, label,
                                 created_at, updated_at)
-                           VALUES (%s,%s,%s,%s,%s, NOW(), NOW())""",
-                        (wf_id, src, tgt, cond, label),
+                           VALUES (%s,%s,%s, NULL, '', NOW(), NOW())""",
+                        (wf_id, src, tgt),
                     )
 
-        log.info(f"Created _work_item_pipeline workflow {wf_id} for project {project}")
+        log.info(f"_work_item_pipeline {wf_id} refreshed for {project} — role_map={role_map}")
         return wf_id
     except Exception as exc:
-        log.warning(f"_ensure_pipeline_workflow failed: {exc}")
+        log.warning(f"_ensure_pipeline_workflow failed: {exc}", exc_info=True)
         return None
 
 

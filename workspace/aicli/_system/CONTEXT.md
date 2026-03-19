@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 21:06 UTC — do not edit manually.
+> Auto-generated 2026-03-19 22:16 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 167
-- **Last active**: 2026-03-19T21:05:57Z
+- **Sessions**: 168
+- **Last active**: 2026-03-19T21:06:23Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -152,6 +152,9 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 22:05]** `claude_cli/claude`  
+→ Can you explain what the run pipeline is doing when it start running from the the planer/feature. I have tried to test t
+
 **[2026-03-19 20:55]** `claude_cli/claude`  
 → There are some UI improvement - I do see that GET /projects/ take some time to load and that is why I dont see projects 
 ← _All changes are confirmed in place. Here's a summary of everything done:  **prompts.js (background agent completed):** - Agent Roles on top with `flex:1` for proper spacing - System Roles at bottom wi_
@@ -207,7 +210,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-19 11:47]** `claude_cli/claude`  
 → Lets fix that - currently there are 2 tabs - Roles - this one is used for changing roles, update roles and add some inou
 ← _This is a significant architectural redesign. Let me design it properly before touching any code._
-
-**[2026-03-19 02:39]** `claude_cli/claude`  
-→ It seems that project list is loading after the app is running as I cannot see any project when app start to run, but se
-← _Now verify syntax:_

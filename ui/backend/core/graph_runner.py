@@ -109,7 +109,9 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         else:
             log.warning(f"role_file not found: {role_path}")
 
-    if not role_prompt and node.get("role_id") and db.is_available():
+    # Always load DB role's system_prompt when role_id is set.
+    # If node also has role_prompt (pipeline task instructions), combine: DB persona + task instructions.
+    if node.get("role_id") and db.is_available():
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
@@ -118,8 +120,9 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
                         (node["role_id"],),
                     )
                     row = cur.fetchone()
-                    if row:
-                        role_prompt = row[0]
+                    if row and row[0]:
+                        db_sys = row[0]
+                        role_prompt = (db_sys + "\n\n---\n\n" + role_prompt).strip() if role_prompt else db_sys
         except Exception as _re:
             log.warning(f"Could not load role {node['role_id']}: {_re}")
 
@@ -638,23 +641,34 @@ async def run_graph_workflow(
         return {"error": str(e)}
 
     ctx = dict(final_state.get("context", {}))
+    # Carry _work_item into ctx so finalization callbacks can read it
+    if final_state.get("_work_item"):
+        ctx["_work_item"] = final_state["_work_item"]
     total_cost = float(final_state.get("total_cost", 0.0))
 
     # 6. Check if waiting at approval interrupt
+    # snapshot.next[0] = the NEXT node to run after approval (e.g. "Architect").
+    # The node whose output we're reviewing is the last approval_name whose output is in ctx.
     snapshot = app.get_state(config)
     if snapshot.next:
-        # Paused at approval node
-        waiting_name = snapshot.next[0]
+        next_node_name = snapshot.next[0]
+        # Find the approval node that just ran (its output is already in ctx)
+        last_ran_name = next_node_name  # fallback
+        for aname in reversed(approval_names):
+            if aname in ctx:
+                last_ran_name = aname
+                break
         ctx["_waiting"] = {
-            "node_name": waiting_name,
-            "output": ctx.get(waiting_name, ""),
+            "node_name": last_ran_name,          # node whose output to show in approval panel
+            "next_node": next_node_name,         # node that will run after approval
+            "output": ctx.get(last_ran_name, ""),
             "approval_msg": next(
-                (n.get("approval_msg", "") for n in nodes.values() if n["name"] == waiting_name),
-                "",
+                (n.get("approval_msg", "") for n in nodes.values() if n["name"] == last_ran_name),
+                f"Review {last_ran_name} output and approve to proceed to {next_node_name}.",
             ),
         }
         _update_run_db(run_id, "waiting_approval", ctx=ctx, total_cost=total_cost)
-        log.info(f"Run {run_id} paused at '{waiting_name}' — waiting for approval")
+        log.info(f"Run {run_id}: '{last_ran_name}' complete — awaiting approval before '{next_node_name}'")
         return ctx
 
     # 7. Finalize
@@ -720,14 +734,22 @@ async def resume_graph_workflow(
         return {"error": str(e)}
 
     result_ctx = dict(final_state.get("context", {}))
+    if final_state.get("_work_item"):
+        result_ctx["_work_item"] = final_state["_work_item"]
     total_cost = float(final_state.get("total_cost", 0.0))
 
     snapshot = app.get_state(config)
     if snapshot.next:
-        waiting_name = snapshot.next[0]
+        next_node_name = snapshot.next[0]
+        last_ran_name = next_node_name
+        for aname in reversed(approval_names):
+            if aname in result_ctx:
+                last_ran_name = aname
+                break
         result_ctx["_waiting"] = {
-            "node_name": waiting_name,
-            "output": result_ctx.get(waiting_name, ""),
+            "node_name": last_ran_name,
+            "next_node": next_node_name,
+            "output": result_ctx.get(last_ran_name, ""),
         }
         _update_run_db(run_id, "waiting_approval", ctx=result_ctx, total_cost=total_cost)
         return result_ctx
