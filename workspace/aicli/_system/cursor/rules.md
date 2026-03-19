@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 02:47 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 11:50 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-19] When app is stsrting - I still cannot see all project in prject page (only after I open the project). also it seems tha 
 - [2026-03-19] I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be mapped to docusmnet fo
 - [2026-03-19] I would like to extend the roles and add a way to define input type (prompts, md file located under document folder, jso
 - [2026-03-19] I dont see any change in the UI . can you check all is done properly
 - [2026-03-19] It seems that project list is loading after the app is running as I cannot see any project when app start to run, but se
+- [2026-03-19] Lets fix that - currently there are 2 tabs - Roles - this one is used for changing roles, update roles and add some inou

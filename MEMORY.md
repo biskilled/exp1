@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 02:47 UTC by aicli /memory_
+_Generated: 2026-03-19 11:50 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform providing semantic project memory via Claude, OpenAI, DeepSeek, Gemini, and Grok adapters. Built with Python FastAPI backend, Electron+Vanilla JS frontend, PostgreSQL+pgvector semantic search, and JSONL flat-file history; features DAG-based workflow execution, nested tagging, MCP integration, and per-project document management. Currently resolving project visibility race conditions, pipeline creation workflows, and memory table population logic.
 
 ## Project Facts
 
@@ -181,7 +177,3 @@ aicli is a shared AI memory platform providing semantic project memory via Claud
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-19]** `claude_cli` — Project visibility race condition: projects appear in Recent list but not as selectable active project in main panel; suspected backend init timing issue where project.md loads after app startup. **[2026-03-19]** `main.js refactor` — Fixed graph workflow UI by correcting import from stale workflow.js to graph_workflow.js; updated case statement renderer calls. **[2026-03-19]** `workflow system` — Pipeline creation blocked; no sample pipelines available; unclear pipeline connection logic; requires workflow instantiation UI and example templates. **[2026-03-19]** `feature design` — Designed Documents tab feature to add per-project document folder after Code tab; auto-creation for new projects; multi-role document upload support. **[2026-03-18]** `runtime fixes` — Removed stale db.ensure_project_schema() call in main.py; fixed undefined code_dir variable at line 1120 in memory endpoint; added retry logic to handle empty project list on first load. **[2026-03-10]** `performance optimization` — Implemented load-once-on-access pattern: eliminated redundant SQL calls by caching tags into memory and updating DB only on explicit save. **[unresolved]** `data layer` — memory_items and project_facts tables exist but update logic not implemented; blocks memory/context improvement; requires implementation.

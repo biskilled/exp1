@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-19] `claude_cli`: When app is stsrting - I still cannot see all project in prject page (only after I open the project)
 - [2026-03-19] `claude_cli`: I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be ma
 - [2026-03-19] `claude_cli`: I would like to extend the roles and add a way to define input type (prompts, md file located under 
 - [2026-03-19] `claude_cli`: I dont see any change in the UI . can you check all is done properly 
 - [2026-03-19] `claude_cli`: It seems that project list is loading after the app is running as I cannot see any project when app 
+- [2026-03-19] `claude_cli`: Lets fix that - currently there are 2 tabs - Roles - this one is used for changing roles, update rol
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
