@@ -434,6 +434,62 @@ async def _auto_detect_session_feature(
         pass
 
 
+async def _handle_run_command(pipeline_name: str, project: str, session_id: str) -> str:
+    """Handle /run <pipeline-name> chat command.
+
+    Looks up the workflow by name in the DB and starts a background run.
+    Returns a user-facing status message.
+    """
+    if not db.is_available():
+        return "⚠ Database not available — cannot run pipelines from chat."
+
+    import uuid as _uuid
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, name FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND name=%s",
+                    (project, pipeline_name),
+                )
+                row = cur.fetchone()
+        if not row:
+            # Try partial/case-insensitive match
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT id, name FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND lower(name) LIKE %s LIMIT 1",
+                        (project, f"%{pipeline_name.lower()}%"),
+                    )
+                    row = cur.fetchone()
+        if not row:
+            return f"⚠ No pipeline named **{pipeline_name}** found. Check the Pipelines tab for available flows."
+
+        workflow_id, workflow_name = str(row[0]), row[1]
+        run_id = str(_uuid.uuid4())
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO pr_graph_runs (id, client_id, project, workflow_id, status, user_input) VALUES (%s, 1, %s, %s, 'running', %s)",
+                    (run_id, project, workflow_id, f"/run {pipeline_name}"),
+                )
+
+        from core.graph_runner import run_graph_workflow
+
+        async def _bg():
+            try:
+                await run_graph_workflow(workflow_id, f"/run {pipeline_name}", run_id, project)
+            except Exception as _e:
+                import logging
+                logging.getLogger(__name__).error(f"Chat /run failed: {_e}")
+
+        asyncio.create_task(_bg())
+        return f"▶ Started pipeline **{workflow_name}** (run ID: `{run_id[:8]}…`). Check the **Pipelines** tab → run log for live status."
+
+    except Exception as e:
+        return f"⚠ Failed to start pipeline: {e}"
+
+
 @router.post("/stream")
 async def chat_stream(
     req: ChatRequest,
@@ -461,6 +517,21 @@ async def chat_stream(
         session_id = session["id"]
 
     store.append_message(session_id, "user", req.message)
+
+    # Detect /run <pipeline-name> command
+    if req.message.strip().startswith("/run "):
+        pipeline_name = req.message.strip()[5:].strip()
+        project = settings.active_project or "default"
+        run_resp = await _handle_run_command(pipeline_name, project, req.session_id or session_id)
+
+        async def _run_sse():
+            yield f"data: {run_resp}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            _run_sse(), media_type="text/event-stream",
+            headers={"X-Session-Id": session_id},
+        )
 
     user_id = current_user.get("sub") or current_user.get("id") if current_user else None
 
@@ -498,6 +569,13 @@ async def chat(
         session_id = session["id"]
 
     store.append_message(session_id, "user", req.message)
+
+    # Detect /run <pipeline-name> command
+    if req.message.strip().startswith("/run "):
+        pipeline_name = req.message.strip()[5:].strip()
+        project = settings.active_project or "default"
+        run_msg = await _handle_run_command(pipeline_name, project, session_id)
+        return {"content": run_msg, "session_id": session_id}
 
     try:
         # Build full conversation history for multi-turn context

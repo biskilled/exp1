@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 11:50 UTC by aicli /memory_
+_Generated: 2026-03-19 12:02 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -87,7 +87,7 @@ _Generated: 2026-03-19 11:50 UTC by aicli /memory_
 ### Feature
 
 - **shared-memory** `(14 events, 10 commits)`
-- **auth** `(12 events, 10 commits)`
+- **auth** `(13 events, 11 commits)`
 - **UI** `(11 events, 10 commits)`
 - **tagging**
 - **graph-workflow**

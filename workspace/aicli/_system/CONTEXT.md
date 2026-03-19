@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 11:50 UTC — do not edit manually.
+> Auto-generated 2026-03-19 12:18 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 153
-- **Last active**: 2026-03-19T11:50:10Z
+- **Sessions**: 154
+- **Last active**: 2026-03-19T12:02:26Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 12:09]** `claude_cli/claude`  
+→ system designer - only run of explicitly placed of course . retry is per node, continue is per node (default is False). 
+
+**[2026-03-19 12:01]** `claude_cli/claude`  
+→ Yamel config need to be simple . at the moment all flows are sequece - node A -> Node B -> Node C it can have max rettry
+← _Good, I have the full picture. Let me write the architecture design now.  ---  ## Architecture Design  ### Current State vs Target  | Aspect | Today | Target | |--------|-------|--------| | Roles | Na_
+
 **[2026-03-19 11:47]** `claude_cli/claude`  
 → Lets fix that - currently there are 2 tabs - Roles - this one is used for changing roles, update roles and add some inou
 ← _This is a significant architectural redesign. Let me design it properly before touching any code._
@@ -199,10 +206,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-18 17:44]** `claude_cli/claude`  
 → it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did
 ← _Everything is working. Here's the summary of all fixes applied:  ---  **3 issues fixed:**  **1. `main.py`** — removed the stale `db.ensure_project_schema(settings.active_project)` call  **2. `database_
-
-**[2026-03-18 16:00]** `claude_cli/claude`  
-→ That is correct. it is bed pattern to use clinet name. there is already mng_users table that can manage client as well (
-
-**[2026-03-18 15:49]** `claude_cli/claude`  
-→ I would like to know what do you think about the architecure ? Assuming there might be diffrent clients (for each clinet
-← _## Architectural Review: 3-Layer Client/Project Tables  ### What's Good  The three-tier naming is clear and the seeding pattern (`mng_` → `cl_local_` on first run) is clean. For a single-tenant tool i_

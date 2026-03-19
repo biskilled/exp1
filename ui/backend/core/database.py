@@ -192,6 +192,10 @@ CREATE TABLE IF NOT EXISTS mng_agent_roles (
 );
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS
     client_id INT NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS inputs        JSONB        DEFAULT '[]';
+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS outputs       JSONB        DEFAULT '[]';
+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS role_type     VARCHAR(50)  NOT NULL DEFAULT 'agent';
+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS output_schema JSONB        DEFAULT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mar_cid_proj_name
     ON mng_agent_roles(client_id, project, name);
 CREATE INDEX IF NOT EXISTS idx_mar_cp ON mng_agent_roles(client_id, project);
@@ -437,6 +441,7 @@ CREATE TABLE IF NOT EXISTS pr_graph_workflows (
     updated_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project, name)
 );
+ALTER TABLE pr_graph_workflows ADD COLUMN IF NOT EXISTS log_directory TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_pr_gw_cp ON pr_graph_workflows(client_id, project);
 
 -- Graph nodes (LLM steps; scoped via workflow FK)
@@ -464,6 +469,9 @@ ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS outputs          JSONB   DEF
 ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS stateless        BOOLEAN DEFAULT FALSE;
 ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS retry_config     JSONB   DEFAULT '{}';
 ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS success_criteria TEXT    DEFAULT '';
+ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS order_index      INT     NOT NULL DEFAULT 0;
+ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS max_retry        INT     NOT NULL DEFAULT 3;
+ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS continue_on_fail BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Graph edges (scoped via workflow FK)
 CREATE TABLE IF NOT EXISTS pr_graph_edges (

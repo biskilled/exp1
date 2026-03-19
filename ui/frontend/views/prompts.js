@@ -317,6 +317,62 @@ function _renderRoleSystemRolesSection(roleId) {
   container.innerHTML = html;
 }
 
+const IO_TYPE_OPTIONS = ['prompt','md','code','github','tests','report','feedback','score','json'];
+
+function _ioRow(side, idx, item) {
+  const name = item?.name || '';
+  const type = item?.type || 'prompt';
+  return `<div style="display:flex;gap:0.3rem;align-items:center" data-io-idx="${idx}">
+    <input value="${_esc(name)}" placeholder="name" data-io-name="${side}"
+      style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);
+             color:var(--text);font-family:var(--font);font-size:0.68rem;padding:0.25rem 0.4rem;
+             border-radius:var(--radius);outline:none">
+    <select data-io-type="${side}"
+      style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+             font-family:var(--font);font-size:0.68rem;padding:0.25rem 0.3rem;
+             border-radius:var(--radius);outline:none">
+      ${IO_TYPE_OPTIONS.map(t => `<option value="${t}" ${type===t?'selected':''}>${t}</option>`).join('')}
+    </select>
+    <button onclick="window._rolesRemoveIO('${side}',${idx})"
+      style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0 0.2rem;font-size:0.8rem">✕</button>
+  </div>`;
+}
+
+window._rolesAddIO = function(side) {
+  const list = document.getElementById(`role-${side}s-list`);
+  if (!list) return;
+  const idx = list.children.length;
+  const div = document.createElement('div');
+  div.innerHTML = _ioRow(side, idx, {name:'', type:'prompt'});
+  list.appendChild(div.firstElementChild);
+};
+
+window._rolesRemoveIO = function(side, idx) {
+  const list = document.getElementById(`role-${side}s-list`);
+  if (!list) return;
+  const rows = list.querySelectorAll(`[data-io-idx]`);
+  rows.forEach(r => { if (parseInt(r.dataset.ioIdx) === idx) r.remove(); });
+  // Re-index
+  list.querySelectorAll('[data-io-idx]').forEach((r, i) => {
+    r.dataset.ioIdx = i;
+    r.querySelectorAll('button').forEach(b => {
+      b.setAttribute('onclick', `window._rolesRemoveIO('${side}',${i})`);
+    });
+  });
+};
+
+function _collectIO(side) {
+  const list = document.getElementById(`role-${side}s-list`);
+  if (!list) return [];
+  const result = [];
+  list.querySelectorAll('[data-io-idx]').forEach(row => {
+    const name = row.querySelector(`[data-io-name="${side}"]`)?.value?.trim() || '';
+    const type = row.querySelector(`[data-io-type="${side}"]`)?.value || 'prompt';
+    if (name) result.push({ name, type });
+  });
+  return result;
+}
+
 function _renderRoleEditor(role) {
   const body    = document.getElementById('prompts-editor-body');
   const toolbar = document.getElementById('prompts-toolbar');
@@ -366,13 +422,53 @@ function _renderRoleEditor(role) {
         </div>
       </div>
 
-      <!-- Description -->
+      <!-- Description + Role Type row -->
+      <div style="display:grid;grid-template-columns:1fr auto;gap:0.75rem;align-items:start">
+        <div>
+          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">Description</label>
+          <input id="role-description" value="${_esc(role.description || '')}" placeholder="Short description of this role's purpose…"
+            style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);
+                   color:var(--text);font-family:var(--font);font-size:0.72rem;padding:0.35rem 0.5rem;
+                   border-radius:var(--radius);outline:none">
+        </div>
+        <div>
+          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">Role Type</label>
+          <select id="role-type"
+            style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+                   font-family:var(--font);font-size:0.72rem;padding:0.35rem 0.5rem;
+                   border-radius:var(--radius);outline:none;white-space:nowrap">
+            <option value="agent" ${(role.role_type||'agent')==='agent'?'selected':''}>Agent</option>
+            <option value="system_designer" ${role.role_type==='system_designer'?'selected':''}>System Designer</option>
+            <option value="reviewer" ${role.role_type==='reviewer'?'selected':''}>Reviewer</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- IO Types -->
       <div>
-        <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">Description</label>
-        <input id="role-description" value="${_esc(role.description || '')}" placeholder="Short description of this role's purpose…"
-          style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);
-                 color:var(--text);font-family:var(--font);font-size:0.72rem;padding:0.35rem 0.5rem;
-                 border-radius:var(--radius);outline:none">
+        <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.4rem">
+          Inputs / Outputs <span style="text-transform:none;font-weight:400;opacity:0.7">(IO contract for pipeline)</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+          <div>
+            <div style="font-size:0.62rem;color:var(--muted);margin-bottom:0.3rem">Inputs</div>
+            <div id="role-inputs-list" style="display:flex;flex-direction:column;gap:0.25rem">
+              ${(role.inputs||[]).map((inp,i) => _ioRow('input', i, inp)).join('')}
+            </div>
+            <button onclick="window._rolesAddIO('input')"
+              style="margin-top:0.3rem;font-size:0.62rem;background:none;border:1px dashed var(--border);
+                     color:var(--muted);border-radius:var(--radius);padding:0.2rem 0.5rem;cursor:pointer">+ Input</button>
+          </div>
+          <div>
+            <div style="font-size:0.62rem;color:var(--muted);margin-bottom:0.3rem">Outputs</div>
+            <div id="role-outputs-list" style="display:flex;flex-direction:column;gap:0.25rem">
+              ${(role.outputs||[]).map((out,i) => _ioRow('output', i, out)).join('')}
+            </div>
+            <button onclick="window._rolesAddIO('output')"
+              style="margin-top:0.3rem;font-size:0.62rem;background:none;border:1px dashed var(--border);
+                     color:var(--muted);border-radius:var(--radius);padding:0.2rem 0.5rem;cursor:pointer">+ Output</button>
+          </div>
+        </div>
       </div>
 
       <!-- System Roles (prepended fragments) -->
@@ -411,11 +507,19 @@ async function _rolesSave(id) {
   const model        = document.getElementById('role-model')?.value?.trim();
   const description  = document.getElementById('role-description')?.value?.trim();
   const systemPrompt = document.getElementById('role-system-prompt')?.value;
+  const roleType     = document.getElementById('role-type')?.value || 'agent';
+  const inputs       = _collectIO('input');
+  const outputs      = _collectIO('output');
   if (!name) { toast('Name required', 'error'); return; }
   try {
-    const updated = await api.agentRoles.patch(id, { name, provider, model, description, system_prompt: systemPrompt });
+    const updated = await api.agentRoles.patch(id, {
+      name, provider, model, description, system_prompt: systemPrompt,
+      role_type: roleType, inputs, outputs,
+    });
     const idx = _roles.findIndex(r => r.id === id);
-    if (idx !== -1) _roles[idx] = { ..._roles[idx], ...updated, name, provider, model, description, system_prompt: systemPrompt };
+    if (idx !== -1) _roles[idx] = { ..._roles[idx], ...updated,
+      name, provider, model, description, system_prompt: systemPrompt,
+      role_type: roleType, inputs, outputs };
     _activeRole = _roles[idx] || _activeRole;
     _renderRolesList();
     toast('Role saved', 'success');

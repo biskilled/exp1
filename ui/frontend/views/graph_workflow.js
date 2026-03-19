@@ -26,52 +26,8 @@ const IO_TYPES = {
   json:     { color: '#2dd4bf', bg: 'rgba(45,212,191,0.15)', label: 'JSON' },
 };
 
-// ── Role presets ───────────────────────────────────────────────────────────────
-
-const ROLE_PRESETS = {
-  planner: {
-    label: 'Planner', color: '#9b7ef8', badge: 'SDD', stateless: false,
-    inputs:  [{ name: 'prompt',  type: 'prompt' }],
-    outputs: [{ name: 'spec.md', type: 'md' }],
-    success_criteria: 'reviewer_approved',
-    role_prompt: 'You are a senior product manager. Produce a detailed spec document.',
-  },
-  developer: {
-    label: 'Developer', color: '#3ecf8e', badge: 'DEV', stateless: false,
-    inputs:  [{ name: 'spec.md', type: 'md' }],
-    outputs: [{ name: 'code', type: 'code' }, { name: 'github_pr', type: 'github' }],
-    success_criteria: 'tests_pass',
-    role_prompt: 'You are a senior software engineer. Implement the spec.',
-  },
-  tester: {
-    label: 'Tester', color: '#f5a623', badge: 'QA', stateless: false,
-    inputs:  [{ name: 'code', type: 'code' }],
-    outputs: [{ name: 'test_report.md', type: 'tests' }, { name: 'score', type: 'score' }],
-    success_criteria: 'score >= 80',
-    role_prompt: 'You are a QA engineer. Test the code and provide a score out of 100.',
-  },
-  reviewer_stateless: {
-    label: 'Reviewer', color: '#2dd4bf', badge: '∅', stateless: true,
-    inputs:  [{ name: 'code', type: 'code' }, { name: 'spec.md', type: 'md' }],
-    outputs: [{ name: 'feedback.md', type: 'feedback' }, { name: 'approved', type: 'score' }],
-    success_criteria: 'approved == true',
-    role_prompt: 'You are a code reviewer. Review with fresh eyes (no history).',
-  },
-  reviewer_stateful: {
-    label: 'Reviewer', color: '#e85d75', badge: '●', stateless: false,
-    inputs:  [{ name: 'code', type: 'code' }, { name: 'prev_feedback', type: 'feedback' }],
-    outputs: [{ name: 'feedback.md', type: 'feedback' }, { name: 'score', type: 'score' }],
-    success_criteria: 'score >= 85',
-    role_prompt: 'You are a stateful code reviewer. Track your feedback across iterations.',
-  },
-  custom: {
-    label: 'Custom', color: '#6b7490', badge: 'NEW', stateless: false,
-    inputs:  [{ name: 'input', type: 'prompt' }],
-    outputs: [{ name: 'output', type: 'json' }],
-    success_criteria: '',
-    role_prompt: '',
-  },
-};
+// Role library: loaded from DB on tab open, used for sidebar + add-node menu
+// _roles[] is populated in _loadList() alongside workflows
 
 // ── Module state ───────────────────────────────────────────────────────────────
 
@@ -248,7 +204,6 @@ export function renderGraphWorkflow(container) {
       <div style="flex:1"></div>
       <div id="gw-run-controls" style="display:none;gap:0.4rem;align-items:center" class="flex">
         <button class="btn btn-ghost btn-sm" onclick="window._gwExportYAML()">Export YAML</button>
-        <button class="btn btn-ghost btn-sm" onclick="window._gwExportLG()">Export LangGraph</button>
         <label class="btn btn-ghost btn-sm" style="cursor:pointer">
           Import YAML <input type="file" accept=".yaml,.yml" style="display:none" onchange="window._gwImportYAML(this)">
         </label>
@@ -264,13 +219,7 @@ export function renderGraphWorkflow(container) {
         </div>
         <div class="gw-sb-section">
           <div class="gw-sb-label">Role Library</div>
-          ${Object.entries(ROLE_PRESETS).map(([key, p]) => `
-            <div class="gw-role-card" onclick="window._gwAddPreset('${key}')" title="Add to pipeline">
-              <div class="gw-role-dot" style="background:${p.color}"></div>
-              <span style="flex:1">${_esc(p.label)}</span>
-              <span class="gw-role-badge">${_esc(p.badge)}</span>
-            </div>
-          `).join('')}
+          <div id="gw-role-library"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
         </div>
         <div class="gw-sb-section">
           <div class="gw-sb-label">IO Types</div>
@@ -337,7 +286,6 @@ export function renderGraphWorkflow(container) {
   window._gwCloseDetail = _closeDetail;
   window._gwSaveNode    = _saveNodeFromForm;
   window._gwExportYAML  = _exportYAML;
-  window._gwExportLG    = _exportLangGraph;
   window._gwImportYAML  = _importYAML;
 
   _loadList();
@@ -366,30 +314,70 @@ function _download(filename, text) {
 async function _loadList() {
   const el = document.getElementById('gw-wf-list');
   if (!el) return;
-  try {
-    const { workflows } = await api.graphWorkflows.list(_project || '');
-    if (!workflows.length) {
-      el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No flows yet — use "From Template" to start</div>';
-      return;
-    }
-    el.innerHTML = workflows.map(wf => {
-      const isWiPipeline = wf.name === '_work_item_pipeline';
-      const label = isWiPipeline ? '⚙ Work Item Pipeline' : _esc(wf.name);
-      const note  = isWiPipeline
-        ? '<div style="font-size:0.65rem;color:var(--accent)">Triggered from Planner ▶ Run</div>'
-        : (wf.description ? `<div style="font-size:0.65rem;color:var(--muted)">${_esc(wf.description.slice(0,40))}</div>` : '');
-      return `
-        <div class="gw-wf-item ${_currentWf?.id === wf.id ? 'active' : ''}"
-             onclick="window._gwOpenWf('${wf.id}')">
-          <div style="font-size:0.8rem">${label}</div>
-          ${note}
-        </div>
-      `;
-    }).join('');
-    window._gwOpenWf = _openWorkflow;
-  } catch (e) {
-    el.innerHTML = `<div style="padding:0.4rem 0.75rem;color:var(--red);font-size:0.75rem">${_esc(e.message)}</div>`;
+
+  // Load workflows + roles in parallel
+  const [wfResult, roleResult] = await Promise.allSettled([
+    api.graphWorkflows.list(_project || ''),
+    api.agentRoles.list(_project || '_global'),
+  ]);
+
+  // Populate role library sidebar
+  if (roleResult.status === 'fulfilled') {
+    _roles = roleResult.value.roles || [];
+    _renderRoleLibrary();
   }
+
+  if (wfResult.status === 'rejected') {
+    el.innerHTML = `<div style="padding:0.4rem 0.75rem;color:var(--red);font-size:0.75rem">${_esc(wfResult.reason?.message || 'Error')}</div>`;
+    return;
+  }
+
+  const { workflows } = wfResult.value;
+  if (!workflows.length) {
+    el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No flows yet — use "From Template" to start</div>';
+    return;
+  }
+  el.innerHTML = workflows.map(wf => {
+    const isWiPipeline = wf.name === '_work_item_pipeline';
+    const label = isWiPipeline ? '⚙ Work Item Pipeline' : _esc(wf.name);
+    const note  = isWiPipeline
+      ? '<div style="font-size:0.65rem;color:var(--accent)">Triggered from Planner ▶ Run</div>'
+      : (wf.description ? `<div style="font-size:0.65rem;color:var(--muted)">${_esc(wf.description.slice(0,40))}</div>` : '');
+    return `
+      <div class="gw-wf-item ${_currentWf?.id === wf.id ? 'active' : ''}"
+           onclick="window._gwOpenWf('${wf.id}')">
+        <div style="font-size:0.8rem">${label}</div>
+        ${note}
+      </div>
+    `;
+  }).join('');
+  window._gwOpenWf = _openWorkflow;
+}
+
+function _renderRoleLibrary() {
+  const lib = document.getElementById('gw-role-library');
+  if (!lib) return;
+  if (!_roles.length) {
+    lib.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No roles — create them in the Roles tab</div>';
+    return;
+  }
+  // Role type → color mapping
+  const TYPE_COLORS = {
+    agent: '#3ecf8e', system_designer: '#9b7ef8', reviewer: '#2dd4bf',
+  };
+  lib.innerHTML = _roles.map(r => {
+    const color = TYPE_COLORS[r.role_type || 'agent'] || '#6b7490';
+    const badge = r.role_type === 'system_designer' ? 'SYS'
+                : r.role_type === 'reviewer' ? 'REV' : 'AGT';
+    return `
+      <div class="gw-role-card" onclick="window._gwAddFromRole(${r.id})" title="${_esc(r.description||r.name)}">
+        <div class="gw-role-dot" style="background:${color}"></div>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(r.name)}</span>
+        <span class="gw-role-badge">${badge}</span>
+      </div>
+    `;
+  }).join('');
+  window._gwAddFromRole = _addFromRole;
 }
 
 // ── Workflow open / create ────────────────────────────────────────────────────
@@ -437,43 +425,50 @@ const PIPELINE_TEMPLATES = [
     label: 'PM → Dev → Reviewer',
     description: 'Standard feature pipeline with approval gate',
     nodes: [
-      { ...ROLE_PRESETS.planner,            name: 'Product Manager' },
-      { ...ROLE_PRESETS.developer,          name: 'Developer'       },
-      { ...ROLE_PRESETS.reviewer_stateless, name: 'Reviewer'        },
+      { name: 'Product Manager', stateless: false,
+        inputs: [{name:'prompt',type:'prompt'}], outputs: [{name:'spec.md',type:'md'}],
+        role_prompt: 'You are a senior product manager. Produce a detailed spec document.' },
+      { name: 'Developer', stateless: false,
+        inputs: [{name:'spec.md',type:'md'}], outputs: [{name:'code',type:'code'}],
+        role_prompt: 'You are a senior software engineer. Implement the spec.' },
+      { name: 'Reviewer', stateless: true,
+        inputs: [{name:'code',type:'code'},{name:'spec.md',type:'md'}],
+        outputs: [{name:'feedback.md',type:'feedback'},{name:'approved',type:'score'}],
+        role_prompt: 'You are a code reviewer. Review with fresh eyes.' },
     ],
-    edges: [
-      { from: 0, to: 1 },
-      { from: 1, to: 2 },
-      { from: 2, to: 1, condition: { field: 'approved', op: 'neq', value: true }, label: 'rework' },
-    ],
+    edges: [{ from: 0, to: 1 }, { from: 1, to: 2 }],
   },
   {
     key: 'pm_arch_dev_reviewer',
     label: 'PM → Architect → Dev → Reviewer',
     description: 'Full 4-agent work item pipeline (same as Planner ▶ Run)',
     nodes: [
-      { ...ROLE_PRESETS.planner,            name: 'Product Manager' },
-      { label: 'Architect', color: '#5b8ef0', badge: 'ARC', stateless: false,
-        inputs: [{ name: 'spec.md', type: 'md' }],
-        outputs: [{ name: 'arch.md', type: 'md' }],
-        success_criteria: '', role_prompt: 'You are a Senior Architect. Write a technical implementation plan.' },
-      { ...ROLE_PRESETS.developer,          name: 'Developer'       },
-      { ...ROLE_PRESETS.reviewer_stateless, name: 'Reviewer'        },
+      { name: 'Product Manager', stateless: false,
+        inputs: [{name:'prompt',type:'prompt'}], outputs: [{name:'spec.md',type:'md'}],
+        role_prompt: 'You are a senior product manager. Produce a detailed spec document.' },
+      { name: 'Architect', stateless: false,
+        inputs: [{name:'spec.md',type:'md'}], outputs: [{name:'arch.md',type:'md'}],
+        role_prompt: 'You are a Senior Architect. Write a technical implementation plan.' },
+      { name: 'Developer', stateless: false,
+        inputs: [{name:'arch.md',type:'md'}], outputs: [{name:'code',type:'code'}],
+        role_prompt: 'You are a senior software engineer. Implement the architecture plan.' },
+      { name: 'Reviewer', stateless: true,
+        inputs: [{name:'code',type:'code'}], outputs: [{name:'score',type:'score'}],
+        role_prompt: 'You are a code reviewer. Score the code 1-10.' },
     ],
-    edges: [
-      { from: 0, to: 1 },
-      { from: 1, to: 2 },
-      { from: 2, to: 3 },
-      { from: 3, to: 2, condition: { field: 'score', op: 'lt', value: 7 }, label: 'rework' },
-    ],
+    edges: [{ from: 0, to: 1 }, { from: 1, to: 2 }, { from: 2, to: 3 }],
   },
   {
     key: 'dev_tester',
     label: 'Dev → Tester',
     description: 'Simple code generation + test scoring',
     nodes: [
-      { ...ROLE_PRESETS.developer, name: 'Developer' },
-      { ...ROLE_PRESETS.tester,    name: 'Tester'    },
+      { name: 'Developer', stateless: false,
+        inputs: [{name:'prompt',type:'prompt'}], outputs: [{name:'code',type:'code'}],
+        role_prompt: 'You are a senior software engineer. Write the code.' },
+      { name: 'Tester', stateless: false,
+        inputs: [{name:'code',type:'code'}], outputs: [{name:'score',type:'score'}],
+        role_prompt: 'You are a QA engineer. Test the code and provide a score out of 100.' },
     ],
     edges: [{ from: 0, to: 1 }],
   },
@@ -527,13 +522,15 @@ async function _createFromTemplate(tmpl) {
     for (let i = 0; i < tmpl.nodes.length; i++) {
       const n = tmpl.nodes[i];
       const created = await api.graphWorkflows.createNode(wf.id, {
-        name:             n.name || n.label,
+        name:             n.name,
         provider:         'claude',
         role_prompt:      n.role_prompt || '',
         stateless:        n.stateless || false,
         success_criteria: n.success_criteria || '',
         inputs:           n.inputs  || [],
         outputs:          n.outputs || [],
+        order_index:      i,
+        max_retry:        3,
         position_x:       100 + i * 220,
         position_y:       150,
       });
@@ -639,9 +636,12 @@ function _renderPipeline(wf) {
 }
 
 function _renderNodeCard(node) {
-  const preset = Object.values(ROLE_PRESETS).find(p => p.label === node.name) || ROLE_PRESETS.custom;
-  const dotColor = preset.color;
-  const badge = node.stateless ? '∅' : (preset.badge || 'DEV');
+  // Get color from matched DB role or fall back to type-based color
+  const TYPE_COLORS = { agent: '#3ecf8e', system_designer: '#9b7ef8', reviewer: '#2dd4bf' };
+  const matchedRole = _roles.find(r => r.id === node.role_id || r.name === node.name);
+  const roleType = matchedRole?.role_type || 'agent';
+  const dotColor = TYPE_COLORS[roleType] || '#6b7490';
+  const badge = node.stateless ? '∅' : (roleType === 'system_designer' ? 'SYS' : roleType === 'reviewer' ? 'REV' : 'AGT');
   const inputs = node.inputs || [];
   const outputs = node.outputs || [];
   const criteria = node.success_criteria || '';
@@ -770,9 +770,19 @@ function _renderDetailPanel(node) {
       <input id="dn-retry" value="${_esc(JSON.stringify(node.retry_config||{}))}" />
     </div>
     <div class="gw-field">
+      <label>Max Retry</label>
+      <input type="number" id="dn-max-retry" value="${node.max_retry ?? 3}" min="1" max="10" />
+    </div>
+    <div class="gw-field">
       <div class="gw-toggle-row">
         <label style="margin:0">Stateless (fresh context each run)</label>
         <input type="checkbox" id="dn-stateless" ${node.stateless?'checked':''} />
+      </div>
+    </div>
+    <div class="gw-field">
+      <div class="gw-toggle-row">
+        <label style="margin:0">Continue on Fail</label>
+        <input type="checkbox" id="dn-continue-fail" ${node.continue_on_fail?'checked':''} />
       </div>
     </div>
     <div class="gw-field">
@@ -822,7 +832,9 @@ async function _saveNodeFromForm() {
     role_prompt:      document.getElementById('dn-prompt')?.value || '',
     success_criteria: document.getElementById('dn-criteria')?.value || '',
     stateless:        document.getElementById('dn-stateless')?.checked || false,
+    continue_on_fail: document.getElementById('dn-continue-fail')?.checked || false,
     require_approval: document.getElementById('dn-approval')?.checked || false,
+    max_retry:        parseInt(document.getElementById('dn-max-retry')?.value || '3', 10),
     retry_config:     retryConfig,
     inputs:           _readIORows('dn-inputs'),
     outputs:          _readIORows('dn-outputs'),
@@ -845,23 +857,26 @@ async function _saveNodeFromForm() {
 // ── Add node ──────────────────────────────────────────────────────────────────
 
 function _showAddMenu(evt) {
-  // Simple: show a popup with preset choices
   const existing = document.getElementById('_gw-add-menu');
   if (existing) { existing.remove(); return; }
 
   const menu = document.createElement('div');
   menu.id = '_gw-add-menu';
   menu.style.cssText = `position:fixed;z-index:1000;background:var(--bg1);border:1px solid var(--border);
-    border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:0.25rem 0;min-width:140px;
+    border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:0.25rem 0;min-width:180px;
     left:${evt.clientX}px;top:${evt.clientY}px`;
 
-  Object.entries(ROLE_PRESETS).forEach(([key, p]) => {
+  const TYPE_COLORS = { agent: '#3ecf8e', system_designer: '#9b7ef8', reviewer: '#2dd4bf' };
+  const rolesToShow = _roles.length ? _roles : [{ id: null, name: 'Custom Node', role_type: 'agent' }];
+
+  rolesToShow.forEach(r => {
+    const color = TYPE_COLORS[r.role_type || 'agent'] || '#6b7490';
     const item = document.createElement('div');
     item.style.cssText = 'padding:0.35rem 0.75rem;cursor:pointer;font-size:0.8rem;display:flex;align-items:center;gap:0.4rem';
-    item.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${p.color};display:inline-block"></span>${_esc(p.label)}`;
+    item.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0"></span>${_esc(r.name)}`;
     item.onmouseenter = () => item.style.background = 'var(--hover)';
     item.onmouseleave = () => item.style.background = '';
-    item.onclick = () => { menu.remove(); _addFromPreset(key); };
+    item.onclick = () => { menu.remove(); r.id ? _addFromRole(r.id) : _addBlankNode(); };
     menu.appendChild(item);
   });
 
@@ -871,39 +886,25 @@ function _showAddMenu(evt) {
   }), 0);
 }
 
-async function _addFromPreset(presetKey) {
-  if (!_currentWf) {
-    toast('Open or create a flow first', 'error');
-    return;
-  }
-  const preset = ROLE_PRESETS[presetKey] || ROLE_PRESETS.custom;
+async function _addFromRole(roleId) {
+  if (!_currentWf) { toast('Open or create a flow first', 'error'); return; }
+  const role = _roles.find(r => r.id === roleId);
+  if (!role) return;
   const nodeCount = (_currentWf.nodes || []).length;
-
   try {
     const node = await api.graphWorkflows.createNode(_currentWf.id, {
-      name: preset.label,
-      provider: 'claude',
-      role_prompt: preset.role_prompt || '',
-      stateless: preset.stateless,
-      success_criteria: preset.success_criteria || '',
-      inputs: preset.inputs || [],
-      outputs: preset.outputs || [],
-      position_x: 100 + nodeCount * 200,
-      position_y: 150,
+      name:             role.name,
+      provider:         role.provider || 'claude',
+      model:            role.model || '',
+      role_id:          role.id,
+      stateless:        false,
+      inputs:           role.inputs  || [],
+      outputs:          role.outputs || [],
+      order_index:      nodeCount,
+      position_x:       100 + nodeCount * 200,
+      position_y:       150,
     });
-
-    // Auto-connect to last node
-    const existingNodes = _currentWf.nodes || [];
-    if (existingNodes.length > 0) {
-      const lastNode = existingNodes[existingNodes.length - 1];
-      try {
-        await api.graphWorkflows.createEdge(_currentWf.id, {
-          source_node_id: lastNode.id,
-          target_node_id: node.id,
-        });
-      } catch {}
-    }
-
+    await _autoConnectNode(node);
     const wf = await api.graphWorkflows.get(_currentWf.id);
     _currentWf = wf;
     _renderPipeline(wf);
@@ -911,6 +912,42 @@ async function _addFromPreset(presetKey) {
     toast(`Failed to add node: ${e.message}`, 'error');
   }
 }
+
+async function _addBlankNode() {
+  if (!_currentWf) { toast('Open or create a flow first', 'error'); return; }
+  const nodeCount = (_currentWf.nodes || []).length;
+  try {
+    const node = await api.graphWorkflows.createNode(_currentWf.id, {
+      name: 'New Node', provider: 'claude', order_index: nodeCount,
+      position_x: 100 + nodeCount * 200, position_y: 150,
+    });
+    await _autoConnectNode(node);
+    const wf = await api.graphWorkflows.get(_currentWf.id);
+    _currentWf = wf;
+    _renderPipeline(wf);
+  } catch (e) {
+    toast(`Failed to add node: ${e.message}`, 'error');
+  }
+}
+
+async function _addFromPreset(presetKey) {
+  // Legacy — just add a blank node now that we use live DB roles
+  return _addBlankNode();
+}
+
+async function _autoConnectNode(node) {
+  const existingNodes = _currentWf.nodes || [];
+  if (existingNodes.length > 0) {
+    const lastNode = existingNodes[existingNodes.length - 1];
+    try {
+      await api.graphWorkflows.createEdge(_currentWf.id, {
+        source_node_id: lastNode.id,
+        target_node_id: node.id,
+      });
+    } catch (_) {}
+  }
+}
+
 
 async function _deleteNode(nodeId) {
   if (!_currentWf) return;
@@ -1097,16 +1134,6 @@ async function _exportYAML() {
   }
 }
 
-async function _exportLangGraph() {
-  if (!_currentWf) return;
-  try {
-    const py = await api.graphWorkflows.exportLangGraph(_currentWf.id);
-    const safe = (_currentWf.name || 'workflow').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-    _download(`${safe}_langgraph.py`, py);
-  } catch (e) {
-    toast(`Export failed: ${e.message}`, 'error');
-  }
-}
 
 async function _importYAML(input) {
   const file = input.files?.[0];

@@ -60,12 +60,14 @@ class WorkflowCreate(BaseModel):
     description: str = ""
     project: str = ""
     max_iterations: int = 5
+    log_directory: str = ""
 
 
 class WorkflowUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     max_iterations: Optional[int] = None
+    log_directory: Optional[str] = None
 
 
 class NodeCreate(BaseModel):
@@ -86,6 +88,9 @@ class NodeCreate(BaseModel):
     stateless: bool = False
     retry_config: dict = {}
     success_criteria: str = ""
+    order_index: int = 0
+    max_retry: int = 3
+    continue_on_fail: bool = False
 
 
 class NodeUpdate(BaseModel):
@@ -106,6 +111,9 @@ class NodeUpdate(BaseModel):
     stateless: Optional[bool] = None
     retry_config: Optional[dict] = None
     success_criteria: Optional[str] = None
+    order_index: Optional[int] = None
+    max_retry: Optional[int] = None
+    continue_on_fail: Optional[bool] = None
 
 
 class EdgeCreate(BaseModel):
@@ -133,6 +141,7 @@ def _row_to_workflow(row) -> dict:
         "id": row[0], "project": row[1], "name": row[2],
         "description": row[3], "max_iterations": row[4],
         "created_at": row[5].isoformat() if row[5] else None,
+        "log_directory": row[6] if len(row) > 6 else "",
     }
 
 
@@ -151,6 +160,9 @@ def _row_to_node(row) -> dict:
         "stateless": row[17] if len(row) > 17 else False,
         "retry_config": row[18] if len(row) > 18 else {},
         "success_criteria": row[19] if len(row) > 19 else "",
+        "order_index": row[20] if len(row) > 20 else 0,
+        "max_retry": row[21] if len(row) > 21 else 3,
+        "continue_on_fail": row[22] if len(row) > 22 else False,
     }
 
 
@@ -178,7 +190,7 @@ async def list_workflows(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, project, name, description, max_iterations, created_at "
+                "SELECT id, project, name, description, max_iterations, created_at, log_directory "
                 "FROM pr_graph_workflows WHERE client_id=1 AND project=%s ORDER BY created_at DESC",
                 (p,),
             )
@@ -194,11 +206,11 @@ async def create_workflow(body: WorkflowCreate, user=Depends(get_optional_user))
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO pr_graph_workflows (id, client_id, project, name, description, max_iterations)
-                   VALUES (%s, 1, %s, %s, %s, %s)
+                """INSERT INTO pr_graph_workflows (id, client_id, project, name, description, max_iterations, log_directory)
+                   VALUES (%s, 1, %s, %s, %s, %s, %s)
                    ON CONFLICT (client_id, project, name) DO NOTHING
-                   RETURNING id, project, name, description, max_iterations, created_at""",
-                (wf_id, p, body.name, body.description, body.max_iterations),
+                   RETURNING id, project, name, description, max_iterations, created_at, log_directory""",
+                (wf_id, p, body.name, body.description, body.max_iterations, body.log_directory),
             )
             row = cur.fetchone()
     return _row_to_workflow(row)
@@ -278,7 +290,7 @@ async def get_workflow(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, project, name, description, max_iterations, created_at "
+                "SELECT id, project, name, description, max_iterations, created_at, log_directory "
                 "FROM pr_graph_workflows WHERE id=%s",
                 (workflow_id,),
             )
@@ -291,8 +303,9 @@ async def get_workflow(
                 """SELECT id, workflow_id, name, role_file, role_prompt, provider, model,
                           output_schema, inject_context, position_x, position_y, created_at,
                           require_approval, approval_msg, role_id,
-                          inputs, outputs, stateless, retry_config, success_criteria
-                   FROM pr_graph_nodes WHERE workflow_id=%s ORDER BY created_at""",
+                          inputs, outputs, stateless, retry_config, success_criteria,
+                          order_index, max_retry, continue_on_fail
+                   FROM pr_graph_nodes WHERE workflow_id=%s ORDER BY order_index, created_at""",
                 (workflow_id,),
             )
             wf["nodes"] = [_row_to_node(r) for r in cur.fetchall()]
@@ -324,6 +337,8 @@ async def update_workflow(
         fields.append("description=%s"); values.append(body.description)
     if body.max_iterations is not None:
         fields.append("max_iterations=%s"); values.append(body.max_iterations)
+    if body.log_directory is not None:
+        fields.append("log_directory=%s"); values.append(body.log_directory)
     if not fields:
         raise HTTPException(400, "Nothing to update")
     values.append(workflow_id)
@@ -369,12 +384,14 @@ async def create_node(
                    (id, workflow_id, name, role_id, role_file, role_prompt, provider, model,
                     output_schema, inject_context, require_approval, approval_msg,
                     position_x, position_y,
-                    inputs, outputs, stateless, retry_config, success_criteria)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    inputs, outputs, stateless, retry_config, success_criteria,
+                    order_index, max_retry, continue_on_fail)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    RETURNING id, workflow_id, name, role_file, role_prompt, provider, model,
                              output_schema, inject_context, position_x, position_y, created_at,
                              require_approval, approval_msg, role_id,
-                             inputs, outputs, stateless, retry_config, success_criteria""",
+                             inputs, outputs, stateless, retry_config, success_criteria,
+                             order_index, max_retry, continue_on_fail""",
                 (
                     node_id, workflow_id, body.name, body.role_id, body.role_file,
                     body.role_prompt, body.provider, body.model,
@@ -383,6 +400,7 @@ async def create_node(
                     body.position_x, body.position_y,
                     json.dumps(body.inputs), json.dumps(body.outputs),
                     body.stateless, json.dumps(body.retry_config), body.success_criteria,
+                    body.order_index, body.max_retry, body.continue_on_fail,
                 ),
             )
             row = cur.fetchone()
@@ -424,6 +442,12 @@ async def update_node(
         fields.append("stateless=%s"); values.append(body.stateless)
     if body.retry_config is not None:
         fields.append("retry_config=%s"); values.append(json.dumps(body.retry_config))
+    if body.order_index is not None:
+        fields.append("order_index=%s"); values.append(body.order_index)
+    if body.max_retry is not None:
+        fields.append("max_retry=%s"); values.append(body.max_retry)
+    if body.continue_on_fail is not None:
+        fields.append("continue_on_fail=%s"); values.append(body.continue_on_fail)
     if not fields:
         raise HTTPException(400, "Nothing to update")
     values.extend([node_id, workflow_id])
@@ -695,35 +719,38 @@ class YAMLImport(BaseModel):
 
 
 def _workflow_to_yaml_dict(wf: dict) -> dict:
-    """Convert a DB workflow dict (with nodes/edges) to YAML-serialisable dict."""
+    """Convert a DB workflow dict to a simplified sequential YAML format.
+
+    YAML schema: global properties + ordered nodes list (no explicit edges needed
+    for sequential pipelines — edges are implied by order_index).
+    """
     nodes_out = []
-    for n in wf.get("nodes", []):
-        nodes_out.append({
-            "id": n["id"],
+    for n in sorted(wf.get("nodes", []), key=lambda x: x.get("order_index", 0)):
+        node_entry: dict = {
             "name": n["name"],
             "provider": n.get("provider", "claude"),
-            "model": n.get("model", ""),
-            "stateless": bool(n.get("stateless", False)),
-            "role_prompt": n.get("role_prompt", ""),
-            "success_criteria": n.get("success_criteria", ""),
-            "retry_config": n.get("retry_config") or {},
-            "inputs": n.get("inputs") or [],
-            "outputs": n.get("outputs") or [],
-        })
-    edges_out = []
-    for e in wf.get("edges", []):
-        entry: dict = {"from": e["source_node_id"], "to": e["target_node_id"]}
-        if e.get("condition"):
-            entry["condition"] = e["condition"]
-        if e.get("label"):
-            entry["label"] = e["label"]
-        edges_out.append(entry)
+        }
+        if n.get("model"):
+            node_entry["model"] = n["model"]
+        if n.get("stateless"):
+            node_entry["stateless"] = True
+        if n.get("max_retry", 3) != 3:
+            node_entry["max_retry"] = n["max_retry"]
+        if n.get("continue_on_fail"):
+            node_entry["continue_on_fail"] = True
+        if n.get("inputs"):
+            node_entry["inputs"] = n["inputs"]
+        if n.get("outputs"):
+            node_entry["outputs"] = n["outputs"]
+        if n.get("success_criteria"):
+            node_entry["success_criteria"] = n["success_criteria"]
+        nodes_out.append(node_entry)
     return {
         "name": wf["name"],
         "description": wf.get("description", ""),
         "max_iterations": wf.get("max_iterations", 5),
+        "log_directory": wf.get("log_directory", ""),
         "nodes": nodes_out,
-        "edges": edges_out,
     }
 
 
@@ -770,16 +797,18 @@ async def import_yaml(
     name = data.get("name", "Imported Workflow")
     description = data.get("description", "")
     max_iterations = int(data.get("max_iterations", 5))
+    log_directory = data.get("log_directory", "")
 
     # Create workflow
     wf_body = WorkflowCreate(name=name, description=description,
-                              project=p, max_iterations=max_iterations)
+                              project=p, max_iterations=max_iterations,
+                              log_directory=log_directory)
     wf = await create_workflow(wf_body, user=user)
     wf_id = wf["id"]
 
-    # Create nodes, track id mapping (yaml id → db uuid)
-    id_map: dict[str, str] = {}
-    for nd in data.get("nodes", []):
+    # Create nodes in order; sequential edges auto-generated from order_index
+    prev_id: str | None = None
+    for idx, nd in enumerate(data.get("nodes", [])):
         nc = NodeCreate(
             name=nd.get("name", "Node"),
             provider=nd.get("provider", "claude"),
@@ -790,162 +819,18 @@ async def import_yaml(
             retry_config=nd.get("retry_config") or {},
             inputs=nd.get("inputs") or [],
             outputs=nd.get("outputs") or [],
+            order_index=idx,
+            max_retry=int(nd.get("max_retry", 3)),
+            continue_on_fail=bool(nd.get("continue_on_fail", False)),
         )
         created = await create_node(wf_id, nc, project=p, user=user)
-        yaml_id = nd.get("id", nd.get("name", ""))
-        id_map[yaml_id] = created["id"]
-        id_map[nd.get("name", "")] = created["id"]  # also map by name
-
-    # Create edges
-    for ed in data.get("edges", []):
-        src_yaml = str(ed.get("from", ""))
-        tgt_yaml = str(ed.get("to", ""))
-        src_db = id_map.get(src_yaml)
-        tgt_db = id_map.get(tgt_yaml)
-        if not src_db or not tgt_db:
-            continue
-        ec = EdgeCreate(
-            source_node_id=src_db,
-            target_node_id=tgt_db,
-            condition=ed.get("condition"),
-            label=ed.get("label", ""),
-        )
-        await create_edge(wf_id, ec, project=p, user=user)
+        # Auto-create sequential edge from previous node
+        if prev_id:
+            ec = EdgeCreate(source_node_id=prev_id, target_node_id=created["id"])
+            await create_edge(wf_id, ec, project=p, user=user)
+        prev_id = created["id"]
 
     return await get_workflow(wf_id, project=p, user=user)
 
-
-@router.get("/{workflow_id}/export-langgraph", response_class=PlainTextResponse)
-async def export_langgraph(
-    workflow_id: str,
-    project: str = Query(""),
-    user=Depends(get_optional_user),
-):
-    """Generate LangGraph Python code from DB workflow."""
-    _require_db()
-    p = _active_project(project)
-    wf = await get_workflow(workflow_id, project=p, user=user)
-
-    lines = [
-        "# Auto-generated by aicli Pipeline Designer",
-        "from langgraph.graph import StateGraph, END",
-        "from typing import TypedDict, Any, List",
-        "",
-        "",
-        "class PipelineState(TypedDict):",
-        "    user_input: str",
-        "    context: dict",
-        "    messages: list",
-        "    run_id: str",
-        "    project: str",
-        "    total_cost: float",
-        "",
-        "",
-    ]
-
-    # Node id → safe function name
-    def _safe(name: str) -> str:
-        import re as _re
-        return _re.sub(r"[^a-z0-9_]", "_", name.lower().replace(" ", "_"))
-
-    nodes = wf.get("nodes", [])
-    edges = wf.get("edges", [])
-    node_map = {n["id"]: n for n in nodes}
-    edges_by_src: dict[str, list] = {}
-    for e in edges:
-        edges_by_src.setdefault(e["source_node_id"], []).append(e)
-
-    # Forward in-degree for entry point detection
-    fwd_in: dict[str, int] = {n["id"]: 0 for n in nodes}
-    for e in edges:
-        if e["target_node_id"] in fwd_in:
-            fwd_in[e["target_node_id"]] += 1
-
-    for n in nodes:
-        fn = _safe(n["name"])
-        stateless = n.get("stateless", False)
-        lines += [
-            f"def {fn}(state: PipelineState) -> PipelineState:",
-            f'    """Node: {n["name"]}  |  provider: {n.get("provider","claude")}  |  stateless: {stateless}"""',
-            f"    # TODO: call {n.get('provider','claude')} with role_prompt",
-            f"    output = ''  # replace with actual LLM call",
-            f"    new_ctx = {{**state['context'], '{n['name']}': output}}",
-            f"    return {{**state, 'context': new_ctx}}",
-            "",
-            "",
-        ]
-
-    # Router functions for nodes with conditional edges
-    for n in nodes:
-        out_edges = edges_by_src.get(n["id"], [])
-        conditional = [e for e in out_edges if e.get("condition")]
-        if len(conditional) > 1 or (len(out_edges) > 1 and conditional):
-            fn = _safe(n["name"])
-            lines += [
-                f"def route_from_{fn}(state: PipelineState) -> str:",
-            ]
-            for e in out_edges:
-                tgt = node_map.get(e["target_node_id"])
-                tgt_fn = _safe(tgt["name"]) if tgt else "END"
-                cond = e.get("condition")
-                if cond:
-                    field = cond.get("field", "score")
-                    op = cond.get("op", "gte")
-                    val = cond.get("value", 0)
-                    op_map = {"gte": ">=", "gt": ">", "lt": "<", "lte": "<=",
-                              "eq": "==", "neq": "!="}
-                    py_op = op_map.get(op, ">=")
-                    lines.append(f"    if state['context'].get('{field}', 0) {py_op} {val}:")
-                    lines.append(f"        return '{tgt_fn}'")
-                else:
-                    lines.append(f"    return '{tgt_fn}'")
-            lines += ["    return END", "", ""]
-
-    # build_pipeline
-    lines += [
-        "def build_pipeline() -> StateGraph:",
-        "    graph = StateGraph(PipelineState)",
-        "",
-    ]
-    for n in nodes:
-        fn = _safe(n["name"])
-        lines.append(f"    graph.add_node('{fn}', {fn})")
-
-    # Entry point
-    entry_nodes = [n for n in nodes if fwd_in.get(n["id"], 0) == 0]
-    if entry_nodes:
-        lines.append(f"    graph.set_entry_point('{_safe(entry_nodes[0]['name'])}')")
-
-    lines.append("")
-    for n in nodes:
-        fn = _safe(n["name"])
-        out_edges = edges_by_src.get(n["id"], [])
-        conditional = [e for e in out_edges if e.get("condition")]
-        if not out_edges:
-            lines.append(f"    graph.add_edge('{fn}', END)")
-        elif len(out_edges) == 1 and not conditional:
-            tgt = node_map.get(out_edges[0]["target_node_id"])
-            tgt_fn = _safe(tgt["name"]) if tgt else "END"
-            lines.append(f"    graph.add_edge('{fn}', '{tgt_fn}')")
-        else:
-            targets = {}
-            for e in out_edges:
-                tgt = node_map.get(e["target_node_id"])
-                tgt_fn = _safe(tgt["name"]) if tgt else "END"
-                targets[tgt_fn] = tgt_fn
-            targets["END"] = "END"
-            lines.append(
-                f"    graph.add_conditional_edges('{fn}', route_from_{fn}, {targets})"
-            )
-
-    lines += [
-        "",
-        "    return graph.compile()",
-        "",
-        "",
-        "pipeline = build_pipeline()",
-    ]
-
-    return "\n".join(lines) + "\n"
 
 

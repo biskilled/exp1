@@ -315,9 +315,15 @@ class WorkflowState(TypedDict):
 _APP_REGISTRY: dict[str, tuple] = {}
 
 
-def _make_node_fn(node: dict, run_id: str, project: str):
-    """Return an async LangGraph node function from a DB node dict."""
+def _make_node_fn(node: dict, run_id: str, project: str, log_dir: str = ""):
+    """Return an async LangGraph node function from a DB node dict.
+
+    Applies per-node retry (max_retry) and continue_on_fail semantics.
+    If log_dir is set, appends node output to the run log file.
+    """
     node_copy = dict(node)
+    max_retry = int(node_copy.get("max_retry", 3))
+    continue_on_fail = bool(node_copy.get("continue_on_fail", False))
 
     async def fn(state: WorkflowState) -> dict:
         # Stateless: only pass user_input (no accumulated prior outputs)
@@ -327,9 +333,31 @@ def _make_node_fn(node: dict, run_id: str, project: str):
             effective_ctx = dict(state["context"])
         effective_ctx["_work_item"] = state.get("_work_item")
 
-        result = await _execute_node(node_copy, run_id, effective_ctx, 0, project)
-        output = result.get("structured") or result.get("output", "")
+        # Per-node retry loop
+        last_result: dict = {}
+        for attempt in range(max(1, max_retry)):
+            last_result = await _execute_node(node_copy, run_id, effective_ctx, attempt, project)
+            if last_result.get("status") != "error":
+                break
+            if attempt < max_retry - 1:
+                log.warning(f"Node '{node_copy['name']}' attempt {attempt+1} failed — retrying")
+            else:
+                if not continue_on_fail:
+                    # Propagate error; LangGraph will surface it
+                    log.error(f"Node '{node_copy['name']}' failed after {max_retry} attempts")
+
+        output = last_result.get("structured") or last_result.get("output", "")
         new_ctx = {**state["context"], node_copy["name"]: output}
+
+        # Append to run log file if log_dir is configured
+        if log_dir:
+            try:
+                log_path = Path(log_dir)
+                log_path.mkdir(parents=True, exist_ok=True)
+                with (log_path / f"{run_id}.log").open("a") as _lf:
+                    _lf.write(f"\n## {node_copy['name']}\n{output}\n")
+            except Exception as _le:
+                log.warning(f"Could not write run log: {_le}")
 
         if node_copy.get("stateless"):
             new_msgs: list = []
@@ -342,7 +370,7 @@ def _make_node_fn(node: dict, run_id: str, project: str):
             **state,
             "context": new_ctx,
             "messages": new_msgs,
-            "total_cost": state.get("total_cost", 0.0) + result.get("cost_usd", 0.0),
+            "total_cost": state.get("total_cost", 0.0) + last_result.get("cost_usd", 0.0),
         }
 
     fn.__name__ = re.sub(r"[^a-z0-9_]", "_", node_copy["name"].lower().replace(" ", "_"))
@@ -366,6 +394,7 @@ def _build_langgraph(
     edges: list[dict],
     run_id: str,
     project: str,
+    log_dir: str = "",
 ) -> tuple:
     """Construct, compile, and return (app, approval_node_names, checkpointer).
 
@@ -387,7 +416,7 @@ def _build_langgraph(
     approval_names: list[str] = []
 
     for nid, node in nodes.items():
-        builder.add_node(node["name"], _make_node_fn(node, run_id, project))
+        builder.add_node(node["name"], _make_node_fn(node, run_id, project, log_dir=log_dir))
         if node.get("require_approval"):
             approval_names.append(node["name"])
 
@@ -430,19 +459,23 @@ def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], lis
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, project, name, max_iterations FROM pr_graph_workflows WHERE id=%s",
+                "SELECT id, project, name, max_iterations, log_directory FROM pr_graph_workflows WHERE id=%s",
                 (workflow_id,),
             )
             row = cur.fetchone()
             if not row:
                 raise ValueError(f"Workflow not found: {workflow_id}")
-            workflow = {"id": row[0], "project": row[1], "name": row[2], "max_iterations": row[3]}
+            workflow = {
+                "id": row[0], "project": row[1], "name": row[2],
+                "max_iterations": row[3], "log_directory": row[4] if len(row) > 4 else "",
+            }
 
             cur.execute(
                 """SELECT id, name, role_file, role_prompt, provider, model,
                           output_schema, inject_context, require_approval, approval_msg, role_id,
-                          stateless, retry_config, success_criteria
-                   FROM pr_graph_nodes WHERE workflow_id=%s""",
+                          stateless, retry_config, success_criteria,
+                          order_index, max_retry, continue_on_fail
+                   FROM pr_graph_nodes WHERE workflow_id=%s ORDER BY order_index, created_at""",
                 (workflow_id,),
             )
             for r in cur.fetchall():
@@ -456,6 +489,9 @@ def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], lis
                     "stateless": r[11] if len(r) > 11 else False,
                     "retry_config": r[12] if len(r) > 12 else {},
                     "success_criteria": r[13] if len(r) > 13 else "",
+                    "order_index": r[14] if len(r) > 14 else 0,
+                    "max_retry": r[15] if len(r) > 15 else 3,
+                    "continue_on_fail": r[16] if len(r) > 16 else False,
                 }
 
             cur.execute(
@@ -535,8 +571,11 @@ async def run_graph_workflow(
         except Exception as _we:
             log.warning(f"Could not load work_item {work_item_id}: {_we}")
 
-    # 3. Build LangGraph
-    app, approval_names, cp = _build_langgraph(nodes, edges, run_id, project)
+    # 3. Build LangGraph (resolve log_dir from workflow config or workspace default)
+    log_dir = workflow.get("log_directory", "")
+    if not log_dir and project:
+        log_dir = str(Path(settings.workspace_dir) / project / "pipeline_logs")
+    app, approval_names, cp = _build_langgraph(nodes, edges, run_id, project, log_dir=log_dir)
     _APP_REGISTRY[run_id] = (app, cp)
 
     # 4. Build initial state

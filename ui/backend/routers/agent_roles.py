@@ -42,16 +42,20 @@ def _require_admin(user):
 
 def _row_to_role(row, include_prompt: bool = True) -> dict:
     r = {
-        "id":          row[0],
-        "project":     row[1],
-        "name":        row[2],
-        "description": row[3],
-        "provider":    row[5],
-        "model":       row[6],
-        "tags":        row[7] or [],
-        "is_active":   row[8],
-        "created_at":  row[9].isoformat()  if row[9]  else None,
-        "updated_at":  row[10].isoformat() if row[10] else None,
+        "id":            row[0],
+        "project":       row[1],
+        "name":          row[2],
+        "description":   row[3],
+        "provider":      row[5],
+        "model":         row[6],
+        "tags":          row[7] or [],
+        "is_active":     row[8],
+        "created_at":    row[9].isoformat()  if row[9]  else None,
+        "updated_at":    row[10].isoformat() if row[10] else None,
+        "inputs":        row[11] if len(row) > 11 and row[11] is not None else [],
+        "outputs":       row[12] if len(row) > 12 and row[12] is not None else [],
+        "role_type":     row[13] if len(row) > 13 and row[13] else "agent",
+        "output_schema": row[14] if len(row) > 14 else None,
     }
     if include_prompt:
         r["system_prompt"] = row[4]
@@ -71,7 +75,8 @@ async def list_roles(
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT id, project, name, description, system_prompt,
-                          provider, model, tags, is_active, created_at, updated_at
+                          provider, model, tags, is_active, created_at, updated_at,
+                          inputs, outputs, role_type, output_schema
                    FROM mng_agent_roles
                    WHERE client_id=1 AND is_active=TRUE AND (project='_global' OR project=%s)
                    ORDER BY (project='_global') DESC, name""",
@@ -94,22 +99,32 @@ class RoleCreate(BaseModel):
     provider:      str       = "claude"
     model:         str       = ""
     tags:          list[str] = []
+    inputs:        list      = []
+    outputs:       list      = []
+    role_type:     str       = "agent"
+    output_schema: Optional[dict] = None
 
 
 @router.post("/")
 async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
     _require_db()
     _require_admin(user)
+    import json as _json
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO mng_agent_roles
-                       (client_id, project, name, description, system_prompt, provider, model, tags)
-                   VALUES (1, %s, %s, %s, %s, %s, %s, %s)
+                       (client_id, project, name, description, system_prompt, provider, model, tags,
+                        inputs, outputs, role_type, output_schema)
+                   VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING id, project, name, description, system_prompt,
-                             provider, model, tags, is_active, created_at, updated_at""",
+                             provider, model, tags, is_active, created_at, updated_at,
+                             inputs, outputs, role_type, output_schema""",
                 (body.project, body.name, body.description, body.system_prompt,
-                 body.provider, body.model, body.tags),
+                 body.provider, body.model, body.tags,
+                 _json.dumps(body.inputs), _json.dumps(body.outputs),
+                 body.role_type,
+                 _json.dumps(body.output_schema) if body.output_schema else None),
             )
             row = cur.fetchone()
     return _row_to_role(row, include_prompt=True)
@@ -124,6 +139,10 @@ class RoleUpdate(BaseModel):
     provider:      Optional[str]       = None
     model:         Optional[str]       = None
     tags:          Optional[list[str]] = None
+    inputs:        Optional[list]      = None
+    outputs:       Optional[list]      = None
+    role_type:     Optional[str]       = None
+    output_schema: Optional[dict]      = None
     note:          str                 = ""
 
 
@@ -149,6 +168,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
         (body.model         is not None and body.model         != existing[3])
     )
 
+    import json as _json
     fields: list[str] = []
     values: list      = []
     for col, val in [
@@ -158,10 +178,20 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
         ("provider",      body.provider),
         ("model",         body.model),
         ("tags",          body.tags),
+        ("role_type",     body.role_type),
     ]:
         if val is not None:
             fields.append(f"{col}=%s")
             values.append(val)
+    if body.inputs is not None:
+        fields.append("inputs=%s")
+        values.append(_json.dumps(body.inputs))
+    if body.outputs is not None:
+        fields.append("outputs=%s")
+        values.append(_json.dumps(body.outputs))
+    if body.output_schema is not None:
+        fields.append("output_schema=%s")
+        values.append(_json.dumps(body.output_schema))
     if not fields:
         raise HTTPException(400, "Nothing to update")
     fields.append("updated_at=NOW()")
@@ -183,7 +213,8 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
             )
             cur.execute(
                 """SELECT id, project, name, description, system_prompt,
-                          provider, model, tags, is_active, created_at, updated_at
+                          provider, model, tags, is_active, created_at, updated_at,
+                          inputs, outputs, role_type, output_schema
                    FROM mng_agent_roles WHERE id=%s""",
                 (role_id,),
             )
