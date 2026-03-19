@@ -451,7 +451,17 @@ export function navigateTo(viewId, opts = {}) {
   const proj = state.currentProject;
 
   switch (viewId) {
-    case 'home':     renderHome(view);                         break;
+    case 'home':
+      renderHome(view);
+      // Refresh project list in background so newly added projects appear
+      api.listProjects().then(d => {
+        const fresh = d.projects || [];
+        if (fresh.length !== (state.projects || []).length) {
+          setState({ projects: fresh });
+          renderHome(view);  // re-render with updated list
+        }
+      }).catch(() => {});
+      break;
     case 'summary':  renderSummary(view, proj?.name);         break;
     case 'chat':     renderChat(view);                        break;
     case 'planner':  renderEntities(view);                    break;

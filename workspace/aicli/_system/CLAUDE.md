@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-18] `claude_cli`: There are some error - on the first load, it lookls like Backend is failing (after thay it succeed).
 - [2026-03-18] `claude_cli`: Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not se
 - [2026-03-18] `claude_cli`: Few more strucure - users are also part of client (client can have mutiple users). Also I would like
 - [2026-03-18] `claude_cli`: I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, l
 - [2026-03-18] `claude_cli`: I would like to start to work on the Roles. by adding system roles that can be added into any Agent 
+- [2026-03-19] `claude_cli`:  I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is n
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

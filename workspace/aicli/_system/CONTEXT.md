@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 00:53 UTC — do not edit manually.
+> Auto-generated 2026-03-19 01:22 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 146
-- **Last active**: 2026-03-18T21:29:24Z
+- **Sessions**: 147
+- **Last active**: 2026-03-19T01:19:37Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 00:57]** `claude_cli/claude`  
+→  I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is not working. also I a
+← _Good. Now you need to **restart the backend** for all three fixes to take effect:  ```bash kill $(lsof -ti :8000) && cd ui/backend && python3.12 -m uvicorn main:app --host 127.0.0.1 --port 8000 --relo_
+
 **[2026-03-18 21:16]** `claude_cli/claude`  
 → I would like to start to work on the Roles. by adding system roles that can be added into any Agent roles. for example s
 
@@ -203,7 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-17 20:36]** `claude_cli/claude`  
 → before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure th
 ← _Clean. Let me also verify the `work_item_pipeline.py` core file is correct:_
-
-**[2026-03-17 20:13]** `claude_cli/claude`  
-→ Planner works partial - I do see the nested work on some category like doc_type but in bug or feature ui is diffrent and
-← _Here's a summary of everything done and answers to your questions:  ---  ## What was fixed  **Planner consistency** — removed the split between `entity_values` (doc_type etc.) and `work_items` (featur_

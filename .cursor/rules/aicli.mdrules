@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-18 21:29 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 01:19 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-18] There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
 - [2026-03-18] Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
 - [2026-03-18] Few more strucure - users are also part of client (client can have mutiple users). Also I would like to understand if yo
 - [2026-03-18] I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, llm repsonse, tags an
 - [2026-03-18] I would like to start to work on the Roles. by adding system roles that can be added into any Agent roles. for example s
+- [2026-03-19] I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is not working. also I am

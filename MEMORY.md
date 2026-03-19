@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-18 21:29 UTC by aicli /memory_
+_Generated: 2026-03-19 01:19 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform for managing development projects via CLI, Electron UI, and LLM integration. It combines flat-file (JSONL) and PostgreSQL storage with semantic search (pgvector), nested tagging, multi-agent workflow orchestration, and MCP integration. Current focus: fixing project visibility bugs, implementing composable system roles, and populating memory/context tables while optimizing performance on constrained infrastructure.
 
 ## Project Facts
 
@@ -19,10 +15,11 @@ aicli is a shared AI memory platform for managing development projects via CLI, 
 - **pending_implementation**: memory_items_and_project_facts_table_population
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
 - **performance_optimization**: redundant_SQL_calls_eliminated
+- **stale_code_removed**: db.ensure_project_schema_call_replaced_with_ensure_shared_schema
 - **tagging_system**: nested_hierarchy_beyond_2_levels
 - **ui_library**: 3_dot_menu_pattern
 - **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
-- **unresolved_issues**: project_visibility_bug_active_project_not_displaying
+- **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
 
 ## Tech Stack
 
@@ -75,40 +72,40 @@ aicli is a shared AI memory platform for managing development projects via CLI, 
 
 ### Bug
 
-- **hooks** `(11 events, 9 commits)`
+- **hooks** `(12 events, 10 commits)`
 
 ### Doc_type
 
 - **low-level-design** `(1 events)`
 - **high-level-design** `(1 events)`
-- **customer-meeting** — dsds
 - **Test**
+- **customer-meeting** — dsds
 - **retrospective**
 
 ### Feature
 
-- **shared-memory** `(13 events, 9 commits)`
-- **UI** `(10 events, 9 commits)`
-- **dropbox**
-- **pagination**
+- **shared-memory** `(14 events, 10 commits)`
+- **UI** `(11 events, 10 commits)`
+- **auth** `(1 events)`
 - **tagging**
 - **graph-workflow**
 - **billing**
-- **auth**
 - **embeddings**
 - **mcp**
 - **workflow-runner**
 - **test-picker-feature**
+- **dropbox**
+- **pagination**
 
 ### Phase
 
-- **discovery** `(10 events, 9 commits)`
+- **discovery** `(11 events, 10 commits)`
 - **development**
 - **prod**
 
 ### Task
 
-- **memory** `(11 events, 9 commits)`
+- **memory** `(12 events, 10 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
 ## Recent Memory
@@ -178,7 +175,3 @@ aicli is a shared AI memory platform for managing development projects via CLI, 
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-18]** `development_session` — Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call and correcting CLAUDE.md template code_dir variable scoping in memory endpoint. Added retry logic to _continueToApp() to handle race condition where projects query succeeds but returns empty list, preventing false 'project not found' errors. **[2026-03-18]** `system_roles_feature` — Started design for composable system roles (e.g., 'coding' role enforcing clean code/comments/OOP) that can be injected into agent roles (UI developer, backend developer). **[2026-03-18]** `bug_analysis` — Identified project visibility bug: AiCli appears in Recent projects but not selectable/displayed in main view; timing issue suspected in openProject() during backend init. **[2026-03-17]** `performance_issue` — PROJECT.md load time exceeds 1 minute on free Railway tier; DB query latency vs file I/O bottleneck being investigated; pagination/lazy-loading under evaluation. **[2026-03-16]** `workflow_system` — Integrated multi-agent async DAG executor with Cytoscape.js visualization + YAML config for orchestrating multi-agent prompts. **[unresolved]** `data_layer` — memory_items and project_facts tables exist but update logic not implemented; blocks improved memory/context mechanism per original specification.

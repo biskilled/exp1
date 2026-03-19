@@ -209,7 +209,6 @@ CREATE TABLE IF NOT EXISTS mng_agent_role_versions (
 );
 CREATE INDEX IF NOT EXISTS idx_marv_role ON mng_agent_role_versions(role_id);
 
--- System roles (reusable prompt fragments, admin-managed)
 CREATE TABLE IF NOT EXISTS mng_system_roles (
     id          SERIAL        PRIMARY KEY,
     client_id   INT           NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -224,7 +223,6 @@ CREATE TABLE IF NOT EXISTS mng_system_roles (
 );
 CREATE INDEX IF NOT EXISTS idx_msr_client ON mng_system_roles(client_id);
 
--- Junction: agent role ↔ system roles (ordered)
 CREATE TABLE IF NOT EXISTS mng_role_system_links (
     id             SERIAL      PRIMARY KEY,
     role_id        INT         NOT NULL REFERENCES mng_agent_roles(id) ON DELETE CASCADE,

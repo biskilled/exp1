@@ -79,13 +79,16 @@ export async function renderPrompts(container, projectName) {
           <div style="padding:1rem;font-size:0.68rem;color:var(--muted)">Loading…</div>
         </div>
 
-        <!-- Prompt Files section -->
-        <div class="prompts-tree-header" style="flex-shrink:0;border-top:none">
-          <span class="prompts-tree-label" style="font-size:0.6rem">Prompt Files</span>
+        <!-- Prompt Files section (legacy .md files in workspace/prompts/) -->
+        <div class="prompts-tree-header" style="flex-shrink:0;border-top:none;cursor:pointer"
+             onclick="window._togglePromptFiles()" title="Markdown prompt files stored in the project workspace">
+          <span class="prompts-tree-label" style="font-size:0.6rem;color:var(--muted)">
+            <span id="prompt-files-arrow">▶</span> Prompt Files
+          </span>
           <button class="btn btn-ghost btn-sm" style="padding:0.12rem 0.35rem;font-size:0.6rem"
-            onclick="window._promptsNew()" title="New file">+</button>
+            onclick="event.stopPropagation();window._promptsNew()" title="New .md prompt file">+</button>
         </div>
-        <div class="prompts-tree-body" id="prompts-tree-body" style="flex:1;overflow-y:auto">
+        <div class="prompts-tree-body" id="prompts-tree-body" style="display:none;overflow-y:auto;max-height:200px">
           <div class="empty-state" style="padding:1.5rem">
             <p style="font-size:0.68rem">Loading…</p>
           </div>
@@ -127,6 +130,14 @@ export async function renderPrompts(container, projectName) {
   window._promptsSave         = _promptsSave;
   window._promptsToggleMode   = _promptsToggleMode;
   window._openPromptFile      = (p) => { _activeRole = null; _openFile(p, projectName); };
+  window._togglePromptFiles   = () => {
+    const body  = document.getElementById('prompts-tree-body');
+    const arrow = document.getElementById('prompt-files-arrow');
+    if (!body) return;
+    const open = body.style.display !== 'none';
+    body.style.display  = open ? 'none' : 'block';
+    if (arrow) arrow.textContent = open ? '▶' : '▼';
+  };
   window._toggleFolder     = (id) => {
     const ch = document.getElementById(`folder-children-${id}`);
     const fo = document.getElementById(`folder-${id}`);
