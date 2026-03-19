@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 13:17 UTC — do not edit manually.
+> Auto-generated 2026-03-19 14:20 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 158
-- **Last active**: 2026-03-19T13:16:29Z
+- **Sessions**: 159
+- **Last active**: 2026-03-19T13:29:25Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -34,12 +34,12 @@
 
 ## In Progress
 
+- Document folder abstraction (2026-03-19) — Remove direct IO; implement prompt-driven workflows for role-based document access (PM writes to Document/feature-name, Dev queries memory for latest file)
 - Pipeline UI node properties (2026-03-19) — Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation
 - Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; MEMORY.md updates pending
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue under investigation
-- Graph workflow UI routing fix (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
 - Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
-- Documents tab feature — Add per-project folder mapping; auto-create for new projects; support multi-role document uploads
+- Graph workflow UI routing fix (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
 
 ## Key Decisions
 
@@ -57,7 +57,7 @@
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 - Backend startup race condition fix: retry logic handles empty project list on first load
-- Pipeline/workflow nodes support max_retry, stateless mode, continue_on_fail flags; visual node removal with confirmation dialog
+- Document folder IO abstraction: prompt-driven workflows instead of direct file I/O; role-based (PM writes, Dev reads) via memory queries
 
 ---
 
@@ -151,6 +151,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 14:12]** `claude_cli/claude`  
+→ I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see any status/progress
+
+**[2026-03-19 13:24]** `claude_cli/claude`  
+→ I would like to remove the IO. is it possible just to mainatin that using prompt. for example how doas prject manager wi
+← _Now verify syntax:_
+
 **[2026-03-19 13:13]** `claude_cli/claude`  
 → UI improvement - new nodes in Pipeline we need to show more details at the node (same as it was) like model, input/outpu
 ← _Good — the polling code at line 1158 still finds the element by ID, and `className` assignment will trigger the `.running`/`.done`/`.error` CSS which now uses `display:inline-block`. Everything is con_
@@ -199,11 +206,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-18 21:16]** `claude_cli/claude`  
 → I would like to start to work on the Roles. by adding system roles that can be added into any Agent roles. for example s
-
-**[2026-03-18 20:54]** `claude_cli/claude`  
-→ I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, llm repsonse, tags an
-← _All 3 backfilled. Let me do a final verification:_
-
-**[2026-03-18 20:17]** `claude_cli/claude`  
-→ Few more strucure - users are also part of client (client can have mutiple users). Also I would like to understand if yo
-← _Both fixes are in place. The `from pathlib import Path` import is now added, `mng_users.client_id` FK is defined, and the `history.jsonl` backfill code at line 1017 will now work correctly.  The backe_

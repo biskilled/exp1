@@ -359,8 +359,10 @@ api.graphWorkflows = {
   listRuns:   (wfId)              => _get(`/graph/${wfId}/runs`),
   cancelRun:  (runId)             => _del(`/graph/runs/${runId}`),
   decide:     (runId, body)       => _post(`/graph/runs/${runId}/decision`, body),
-  exportYAML: (wfId)              => fetch(_base() + `/graph/${enc(wfId)}/export-yaml`, { headers: _headers() }).then(r => r.ok ? r.text() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  importYAML: (project, yamlText) => _post(`/graph/import-yaml?project=${enc(project)}`, { yaml_text: yamlText }),
+  exportYAML:   (wfId)              => fetch(_base() + `/graph/${enc(wfId)}/export-yaml`, { headers: _headers() }).then(r => r.ok ? r.text() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  importYAML:   (project, yamlText) => _post(`/graph/import-yaml?project=${enc(project)}`, { yaml_text: yamlText }),
+  recentRuns:   (project, limit=20) => _get(`/graph/runs/recent?project=${enc(project)}&limit=${limit}`),
+  deliverables: (runId)             => _get(`/graph/runs/${enc(runId)}/deliverables`),
 };
 
 // ── Documents API ─────────────────────────────────────────────────────────────

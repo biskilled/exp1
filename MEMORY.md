@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 13:16 UTC by aicli /memory_
+_Generated: 2026-03-19 13:29 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to manage multi-agent workflows, project context, and semantic memory across LLM platforms. It uses flat-file JSONL for primary storage with PostgreSQL/pgvector for semantic search, supports nested tagging, multi-agent async DAG workflows with visual graph editor, and MCP integration for memory/entity management. Current focus: fixing project visibility race conditions, completing pipeline UI enhancements, and implementing memory_items/project_facts population for improved context synthesis.
+aicli is a shared AI memory platform built on Python 3.12 + FastAPI backend, Vanilla JS + Electron frontend, and PostgreSQL semantic storage with pgvector. It enables multi-role teams (PM, Dev, Admin) to collaboratively develop features through prompt-driven workflows, graph-based task execution, and dual-layer memory synthesis (raw JSONL → Claude Haiku → 5 output files). Current focus: removing direct IO dependency, fixing project visibility race conditions, and populating memory_items/project_facts tables for enhanced context.
 
 ## Project Facts
 
@@ -63,16 +63,16 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 - Backend startup race condition fix: retry logic handles empty project list on first load
-- Pipeline/workflow nodes support max_retry, stateless mode, continue_on_fail flags; visual node removal with confirmation dialog
+- Document folder IO abstraction: prompt-driven workflows instead of direct file I/O; role-based (PM writes, Dev reads) via memory queries
 
 ## In Progress
 
+- Document folder abstraction (2026-03-19) — Remove direct IO; implement prompt-driven workflows for role-based document access (PM writes to Document/feature-name, Dev queries memory for latest file)
 - Pipeline UI node properties (2026-03-19) — Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation
 - Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; MEMORY.md updates pending
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue under investigation
-- Graph workflow UI routing fix (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
 - Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
-- Documents tab feature — Add per-project folder mapping; auto-create for new projects; support multi-role document uploads
+- Graph workflow UI routing fix (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
 
 ## Active Features / Bugs / Tasks
 
@@ -84,16 +84,16 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 - **high-level-design** `(1 events)`
 - **low-level-design** `(1 events)`
-- **retrospective**
 - **customer-meeting** — dsds
+- **retrospective**
 - **Test**
 
 ### Feature
 
+- **UI** `(22 events, 19 commits)`
 - **shared-memory** `(14 events, 10 commits)`
 - **auth** `(13 events, 11 commits)`
-- **UI** `(12 events, 10 commits)`
-- **graph-workflow** `(1 events)`
+- **graph-workflow** `(11 events, 9 commits)`
 - **tagging**
 - **billing**
 - **embeddings**
@@ -184,4 +184,4 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ## AI Synthesis
 
-**[2026-03-19]** `claude_cli` — Pipeline UI enhanced with inline node property display (model, input/output, max_retry, stateless, continue_on_fail flags); node removal dialog and modal-based pipeline creation implemented; visibility of (x) button improved via CSS inline-block. **[2026-03-19]** `claude_cli` — Multi-agent workflow execution logic refined; retry/continue per-node flags now functional; MEMORY.md updates pending. **[2026-03-19]** `investigation` — Project visibility race condition identified: projects appear in Recent list but not selectable as active project; suspected backend initialization timing issue during project list load. **[2026-03-19]** `fix` — Graph workflow UI routing corrected; main.js case statements now properly delegate to graph_workflow.js renderer. **[2026-03-18]** `fix` — Backend startup race condition resolved; retry logic in _continueToApp() now handles empty project list returns on first load. **[2026-03-18]** `fix` — Memory endpoint CLAUDE.md template error fixed; code_dir variable properly scoped from config (line 1120). **[2026-03-18]** `fix` — AttributeError in main.py resolved; removed stale db.ensure_project_schema() call. **[2026-03-10]** `architecture` — Database performance optimized via load-once-on-access pattern; redundant SQL calls eliminated; tags loaded into memory on project access, updated only on explicit save. **[2026-03-10]** `feature` — Nested tag hierarchy expanded beyond 2-level; parent_id FK enables unlimited depth with tree UI; login confirmed as first-level only. **[unresolved]** `pending` — memory_items and project_facts tables exist but update logic not implemented; blocks improved context mechanism.
+**[2026-03-19]** `claude_cli` — Question raised: Remove direct IO from document folder management; use prompt-driven workflows instead. Problem: How do PM and Dev roles know where to write/read documents without explicit file paths? Proposed solution: Memory-backed queries and role-based access patterns. **[2026-03-19]** `graph_workflow.js` — Fixed routing case statements in main.js; corrected imports for proper graph workflow renderer dispatch. **[2026-03-19]** `project_visibility_bug` — Projects appear in Recent list but fail to become active in main view; identified as backend initialization race condition; retry logic partially addresses empty project list edge case. **[2026-03-18]** `memory_endpoint` — Fixed undefined `code_dir` variable at line 1120 in CLAUDE.md template; corrected variable scoping from config. **[2026-03-18]** `main.py` — Removed stale `db.ensure_project_schema()` call; corrected to use `_ensure_shared_schema()`. **[2026-03-10]** `database_performance` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; cache synced only on explicit save. **[2026-03-10]** `tag_hierarchy` — Approved nested tags via parent_id FK for unlimited depth; login remains first-level only. **[2026-03-10]** `data_persistence_bug` — Tags saved in UI disappear on session switch; root cause unclear (rendering vs DB save); requires investigation. **[2026-03-10]** `backend_stability` — Port binding conflicts on 127.0.0.1:8000 during restart; freePort() kills stale uvicorn processes. **[2026-03-10]** `ui_ux_improvements` — Increased visibility of planner actions; replaced small buttons with 3-dot menu; added unarchive capability.

@@ -216,6 +216,84 @@ async def create_workflow(body: WorkflowCreate, user=Depends(get_optional_user))
     return _row_to_workflow(row)
 
 
+@router.get("/runs/recent")
+async def list_recent_runs(
+    project: str = Query(""),
+    limit: int = Query(20),
+    user=Depends(get_optional_user),
+):
+    """All recent runs across all workflows for a project, with workflow name."""
+    _require_db()
+    p = _active_project(project)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT r.id, r.workflow_id, r.status, r.user_input,
+                          r.started_at, r.finished_at, r.total_cost_usd, r.error,
+                          w.name AS workflow_name
+                   FROM pr_graph_runs r
+                   LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
+                   WHERE r.client_id=1 AND r.project=%s
+                   ORDER BY r.started_at DESC LIMIT %s""",
+                (p, min(limit, 100)),
+            )
+            rows = cur.fetchall()
+    return {"runs": [
+        {
+            "id": r[0], "workflow_id": str(r[1]), "status": r[2], "user_input": r[3],
+            "started_at": r[4].isoformat() if r[4] else None,
+            "finished_at": r[5].isoformat() if r[5] else None,
+            "total_cost_usd": float(r[6] or 0),
+            "error": r[7],
+            "workflow_name": r[8] or "Unknown",
+        }
+        for r in rows
+    ]}
+
+
+@router.get("/runs/{run_id}/deliverables")
+async def get_run_deliverables(
+    run_id: str,
+    project: str = Query(""),
+    user=Depends(get_optional_user),
+):
+    """List files saved to documents/pipelines/... for this run."""
+    _require_db()
+    import re as _re
+    from pathlib import Path
+    from config import settings
+
+    p = _active_project(project)
+    # Get workflow name for path resolution
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT r.id, w.name FROM pr_graph_runs r "
+                "LEFT JOIN pr_graph_workflows w ON w.id=r.workflow_id WHERE r.id=%s",
+                (run_id,),
+            )
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Run not found")
+
+    pipeline_name = row[1] or ""
+    safe_pipeline = _re.sub(r"[^a-z0-9_-]", "_", pipeline_name.lower().replace(" ", "_"))[:40]
+    run_prefix = run_id[:8]
+    docs_dir = Path(settings.workspace_dir) / p / "documents" / "pipelines" / safe_pipeline / run_prefix
+
+    files = []
+    if docs_dir.exists():
+        for f in sorted(docs_dir.iterdir()):
+            if f.is_file():
+                files.append({
+                    "name": f.name,
+                    "path": str(f.relative_to(Path(settings.workspace_dir) / p)),
+                    "size": f.stat().st_size,
+                    "node_name": f.stem.replace("_", " ").title(),
+                })
+    return {"files": files, "directory": f"documents/pipelines/{safe_pipeline}/{run_prefix}"}
+
+
 @router.get("/runs/{run_id}")
 async def get_run(
     run_id: str,
@@ -228,7 +306,8 @@ async def get_run(
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id, workflow_id, project, status, user_input, context, "
-                "started_at, finished_at, total_cost_usd, error FROM pr_graph_runs WHERE id=%s",
+                "started_at, finished_at, total_cost_usd, error, current_node "
+                "FROM pr_graph_runs WHERE id=%s",
                 (run_id,),
             )
             row = cur.fetchone()
@@ -241,6 +320,7 @@ async def get_run(
                 "finished_at": row[7].isoformat() if row[7] else None,
                 "total_cost_usd": float(row[8]),
                 "error": row[9],
+                "current_node": row[10],
             }
             cur.execute(
                 """SELECT id, node_id, node_name, status, output, structured,

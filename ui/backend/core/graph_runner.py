@@ -339,6 +339,18 @@ def _make_node_fn(node: dict, run_id: str, project: str, log_dir: str = "", pipe
     continue_on_fail = bool(node_copy.get("continue_on_fail", False))
 
     async def fn(state: WorkflowState) -> dict:
+        # Mark this node as the currently running one in the run record
+        if db.is_available():
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE pr_graph_runs SET current_node=%s WHERE id=%s",
+                            (node_copy["name"], run_id),
+                        )
+            except Exception as _ce:
+                log.debug(f"Could not update current_node: {_ce}")
+
         # Stateless: only pass user_input (no accumulated prior outputs)
         if node_copy.get("stateless"):
             effective_ctx: dict = {"user_input": state["user_input"]}
@@ -542,7 +554,8 @@ def _update_run_db(run_id: str, status: str, ctx: dict | None = None,
                 if status in ("done", "stopped", "error"):
                     cur.execute(
                         """UPDATE pr_graph_runs SET status=%s, context=%s,
-                           total_cost_usd=%s, finished_at=NOW(), error=%s WHERE id=%s""",
+                           total_cost_usd=%s, finished_at=NOW(), error=%s,
+                           current_node=NULL WHERE id=%s""",
                         (status, json.dumps(ctx or {}), total_cost, error, run_id),
                     )
                 else:

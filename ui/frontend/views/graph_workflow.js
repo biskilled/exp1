@@ -37,6 +37,8 @@ let _selectedNodeId = null;
 let _pollInterval = null;
 let _currentRunId = null;
 let _roles = [];
+let _runStartTime = null;   // Date — when current run started
+let _timerInterval = null;  // setInterval handle for live clock
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -222,6 +224,60 @@ export function renderGraphWorkflow(container) {
       /* Empty state */
       .gw-empty { flex:1; display:flex; align-items:center; justify-content:center;
         flex-direction:column; gap:0.5rem; color:var(--muted); font-size:0.85rem; }
+
+      /* Run progress panel (right side, replaces detail during active run) */
+      .gw-run-panel { width:320px; border-left:1px solid var(--border); display:none;
+        flex-direction:column; overflow:hidden; }
+      .gw-run-panel.open { display:flex; }
+      .gw-rp-hdr { padding:0.65rem 0.75rem; border-bottom:1px solid var(--border); flex-shrink:0; }
+      .gw-rp-wf-name { font-size:0.78rem; font-weight:700; white-space:nowrap; overflow:hidden;
+        text-overflow:ellipsis; }
+      .gw-rp-meta { display:flex; align-items:center; gap:0.6rem; margin-top:0.25rem;
+        font-size:0.72rem; color:var(--muted); }
+      .gw-rp-status-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+      .gw-rp-status-dot.running { background:#f5a623; animation:pulse 1s infinite; }
+      .gw-rp-status-dot.done    { background:#3ecf8e; }
+      .gw-rp-status-dot.error   { background:#e85d75; }
+      .gw-rp-status-dot.stopped, .gw-rp-status-dot.cancelled { background:var(--muted); }
+      .gw-rp-actions { display:flex; gap:0.4rem; margin-top:0.5rem; }
+      .gw-rp-timeline { flex:1; overflow-y:auto; padding:0.5rem 0; }
+      .gw-rp-step { padding:0.45rem 0.75rem; border-left:3px solid transparent;
+        margin:0 0 2px 0; transition:background 0.1s; }
+      .gw-rp-step.pending  { border-left-color:var(--border); opacity:0.45; }
+      .gw-rp-step.running  { border-left-color:#f5a623; background:rgba(245,166,35,0.05); }
+      .gw-rp-step.done     { border-left-color:#3ecf8e; }
+      .gw-rp-step.error    { border-left-color:#e85d75; background:rgba(232,93,117,0.05); }
+      .gw-rp-step.skipped  { border-left-color:var(--muted); opacity:0.5; }
+      .gw-rp-step-hdr { display:flex; align-items:center; gap:0.4rem; }
+      .gw-rp-step-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0;
+        background:var(--border); }
+      .gw-rp-step.pending .gw-rp-step-dot  { background:var(--border); }
+      .gw-rp-step.running .gw-rp-step-dot  { background:#f5a623; animation:pulse 1s infinite; }
+      .gw-rp-step.done    .gw-rp-step-dot  { background:#3ecf8e; }
+      .gw-rp-step.error   .gw-rp-step-dot  { background:#e85d75; }
+      .gw-rp-step-name { font-size:0.78rem; font-weight:600; }
+      .gw-rp-step-meta { font-size:0.67rem; color:var(--muted); margin-left:auto; }
+      .gw-rp-step-out { font-size:0.67rem; color:var(--muted); margin-top:0.3rem;
+        line-height:1.4; max-height:64px; overflow:hidden;
+        background:var(--bg2); border-radius:4px; padding:0.25rem 0.4rem;
+        white-space:pre-wrap; word-break:break-word; }
+      .gw-rp-deliverables { flex-shrink:0; border-top:1px solid var(--border);
+        padding:0.6rem 0.75rem; }
+      .gw-rp-del-title { font-size:0.68rem; font-weight:700; text-transform:uppercase;
+        letter-spacing:0.05em; color:var(--muted); margin-bottom:0.4rem; }
+      .gw-rp-del-file { font-size:0.72rem; padding:0.2rem 0; display:flex;
+        align-items:center; gap:0.35rem; color:var(--fg); cursor:default; }
+      .gw-rp-del-file span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .gw-rp-history { border-top:1px solid var(--border); }
+      .gw-rp-hist-item { display:flex; align-items:center; gap:0.4rem;
+        padding:0.3rem 0.75rem; font-size:0.75rem; cursor:pointer; }
+      .gw-rp-hist-item:hover { background:var(--hover); }
+
+      /* Recent runs sidebar section */
+      .gw-run-row { display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0.75rem;
+        cursor:pointer; font-size:0.75rem; }
+      .gw-run-row:hover { background:var(--hover); }
+      .gw-run-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
     </style>
 
     <div class="gw-toolbar2">
@@ -249,6 +305,10 @@ export function renderGraphWorkflow(container) {
         <div class="gw-sb-section">
           <div class="gw-sb-label">Role Library</div>
           <div id="gw-role-library"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
+        </div>
+        <div class="gw-sb-section">
+          <div class="gw-sb-label">Recent Runs</div>
+          <div id="gw-recent-runs"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
         </div>
       </div>
 
@@ -293,21 +353,46 @@ export function renderGraphWorkflow(container) {
           <button class="btn btn-primary btn-sm" style="width:100%" onclick="window._gwSaveNode()">Save Changes</button>
         </div>
       </div>
+
+      <!-- Run progress panel (shown during/after active run) -->
+      <div class="gw-run-panel" id="gw-run-panel">
+        <div class="gw-rp-hdr">
+          <div class="gw-rp-wf-name" id="gw-rp-wf-name">Pipeline</div>
+          <div class="gw-rp-meta">
+            <div class="gw-rp-status-dot running" id="gw-rp-dot"></div>
+            <span id="gw-rp-status">running</span>
+            <span id="gw-rp-timer" style="font-variant-numeric:tabular-nums">0s</span>
+            <span id="gw-rp-nodes">0/0</span>
+            <span id="gw-rp-cost" style="margin-left:auto">$0.0000</span>
+          </div>
+          <div class="gw-rp-actions">
+            <button class="btn btn-ghost btn-sm" id="gw-rp-stop"
+              style="color:var(--red);font-size:0.72rem" onclick="window._gwCancelRun()">■ Stop</button>
+            <div style="flex:1"></div>
+            <button class="btn btn-ghost btn-sm" style="font-size:0.72rem"
+              onclick="window._gwCloseRunPanel()">✕ Close</button>
+          </div>
+        </div>
+        <div class="gw-rp-timeline" id="gw-rp-timeline"></div>
+        <div class="gw-rp-deliverables" id="gw-rp-deliverables" style="display:none"></div>
+      </div>
     </div>
   `;
 
   // Register globals
-  window._gwNew         = () => _newWorkflow();
-  window._gwSaveName    = (v) => _saveWorkflowName(v);
-  window._gwAddPreset   = (key) => _addFromPreset(key);
+  window._gwNew          = () => _newWorkflow();
+  window._gwSaveName     = (v) => _saveWorkflowName(v);
+  window._gwAddPreset    = (key) => _addFromPreset(key);
   window._gwFromTemplate = (evt) => _showTemplateMenu(evt);
-  window._gwStartRun    = () => _startRun();
-  window._gwCancelRun   = () => _cancelRun();
-  window._gwToggleLog   = _toggleLog;
-  window._gwCloseDetail = _closeDetail;
-  window._gwSaveNode    = _saveNodeFromForm;
-  window._gwExportYAML  = _exportYAML;
-  window._gwImportYAML  = _importYAML;
+  window._gwStartRun     = () => _startRun();
+  window._gwCancelRun    = () => _cancelRun();
+  window._gwToggleLog    = _toggleLog;
+  window._gwCloseDetail  = _closeDetail;
+  window._gwSaveNode     = _saveNodeFromForm;
+  window._gwExportYAML   = _exportYAML;
+  window._gwImportYAML   = _importYAML;
+  window._gwCloseRunPanel = _closeRunPanel;
+  window._gwOpenRun      = (runId) => _openRunById(runId);
 
   _loadList();
 }
@@ -391,10 +476,11 @@ async function _loadList() {
   const el = document.getElementById('gw-wf-list');
   if (!el) return;
 
-  // Load workflows + roles in parallel
-  const [wfResult, roleResult] = await Promise.allSettled([
+  // Load workflows + roles + recent runs in parallel
+  const [wfResult, roleResult, runsResult] = await Promise.allSettled([
     api.graphWorkflows.list(_project || ''),
     api.agentRoles.list(_project || '_global'),
+    api.graphWorkflows.recentRuns(_project || '', 15),
   ]);
 
   // Populate role library sidebar
@@ -402,6 +488,10 @@ async function _loadList() {
     _roles = roleResult.value.roles || [];
     _renderRoleLibrary();
   }
+
+  // Populate recent runs sidebar
+  const recentRuns = runsResult.status === 'fulfilled' ? (runsResult.value.runs || []) : [];
+  _renderRecentRuns(recentRuns);
 
   if (wfResult.status === 'rejected') {
     el.innerHTML = `<div style="padding:0.4rem 0.75rem;color:var(--red);font-size:0.75rem">${_esc(wfResult.reason?.message || 'Error')}</div>`;
@@ -454,6 +544,53 @@ function _renderRoleLibrary() {
     `;
   }).join('');
   window._gwAddFromRole = _addFromRole;
+}
+
+// ── Recent runs sidebar ───────────────────────────────────────────────────────
+
+function _renderRecentRuns(runs) {
+  const el = document.getElementById('gw-recent-runs');
+  if (!el) return;
+  if (!runs.length) {
+    el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No runs yet</div>';
+    return;
+  }
+  const STATUS_COLORS = { done: '#3ecf8e', error: '#e85d75', running: '#f5a623',
+                           stopped: '#888', cancelled: '#888', waiting_approval: '#9b7ef8' };
+  el.innerHTML = runs.slice(0, 12).map(r => {
+    const color = STATUS_COLORS[r.status] || 'var(--muted)';
+    const dur = r.started_at ? _fmtDurIso(r.started_at, r.finished_at) : '';
+    const cost = r.total_cost_usd > 0 ? ` · $${Number(r.total_cost_usd).toFixed(3)}` : '';
+    const label = (r.workflow_name || 'Pipeline').slice(0, 22);
+    const input  = (r.user_input || '').slice(0, 30);
+    return `
+      <div class="gw-run-row" onclick="window._gwOpenRun('${r.id}')" title="${_esc(r.user_input||'')}">
+        <div class="gw-run-dot" style="background:${color}"></div>
+        <div style="flex:1;min-width:0">
+          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">${_esc(label)}</div>
+          ${input ? `<div style="font-size:0.65rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(input)}</div>` : ''}
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);white-space:nowrap;flex-shrink:0">${dur}${cost}</div>
+      </div>`;
+  }).join('');
+}
+
+// ── Duration helpers ──────────────────────────────────────────────────────────
+
+function _fmtDurIso(startIso, endIso) {
+  if (!startIso) return '';
+  const start = new Date(startIso).getTime();
+  const end   = endIso ? new Date(endIso).getTime() : Date.now();
+  return _fmtDurMs(end - start);
+}
+
+function _fmtDurMs(ms) {
+  if (ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
 // ── Workflow open / create ────────────────────────────────────────────────────
@@ -1059,9 +1196,9 @@ async function _startRun() {
       project: _project,
     });
     _currentRunId = run_id;
-    _openLog();
+    _runStartTime = new Date();
+    _openRunPanel(_currentWf.name, _currentWf.nodes || []);
     _pollRun(run_id);
-    document.getElementById('gw-cancel-btn').style.display = '';
   } catch (e) {
     toast(`Run failed: ${e.message}`, 'error');
   }
@@ -1069,18 +1206,52 @@ async function _startRun() {
 
 function _openLog() {
   const log = document.getElementById('gw-log');
-  const toggle = document.getElementById('gw-log-toggle');
-  if (log) { log.classList.add('open'); }
-  if (toggle) toggle.textContent = '▼';
+  if (log) log.classList.add('open');
 }
 
 function _toggleLog() {
   const log = document.getElementById('gw-log');
   const toggle = document.getElementById('gw-log-toggle');
   if (!log) return;
-  const open = log.querySelector('.gw-log-body').style.display !== 'none';
-  log.querySelector('.gw-log-body').style.display = open ? 'none' : '';
+  const body = log.querySelector('.gw-log-body');
+  const open = body?.style.display !== 'none';
+  if (body) body.style.display = open ? 'none' : '';
   if (toggle) toggle.textContent = open ? '▶' : '▼';
+}
+
+// ── Run progress panel ────────────────────────────────────────────────────────
+
+function _openRunPanel(wfName, nodes) {
+  // Close detail panel
+  const detail = document.getElementById('gw-detail');
+  if (detail) detail.classList.remove('open');
+  _selectedNodeId = null;
+
+  // Show run panel
+  const panel = document.getElementById('gw-run-panel');
+  if (panel) panel.classList.add('open');
+
+  // Set workflow name
+  const nameEl = document.getElementById('gw-rp-wf-name');
+  if (nameEl) nameEl.textContent = wfName || 'Pipeline';
+
+  // Build pending timeline from nodes
+  _renderRunTimeline(nodes.map(n => ({ node_name: n.name, node_id: n.id, status: 'pending' })), null);
+
+  // Start live timer
+  if (_timerInterval) clearInterval(_timerInterval);
+  _timerInterval = setInterval(() => {
+    const timerEl = document.getElementById('gw-rp-timer');
+    if (timerEl && _runStartTime) {
+      timerEl.textContent = _fmtDurMs(Date.now() - _runStartTime.getTime());
+    }
+  }, 1000);
+}
+
+function _closeRunPanel() {
+  const panel = document.getElementById('gw-run-panel');
+  if (panel) panel.classList.remove('open');
+  if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
 }
 
 function _pollRun(runId) {
@@ -1088,13 +1259,16 @@ function _pollRun(runId) {
   _pollInterval = setInterval(async () => {
     try {
       const run = await api.graphWorkflows.getRun(runId);
-      _updateRunLog(run);
-      if (['done','error','stopped','cancelled'].includes(run.status)) {
+      _updateRunPanel(run);
+      const terminal = ['done','error','stopped','cancelled'];
+      if (terminal.includes(run.status)) {
         clearInterval(_pollInterval); _pollInterval = null;
-        document.getElementById('gw-cancel-btn').style.display = 'none';
+        if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+        _onRunComplete(run);
       }
       if (run.status === 'waiting_approval') {
         clearInterval(_pollInterval); _pollInterval = null;
+        if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
         _showApprovalPanel(run);
       }
     } catch {
@@ -1103,63 +1277,174 @@ function _pollRun(runId) {
   }, 2000);
 }
 
-function _updateRunLog(run) {
-  const statusEl = document.getElementById('gw-log-status');
-  const bodyEl = document.getElementById('gw-log-body');
-  if (statusEl) {
-    const statusColors = { done: '#3ecf8e', error: '#e85d75', running: '#f5a623', stopped: '#888' };
-    const c = statusColors[run.status] || 'var(--muted)';
-    statusEl.innerHTML = `<span style="color:${c}">${run.status}</span>`;
-    if (run.total_cost_usd > 0) {
-      statusEl.innerHTML += ` <span style="color:var(--muted);font-size:0.7rem">$${Number(run.total_cost_usd).toFixed(4)}</span>`;
-    }
+function _updateRunPanel(run) {
+  const STATUS_COLORS = { done:'#3ecf8e', error:'#e85d75', running:'#f5a623',
+                           stopped:'#888', cancelled:'#888', waiting_approval:'#9b7ef8' };
+
+  // Update header meta
+  const dot    = document.getElementById('gw-rp-dot');
+  const status = document.getElementById('gw-rp-status');
+  const cost   = document.getElementById('gw-rp-cost');
+  const nodes  = document.getElementById('gw-rp-nodes');
+  const stop   = document.getElementById('gw-rp-stop');
+
+  if (dot)    { dot.className = `gw-rp-status-dot ${run.status}`; }
+  if (status) { status.textContent = run.status.replace('_', ' '); status.style.color = STATUS_COLORS[run.status] || 'var(--muted)'; }
+  if (cost)   cost.textContent = `$${Number(run.total_cost_usd || 0).toFixed(4)}`;
+
+  const doneCount = (run.node_results || []).filter(nr => nr.status === 'done').length;
+  const totalNodes = _currentWf?.nodes?.length || (run.node_results || []).length;
+  if (nodes) nodes.textContent = `${doneCount}/${totalNodes}`;
+
+  // Hide stop button when terminal
+  if (stop && ['done','error','stopped','cancelled'].includes(run.status)) stop.style.display = 'none';
+
+  // Build merged node list: pipeline order + results
+  const pipelineNodes = _currentWf?.nodes || [];
+  const resultsByName = {};
+  for (const nr of (run.node_results || [])) {
+    // Keep latest result per node name (last retry)
+    resultsByName[nr.node_name] = nr;
   }
 
-  // Update node status indicators on cards
-  (run.node_results || []).forEach(nr => {
-    const statusDot = document.getElementById(`status-${nr.node_id}`);
-    if (statusDot) {
-      statusDot.style.display = '';
-      statusDot.className = `gw-node-status ${nr.status}`;
-    }
-  });
+  const steps = pipelineNodes.length
+    ? pipelineNodes.map(n => {
+        const r = resultsByName[n.name];
+        return r ? { ...r, node_id: n.id }
+                 : { node_name: n.name, node_id: n.id,
+                     status: n.name === run.current_node ? 'running' : 'pending' };
+      })
+    : run.node_results || [];
 
-  if (!bodyEl) return;
+  _renderRunTimeline(steps, run.current_node);
 
-  // Show "where results go" info when done
-  let doneMsg = '';
-  if (run.status === 'done') {
-    doneMsg = `
-      <div style="background:rgba(62,207,142,0.1);border:1px solid rgba(62,207,142,0.3);border-radius:6px;
-                  padding:0.6rem 0.75rem;margin-bottom:0.5rem;font-size:0.76rem">
-        <b>✓ Pipeline complete.</b> Results are saved in:
-        <ul style="margin:0.25rem 0 0;padding-left:1.2rem">
-          <li><b>Run context</b> — poll again or check the run log above</li>
-          <li><b>Documents tab</b> — <code>workspace/${_esc(_project)}/documents/</code></li>
-          ${_currentWf?.name === '_work_item_pipeline'
-            ? '<li><b>Planner tab</b> — open the work item to see updated Acceptance Criteria &amp; Implementation Plan</li>'
-            : ''}
-        </ul>
-      </div>`;
+  // Update node card status dots on canvas
+  for (const nr of (run.node_results || [])) {
+    const dot2 = document.getElementById(`status-${nr.node_id}`);
+    if (dot2) dot2.className = `gw-node-status ${nr.status}`;
   }
+  // Mark current running node on canvas
+  if (run.current_node && pipelineNodes.length) {
+    const currentNode = pipelineNodes.find(n => n.name === run.current_node);
+    if (currentNode) {
+      const dot2 = document.getElementById(`status-${currentNode.id}`);
+      if (dot2) dot2.className = 'gw-node-status running';
+    }
+  }
+}
 
-  const entries = (run.node_results || []).map(nr => {
-    const statusColor = nr.status === 'done' ? '#3ecf8e' : nr.status === 'error' ? '#e85d75' : '#f5a623';
+function _renderRunTimeline(steps, currentNodeName) {
+  const tl = document.getElementById('gw-rp-timeline');
+  if (!tl) return;
+  tl.innerHTML = steps.map(nr => {
+    let stepStatus = nr.status || 'pending';
+    if (stepStatus === 'pending' && nr.node_name === currentNodeName) stepStatus = 'running';
+
+    const dur  = nr.started_at ? _fmtDurIso(nr.started_at, nr.finished_at) : '';
+    const cost = nr.cost_usd > 0 ? `$${Number(nr.cost_usd).toFixed(4)}` : '';
+    const meta = [dur, cost].filter(Boolean).join(' · ');
+
+    const icon = stepStatus === 'done' ? '✓' : stepStatus === 'error' ? '✗'
+               : stepStatus === 'running' ? '⟳' : stepStatus === 'skipped' ? '⤳' : '○';
+
+    const outputPreview = nr.output
+      ? `<div class="gw-rp-step-out">${_esc(nr.output.slice(0, 280))}</div>` : '';
+
     return `
-      <div class="gw-log-entry">
-        <div style="display:flex;align-items:center;gap:0.5rem">
-          <span style="font-weight:600;font-size:0.8rem">${_esc(nr.node_name)}</span>
-          <span style="color:${statusColor};font-size:0.72rem">${nr.status}</span>
-          <span style="color:var(--muted);font-size:0.7rem;margin-left:auto">$${nr.cost_usd?.toFixed(4)||'0.0000'}</span>
+      <div class="gw-rp-step ${stepStatus}">
+        <div class="gw-rp-step-hdr">
+          <div class="gw-rp-step-dot"></div>
+          <span class="gw-rp-step-name">${icon} ${_esc(nr.node_name)}</span>
+          ${meta ? `<span class="gw-rp-step-meta">${_esc(meta)}</span>` : ''}
         </div>
-        ${nr.output ? `<div style="color:var(--muted);font-size:0.72rem;margin-top:0.2rem;
-          white-space:pre-wrap;max-height:80px;overflow:auto;background:var(--bg2);
-          border-radius:4px;padding:0.3rem 0.4rem">${_esc(nr.output.slice(0, 400))}</div>` : ''}
-      </div>
-    `;
+        ${outputPreview}
+      </div>`;
   }).join('');
+}
 
-  bodyEl.innerHTML = doneMsg + (entries || '<div style="color:var(--muted);padding:0.25rem 0">Waiting for results…</div>');
+async function _onRunComplete(run) {
+  // Final timer update
+  const timerEl = document.getElementById('gw-rp-timer');
+  if (timerEl && run.started_at) {
+    timerEl.textContent = _fmtDurIso(run.started_at, run.finished_at || new Date().toISOString());
+  }
+
+  // Show error if any
+  if (run.status === 'error' && run.error) {
+    const tl = document.getElementById('gw-rp-timeline');
+    if (tl) tl.insertAdjacentHTML('beforeend', `
+      <div style="margin:0.5rem 0.75rem;padding:0.5rem;background:rgba(232,93,117,0.1);
+           border:1px solid rgba(232,93,117,0.3);border-radius:6px;font-size:0.72rem;color:#e85d75">
+        ✗ ${_esc(run.error)}
+      </div>`);
+  }
+
+  // Load deliverables
+  if (run.status === 'done' && _currentRunId) {
+    try {
+      const { files, directory } = await api.graphWorkflows.deliverables(_currentRunId);
+      _renderDeliverables(files, directory, run);
+    } catch (_) {}
+  }
+
+  // Refresh sidebar run history
+  _loadList();
+}
+
+function _renderDeliverables(files, directory, run) {
+  const el = document.getElementById('gw-rp-deliverables');
+  if (!el) return;
+  el.style.display = '';
+
+  const isWorkItem = _currentWf?.name === '_work_item_pipeline';
+  const planner = isWorkItem ? `<div class="gw-rp-del-file">📋 <span>Planner → open work item for AC &amp; plan</span></div>` : '';
+
+  el.innerHTML = `
+    <div class="gw-rp-del-title">Deliverables</div>
+    ${files.map(f => `
+      <div class="gw-rp-del-file" title="${_esc(f.path)}">
+        📄 <span>${_esc(f.name)}</span>
+        <span style="margin-left:auto;font-size:0.63rem;color:var(--muted)">${(f.size/1024).toFixed(1)}k</span>
+      </div>`).join('')}
+    ${files.length === 0 ? '<div style="font-size:0.72rem;color:var(--muted)">No files saved yet</div>' : ''}
+    ${planner}
+    <div style="font-size:0.63rem;color:var(--muted);margin-top:0.35rem">📁 ${_esc(directory)}</div>
+  `;
+}
+
+async function _openRunById(runId) {
+  try {
+    const run = await api.graphWorkflows.getRun(runId);
+    _currentRunId = runId;
+    _runStartTime = run.started_at ? new Date(run.started_at) : new Date();
+
+    // Find matching workflow to get node order
+    if (run.workflow_id && (!_currentWf || _currentWf.id !== run.workflow_id)) {
+      try {
+        _currentWf = await api.graphWorkflows.get(run.workflow_id);
+        _showWorkflow(_currentWf);
+      } catch (_) {}
+    }
+
+    _openRunPanel(run.workflow_name || _currentWf?.name || 'Pipeline', _currentWf?.nodes || []);
+
+    // Set timer to actual elapsed
+    const timerEl = document.getElementById('gw-rp-timer');
+    if (timerEl && run.started_at) {
+      timerEl.textContent = _fmtDurIso(run.started_at, run.finished_at);
+    }
+    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+
+    _updateRunPanel(run);
+
+    if (run.status === 'done') {
+      _onRunComplete(run);
+    } else if (run.status === 'running' || run.status === 'waiting_approval') {
+      _pollRun(runId);
+    }
+  } catch (e) {
+    toast(`Could not load run: ${e.message}`, 'error');
+  }
 }
 
 function _showApprovalPanel(run) {
@@ -1195,10 +1480,15 @@ async function _cancelRun() {
   if (!_currentRunId) return;
   try {
     await api.graphWorkflows.cancelRun(_currentRunId);
-    if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
-    document.getElementById('gw-cancel-btn').style.display = 'none';
-    const s = document.getElementById('gw-log-status');
-    if (s) s.textContent = 'cancelled';
+    if (_pollInterval)  { clearInterval(_pollInterval);  _pollInterval  = null; }
+    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+    const dot = document.getElementById('gw-rp-dot');
+    const st  = document.getElementById('gw-rp-status');
+    const stop = document.getElementById('gw-rp-stop');
+    if (dot)  dot.className = 'gw-rp-status-dot cancelled';
+    if (st)   { st.textContent = 'cancelled'; st.style.color = '#888'; }
+    if (stop) stop.style.display = 'none';
+    _loadList(); // refresh run history
   } catch (e) {
     toast(`Cancel failed: ${e.message}`, 'error');
   }

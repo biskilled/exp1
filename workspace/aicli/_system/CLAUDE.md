@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 - Backend startup race condition fix: retry logic handles empty project list on first load
-- Pipeline/workflow nodes support max_retry, stateless mode, continue_on_fail flags; visual node removal with confirmation dialog
+- Document folder IO abstraction: prompt-driven workflows instead of direct file I/O; role-based (PM writes, Dev reads) via memory queries
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-19] `claude_cli`: Yamel config need to be simple . at the moment all flows are sequece - node A -> Node B -> Node C it
-- [2026-03-19] `claude_cli`: system designer - only run of explicitly placed of course . retry is per node, continue is per node 
 - [2026-03-19] `claude_cli`:  can you update /memory as well to make sure this feature is stored 
 - [2026-03-19] `claude_cli`: UI improvmenet - in pipeline for each node - can you add more properties (max retry, stateless, cont
 - [2026-03-19] `claude_cli`: UI improvement - new nodes in Pipeline we need to show more details at the node (same as it was) lik
+- [2026-03-19] `claude_cli`: I would like to remove the IO. is it possible just to mainatin that using prompt. for example how do
+- [2026-03-19] `claude_cli`: I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
