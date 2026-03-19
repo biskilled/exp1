@@ -9,6 +9,7 @@
 
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
+import { renderMd } from '../utils/markdown.js';
 
 const TREE_W_KEY = 'aicli_docs_tree_w';
 
@@ -211,6 +212,7 @@ async function _docSelect(path) {
 function _renderViewer(path, content) {
   const viewer = document.getElementById('doc-viewer');
   if (!viewer) return;
+  const isMd = path.endsWith('.md') || path.endsWith('.markdown');
   viewer.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);flex-shrink:0">
@@ -224,9 +226,12 @@ function _renderViewer(path, content) {
                 style="font-size:0.65rem;padding:0.15rem 0.5rem;color:var(--red)">Delete</button>
       </div>
     </div>
-    <pre id="doc-content-pre"
-         style="flex:1;overflow:auto;margin:0;padding:1rem;font-size:0.72rem;
-                line-height:1.55;white-space:pre-wrap;word-break:break-word">${_esc(content)}</pre>
+    ${isMd
+      ? `<div id="doc-content-pre" class="md-body"
+              style="flex:1;overflow:auto;padding:1.25rem 1.5rem;line-height:1.7;font-size:0.82rem">${renderMd(content)}</div>`
+      : `<pre id="doc-content-pre"
+              style="flex:1;overflow:auto;margin:0;padding:1rem;font-size:0.72rem;
+                     line-height:1.55;white-space:pre-wrap;word-break:break-word">${_esc(content)}</pre>`}
   `;
   document.getElementById('doc-edit-btn').addEventListener('click', () => _editDoc(path, content));
   document.getElementById('doc-delete-btn').addEventListener('click', () => _deleteDoc(path));

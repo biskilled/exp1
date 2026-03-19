@@ -512,9 +512,9 @@ async function _loadList() {
   el.innerHTML = workflows.map(wf => {
     const isWiPipeline = wf.name === '_work_item_pipeline';
     const label = isWiPipeline ? '⚙ Work Item Pipeline' : _esc(wf.name);
-    const note  = isWiPipeline
-      ? '<div style="font-size:0.65rem;color:var(--accent)">Triggered from Planner ▶ Run</div>'
-      : (wf.description ? `<div style="font-size:0.65rem;color:var(--muted)">${_esc(wf.description.slice(0,40))}</div>` : '');
+    const note  = wf.description
+      ? `<div style="font-size:0.65rem;color:var(--muted)">${_esc((isWiPipeline ? 'Auto-pipeline from Planner' : wf.description).slice(0,40))}</div>`
+      : '';
     return `
       <div class="gw-wf-item ${_currentWf?.id === wf.id ? 'active' : ''}"
            onclick="window._gwOpenWf('${wf.id}')">
@@ -567,7 +567,8 @@ function _renderRecentRuns(runs) {
     const color = STATUS_COLORS[r.status] || 'var(--muted)';
     const dur = r.started_at ? _fmtDurIso(r.started_at, r.finished_at) : '';
     const cost = r.total_cost_usd > 0 ? ` · $${Number(r.total_cost_usd).toFixed(3)}` : '';
-    const label = (r.workflow_name || 'Pipeline').slice(0, 22);
+    const rawName = r.workflow_name === '_work_item_pipeline' ? 'Work Item Pipeline' : (r.workflow_name || 'Pipeline');
+    const label = rawName.slice(0, 22);
     const input  = (r.user_input || '').slice(0, 30);
     return `
       <div class="gw-run-row" onclick="window._gwOpenRun('${r.id}')" title="${_esc(r.user_input||'')}">
@@ -1275,7 +1276,7 @@ function _pollRun(runId) {
     } catch {
       clearInterval(_pollInterval); _pollInterval = null;
     }
-  }, 2000);
+  }, 1000);
 }
 
 function _updateRunPanel(run) {
@@ -1430,14 +1431,22 @@ async function _openRunById(runId) {
       } catch (_) {}
     }
 
-    _openRunPanel(run.workflow_name || _currentWf?.name || 'Pipeline', _currentWf?.nodes || []);
+    const wfName = run.workflow_name === '_work_item_pipeline' ? 'Work Item Pipeline'
+                 : (run.workflow_name || _currentWf?.name || 'Pipeline');
+    _openRunPanel(wfName, _currentWf?.nodes || []);
 
-    // Set timer to actual elapsed
+    // Restore timer: live for running, static for completed
+    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
     const timerEl = document.getElementById('gw-rp-timer');
-    if (timerEl && run.started_at) {
+    if (run.status === 'running') {
+      // Client-side live timer from actual start
+      _timerInterval = setInterval(() => {
+        const t = document.getElementById('gw-rp-timer');
+        if (t && _runStartTime) t.textContent = _fmtDurMs(Date.now() - _runStartTime.getTime());
+      }, 1000);
+    } else if (timerEl && run.started_at) {
       timerEl.textContent = _fmtDurIso(run.started_at, run.finished_at);
     }
-    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
 
     _updateRunPanel(run);
 

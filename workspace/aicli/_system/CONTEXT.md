@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 16:37 UTC — do not edit manually.
+> Auto-generated 2026-03-19 21:04 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 164
-- **Last active**: 2026-03-19T16:36:06Z
+- **Sessions**: 165
+- **Last active**: 2026-03-19T16:55:28Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -152,6 +152,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 20:55]** `claude_cli/claude`  
+→ There are some UI improvement - I do see that GET /projects/ take some time to load and that is why I dont see projects 
+
+**[2026-03-19 16:47]** `claude_cli/claude`  
+→ it looks better, but workflow complated after 2 seconds. I do not see any outcomes in my Documents, not even something m
+← _Now restart the backend to pick up all the fixes:_
+
 **[2026-03-19 16:29]** `claude_cli/claude`  
 → I still have the same error - psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type uuid: "recent" [1
 ← _Now restart the backend to pick up the UUID guard fix:_
@@ -203,10 +210,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-19 02:39]** `claude_cli/claude`  
 → It seems that project list is loading after the app is running as I cannot see any project when app start to run, but se
 ← _Now verify syntax:_
-
-**[2026-03-19 02:31]** `claude_cli/claude`  
-→ I dont see any change in the UI . can you check all is done properly 
-← _The root cause was that `main.js` was importing `renderWorkflow` from the old `workflow.js` (YAML editor), while the new pipeline designer lives in `graph_workflow.js` and exports `renderGraphWorkflow_
-
-**[2026-03-19 02:02]** `claude_cli/claude`  
-→ I would like to extend the roles and add a way to define input type (prompts, md file located under document folder, jso

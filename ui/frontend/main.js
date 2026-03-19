@@ -97,17 +97,13 @@ async function boot() {
 }
 
 async function _continueToApp(user) {
-  // Load project list — retry up to 4× in case the backend workspace scan is still warming
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      const data = await api.listProjects();
-      const projects = data.projects || [];
-      setState({ projects });
-      if (projects.length > 0) break;
-    } catch (e) {
-      console.warn('Could not load projects:', e.message);
-    }
-    if (attempt < 3) await new Promise(r => setTimeout(r, 1200));
+  // Load project list — single fetch, don't block the UI.
+  // navigateTo('home') already does a background re-fetch so late-arriving projects appear.
+  try {
+    const data = await api.listProjects();
+    setState({ projects: data.projects || [] });
+  } catch (e) {
+    console.warn('Could not load projects:', e.message);
   }
 
   updateStatusDot();
@@ -116,14 +112,13 @@ async function _continueToApp(user) {
   // Show home screen immediately so the user can see all projects
   navigateTo('home');
 
-  // Auto-restore last open project — delayed so the home list is visible first
+  // Auto-restore last open project — tiny delay so the home list paints first
   const recent = getRecentProjects();
   const allNames = (state.projects || []).map(p => p.name);
   const lastProject = recent.find(n => allNames.includes(n));
   if (lastProject) {
     _markProjectRestoring(lastProject);
-    // 800ms delay: gives home page time to render + background refresh to populate
-    setTimeout(() => openProject(lastProject).catch(() => {}), 800);
+    setTimeout(() => openProject(lastProject).catch(() => {}), 200);
   }
 
   // Load balance chip — only when a real user is logged in
@@ -458,7 +453,10 @@ export function navigateTo(viewId, opts = {}) {
       // Refresh project list in background so newly added projects appear
       api.listProjects().then(d => {
         const fresh = d.projects || [];
-        if (fresh.length !== (state.projects || []).length) {
+        const cur   = state.projects || [];
+        const changed = fresh.length !== cur.length ||
+          fresh.some((p, i) => p.name !== (cur[i]?.name));
+        if (changed) {
           setState({ projects: fresh });
           renderHome(view);  // re-render with updated list
         }

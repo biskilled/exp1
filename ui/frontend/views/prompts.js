@@ -23,6 +23,36 @@ let _systemRoles   = [];     // all available system roles loaded once at tab in
 let _roleLinks     = {};     // {roleId: [{id, name, category, order_index}]}
 let _activeSysRole = null;   // system role being edited (admin panel)
 
+function _promptModal(title, label, placeholder = '') {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.72);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1e2130;border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:1.5rem;min-width:320px;box-shadow:0 24px 64px rgba(0,0,0,0.7)';
+    box.innerHTML = `
+      <div style="font-size:0.95rem;font-weight:700;margin-bottom:0.75rem;color:#fff">${title}</div>
+      <label style="display:block;font-size:0.7rem;color:rgba(255,255,255,0.5);margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.05em">${label}</label>
+      <input id="_pm-input" type="text" value="" placeholder="${placeholder}"
+        style="width:100%;box-sizing:border-box;padding:0.5rem 0.6rem;border:1px solid rgba(255,255,255,0.18);border-radius:6px;background:rgba(255,255,255,0.07);color:#fff;font-size:0.84rem;outline:none">
+      <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.08)">
+        <button id="_pm-cancel" class="btn btn-ghost btn-sm">Cancel</button>
+        <button id="_pm-ok" class="btn btn-primary btn-sm">Create</button>
+      </div>`;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const inp = box.querySelector('#_pm-input');
+    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+    const close = v => { overlay.remove(); resolve(v); };
+    box.querySelector('#_pm-cancel').onclick = () => close(null);
+    box.querySelector('#_pm-ok').onclick = () => close(inp.value);
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Enter') close(inp.value);
+      if (e.key === 'Escape') close(null);
+    });
+    overlay.onclick = e => { if (e.target === overlay) close(null); };
+  });
+}
+
 const PROVIDERS = ['anthropic', 'openai', 'deepseek', 'gemini', 'xai', 'ollama'];
 const MODELS    = {
   anthropic: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-opus-4-6'],
@@ -56,43 +86,29 @@ export async function renderPrompts(container, projectName) {
       <!-- Left panel -->
       <div class="prompts-tree" id="prompts-tree-panel" style="width:${savedW}px;display:flex;flex-direction:column">
 
-        <!-- System Roles section -->
-        <div id="sys-roles-section" style="display:none;flex-shrink:0">
+        <!-- Agent Roles section (top, takes most space) -->
+        <div class="prompts-tree-header" style="flex-shrink:0">
+          <span class="prompts-tree-label">Agent Roles</span>
+          <button class="btn btn-ghost btn-sm" style="padding:0.15rem 0.4rem;font-size:0.65rem"
+            onclick="window._rolesNew()" title="New agent role">+</button>
+        </div>
+        <div id="roles-list-body" style="overflow-y:auto;flex:1;min-height:120px;border-bottom:1px solid var(--border)">
+          <div style="padding:1rem;font-size:0.68rem;color:var(--muted)">Loading…</div>
+        </div>
+
+        <!-- System Roles section (bottom) -->
+        <div id="sys-roles-section" style="display:flex;flex-shrink:0;flex-direction:column;max-height:35%">
           <div class="prompts-tree-header" style="flex-shrink:0">
-            <span class="prompts-tree-label" style="font-size:0.6rem">System Roles</span>
+            <span class="prompts-tree-label" style="font-size:0.62rem">System Roles</span>
             <button id="sys-roles-new-btn" class="btn btn-ghost btn-sm"
               style="padding:0.12rem 0.35rem;font-size:0.6rem;display:none"
               onclick="window._sysRolesNew()" title="New system role">+</button>
           </div>
-          <div id="sys-roles-list-body" style="overflow-y:auto;max-height:30%;flex-shrink:0;border-bottom:1px solid var(--border)">
+          <div id="sys-roles-list-body" style="overflow-y:auto;flex:1">
             <div style="padding:1rem;font-size:0.68rem;color:var(--muted)">Loading…</div>
           </div>
         </div>
 
-        <!-- Agent Roles section -->
-        <div class="prompts-tree-header" style="flex-shrink:0">
-          <span class="prompts-tree-label">Agent Roles</span>
-          <button class="btn btn-ghost btn-sm" style="padding:0.15rem 0.4rem;font-size:0.65rem"
-            onclick="window._rolesNew()" title="New role">+</button>
-        </div>
-        <div id="roles-list-body" style="overflow-y:auto;max-height:40%;flex-shrink:0;border-bottom:1px solid var(--border)">
-          <div style="padding:1rem;font-size:0.68rem;color:var(--muted)">Loading…</div>
-        </div>
-
-        <!-- Prompt Files section (legacy .md files in workspace/prompts/) -->
-        <div class="prompts-tree-header" style="flex-shrink:0;border-top:none;cursor:pointer"
-             onclick="window._togglePromptFiles()" title="Markdown prompt files stored in the project workspace">
-          <span class="prompts-tree-label" style="font-size:0.6rem;color:var(--muted)">
-            <span id="prompt-files-arrow">▶</span> Prompt Files
-          </span>
-          <button class="btn btn-ghost btn-sm" style="padding:0.12rem 0.35rem;font-size:0.6rem"
-            onclick="event.stopPropagation();window._promptsNew()" title="New .md prompt file">+</button>
-        </div>
-        <div class="prompts-tree-body" id="prompts-tree-body" style="display:none;overflow-y:auto;max-height:200px">
-          <div class="empty-state" style="padding:1.5rem">
-            <p style="font-size:0.68rem">Loading…</p>
-          </div>
-        </div>
       </div>
 
       <!-- Resize handle -->
@@ -126,39 +142,16 @@ export async function renderPrompts(container, projectName) {
   window._sysRolesDelete      = _sysRolesDelete;
   window._sysRolesAttach      = _sysRolesAttach;
   window._sysRolesDetach      = _sysRolesDetach;
-  window._promptsNew          = _promptsNew;
-  window._promptsSave         = _promptsSave;
-  window._promptsToggleMode   = _promptsToggleMode;
-  window._openPromptFile      = (p) => { _activeRole = null; _openFile(p, projectName); };
-  window._togglePromptFiles   = () => {
-    const body  = document.getElementById('prompts-tree-body');
-    const arrow = document.getElementById('prompt-files-arrow');
-    if (!body) return;
-    const open = body.style.display !== 'none';
-    body.style.display  = open ? 'none' : 'block';
-    if (arrow) arrow.textContent = open ? '▶' : '▼';
-  };
-  window._toggleFolder     = (id) => {
-    const ch = document.getElementById(`folder-children-${id}`);
-    const fo = document.getElementById(`folder-${id}`);
-    if (!ch || !fo) return;
-    const open = ch.style.display !== 'none';
-    ch.style.display = open ? 'none' : 'block';
-    fo.classList.toggle('open', !open);
-  };
 
   _initPromptsResize();
 
   if (!projectName) {
-    document.getElementById('prompts-tree-body').innerHTML =
-      '<div class="empty-state" style="padding:1.5rem"><p>No project open</p></div>';
     document.getElementById('roles-list-body').innerHTML =
       '<div style="padding:0.75rem 1rem;font-size:0.68rem;color:var(--muted)">No project open</div>';
     return;
   }
 
-  // Load both in parallel
-  await Promise.all([_loadRoles(projectName), _loadTree(projectName)]);
+  await _loadRoles(projectName);
 }
 
 // ── Agent Roles (DB) ──────────────────────────────────────────────────────────
@@ -178,7 +171,7 @@ async function _loadRoles(projectName) {
     // Always show system roles section; gate write controls via _isAdmin
     const sysSection   = document.getElementById('sys-roles-section');
     const sysNewBtn    = document.getElementById('sys-roles-new-btn');
-    if (sysSection) sysSection.style.display = 'block';
+    if (sysSection) sysSection.style.display = 'flex';
     if (sysNewBtn)  sysNewBtn.style.display  = _isAdmin ? '' : 'none';
 
     _renderRolesList();
@@ -215,7 +208,7 @@ function _renderRolesList() {
 }
 
 async function _rolesNew() {
-  const name = prompt('Role name (e.g. "Senior Developer"):');
+  const name = await _promptModal('New Agent Role', 'Role name (e.g. "Senior Developer"):', 'My Role');
   if (!name?.trim()) return;
   try {
     const r = await api.agentRoles.create({
@@ -651,7 +644,7 @@ function _renderSysRoleEditor(sr) {
 }
 
 async function _sysRolesNew() {
-  const name = prompt('System role name (e.g. "coding_standards"):');
+  const name = await _promptModal('New System Role', 'System role name (e.g. "coding_standards"):', 'my_standards');
   if (!name?.trim()) return;
   try {
     const sr = await api.systemRoles.create({ name: name.trim(), category: 'general', description: '', content: '' });
