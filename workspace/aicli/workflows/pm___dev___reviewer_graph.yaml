@@ -1,29 +1,19 @@
 name: PM → Dev → Reviewer
 description: Standard feature pipeline with approval gate
 max_iterations: 5
+log_directory: ''
 nodes:
-- id: 3692213f-165e-43fe-84f5-066b0d9ee754
-  name: Product Manager
+- name: Product Manager
   provider: claude
-  model: ''
-  stateless: false
-  role_prompt: You are a senior product manager. Produce a detailed spec document.
-  success_criteria: reviewer_approved
-  retry_config: {}
   inputs:
   - name: prompt
     type: prompt
   outputs:
   - name: spec.md
     type: md
-- id: b1946ae1-0cf9-4d8a-ab6f-358c873e37a5
-  name: Developer
+  success_criteria: reviewer_approved
+- name: Developer
   provider: claude
-  model: ''
-  stateless: false
-  role_prompt: You are a senior software engineer. Implement the spec.
-  success_criteria: tests_pass
-  retry_config: {}
   inputs:
   - name: spec.md
     type: md
@@ -32,14 +22,10 @@ nodes:
     type: code
   - name: github_pr
     type: github
-- id: 55be4d45-b48f-4dca-9008-1d28c0a107ee
-  name: Reviewer
+  success_criteria: tests_pass
+- name: Reviewer
   provider: claude
-  model: ''
   stateless: true
-  role_prompt: You are a code reviewer. Review with fresh eyes (no history).
-  success_criteria: approved == true
-  retry_config: {}
   inputs:
   - name: code
     type: code
@@ -50,15 +36,4 @@ nodes:
     type: feedback
   - name: approved
     type: score
-edges:
-- from: 3692213f-165e-43fe-84f5-066b0d9ee754
-  to: b1946ae1-0cf9-4d8a-ab6f-358c873e37a5
-- from: b1946ae1-0cf9-4d8a-ab6f-358c873e37a5
-  to: 55be4d45-b48f-4dca-9008-1d28c0a107ee
-- from: 55be4d45-b48f-4dca-9008-1d28c0a107ee
-  to: b1946ae1-0cf9-4d8a-ab6f-358c873e37a5
-  condition:
-    op: neq
-    field: approved
-    value: true
-  label: rework
+  success_criteria: approved == true

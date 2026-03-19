@@ -375,7 +375,7 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS and exportLangGraph references removed; MEMORY.md updates pending
+- Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS removed; MEMORY.md updates pending
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project; backend init timing issue; requires investigation of project.md loading vs app startup
 - Graph workflow UI import fix (2026-03-19) — Fixed main.js imports for graph_workflow.js; corrected case statements for proper renderer routing
 - Pipeline/workflow creation and sampling (2026-03-19) — No sample pipelines available; unable to create new pipelines; requires UI/backend workflow instantiation and example workflows

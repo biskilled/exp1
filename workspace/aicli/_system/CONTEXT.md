@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 12:26 UTC — do not edit manually.
+> Auto-generated 2026-03-19 12:32 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 155
-- **Last active**: 2026-03-19T12:25:51Z
+- **Sessions**: 156
+- **Last active**: 2026-03-19T12:30:43Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -34,7 +34,7 @@
 
 ## In Progress
 
-- Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS and exportLangGraph references removed; MEMORY.md updates pending
+- Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS removed; MEMORY.md updates pending
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project; backend init timing issue; requires investigation of project.md loading vs app startup
 - Graph workflow UI import fix (2026-03-19) — Fixed main.js imports for graph_workflow.js; corrected case statements for proper renderer routing
 - Pipeline/workflow creation and sampling (2026-03-19) — No sample pipelines available; unable to create new pipelines; requires UI/backend workflow instantiation and example workflows
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 12:29]** `claude_cli/claude`  
+→  can you update /memory as well to make sure this feature is stored 
+← _Also update the `See Also` section at the bottom:_
+
 **[2026-03-19 12:09]** `claude_cli/claude`  
 → system designer - only run of explicitly placed of course . retry is per node, continue is per node (default is False). 
 ← _All clean — ROLE_PRESETS and exportLangGraph references have been fully removed.  Now let me update the MEMORY.md with the key changes:_
@@ -203,7 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-18 18:15]** `claude_cli/claude`  
 → There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
 ← _Memory endpoint works. Now let me check the "first load backend failing" and "aicli not shown as current project" issues:_
-
-**[2026-03-18 17:44]** `claude_cli/claude`  
-→ it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did
-← _Everything is working. Here's the summary of all fixes applied:  ---  **3 issues fixed:**  **1. `main.py`** — removed the stale `db.ensure_project_schema(settings.active_project)` call  **2. `database_

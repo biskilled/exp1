@@ -118,22 +118,41 @@ export function renderGraphWorkflow(container) {
       .gw-node-badge { font-size:0.58rem; padding:0.1rem 0.3rem; border-radius:3px;
         background:var(--border); color:var(--muted); flex-shrink:0; }
       .gw-node-del { display:none; position:absolute; top:4px; right:4px; background:none;
-        border:none; color:var(--muted); cursor:pointer; font-size:0.7rem; padding:2px 4px; }
+        border:none; color:var(--muted); cursor:pointer; font-size:0.7rem; padding:2px 4px;
+        line-height:1; border-radius:3px; }
+      .gw-node-del:hover { color:var(--red); background:rgba(232,93,117,0.12); }
       .gw-node-card:hover .gw-node-del { display:block; }
-      .gw-node-body { padding:0.4rem 0.6rem; }
-      .gw-node-io-section { margin-bottom:0.3rem; }
-      .gw-node-io-label { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.04em;
-        color:var(--muted); margin-bottom:0.15rem; }
-      .gw-node-io-tags { display:flex; flex-wrap:wrap; gap:0.2rem; }
+      .gw-node-body { padding:0.4rem 0.6rem; min-height:32px; }
+      .gw-node-cfg-badges { display:flex; flex-wrap:wrap; gap:0.2rem; }
+      .gw-cfg-badge { font-size:0.58rem; padding:0.1rem 0.35rem; border-radius:10px;
+        background:var(--border); color:var(--muted); }
+      .gw-cfg-stateless { background:rgba(45,212,191,0.15); color:#2dd4bf; }
+      .gw-cfg-warn      { background:rgba(245,166,35,0.15);  color:#f5a623; }
+      .gw-cfg-approval  { background:rgba(155,126,248,0.15); color:#9b7ef8; }
       .gw-node-footer { padding:0.3rem 0.6rem 0.4rem; border-top:1px solid var(--border);
-        font-size:0.65rem; color:var(--muted); display:flex; justify-content:space-between; }
-      .gw-stateless-badge { font-size:0.6rem; color:var(--muted); }
+        font-size:0.65rem; color:var(--muted); }
       .gw-node-status { position:absolute; bottom:4px; right:6px; width:8px; height:8px;
         border-radius:50%; }
       .gw-node-status.running  { background:#f5a623; animation:pulse 1s infinite; }
       .gw-node-status.done     { background:#3ecf8e; }
       .gw-node-status.error    { background:#e85d75; }
       @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+      /* Inline modal */
+      .gw-modal-overlay { position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.45);
+        display:flex;align-items:center;justify-content:center; }
+      .gw-modal-box { background:var(--bg1);border:1px solid var(--border);border-radius:8px;
+        padding:1.25rem;min-width:320px;max-width:480px;width:90%;
+        box-shadow:0 8px 32px rgba(0,0,0,0.3); }
+      .gw-modal-title { font-size:0.9rem;font-weight:600;margin-bottom:0.75rem; }
+      .gw-modal-field { margin-bottom:0.6rem; }
+      .gw-modal-field label { display:block;font-size:0.72rem;color:var(--muted);
+        margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.03em; }
+      .gw-modal-field input, .gw-modal-field textarea {
+        width:100%;box-sizing:border-box;padding:0.4rem;border:1px solid var(--border);
+        border-radius:4px;background:var(--bg2);color:var(--fg);font-size:0.82rem; }
+      .gw-modal-field textarea { resize:vertical; }
+      .gw-modal-footer { display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem; }
 
       /* Connectors */
       .gw-connector { display:flex; align-items:center; padding:0 0.2rem; flex-shrink:0;
@@ -196,7 +215,7 @@ export function renderGraphWorkflow(container) {
     </style>
 
     <div class="gw-toolbar2">
-      <button class="btn btn-primary btn-sm" id="gw-new-btn" onclick="window._gwNew()">+ New Flow</button>
+      <button class="btn btn-primary btn-sm" id="gw-new-btn" onclick="window._gwNew()">+ New Pipeline</button>
       <button class="btn btn-ghost btn-sm" onclick="window._gwFromTemplate(event)" title="Create from template">From Template ▾</button>
       <div id="gw-wf-name-wrap" style="display:none">
         <input class="gw-wf-name" id="gw-wf-name" placeholder="Flow name" onblur="window._gwSaveName(this.value)" />
@@ -214,20 +233,12 @@ export function renderGraphWorkflow(container) {
     <div class="gw-body2">
       <div class="gw-sidebar2">
         <div class="gw-sb-section">
-          <div class="gw-sb-label">Saved Flows</div>
+          <div class="gw-sb-label">Saved Pipelines</div>
           <div id="gw-wf-list"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
         </div>
         <div class="gw-sb-section">
           <div class="gw-sb-label">Role Library</div>
           <div id="gw-role-library"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
-        </div>
-        <div class="gw-sb-section">
-          <div class="gw-sb-label">IO Types</div>
-          <div class="gw-io-legend">
-            ${Object.entries(IO_TYPES).map(([t, d]) => `
-              <span class="gw-io-pill" style="background:${d.bg};color:${d.color}">${t}</span>
-            `).join('')}
-          </div>
         </div>
       </div>
 
@@ -236,11 +247,11 @@ export function renderGraphWorkflow(container) {
           <div class="gw-pipeline-scroll" id="gw-pipeline-scroll">
             <div class="gw-empty" id="gw-empty-state">
               <div style="font-size:2rem">◈</div>
-              <div style="font-weight:600">Select a flow or create a new one</div>
+              <div style="font-weight:600">Select a pipeline or create a new one</div>
               <div style="font-size:0.78rem">Use <b>From Template</b> to instantly create a PM→Dev→Reviewer pipeline</div>
-              <div style="font-size:0.78rem">or drag roles from the sidebar onto the canvas</div>
+              <div style="font-size:0.78rem">or click a role in the sidebar to add it to the pipeline</div>
               <div style="margin-top:0.5rem;display:flex;gap:0.5rem">
-                <button class="btn btn-primary btn-sm" onclick="window._gwNew()">+ New Flow</button>
+                <button class="btn btn-primary btn-sm" onclick="window._gwNew()">+ New Pipeline</button>
                 <button class="btn btn-ghost btn-sm" onclick="window._gwFromTemplate(event)">From Template ▾</button>
               </div>
             </div>
@@ -307,6 +318,61 @@ function _download(filename, text) {
   a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
   a.download = filename;
   a.click();
+}
+
+/**
+ * Inline modal that replaces native prompt()/confirm() which can be blocked in Electron.
+ * @param {object} opts
+ * @param {string}   opts.title
+ * @param {Array}    opts.fields  — [{id, label, type?, placeholder?, value?, rows?}]
+ * @param {string}   opts.confirmLabel
+ * @param {boolean}  opts.danger  — red confirm button
+ * @returns {Promise<object|null>} — resolves with {fieldId: value} map, or null if cancelled
+ */
+function _gwModal({ title, fields = [], confirmLabel = 'OK', danger = false }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'gw-modal-overlay';
+
+    const box = document.createElement('div');
+    box.className = 'gw-modal-box';
+
+    let html = `<div class="gw-modal-title">${_esc(title)}</div>`;
+    fields.forEach(f => {
+      html += `<div class="gw-modal-field">`;
+      if (f.label) html += `<label>${_esc(f.label)}</label>`;
+      if (f.rows) {
+        html += `<textarea id="_gm-${f.id}" rows="${f.rows}" placeholder="${_esc(f.placeholder || '')}">${_esc(f.value || '')}</textarea>`;
+      } else {
+        html += `<input id="_gm-${f.id}" type="${f.type || 'text'}" value="${_esc(f.value || '')}" placeholder="${_esc(f.placeholder || '')}" />`;
+      }
+      html += `</div>`;
+    });
+    html += `<div class="gw-modal-footer">
+      <button id="_gm-cancel" class="btn btn-ghost btn-sm">Cancel</button>
+      <button id="_gm-ok" class="btn ${danger ? 'btn-danger' : 'btn-primary'} btn-sm">${_esc(confirmLabel)}</button>
+    </div>`;
+    box.innerHTML = html;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const firstInput = box.querySelector('input,textarea');
+    if (firstInput) setTimeout(() => { firstInput.focus(); firstInput.select?.(); }, 0);
+
+    const close = result => { overlay.remove(); resolve(result); };
+
+    box.querySelector('#_gm-cancel').onclick = () => close(null);
+    box.querySelector('#_gm-ok').onclick = () => {
+      const result = {};
+      fields.forEach(f => { result[f.id] = box.querySelector(`#_gm-${f.id}`)?.value ?? ''; });
+      close(result);
+    };
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); box.querySelector('#_gm-ok').click(); }
+      if (e.key === 'Escape') close(null);
+    });
+    overlay.onclick = e => { if (e.target === overlay) close(null); };
+  });
 }
 
 // ── Sidebar workflow list ─────────────────────────────────────────────────────
@@ -405,15 +471,27 @@ function _showWorkflow(wf) {
 
 async function _newWorkflow() {
   if (!_project) { toast('Open a project first', 'error'); return; }
-  const name = prompt('Flow name:', 'My Pipeline');
-  if (!name) return;
+  const result = await _gwModal({
+    title: 'New Pipeline',
+    fields: [
+      { id: 'name', label: 'Name', placeholder: 'My Pipeline', value: 'My Pipeline' },
+      { id: 'desc', label: 'Description (optional)', placeholder: '' },
+    ],
+    confirmLabel: 'Create',
+  });
+  if (!result || !result.name.trim()) return;
   try {
-    const wf = await api.graphWorkflows.create({ name, project: _project, max_iterations: 5 });
+    const wf = await api.graphWorkflows.create({
+      name: result.name.trim(),
+      description: result.desc.trim(),
+      project: _project,
+      max_iterations: 5,
+    });
     _currentWf = wf;
     _showWorkflow(wf);
     _loadList();
   } catch (e) {
-    toast(`Could not create flow: ${e.message}`, 'error');
+    toast(`Could not create pipeline: ${e.message}`, 'error');
   }
 }
 
@@ -641,39 +719,35 @@ function _renderNodeCard(node) {
   const matchedRole = _roles.find(r => r.id === node.role_id || r.name === node.name);
   const roleType = matchedRole?.role_type || 'agent';
   const dotColor = TYPE_COLORS[roleType] || '#6b7490';
-  const badge = node.stateless ? '∅' : (roleType === 'system_designer' ? 'SYS' : roleType === 'reviewer' ? 'REV' : 'AGT');
-  const inputs = node.inputs || [];
-  const outputs = node.outputs || [];
+  const badge = roleType === 'system_designer' ? 'SYS' : roleType === 'reviewer' ? 'REV' : 'AGT';
   const criteria = node.success_criteria || '';
   const isSelected = node.id === _selectedNodeId;
 
+  // Config badges
+  const cfgBadges = [];
+  if (node.stateless) cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-stateless" title="Stateless: runs with fresh context">stateless</span>`);
+  if ((node.max_retry ?? 3) !== 3) cfgBadges.push(`<span class="gw-cfg-badge" title="Max retries">retry:${node.max_retry}</span>`);
+  if (node.continue_on_fail) cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-warn" title="Pipeline continues even if this node fails">cont.fail</span>`);
+  if (node.require_approval) cfgBadges.push(`<span class="gw-cfg-badge gw-cfg-approval" title="Requires human approval before continuing">approval</span>`);
+
   return `
     <div class="gw-node-card ${isSelected ? 'selected' : ''}" data-node-id="${node.id}">
-      <button class="gw-node-del" onclick="window._gwDeleteNode('${node.id}', event)">✕</button>
+      <button class="gw-node-del" onclick="window._gwDeleteNode('${node.id}', event)" title="Delete node">✕</button>
       <div class="gw-node-header">
         <div class="gw-node-dot" style="background:${dotColor}"></div>
         <div class="gw-node-name">${_esc(node.name)}</div>
         <div class="gw-node-badge">${_esc(badge)}</div>
       </div>
       <div class="gw-node-body">
-        ${inputs.length ? `
-          <div class="gw-node-io-section">
-            <div class="gw-node-io-label">In</div>
-            <div class="gw-node-io-tags">${inputs.map(_ioTag).join('')}</div>
-          </div>
-        ` : ''}
-        ${outputs.length ? `
-          <div class="gw-node-io-section">
-            <div class="gw-node-io-label">Out</div>
-            <div class="gw-node-io-tags">${outputs.map(_ioTag).join('')}</div>
-          </div>
-        ` : ''}
-        ${!inputs.length && !outputs.length ? '<div style="color:var(--muted);font-size:0.72rem">No IO configured</div>' : ''}
+        ${cfgBadges.length
+          ? `<div class="gw-node-cfg-badges">${cfgBadges.join('')}</div>`
+          : `<div style="color:var(--muted);font-size:0.7rem;font-style:italic">click to configure</div>`
+        }
       </div>
-      <div class="gw-node-footer">
-        <span>${_esc(criteria.slice(0, 24))}${criteria.length > 24 ? '…' : ''}</span>
-        ${node.stateless ? '<span class="gw-stateless-badge">stateless</span>' : ''}
-      </div>
+      ${criteria ? `
+        <div class="gw-node-footer">
+          <span title="Success criteria">${_esc(criteria.slice(0, 28))}${criteria.length > 28 ? '…' : ''}</span>
+        </div>` : ''}
       <div class="gw-node-status" id="status-${node.id}" style="display:none"></div>
     </div>
   `;
@@ -951,7 +1025,14 @@ async function _autoConnectNode(node) {
 
 async function _deleteNode(nodeId) {
   if (!_currentWf) return;
-  if (!confirm('Delete this node?')) return;
+  const node = _currentWf.nodes?.find(n => n.id === nodeId);
+  const result = await _gwModal({
+    title: `Delete "${node?.name || 'node'}"?`,
+    fields: [],
+    confirmLabel: 'Delete',
+    danger: true,
+  });
+  if (!result) return;
   try {
     await api.graphWorkflows.deleteNode(_currentWf.id, nodeId);
     if (_selectedNodeId === nodeId) _closeDetail();
@@ -967,8 +1048,13 @@ async function _deleteNode(nodeId) {
 
 async function _startRun() {
   if (!_currentWf) return;
-  const userInput = prompt('Pipeline input (user prompt):', '');
-  if (userInput === null) return;
+  const result = await _gwModal({
+    title: `Run: ${_currentWf.name}`,
+    fields: [{ id: 'input', label: 'Task / Prompt', placeholder: 'Describe the task for this pipeline…', rows: 4 }],
+    confirmLabel: '▶ Run',
+  });
+  if (!result || !result.input.trim()) return;
+  const userInput = result.input.trim();
 
   try {
     const { run_id } = await api.graphWorkflows.startRun(_currentWf.id, {

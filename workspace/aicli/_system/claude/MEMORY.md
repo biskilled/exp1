@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 12:25 UTC by aicli /memory_
+_Generated: 2026-03-19 12:30 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining Python CLI, FastAPI backend, and Electron frontend with PostgreSQL semantic search, multi-LLM provider support, and node-based workflow execution. Currently at v2.2.0 with active development on multi-agent workflows, project visibility fixes, and document management features; primary blocking issues are project selection race conditions, memory table population logic, and workflow UI instantiation.
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI for collaborative project tracking and AI-assisted development. It integrates multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with a dual-layer memory system (JSONL + PostgreSQL), nested tagging, multi-agent workflows, and MCP tools for semantic search and project management. Currently addressing workflow UI fixes, project visibility race conditions, and critical table population gaps.
 
 ## Project Facts
 
@@ -67,7 +67,7 @@ aicli is a shared AI memory platform combining Python CLI, FastAPI backend, and 
 
 ## In Progress
 
-- Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS and exportLangGraph references removed; MEMORY.md updates pending
+- Multi-agent workflow execution (2026-03-19) — Retry/continue logic per node; chat/run capability for current phase; ROLE_PRESETS removed; MEMORY.md updates pending
 - Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project; backend init timing issue; requires investigation of project.md loading vs app startup
 - Graph workflow UI import fix (2026-03-19) — Fixed main.js imports for graph_workflow.js; corrected case statements for proper renderer routing
 - Pipeline/workflow creation and sampling (2026-03-19) — No sample pipelines available; unable to create new pipelines; requires UI/backend workflow instantiation and example workflows
@@ -184,4 +184,4 @@ aicli is a shared AI memory platform combining Python CLI, FastAPI backend, and 
 
 ## AI Synthesis
 
-**[2026-03-19]** `dev_session` — Completed multi-agent workflow node execution logic; removed stale ROLE_PRESETS/exportLangGraph references; confirmed per-node retry/continue behavior and chat/run capability scoping to current phase. **[2026-03-19]** `bug_fix` — Fixed graph workflow UI rendering by correcting main.js imports from graph_workflow.js and aligning case statement routing to proper renderer functions. **[2026-03-19]** `in_progress` — Identified project visibility race condition where projects appear in Recent list but fail to become active in main panel; suspected backend project.md loading timing issue during app startup. **[2026-03-19]** `feature_gap` — Pipeline/workflow creation UI and sample pipelines not yet implemented; blocks workflow instantiation and visibility of pipeline connections. **[2026-03-19]** `feature_gap` — Documents tab not yet implemented; requires folder mapping, auto-creation for new projects, and multi-role upload support. **[2026-03-18]** `bug_fix` — Resolved AttributeError in main.py by removing non-existent db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template variable scoping for code_dir; enhanced backend retry logic to handle empty project list on first load.
+**[2026-03-19]** `multi_agent_workflows` — Implemented multi-agent workflow execution with retry/continue logic per node; chat/run capability for current phase; cleaned up ROLE_PRESETS references and pending MEMORY.md updates. **[2026-03-19]** `project_visibility_bug` — Identified race condition: projects load in Recent but not selectable as active project; backend initialization timing issue during project.md loading; marked for investigation. **[2026-03-19]** `graph_workflow_ui` — Fixed main.js imports for graph_workflow.js and corrected case statements for proper renderer routing in workflow visualization. **[2026-03-19]** `workflow_creation` — No sample pipelines available and unable to create new pipelines; requires UI/backend workflow instantiation and example workflow templates. **[2026-03-18]** `backend_stability` — Fixed AttributeError by removing stale `db.ensure_project_schema()` call; fixed memory endpoint CLAUDE.md template error with undefined `code_dir` variable scoping; improved startup retry logic for empty project list edge case. **[2026-03-10]** `data_model_hierarchy` — Confirmed clients contain multiple users; approved nested tags feature with unlimited depth hierarchy and parent_id FK relationships. **[2026-03-10]** `tag_persistence_bug` — Discovered tags disappear on session switch; unclear if UI rendering or database save failure; requires investigation. **[2026-03-10]** `performance_optimization` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags cached in memory and synced to DB on explicit save. **[unresolved]** `memory_items_population` — memory_items and project_facts tables exist but update logic not implemented; blocks improved memory/context mechanism. **[2026-03-14]** `documents_tab` — Planned Documents tab feature mapped to per-project folder; auto-create for new projects; support multiple roles uploading docs.
