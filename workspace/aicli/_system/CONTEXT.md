@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-18 21:09 UTC — do not edit manually.
+> Auto-generated 2026-03-19 00:53 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 145
-- **Last active**: 2026-03-18T21:07:06Z
+- **Sessions**: 146
+- **Last active**: 2026-03-18T21:29:24Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -21,7 +21,7 @@
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
@@ -29,17 +29,17 @@
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server with 12+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity, update_entity, list_entities, get_feature_status)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
+- **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, and MCP integration settings
 
 ## In Progress
 
-- Project visibility and listing issues (2026-03-18) — AiCli appears in Recent projects but not displaying as selectable/current project in main view; investigating openProject() timing during backend init
-- Backend startup race condition handling (2026-03-18) — Added _continueToApp retry logic to handle projects query success returning empty list; prevents false "project not found" errors
+- System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP standards) that can be added to agent roles like UI developer or backend developer
+- Project visibility and selection bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current/selectable in main view; timing issue in openProject() during backend initialization
+- Backend startup race condition (2026-03-18) — Added _continueToApp retry logic to handle projects query returning empty list; prevents false 'project not found' errors on first load
 - AttributeError fixes in main.py (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir variable scoping in memory endpoint
-- PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under evaluation
-- Multi-agent workflow system integration (2026-03-16) — Async DAG executor with Cytoscape.js visualization + YAML config for orchestrating multi-agent prompts
-- Dual-layer memory distillation pipeline (2026-03-16) — Raw JSONL → interaction_tags → 5 memory files; fixed session_bulk_tag() consistency across both tables
+- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism per original specification
+- PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O; pagination/lazy-loading under evaluation
 
 ## Key Decisions
 
@@ -57,7 +57,7 @@
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
 - Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
+- System roles composable into agent roles (e.g., 'coding' system role with clean code/comment/OOP principles addable to UI/backend developer roles)
 
 ---
 
@@ -151,6 +151,9 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-18 21:16]** `claude_cli/claude`  
+→ I would like to start to work on the Roles. by adding system roles that can be added into any Agent roles. for example s
+
 **[2026-03-18 20:54]** `claude_cli/claude`  
 → I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, llm repsonse, tags an
 ← _All 3 backfilled. Let me do a final verification:_
@@ -204,7 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-17 20:13]** `claude_cli/claude`  
 → Planner works partial - I do see the nested work on some category like doc_type but in bug or feature ui is diffrent and
 ← _Here's a summary of everything done and answers to your questions:  ---  ## What was fixed  **Planner consistency** — removed the split between `entity_values` (doc_type etc.) and `work_items` (featur_
-
-**[2026-03-17 18:50]** `claude_cli/claude`  
-→ I would like to go over on all the feutre and plan propery to Planer and Worklow as they are linked. I have created tagg
-← _Here's a summary of all changes made:  ---  ## Changes Made  ### Tab renames (`main.js`) - `"Workflow"` → `"Pipelines"` (PROJECT_TABS + global sidebar nav) - `"Prompts"` → `"Roles"` (PROJECT_TABS)  ##_

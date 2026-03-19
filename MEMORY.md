@@ -1,23 +1,28 @@
 # Project Memory — aicli
-_Generated: 2026-03-18 21:06 UTC by aicli /memory_
+_Generated: 2026-03-18 21:29 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron/vanilla JS frontend that synthesizes development history into structured memory using Claude Haiku, semantic search via PostgreSQL + pgvector, and multi-agent workflow orchestration. Currently addressing project visibility bugs, load performance optimization on free tier, and completing dual-layer memory distillation pipeline with MCP server integration for data retrieval and entity management.
+aicli is a shared AI memory platform for managing development projects via CLI, Electron UI, and LLM integration. It combines flat-file (JSONL) and PostgreSQL storage with semantic search (pgvector), nested tagging, multi-agent workflow orchestration, and MCP integration. Current focus: fixing project visibility bugs, implementing composable system roles, and populating memory/context tables while optimizing performance on constrained infrastructure.
 
 ## Project Facts
 
 - **auth_pattern**: login_as_first_level_hierarchy
+- **data_model_hierarchy**: clients_contain_multiple_users
 - **data_persistence_issue**: tags_disappear_on_session_switch
 - **db_engine**: SQL
 - **deployment_target**: Claude_CLI_and_LLM_platforms
 - **mcp_integration**: embedding_and_data_retrieval
 - **memory_management_pattern**: load_once_on_access_update_on_save
+- **pending_implementation**: memory_items_and_project_facts_table_population
+- **pending_issues**: project_visibility_bug_active_project_not_displaying
 - **performance_optimization**: redundant_SQL_calls_eliminated
 - **tagging_system**: nested_hierarchy_beyond_2_levels
 - **ui_library**: 3_dot_menu_pattern
+- **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
+- **unresolved_issues**: project_visibility_bug_active_project_not_displaying
 
 ## Tech Stack
 
@@ -28,7 +33,7 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization
@@ -36,7 +41,7 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server with 12+ tools (search_memory, get_project_state, get_recent_history, get_roles, get_commits, get_session_tags, set_session_tags, commit_push, create_entity, update_entity, list_entities, get_feature_status)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
+- **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, and MCP integration settings
 
 ## Key Decisions
@@ -55,22 +60,22 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization + YAML config
 - Port binding safety: freePort() kills stale uvicorn processes before restart; Electron cleanup via process.exit()
 - Session phase (required field) loads from DB on init; PATCH /chat/sessions/{id}/tags saves phase; backfills history.jsonl ordered by created_at
-- Real DB columns for phase/feature/session_id in events_{p} with indexes; tag cache loaded once per project tab (zero redundant DB calls during chat)
+- System roles composable into agent roles (e.g., 'coding' system role with clean code/comment/OOP principles addable to UI/backend developer roles)
 
 ## In Progress
 
-- Project visibility and listing issues (2026-03-18) — AiCli appears in Recent projects but not displaying as selectable/current project in main view; investigating openProject() timing during backend init
-- Backend startup race condition handling (2026-03-18) — Added _continueToApp retry logic to handle projects query success returning empty list; prevents false "project not found" errors
+- System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP standards) that can be added to agent roles like UI developer or backend developer
+- Project visibility and selection bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current/selectable in main view; timing issue in openProject() during backend initialization
+- Backend startup race condition (2026-03-18) — Added _continueToApp retry logic to handle projects query returning empty list; prevents false 'project not found' errors on first load
 - AttributeError fixes in main.py (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir variable scoping in memory endpoint
-- PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under evaluation
-- Multi-agent workflow system integration (2026-03-16) — Async DAG executor with Cytoscape.js visualization + YAML config for orchestrating multi-agent prompts
-- Dual-layer memory distillation pipeline (2026-03-16) — Raw JSONL → interaction_tags → 5 memory files; fixed session_bulk_tag() consistency across both tables
+- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism per original specification
+- PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O; pagination/lazy-loading under evaluation
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(9 events, 7 commits)`
+- **hooks** `(11 events, 9 commits)`
 
 ### Doc_type
 
@@ -82,8 +87,8 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ### Feature
 
-- **UI** `(8 events, 7 commits)`
-- **shared-memory** `(4 events)`
+- **shared-memory** `(13 events, 9 commits)`
+- **UI** `(10 events, 9 commits)`
 - **dropbox**
 - **pagination**
 - **tagging**
@@ -97,13 +102,13 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ### Phase
 
-- **discovery** `(8 events, 7 commits)`
+- **discovery** `(10 events, 9 commits)`
 - **development**
 - **prod**
 
 ### Task
 
-- **memory** `(2 events)`
+- **memory** `(11 events, 9 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs
 
 ## Recent Memory
@@ -176,13 +181,4 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ## AI Synthesis
 
-**[2026-03-18]** `bug fix` — Removed stale db.ensure_project_schema() call in main.py causing AttributeError; replaced with _ensure_shared_schema pattern.
-**[2026-03-18]** `bug fix` — Fixed undefined code_dir variable in CLAUDE.md template generation (line 1120 in memory endpoint); variable now properly scoped from config.
-**[2026-03-18]** `architecture` — Enhanced _continueToApp retry logic to handle race condition where projects query succeeds but returns empty list, preventing false "project not found" errors on startup.
-**[2026-03-18]** `pending investigation` — Project visibility bug identified: AiCli displays in Recent projects list but fails to show as current active project in main project selector view; timing issue during backend initialization suspected.
-**[2026-03-17]** `performance` — Identified >1 minute PROJECT.md load time on free Railway tier; investigating root cause between DB query latency and file I/O bottleneck; pagination/lazy-loading considered as mitigation.
-**[2026-03-16]** `feature` — Multi-agent workflow system integration progressing: async DAG executor with Cytoscape.js visualization + YAML configuration for multi-agent prompt orchestration.
-**[2026-03-16]** `feature` — Dual-layer memory synthesis pipeline validated: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot, aicli rules); session_bulk_tag() consistency fixed.
-**[2026-03-15]** `data model` — Session phase persistence confirmed working: loads from DB on init, saves via PATCH /chat/sessions/{id}/tags; tag deduplication verified (149 tags, 0 duplicates).
-**[2026-03-10]** `architecture` — Load-once-on-access pattern implemented to eliminate redundant SQL calls; tag cache loaded once per project tab and synced across Chat/History/Commits on explicit save.
-**[2026-03-10]** `ui/ux` — Nested tag hierarchy approved beyond 2-level constraint; login established as first-level hierarchy; 3-dot menu pattern adopted for Planner action visibility.
+**[2026-03-18]** `development_session` — Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call and correcting CLAUDE.md template code_dir variable scoping in memory endpoint. Added retry logic to _continueToApp() to handle race condition where projects query succeeds but returns empty list, preventing false 'project not found' errors. **[2026-03-18]** `system_roles_feature` — Started design for composable system roles (e.g., 'coding' role enforcing clean code/comments/OOP) that can be injected into agent roles (UI developer, backend developer). **[2026-03-18]** `bug_analysis` — Identified project visibility bug: AiCli appears in Recent projects but not selectable/displayed in main view; timing issue suspected in openProject() during backend init. **[2026-03-17]** `performance_issue` — PROJECT.md load time exceeds 1 minute on free Railway tier; DB query latency vs file I/O bottleneck being investigated; pagination/lazy-loading under evaluation. **[2026-03-16]** `workflow_system` — Integrated multi-agent async DAG executor with Cytoscape.js visualization + YAML config for orchestrating multi-agent prompts. **[unresolved]** `data_layer` — memory_items and project_facts tables exist but update logic not implemented; blocks improved memory/context mechanism per original specification.

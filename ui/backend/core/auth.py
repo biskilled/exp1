@@ -98,10 +98,8 @@ async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> Optional[dict]:
     """Returns user dict or None (used when REQUIRE_AUTH may be False)."""
-    if settings.dev_mode:
+    if settings.dev_mode or not settings.require_auth:
         return _DEV_ADMIN
-    if not settings.require_auth:
-        return None
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

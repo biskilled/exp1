@@ -56,11 +56,12 @@ export async function renderPrompts(container, projectName) {
       <!-- Left panel -->
       <div class="prompts-tree" id="prompts-tree-panel" style="width:${savedW}px;display:flex;flex-direction:column">
 
-        <!-- System Roles section (admin only — shown after load if _isAdmin) -->
+        <!-- System Roles section -->
         <div id="sys-roles-section" style="display:none;flex-shrink:0">
           <div class="prompts-tree-header" style="flex-shrink:0">
             <span class="prompts-tree-label" style="font-size:0.6rem">System Roles</span>
-            <button class="btn btn-ghost btn-sm" style="padding:0.12rem 0.35rem;font-size:0.6rem"
+            <button id="sys-roles-new-btn" class="btn btn-ghost btn-sm"
+              style="padding:0.12rem 0.35rem;font-size:0.6rem;display:none"
               onclick="window._sysRolesNew()" title="New system role">+</button>
           </div>
           <div id="sys-roles-list-body" style="overflow-y:auto;max-height:30%;flex-shrink:0;border-bottom:1px solid var(--border)">
@@ -163,12 +164,14 @@ async function _loadRoles(projectName) {
     _isAdmin     = rolesData.is_admin || sysData.is_admin || false;
     _systemRoles = sysData.system_roles || [];
 
-    // Show system roles section for admins
-    const sysSection = document.getElementById('sys-roles-section');
-    if (sysSection) sysSection.style.display = _isAdmin ? 'block' : 'none';
+    // Always show system roles section; gate write controls via _isAdmin
+    const sysSection   = document.getElementById('sys-roles-section');
+    const sysNewBtn    = document.getElementById('sys-roles-new-btn');
+    if (sysSection) sysSection.style.display = 'block';
+    if (sysNewBtn)  sysNewBtn.style.display  = _isAdmin ? '' : 'none';
 
     _renderRolesList();
-    if (_isAdmin) _renderSysRolesList();
+    _renderSysRolesList();
   } catch (e) {
     body.innerHTML = `<div style="padding:0.75rem 1rem;font-size:0.68rem;color:var(--red)">${_esc(e.message)}</div>`;
   }
@@ -437,7 +440,10 @@ function _renderSysRolesList() {
   if (!body) return;
   if (!_systemRoles.length) {
     body.innerHTML = `<div style="padding:0.75rem 1rem;font-size:0.68rem;color:var(--muted)">
-      No system roles — click <strong>+</strong> to create one</div>`;
+      ${_isAdmin
+        ? 'No system roles yet — click <strong>+</strong> to create one'
+        : 'No system roles configured'
+      }</div>`;
     return;
   }
   const CATEGORY_COLORS = { quality: '#4a90e2', security: '#e25c4a', output: '#4ae29b', review: '#e2b44a', general: '#999' };

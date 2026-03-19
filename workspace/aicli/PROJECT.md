@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Project visibility and listing issues (2026-03-18) — AiCli appears in Recent projects but not displaying as selectable/current project in main view; investigating openProject() timing during backend init
-- Backend startup race condition handling (2026-03-18) — Added _continueToApp retry logic to handle projects query success returning empty list; prevents false "project not found" errors
+- System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP standards) that can be added to agent roles like UI developer or backend developer
+- Project visibility and selection bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current/selectable in main view; timing issue in openProject() during backend initialization
+- Backend startup race condition (2026-03-18) — Added _continueToApp retry logic to handle projects query returning empty list; prevents false 'project not found' errors on first load
 - AttributeError fixes in main.py (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir variable scoping in memory endpoint
-- PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O bottleneck; pagination/lazy-loading under evaluation
-- Multi-agent workflow system integration (2026-03-16) — Async DAG executor with Cytoscape.js visualization + YAML config for orchestrating multi-agent prompts
-- Dual-layer memory distillation pipeline (2026-03-16) — Raw JSONL → interaction_tags → 5 memory files; fixed session_bulk_tag() consistency across both tables
+- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism per original specification
+- PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O; pagination/lazy-loading under evaluation
