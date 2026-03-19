@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 14:25 UTC by aicli /memory_
+_Generated: 2026-03-19 15:32 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform providing multi-LLM integration (Claude, OpenAI, DeepSeek, Gemini, Grok) with persistent project context via JSONL + PostgreSQL/pgvector, Electron desktop UI, and MCP-based automation. Currently in active development (v2.2.0) with focus on pipeline execution progress visualization, multi-agent workflow robustness, and resolving project visibility timing issues during backend initialization.
+aicli is a shared AI memory platform (v2.2.0) combining a Python CLI, FastAPI backend, and Electron frontend to enable multi-agent workflows with persistent semantic memory via PostgreSQL+pgvector. The system supports nested project tagging, graph-based workflow visualization, JWT authentication with role-based access, and MCP integration for LLM-driven project state queries. Current focus is resolving project visibility race conditions, implementing pipeline execution UI progress tracking, and linking features to work items with sequence numbering for improved context management.
 
 ## Project Facts
 
@@ -59,20 +59,20 @@ aicli is a shared AI memory platform providing multi-LLM integration (Claude, Op
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
-- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 - Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors
-- Document folder abstraction: prompt-driven workflows instead of direct IO; role-based access (PM writes, Dev reads) via memory queries
+- Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking
+- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 
 ## In Progress
 
-- Pipeline execution progress tracking (2026-03-19) — Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage during pipeline runs
-- Pipeline UI node properties (2026-03-19) — Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation
+- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue suspected during first load cycle
+- Pipeline execution progress tracking (2026-03-19) — Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage
+- Pipeline UI node properties (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation
 - Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates
-- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue under investigation
-- Graph workflow UI routing (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
-- Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
+- Feature-to-work_items linking (2026-03-19) — Implement sequence numbering (10000+) and bidirectional links between features and work_items for improved context
+- Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism and work item summaries
 
 ## Active Features / Bugs / Tasks
 
@@ -90,10 +90,10 @@ aicli is a shared AI memory platform providing multi-LLM integration (Claude, Op
 
 ### Feature
 
-- **UI** `(23 events, 20 commits)`
+- **UI** `(24 events, 21 commits)`
 - **shared-memory** `(14 events, 10 commits)`
+- **graph-workflow** `(13 events, 11 commits)`
 - **auth** `(13 events, 11 commits)`
-- **graph-workflow** `(12 events, 10 commits)`
 - **tagging**
 - **billing**
 - **embeddings**
@@ -184,4 +184,4 @@ aicli is a shared AI memory platform providing multi-LLM integration (Claude, Op
 
 ## AI Synthesis
 
-**[2026-03-19]** `chat` — User reported missing pipeline execution progress/status display; identified need to show current node, execution state, and completion percentage in workflow UI. **[2026-03-19]** `session` — Fixed graph workflow UI routing in main.js; corrected case statements and imports for proper graph_workflow.js renderer. **[2026-03-19]** `session` — Investigated project visibility bug where Recent projects don't display as active in main view; confirmed backend initialization timing issue. **[2026-03-18]** `memory` — Fixed AttributeError in main.py by removing stale `db.ensure_project_schema()` call; clarified to use `_ensure_shared_schema()` instead. **[2026-03-18]** `memory` — Fixed memory endpoint CLAUDE.md template error; resolved undefined `code_dir` variable scoping at line 1120. **[2026-03-18]** `memory` — Enhanced backend startup retry logic to handle edge case where project list load succeeds but returns empty result. **[2026-03-10]** `memory` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags now loaded into memory on project access and synced to DB only on explicit save. **[2026-03-10]** `memory` — Approved nested tag hierarchy expansion beyond 2-level structure; confirmed login as first-level only in hierarchy. **[2026-03-10]** `memory` — Identified tag persistence bug across session switches; tags saved in UI disappear when changing sessions (cause unclear—UI rendering vs. database save). **[Earlier]** `design` — Established document folder abstraction pattern: prompt-driven workflows replace direct IO; role-based access via memory queries (PM writes, Dev reads).
+**[2026-03-19]** `main.py` — Fixed AttributeError by removing stale `db.ensure_project_schema()` call; replaced with `_ensure_shared_schema` pattern. **[2026-03-19]** `memory endpoint` — Resolved undefined `code_dir` variable at line 1120 causing CLAUDE.md template runtime failures; properly scoped from config. **[2026-03-19]** `backend startup` — Modified retry logic in `_continueToApp()` to handle empty project list edge case on first load, preventing false 'project not found' errors. **[2026-03-19]** `project visibility` — Identified race condition: projects appear in Recent but not selectable as active in main view; timing issue during backend initialization suspected. **[2026-03-19]** `pipeline execution UI` — Designed per-node status/progress display with Cytoscape.js; inline modal for node properties (max_retry, stateless, continue_on_fail). **[2026-03-19]** `feature-to-work_items linking` — Planned bidirectional linking with sequence numbering (10000+) to improve memory context and workflow status tracking. **[2026-03-18]** `memory synthesis` — Confirmed dual-layer architecture (raw JSONL → interaction_tags → 5 output files) functioning; 12+ MCP tools operational for entity/state management. **[2026-03-10]** `database optimization` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags cached in memory, updated only on explicit save. **[2026-03-10]** `tag hierarchy` — Approved nested parent_id FK structure enabling unlimited depth; first-level login hierarchy confirmed. **[PENDING]** `memory_items/project_facts` — Table update logic not yet implemented; blocks context improvement features.

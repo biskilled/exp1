@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 14:25 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 15:32 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -39,16 +39,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
-- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 - Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors
-- Document folder abstraction: prompt-driven workflows instead of direct IO; role-based access (PM writes, Dev reads) via memory queries
+- Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking
+- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-19] can you update /memory as well to make sure this feature is stored
 - [2026-03-19] UI improvmenet - in pipeline for each node - can you add more properties (max retry, stateless, continue on fail - so us
 - [2026-03-19] UI improvement - new nodes in Pipeline we need to show more details at the node (same as it was) like model, input/outpu
 - [2026-03-19] I would like to remove the IO. is it possible just to mainatin that using prompt. for example how doas prject manager wi
 - [2026-03-19] I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see any status/progress
+- [2026-03-19] Anotehr topic about Features, and I would like feature to be linked in Claude cli and aiCli, also I would feature top be

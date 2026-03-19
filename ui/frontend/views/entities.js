@@ -263,15 +263,27 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
     try {
       const res = await api.workItems.runPipeline(id, proj);
-      const wfId = res.workflow_id;
-      toast(
-        wfId
-          ? `Pipeline started — <a href="#" onclick="window._nav('workflow');return false" style="color:inherit;font-weight:bold">view in Workflow tab</a>`
-          : 'Pipeline started — check back shortly',
-        'success',
-        6000,
-      );
-      setTimeout(() => _renderWorkItemTable(pane, catName, catColor, catIcon, project), 4000);
+      const runId = res.run_id ? String(res.run_id) : null;
+      if (runId) {
+        // Navigate to Pipelines tab and open the run progress panel
+        window._pendingRunOpen = runId;
+        window._nav('workflow');
+        // Poll until graph_workflow.js has registered _gwOpenRun (max 4s)
+        let t = 0;
+        const iv = setInterval(() => {
+          t += 200;
+          if (window._gwOpenRun) {
+            clearInterval(iv);
+            window._gwOpenRun(runId);
+            window._pendingRunOpen = null;
+          } else if (t >= 4000) {
+            clearInterval(iv);
+          }
+        }, 200);
+      } else {
+        toast('Pipeline started — check Pipelines tab for progress', 'success', 5000);
+      }
+      setTimeout(() => _renderWorkItemTable(pane, catName, catColor, catIcon, project), 5000);
     } catch (e) {
       toast('Pipeline error: ' + e.message, 'error');
       if (btn) { btn.disabled = false; btn.textContent = '▶'; }
@@ -559,7 +571,9 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                    font-family:var(--font);outline:none;width:100%">▶ Run Pipeline</button>
           <div style="font-size:0.58rem;color:var(--muted);margin-top:0.35rem;line-height:1.4">
             PM → Architect → Developer → Reviewer
-            ${wi.agent_run_id ? `· <a href="#" onclick="window._nav('workflow');return false"
+            ${wi.agent_run_id ? `· <a href="#" onclick="
+              window._pendingRunOpen='${wi.agent_run_id}';window._nav('workflow');
+              let _rt=0,_ri=setInterval(()=>{_rt+=200;if(window._gwOpenRun){clearInterval(_ri);window._gwOpenRun('${wi.agent_run_id}');window._pendingRunOpen=null;}else if(_rt>=4000)clearInterval(_ri);},200);return false"
               style="color:var(--accent);text-decoration:none">View last run →</a>` : ''}
           </div>
         </div>
@@ -1044,14 +1058,25 @@ window._plannerDrawerRunPipeline = async (catName, valName, project) => {
       wi = await api.workItems.create(project, { category_name: catName, name: valName });
     }
     const res = await api.workItems.runPipeline(wi.id, project);
-    toast(
-      res.workflow_id
-        ? `Pipeline started — <a href="#" onclick="window._nav('workflow');return false"
-             style="color:inherit;font-weight:bold">view in Pipelines tab</a>`
-        : 'Pipeline started',
-      'success', 6000,
-    );
-    setTimeout(() => _loadDrawerPipeline(catName, valName, project), 4000);
+    const runId = res.run_id ? String(res.run_id) : null;
+    if (runId) {
+      window._pendingRunOpen = runId;
+      window._nav('workflow');
+      let _rt = 0;
+      const _ri = setInterval(() => {
+        _rt += 200;
+        if (window._gwOpenRun) {
+          clearInterval(_ri);
+          window._gwOpenRun(runId);
+          window._pendingRunOpen = null;
+        } else if (_rt >= 4000) {
+          clearInterval(_ri);
+        }
+      }, 200);
+    } else {
+      toast('Pipeline started — check Pipelines tab for progress', 'success', 5000);
+    }
+    setTimeout(() => _loadDrawerPipeline(catName, valName, project), 5000);
   } catch (e) {
     toast('Pipeline error: ' + e.message, 'error');
     if (btn) { btn.disabled = false; btn.textContent = '▶ Run Pipeline'; }

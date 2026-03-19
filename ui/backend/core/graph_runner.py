@@ -807,6 +807,18 @@ async def _run_graph_workflow_legacy(
     while ready and global_iter < max_iter * len(nodes) + len(nodes):
         global_iter += 1
 
+        # Mark first ready node as current (for progress tracking)
+        if ready and db.is_available():
+            try:
+                with db.conn() as _cn:
+                    with _cn.cursor() as _cr:
+                        _cr.execute(
+                            "UPDATE pr_graph_runs SET current_node=%s WHERE id=%s",
+                            (nodes[ready[0]]["name"], run_id),
+                        )
+            except Exception:
+                pass
+
         results = await asyncio.gather(
             *[_execute_node(nodes[nid], run_id, ctx, iteration_count[nid], project) for nid in ready],
             return_exceptions=True,
@@ -822,9 +834,19 @@ async def _run_graph_workflow_legacy(
                 continue
 
             node_name = result["node_name"]
-            ctx[node_name] = result["structured"] if result["structured"] else result["output"]
+            output = result["structured"] if result["structured"] else result["output"]
+            ctx[node_name] = output
             total_cost += result.get("cost_usd", 0)
             done_nodes.add(nid)
+            # Auto-save legacy node output to documents/pipelines/
+            if output and result.get("status") != "error" and workflow.get("name"):
+                try:
+                    _save_node_output(
+                        project, workflow["name"], run_id, node_name,
+                        output if isinstance(output, str) else json.dumps(output),
+                    )
+                except Exception as _soe:
+                    log.debug(f"Legacy auto-save failed: {_soe}")
 
             if nodes[nid].get("require_approval") and result["status"] != "error":
                 successor_ids = [e["target"] for e in successors.get(nid, [])]

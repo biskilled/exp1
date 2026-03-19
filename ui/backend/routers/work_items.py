@@ -368,17 +368,13 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                            VALUES (%s, 1, %s, %s, 'running', %s)""",
                         (run_id_str, p, workflow_id, user_input),
                     )
-                    # Get the int id of the inserted run
-                    cur.execute("SELECT id FROM pr_graph_runs WHERE client_id=1 AND project=%s AND workflow_id=%s ORDER BY id DESC LIMIT 1", (p, workflow_id))
-                    run_row = cur.fetchone()
-                    run_id = run_row[0] if run_row else None
 
-            # Mark work item running
+            # Mark work item running — use run_id_str directly (it's the UUID we just inserted)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE pr_work_items SET agent_status='running', agent_run_id=%s, updated_at=NOW() WHERE id=%s::uuid",
-                        (run_id, item_id),
+                        "UPDATE pr_work_items SET agent_status='running', agent_run_id=%s::uuid, updated_at=NOW() WHERE id=%s::uuid",
+                        (run_id_str, item_id),
                     )
 
             # Run in background via graph_runner
@@ -388,9 +384,14 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                 try:
                     ctx = await run_graph_workflow(str(workflow_id), user_input, run_id_str, p,
                                                    work_item_id=item_id)
-                    ac   = ctx.get("PM") or ctx.get("pm") or ""
+                    # Extract node outputs by actual node names from _ensure_pipeline_workflow
+                    ac   = ctx.get("PM") or ctx.get("pm") or ctx.get("planner") or ""
                     impl = ctx.get("Architect") or ctx.get("architect") or ""
                     dev  = ctx.get("Developer") or ctx.get("developer") or ""
+                    rev  = ctx.get("Reviewer") or ctx.get("reviewer") or ""
+                    if isinstance(ac, dict):   ac   = ac.get("output", str(ac))
+                    if isinstance(impl, dict): impl = impl.get("output", str(impl))
+                    if isinstance(dev, dict):  dev  = dev.get("output", str(dev))
                     if dev and impl:
                         impl = f"{impl}\n\n## Implementation Output\n{dev}"
                     with db.conn() as conn2:
@@ -402,17 +403,39 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                                        implementation_plan=COALESCE(NULLIF(%s,''), implementation_plan),
                                        updated_at=NOW()
                                    WHERE id=%s::uuid""",
-                                (ac, impl, item_id),
+                                (str(ac), str(impl) if impl else "", item_id),
                             )
+                    # Upsert a project fact so MCP / /memory picks this up
+                    if ac:
+                        _upsert_pipeline_fact(p, name, ac, rev)
+                    # Trigger feature memory synthesis in background
+                    try:
+                        from routers.projects import _summarize_feature_memory
+                        asyncio.create_task(_summarize_feature_memory(p, item_id))
+                    except Exception as _me:
+                        log.debug(f"Memory synthesis skipped: {_me}")
                 except Exception as exc:
-                    log.error(f"run_pipeline graph failed for {item_id}: {exc}")
+                    log.error(f"run_pipeline graph failed for {item_id}: {exc}", exc_info=True)
+                    # Mark work item as error so it doesn't stay stuck at 'running'
+                    try:
+                        with db.conn() as conn_err:
+                            with conn_err.cursor() as cur_err:
+                                cur_err.execute(
+                                    "UPDATE pr_work_items SET agent_status='error', updated_at=NOW() WHERE id=%s::uuid",
+                                    (item_id,),
+                                )
+                    except Exception:
+                        pass
                     # Fallback: standalone pipeline
-                    from core.work_item_pipeline import trigger_work_item_pipeline
-                    await trigger_work_item_pipeline(item_id, p, name, desc, existing_ac)
+                    try:
+                        from core.work_item_pipeline import trigger_work_item_pipeline
+                        await trigger_work_item_pipeline(item_id, p, name, desc, existing_ac)
+                    except Exception as fb_exc:
+                        log.error(f"Standalone fallback also failed: {fb_exc}")
 
             asyncio.create_task(_run_graph())
             return {"status": "pipeline started", "work_item_id": item_id,
-                    "workflow_id": workflow_id, "run_id": run_id, "project": p}
+                    "workflow_id": str(workflow_id), "run_id": run_id_str, "project": p}
 
         except Exception as e:
             log.warning(f"Graph pipeline setup failed ({e}), falling back to standalone")
@@ -427,6 +450,36 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
     from core.work_item_pipeline import trigger_work_item_pipeline
     asyncio.create_task(trigger_work_item_pipeline(item_id, p, name, desc, existing_ac))
     return {"status": "pipeline started", "work_item_id": item_id, "project": p}
+
+
+def _upsert_pipeline_fact(project: str, item_name: str, ac: str, reviewer_output: str) -> None:
+    """Save a durable project fact after a pipeline run completes.
+
+    This ensures MCP / /memory synthesis picks up the result without waiting
+    for a full memory run.  Fact key: pipeline/{item_name}
+    """
+    if not db.is_available():
+        return
+    try:
+        summary = f"Acceptance criteria:\n{str(ac)[:400]}"
+        if reviewer_output:
+            summary += f"\n\nReviewer: {str(reviewer_output)[:200]}"
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Expire any existing current fact for this item
+                cur.execute(
+                    """UPDATE pr_project_facts SET valid_until=NOW()
+                       WHERE client_id=1 AND project=%s AND fact_key=%s AND valid_until IS NULL""",
+                    (project, f"pipeline/{item_name}"),
+                )
+                # Insert fresh fact
+                cur.execute(
+                    """INSERT INTO pr_project_facts (client_id, project, fact_key, fact_value)
+                       VALUES (1, %s, %s, %s)""",
+                    (project, f"pipeline/{item_name}", summary),
+                )
+    except Exception as _fe:
+        log.debug(f"Could not upsert pipeline fact: {_fe}")
 
 
 async def _ensure_pipeline_workflow(project: str) -> int | None:

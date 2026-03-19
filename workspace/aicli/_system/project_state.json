@@ -33,11 +33,11 @@
     "Dual-layer memory synthesis: raw JSONL \u2192 interaction_tags \u2192 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)",
     "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
     "Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save",
-    "MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking",
     "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization",
     "Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()",
     "Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors",
-    "Document folder abstraction: prompt-driven workflows instead of direct IO; role-based access (PM writes, Dev reads) via memory queries"
+    "Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking",
+    "MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -66,12 +66,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Pipeline execution progress tracking (2026-03-19) \u2014 Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage during pipeline runs",
-    "Pipeline UI node properties (2026-03-19) \u2014 Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation",
+    "Project visibility race condition (2026-03-19) \u2014 Projects load in Recent but not selectable as active; backend initialization timing issue suspected during first load cycle",
+    "Pipeline execution progress tracking (2026-03-19) \u2014 Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage",
+    "Pipeline UI node properties (2026-03-19) \u2014 Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation",
     "Multi-agent workflow execution (2026-03-19) \u2014 Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates",
-    "Project visibility race condition (2026-03-19) \u2014 Projects load in Recent but not selectable as active; backend initialization timing issue under investigation",
-    "Graph workflow UI routing (2026-03-19) \u2014 Corrected main.js imports and case statements for proper graph_workflow.js renderer routing",
-    "Memory items and project_facts population \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism"
+    "Feature-to-work_items linking (2026-03-19) \u2014 Implement sequence numbering (10000+) and bidirectional links between features and work_items for improved context",
+    "Memory items and project_facts population \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism and work item summaries"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -103,7 +103,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-19T14:25:29Z",
+  "last_memory_run": "2026-03-19T15:32:45Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state",
@@ -116,19 +116,19 @@
       "Dual-layer memory synthesis: raw JSONL \u2192 interaction_tags \u2192 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)",
       "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save",
-      "MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking",
       "Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization",
       "Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()",
       "Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors",
-      "Document folder abstraction: prompt-driven workflows instead of direct IO; role-based access (PM writes, Dev reads) via memory queries"
+      "Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking",
+      "MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking"
     ],
     "in_progress": [
-      "Pipeline execution progress tracking (2026-03-19) \u2014 Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage during pipeline runs",
-      "Pipeline UI node properties (2026-03-19) \u2014 Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation",
+      "Project visibility race condition (2026-03-19) \u2014 Projects load in Recent but not selectable as active; backend initialization timing issue suspected during first load cycle",
+      "Pipeline execution progress tracking (2026-03-19) \u2014 Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage",
+      "Pipeline UI node properties (2026-03-19) \u2014 Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation",
       "Multi-agent workflow execution (2026-03-19) \u2014 Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates",
-      "Project visibility race condition (2026-03-19) \u2014 Projects load in Recent but not selectable as active; backend initialization timing issue under investigation",
-      "Graph workflow UI routing (2026-03-19) \u2014 Corrected main.js imports and case statements for proper graph_workflow.js renderer routing",
-      "Memory items and project_facts population \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism"
+      "Feature-to-work_items linking (2026-03-19) \u2014 Implement sequence numbering (10000+) and bidirectional links between features and work_items for improved context",
+      "Memory items and project_facts population \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism and work item summaries"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -137,13 +137,12 @@
       "ui_components": "xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre",
       "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)",
       "workflow_engine": "Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic",
-      "mcp": "Standalone stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder"
+      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
+      "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings"
     },
-    "project_summary": "aicli is a shared AI memory platform providing multi-LLM integration (Claude, OpenAI, DeepSeek, Gemini, Grok) with persistent project context via JSONL + PostgreSQL/pgvector, Electron desktop UI, and MCP-based automation. Currently in active development (v2.2.0) with focus on pipeline execution progress visualization, multi-agent workflow robustness, and resolving project visibility timing issues during backend initialization.",
-    "memory_digest": "**[2026-03-19]** `chat` \u2014 User reported missing pipeline execution progress/status display; identified need to show current node, execution state, and completion percentage in workflow UI. **[2026-03-19]** `session` \u2014 Fixed graph workflow UI routing in main.js; corrected case statements and imports for proper graph_workflow.js renderer. **[2026-03-19]** `session` \u2014 Investigated project visibility bug where Recent projects don't display as active in main view; confirmed backend initialization timing issue. **[2026-03-18]** `memory` \u2014 Fixed AttributeError in main.py by removing stale `db.ensure_project_schema()` call; clarified to use `_ensure_shared_schema()` instead. **[2026-03-18]** `memory` \u2014 Fixed memory endpoint CLAUDE.md template error; resolved undefined `code_dir` variable scoping at line 1120. **[2026-03-18]** `memory` \u2014 Enhanced backend startup retry logic to handle edge case where project list load succeeds but returns empty result. **[2026-03-10]** `memory` \u2014 Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags now loaded into memory on project access and synced to DB only on explicit save. **[2026-03-10]** `memory` \u2014 Approved nested tag hierarchy expansion beyond 2-level structure; confirmed login as first-level only in hierarchy. **[2026-03-10]** `memory` \u2014 Identified tag persistence bug across session switches; tags saved in UI disappear when changing sessions (cause unclear\u2014UI rendering vs. database save). **[Earlier]** `design` \u2014 Established document folder abstraction pattern: prompt-driven workflows replace direct IO; role-based access via memory queries (PM writes, Dev reads)."
+    "project_summary": "aicli is a shared AI memory platform (v2.2.0) combining a Python CLI, FastAPI backend, and Electron frontend to enable multi-agent workflows with persistent semantic memory via PostgreSQL+pgvector. The system supports nested project tagging, graph-based workflow visualization, JWT authentication with role-based access, and MCP integration for LLM-driven project state queries. Current focus is resolving project visibility race conditions, implementing pipeline execution UI progress tracking, and linking features to work items with sequence numbering for improved context management.",
+    "memory_digest": "**[2026-03-19]** `main.py` \u2014 Fixed AttributeError by removing stale `db.ensure_project_schema()` call; replaced with `_ensure_shared_schema` pattern. **[2026-03-19]** `memory endpoint` \u2014 Resolved undefined `code_dir` variable at line 1120 causing CLAUDE.md template runtime failures; properly scoped from config. **[2026-03-19]** `backend startup` \u2014 Modified retry logic in `_continueToApp()` to handle empty project list edge case on first load, preventing false 'project not found' errors. **[2026-03-19]** `project visibility` \u2014 Identified race condition: projects appear in Recent but not selectable as active in main view; timing issue during backend initialization suspected. **[2026-03-19]** `pipeline execution UI` \u2014 Designed per-node status/progress display with Cytoscape.js; inline modal for node properties (max_retry, stateless, continue_on_fail). **[2026-03-19]** `feature-to-work_items linking` \u2014 Planned bidirectional linking with sequence numbering (10000+) to improve memory context and workflow status tracking. **[2026-03-18]** `memory synthesis` \u2014 Confirmed dual-layer architecture (raw JSONL \u2192 interaction_tags \u2192 5 output files) functioning; 12+ MCP tools operational for entity/state management. **[2026-03-10]** `database optimization` \u2014 Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags cached in memory, updated only on explicit save. **[2026-03-10]** `tag hierarchy` \u2014 Approved nested parent_id FK structure enabling unlimited depth; first-level login hierarchy confirmed. **[PENDING]** `memory_items/project_facts` \u2014 Table update logic not yet implemented; blocks context improvement features."
   }
 }

@@ -36,11 +36,11 @@ You are a senior Python software architect with deep expertise in:
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
-- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 - Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors
-- Document folder abstraction: prompt-driven workflows instead of direct IO; role-based access (PM writes, Dev reads) via memory queries
+- Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking
+- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-19] `claude_cli`:  can you update /memory as well to make sure this feature is stored 
-- [2026-03-19] `claude_cli`: UI improvmenet - in pipeline for each node - can you add more properties (max retry, stateless, cont
 - [2026-03-19] `claude_cli`: UI improvement - new nodes in Pipeline we need to show more details at the node (same as it was) lik
 - [2026-03-19] `claude_cli`: I would like to remove the IO. is it possible just to mainatin that using prompt. for example how do
 - [2026-03-19] `claude_cli`: I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see
+- [2026-03-19] `claude_cli`: Anotehr topic about Features, and I would like feature to be linked in Claude cli and aiCli, also I 
+- [2026-03-19] `claude_cli`: I am starting a pipeline from my feature tab (auth) - it looks like something is satring, but I do n
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

@@ -394,7 +394,14 @@ export function renderGraphWorkflow(container) {
   window._gwCloseRunPanel = _closeRunPanel;
   window._gwOpenRun      = (runId) => _openRunById(runId);
 
-  _loadList();
+  _loadList().then(() => {
+    // If navigation came from a pipeline trigger (entities.js), auto-open that run
+    if (window._pendingRunOpen) {
+      const rid = window._pendingRunOpen;
+      window._pendingRunOpen = null;
+      _openRunById(rid);
+    }
+  });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

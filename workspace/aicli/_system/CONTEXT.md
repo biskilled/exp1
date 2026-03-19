@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 14:25 UTC — do not edit manually.
+> Auto-generated 2026-03-19 15:46 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 160
-- **Last active**: 2026-03-19T14:25:02Z
+- **Sessions**: 161
+- **Last active**: 2026-03-19T15:32:16Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -34,12 +34,12 @@
 
 ## In Progress
 
-- Pipeline execution progress tracking (2026-03-19) — Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage during pipeline runs
-- Pipeline UI node properties (2026-03-19) — Display and configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal for pipeline creation
+- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue suspected during first load cycle
+- Pipeline execution progress tracking (2026-03-19) — Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage
+- Pipeline UI node properties (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation
 - Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates
-- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue under investigation
-- Graph workflow UI routing (2026-03-19) — Corrected main.js imports and case statements for proper graph_workflow.js renderer routing
-- Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
+- Feature-to-work_items linking (2026-03-19) — Implement sequence numbering (10000+) and bidirectional links between features and work_items for improved context
+- Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism and work item summaries
 
 ## Key Decisions
 
@@ -53,11 +53,11 @@
 - Dual-layer memory synthesis: raw JSONL → interaction_tags → 5 output files (CLAUDE.md, MEMORY.md, IDE rules, copilot rules, aicli rules)
 - Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
-- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
 - Backend startup retry logic: handles empty project list on first load; prevents false 'project not found' errors
-- Document folder abstraction: prompt-driven workflows instead of direct IO; role-based access (PM writes, Dev reads) via memory queries
+- Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking
+- MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 
 ---
 
@@ -151,6 +151,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 15:40]** `claude_cli/claude`  
+→ I am starting a pipeline from my feature tab (auth) - it looks like something is satring, but I do not see any update pr
+
+**[2026-03-19 14:29]** `claude_cli/claude`  
+→ Anotehr topic about Features, and I would like feature to be linked in Claude cli and aiCli, also I would feature top be
+← _Everything is in place. Let me mark the task complete and update memory:_
+
 **[2026-03-19 14:12]** `claude_cli/claude`  
 → I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see any status/progress
 ← _All clean._
@@ -200,10 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-19 01:25]** `claude_cli/claude`  
 → When app is stsrting - I still cannot see all project in prject page (only after I open the project). also it seems tha 
 ← _Now add the `_togglePromptFiles` global:_
-
-**[2026-03-19 00:57]** `claude_cli/claude`  
-→  I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is not working. also I a
-← _Good. Now you need to **restart the backend** for all three fixes to take effect:  ```bash kill $(lsof -ti :8000) && cd ui/backend && python3.12 -m uvicorn main:app --host 127.0.0.1 --port 8000 --relo_
-
-**[2026-03-18 21:16]** `claude_cli/claude`  
-→ I would like to start to work on the Roles. by adding system roles that can be added into any Agent roles. for example s
