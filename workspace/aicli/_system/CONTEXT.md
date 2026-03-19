@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 15:46 UTC — do not edit manually.
+> Auto-generated 2026-03-19 16:18 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 161
-- **Last active**: 2026-03-19T15:32:16Z
+- **Sessions**: 162
+- **Last active**: 2026-03-19T15:48:57Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,7 +20,7 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
@@ -34,12 +34,12 @@
 
 ## In Progress
 
-- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active; backend initialization timing issue suspected during first load cycle
-- Pipeline execution progress tracking (2026-03-19) — Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage
-- Pipeline UI node properties (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation
-- Multi-agent workflow execution (2026-03-19) — Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates
-- Feature-to-work_items linking (2026-03-19) — Implement sequence numbering (10000+) and bidirectional links between features and work_items for improved context
-- Memory items and project_facts population — Tables exist but update logic unimplemented; blocks improved memory/context mechanism and work item summaries
+- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status
+- Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle still under investigation
+- Pipeline UI node properties display (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation
+- Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure
+- Backend startup retry logic edge case (2026-03-18) — Modified to handle empty project list on first load; prevents false 'project not found' errors
+- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Key Decisions
 
@@ -151,8 +151,12 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 16:12]** `claude_cli/claude`  
+→ Start to looks better. Now I do see the _work_item_pipeline but all I can see is an error saying - psycopg2.errors.Inval
+
 **[2026-03-19 15:40]** `claude_cli/claude`  
 → I am starting a pipeline from my feature tab (auth) - it looks like something is satring, but I do not see any update pr
+← _All clean. Here's a summary of every fix:  ---  ## What was broken and what's fixed  ### 1. UI — no progress visible after triggering pipeline (main fix) **Root cause**: `_wiRunPipeline` only showed a_
 
 **[2026-03-19 14:29]** `claude_cli/claude`  
 → Anotehr topic about Features, and I would like feature to be linked in Claude cli and aiCli, also I would feature top be
@@ -203,7 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-19 01:43]** `claude_cli/claude`  
 → I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be mapped to docusmnet fo
-
-**[2026-03-19 01:25]** `claude_cli/claude`  
-→ When app is stsrting - I still cannot see all project in prject page (only after I open the project). also it seems tha 
-← _Now add the `_togglePromptFiles` global:_

@@ -225,44 +225,47 @@ export function renderGraphWorkflow(container) {
       .gw-empty { flex:1; display:flex; align-items:center; justify-content:center;
         flex-direction:column; gap:0.5rem; color:var(--muted); font-size:0.85rem; }
 
-      /* Run progress panel (right side, replaces detail during active run) */
-      .gw-run-panel { width:320px; border-left:1px solid var(--border); display:none;
-        flex-direction:column; overflow:hidden; }
+      /* Run progress panel (bottom of canvas, full-width) */
+      .gw-run-panel { border-top:1px solid var(--border); display:none;
+        flex-direction:column; overflow:hidden; max-height:42vh; flex-shrink:0; }
       .gw-run-panel.open { display:flex; }
-      .gw-rp-hdr { padding:0.65rem 0.75rem; border-bottom:1px solid var(--border); flex-shrink:0; }
+      .gw-rp-hdr { padding:0.45rem 0.75rem; border-bottom:1px solid var(--border); flex-shrink:0;
+        display:flex; align-items:center; gap:0.75rem; }
       .gw-rp-wf-name { font-size:0.78rem; font-weight:700; white-space:nowrap; overflow:hidden;
-        text-overflow:ellipsis; }
-      .gw-rp-meta { display:flex; align-items:center; gap:0.6rem; margin-top:0.25rem;
+        text-overflow:ellipsis; max-width:180px; }
+      .gw-rp-meta { display:flex; align-items:center; gap:0.5rem;
         font-size:0.72rem; color:var(--muted); }
       .gw-rp-status-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
       .gw-rp-status-dot.running { background:#f5a623; animation:pulse 1s infinite; }
       .gw-rp-status-dot.done    { background:#3ecf8e; }
       .gw-rp-status-dot.error   { background:#e85d75; }
       .gw-rp-status-dot.stopped, .gw-rp-status-dot.cancelled { background:var(--muted); }
-      .gw-rp-actions { display:flex; gap:0.4rem; margin-top:0.5rem; }
-      .gw-rp-timeline { flex:1; overflow-y:auto; padding:0.5rem 0; }
-      .gw-rp-step { padding:0.45rem 0.75rem; border-left:3px solid transparent;
-        margin:0 0 2px 0; transition:background 0.1s; }
-      .gw-rp-step.pending  { border-left-color:var(--border); opacity:0.45; }
-      .gw-rp-step.running  { border-left-color:#f5a623; background:rgba(245,166,35,0.05); }
-      .gw-rp-step.done     { border-left-color:#3ecf8e; }
-      .gw-rp-step.error    { border-left-color:#e85d75; background:rgba(232,93,117,0.05); }
-      .gw-rp-step.skipped  { border-left-color:var(--muted); opacity:0.5; }
-      .gw-rp-step-hdr { display:flex; align-items:center; gap:0.4rem; }
+      .gw-rp-actions { display:flex; gap:0.4rem; align-items:center; }
+      /* Timeline: horizontal cards in bottom panel */
+      .gw-rp-timeline { padding:0.5rem 0.75rem; display:flex; flex-direction:row;
+        gap:0.5rem; align-items:flex-start; flex-wrap:nowrap; overflow-x:auto; }
+      .gw-rp-step { min-width:160px; max-width:220px; flex-shrink:0; border-radius:6px;
+        border:2px solid var(--border); padding:0.45rem 0.55rem; transition:background 0.1s; }
+      .gw-rp-step.pending  { border-color:var(--border); opacity:0.5; }
+      .gw-rp-step.running  { border-color:#f5a623; background:rgba(245,166,35,0.06); }
+      .gw-rp-step.done     { border-color:#3ecf8e; }
+      .gw-rp-step.error    { border-color:#e85d75; background:rgba(232,93,117,0.06); }
+      .gw-rp-step.skipped  { border-color:var(--muted); opacity:0.5; }
+      .gw-rp-step-hdr { display:flex; align-items:center; gap:0.35rem; }
       .gw-rp-step-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0;
         background:var(--border); }
       .gw-rp-step.pending .gw-rp-step-dot  { background:var(--border); }
       .gw-rp-step.running .gw-rp-step-dot  { background:#f5a623; animation:pulse 1s infinite; }
       .gw-rp-step.done    .gw-rp-step-dot  { background:#3ecf8e; }
       .gw-rp-step.error   .gw-rp-step-dot  { background:#e85d75; }
-      .gw-rp-step-name { font-size:0.78rem; font-weight:600; }
-      .gw-rp-step-meta { font-size:0.67rem; color:var(--muted); margin-left:auto; }
-      .gw-rp-step-out { font-size:0.67rem; color:var(--muted); margin-top:0.3rem;
-        line-height:1.4; max-height:64px; overflow:hidden;
-        background:var(--bg2); border-radius:4px; padding:0.25rem 0.4rem;
+      .gw-rp-step-name { font-size:0.75rem; font-weight:600; flex:1;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .gw-rp-step-meta { font-size:0.63rem; color:var(--muted); margin-top:0.2rem; }
+      .gw-rp-step-out { font-size:0.65rem; color:var(--muted); margin-top:0.3rem;
+        line-height:1.4; max-height:52px; overflow:hidden;
+        background:var(--bg2); border-radius:4px; padding:0.2rem 0.35rem;
         white-space:pre-wrap; word-break:break-word; }
-      .gw-rp-deliverables { flex-shrink:0; border-top:1px solid var(--border);
-        padding:0.6rem 0.75rem; }
+      .gw-rp-deliverables { flex-shrink:0; overflow-y:auto; padding:0.5rem 0.6rem; }
       .gw-rp-del-title { font-size:0.68rem; font-weight:700; text-transform:uppercase;
         letter-spacing:0.05em; color:var(--muted); margin-bottom:0.4rem; }
       .gw-rp-del-file { font-size:0.72rem; padding:0.2rem 0; display:flex;
@@ -340,6 +343,32 @@ export function renderGraphWorkflow(container) {
             <div id="gw-approval-wrap" style="display:none;padding:0.5rem 0.75rem 0"></div>
             <div class="gw-log-body" id="gw-log-body"></div>
           </div>
+
+          <!-- Run progress panel (bottom of canvas, full-width) -->
+          <div class="gw-run-panel" id="gw-run-panel">
+            <div class="gw-rp-hdr">
+              <div style="display:flex;align-items:center;gap:0.75rem;flex:1;min-width:0">
+                <div class="gw-rp-wf-name" id="gw-rp-wf-name">Pipeline</div>
+                <div class="gw-rp-meta" style="flex-wrap:nowrap">
+                  <div class="gw-rp-status-dot running" id="gw-rp-dot"></div>
+                  <span id="gw-rp-status">running</span>
+                  <span id="gw-rp-timer" style="font-variant-numeric:tabular-nums">0s</span>
+                  <span id="gw-rp-nodes">0/0</span>
+                  <span id="gw-rp-cost">$0.0000</span>
+                </div>
+              </div>
+              <div class="gw-rp-actions" style="margin-top:0;flex-shrink:0">
+                <button class="btn btn-ghost btn-sm" id="gw-rp-stop"
+                  style="color:var(--red);font-size:0.72rem" onclick="window._gwCancelRun()">■ Stop</button>
+                <button class="btn btn-ghost btn-sm" style="font-size:0.72rem"
+                  onclick="window._gwCloseRunPanel()">✕ Close</button>
+              </div>
+            </div>
+            <div style="display:flex;flex:1;overflow:hidden">
+              <div class="gw-rp-timeline" id="gw-rp-timeline" style="flex:1;overflow-y:auto"></div>
+              <div class="gw-rp-deliverables" id="gw-rp-deliverables" style="display:none;width:220px;border-left:1px solid var(--border)"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -352,29 +381,6 @@ export function renderGraphWorkflow(container) {
         <div class="gw-detail-footer">
           <button class="btn btn-primary btn-sm" style="width:100%" onclick="window._gwSaveNode()">Save Changes</button>
         </div>
-      </div>
-
-      <!-- Run progress panel (shown during/after active run) -->
-      <div class="gw-run-panel" id="gw-run-panel">
-        <div class="gw-rp-hdr">
-          <div class="gw-rp-wf-name" id="gw-rp-wf-name">Pipeline</div>
-          <div class="gw-rp-meta">
-            <div class="gw-rp-status-dot running" id="gw-rp-dot"></div>
-            <span id="gw-rp-status">running</span>
-            <span id="gw-rp-timer" style="font-variant-numeric:tabular-nums">0s</span>
-            <span id="gw-rp-nodes">0/0</span>
-            <span id="gw-rp-cost" style="margin-left:auto">$0.0000</span>
-          </div>
-          <div class="gw-rp-actions">
-            <button class="btn btn-ghost btn-sm" id="gw-rp-stop"
-              style="color:var(--red);font-size:0.72rem" onclick="window._gwCancelRun()">■ Stop</button>
-            <div style="flex:1"></div>
-            <button class="btn btn-ghost btn-sm" style="font-size:0.72rem"
-              onclick="window._gwCloseRunPanel()">✕ Close</button>
-          </div>
-        </div>
-        <div class="gw-rp-timeline" id="gw-rp-timeline"></div>
-        <div class="gw-rp-deliverables" id="gw-rp-deliverables" style="display:none"></div>
       </div>
     </div>
   `;
@@ -1229,12 +1235,7 @@ function _toggleLog() {
 // ── Run progress panel ────────────────────────────────────────────────────────
 
 function _openRunPanel(wfName, nodes) {
-  // Close detail panel
-  const detail = document.getElementById('gw-detail');
-  if (detail) detail.classList.remove('open');
-  _selectedNodeId = null;
-
-  // Show run panel
+  // Show run panel (bottom of canvas — detail panel can remain open)
   const panel = document.getElementById('gw-run-panel');
   if (panel) panel.classList.add('open');
 
@@ -1362,8 +1363,8 @@ function _renderRunTimeline(steps, currentNodeName) {
         <div class="gw-rp-step-hdr">
           <div class="gw-rp-step-dot"></div>
           <span class="gw-rp-step-name">${icon} ${_esc(nr.node_name)}</span>
-          ${meta ? `<span class="gw-rp-step-meta">${_esc(meta)}</span>` : ''}
         </div>
+        ${meta ? `<div class="gw-rp-step-meta">${_esc(meta)}</div>` : ''}
         ${outputPreview}
       </div>`;
   }).join('');
@@ -1420,6 +1421,9 @@ function _renderDeliverables(files, directory, run) {
 }
 
 async function _openRunById(runId) {
+  if (!runId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(runId))) {
+    return; // not a valid UUID — skip silently
+  }
   try {
     const run = await api.graphWorkflows.getRun(runId);
     _currentRunId = runId;

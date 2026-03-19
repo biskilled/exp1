@@ -10,7 +10,7 @@
     "ui_components": "xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre",
     "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
     "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-    "db_schema": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles",
+    "db_schema": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
     "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
     "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)",
     "workflow_engine": "Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic",
@@ -66,12 +66,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Project visibility race condition (2026-03-19) \u2014 Projects load in Recent but not selectable as active; backend initialization timing issue suspected during first load cycle",
-    "Pipeline execution progress tracking (2026-03-19) \u2014 Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage",
-    "Pipeline UI node properties (2026-03-19) \u2014 Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation",
-    "Multi-agent workflow execution (2026-03-19) \u2014 Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates",
-    "Feature-to-work_items linking (2026-03-19) \u2014 Implement sequence numbering (10000+) and bidirectional links between features and work_items for improved context",
-    "Memory items and project_facts population \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism and work item summaries"
+    "Pipeline execution progress tracking UI (2026-03-19) \u2014 Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status",
+    "Project visibility race condition (2026-03-19) \u2014 Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle still under investigation",
+    "Pipeline UI node properties display (2026-03-19) \u2014 Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation",
+    "Memory endpoint code_dir variable scoping (2026-03-18) \u2014 Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure",
+    "Backend startup retry logic edge case (2026-03-18) \u2014 Modified to handle empty project list on first load; prevents false 'project not found' errors",
+    "Memory items and project_facts table population (pending) \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -103,7 +103,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-19T15:32:45Z",
+  "last_memory_run": "2026-03-19T15:49:28Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ = code only, workspace/ = per-project content, _system/ = project state",
@@ -123,12 +123,12 @@
       "MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking"
     ],
     "in_progress": [
-      "Project visibility race condition (2026-03-19) \u2014 Projects load in Recent but not selectable as active; backend initialization timing issue suspected during first load cycle",
-      "Pipeline execution progress tracking (2026-03-19) \u2014 Add per-node status/progress display in workflow UI; show current node, execution state, and completion percentage",
-      "Pipeline UI node properties (2026-03-19) \u2014 Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation",
-      "Multi-agent workflow execution (2026-03-19) \u2014 Per-node retry/continue logic; chat/run capability for current phase; integration with MEMORY.md updates",
-      "Feature-to-work_items linking (2026-03-19) \u2014 Implement sequence numbering (10000+) and bidirectional links between features and work_items for improved context",
-      "Memory items and project_facts population \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism and work item summaries"
+      "Pipeline execution progress tracking UI (2026-03-19) \u2014 Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status",
+      "Project visibility race condition (2026-03-19) \u2014 Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle still under investigation",
+      "Pipeline UI node properties display (2026-03-19) \u2014 Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation",
+      "Memory endpoint code_dir variable scoping (2026-03-18) \u2014 Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure",
+      "Backend startup retry logic edge case (2026-03-18) \u2014 Modified to handle empty project list on first load; prevents false 'project not found' errors",
+      "Memory items and project_facts table population (pending) \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -137,12 +137,18 @@
       "ui_components": "xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre",
       "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "db_schema": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
+      "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)",
       "workflow_engine": "Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic",
+      "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; inline modal for pipeline creation",
+      "memory_synthesis": "Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
+      "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
+      "mcp": "Standalone stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
       "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings"
     },
-    "project_summary": "aicli is a shared AI memory platform (v2.2.0) combining a Python CLI, FastAPI backend, and Electron frontend to enable multi-agent workflows with persistent semantic memory via PostgreSQL+pgvector. The system supports nested project tagging, graph-based workflow visualization, JWT authentication with role-based access, and MCP integration for LLM-driven project state queries. Current focus is resolving project visibility race conditions, implementing pipeline execution UI progress tracking, and linking features to work items with sequence numbering for improved context management.",
-    "memory_digest": "**[2026-03-19]** `main.py` \u2014 Fixed AttributeError by removing stale `db.ensure_project_schema()` call; replaced with `_ensure_shared_schema` pattern. **[2026-03-19]** `memory endpoint` \u2014 Resolved undefined `code_dir` variable at line 1120 causing CLAUDE.md template runtime failures; properly scoped from config. **[2026-03-19]** `backend startup` \u2014 Modified retry logic in `_continueToApp()` to handle empty project list edge case on first load, preventing false 'project not found' errors. **[2026-03-19]** `project visibility` \u2014 Identified race condition: projects appear in Recent but not selectable as active in main view; timing issue during backend initialization suspected. **[2026-03-19]** `pipeline execution UI` \u2014 Designed per-node status/progress display with Cytoscape.js; inline modal for node properties (max_retry, stateless, continue_on_fail). **[2026-03-19]** `feature-to-work_items linking` \u2014 Planned bidirectional linking with sequence numbering (10000+) to improve memory context and workflow status tracking. **[2026-03-18]** `memory synthesis` \u2014 Confirmed dual-layer architecture (raw JSONL \u2192 interaction_tags \u2192 5 output files) functioning; 12+ MCP tools operational for entity/state management. **[2026-03-10]** `database optimization` \u2014 Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags cached in memory, updated only on explicit save. **[2026-03-10]** `tag hierarchy` \u2014 Approved nested parent_id FK structure enabling unlimited depth; first-level login hierarchy confirmed. **[PENDING]** `memory_items/project_facts` \u2014 Table update logic not yet implemented; blocks context improvement features."
+    "project_summary": "aicli is a shared AI memory platform integrating Claude CLI with multi-LLM support (OpenAI, DeepSeek, Gemini, Grok) via server-side adapters. It uses PostgreSQL+pgvector for semantic search, JSONL for primary storage, and a dual-layer memory system (raw JSONL \u2192 interaction_tags \u2192 5 synthesized outputs). The platform features Electron desktop UI with workflow visualization (Cytoscape.js), nested tag hierarchies, JWT authentication, and an MCP server for project state management. Current focus is fixing project visibility race conditions, completing pipeline execution progress tracking, and populating memory_items/project_facts tables for improved context.",
+    "memory_digest": "**[2026-03-19]** `claude_cli` \u2014 Fixed pipeline execution progress UI: _wiRunPipeline now displays active run panel with real-time node status instead of just showing toast notification. **[2026-03-18]** `session_summary` \u2014 Removed stale `ensure_project_schema()` call in main.py and fixed undefined `code_dir` variable in CLAUDE.md template generation at line 1120. **[2026-03-18]** `session_summary` \u2014 Enhanced backend startup retry logic to handle empty project list edge case on first load, preventing false 'project not found' errors. **[2026-03-19]** `in_progress` \u2014 Project visibility race condition identified: projects appear in Recent tab but fail to load as active project in main view; timing issue in backend initialization suspected. **[2026-03-10]** `session_summary` \u2014 Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags now loaded into memory on project access and synced only on explicit save. **[2026-03-10]** `session_summary` \u2014 Approved nested tag hierarchy expansion beyond 2-level structure via parent_id FK; confirmed login as first-level hierarchy anchor. **[Pending]** `in_progress` \u2014 memory_items and project_facts table update logic not yet implemented; blocks improved context mechanism and work item summaries. **[2026-03-10]** `session_summary` \u2014 Data persistence bug discovered: tags saved in UI disappear on session switch; root cause (rendering vs. database) requires investigation. **[2026-03-10]** `session_summary` \u2014 Intermittent backend stability issues with port 127.0.0.1:8000 binding conflicts addressed via freePort() killing stale uvicorn processes. **[Design]** `decisions` \u2014 Features now linked to work_items with sequence numbering (10000+) for improved memory and workflow status tracking across multi-agent workflows."
   }
 }

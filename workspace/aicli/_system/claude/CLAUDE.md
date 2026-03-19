@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-19] `claude_cli`: UI improvement - new nodes in Pipeline we need to show more details at the node (same as it was) lik
 - [2026-03-19] `claude_cli`: I would like to remove the IO. is it possible just to mainatin that using prompt. for example how do
 - [2026-03-19] `claude_cli`: I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see
 - [2026-03-19] `claude_cli`: Anotehr topic about Features, and I would like feature to be linked in Claude cli and aiCli, also I 
 - [2026-03-19] `claude_cli`: I am starting a pipeline from my feature tab (auth) - it looks like something is satring, but I do n
+- [2026-03-19] `claude_cli`: Start to looks better. Now I do see the _work_item_pipeline but all I can see is an error saying - p
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
