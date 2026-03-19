@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 22:24 UTC by aicli /memory_
+_Generated: 2026-03-19 23:13 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling multi-agent code development workflows via Claude CLI, LLM platforms, and MCP integration. Currently in active development with 16 features/tasks, pipeline execution and memory synthesis core to the system; recent work focused on fixing initialization race conditions, template variable scoping, and improving pipeline workflow transparency.
+aicli is a shared AI memory platform that integrates Claude, OpenAI, DeepSeek, Gemini, and Grok through a unified FastAPI backend with PostgreSQL semantic search and JSONL file storage. It provides CLI and Electron UI interfaces with advanced features including nested tagging, multi-agent DAG workflows, approval-based document negotiation, and MCP server integration. Currently stabilizing pipeline execution tracking, fixing UUID validation issues, and resolving project visibility race conditions while completing memory table population for improved context handling.
 
 ## Project Facts
 
@@ -58,7 +58,7 @@ Reviewer: ```json
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
-- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; inline modal for pipeline creation
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **memory_synthesis**: Claude Haiku for LLM-synthesized /memory; incremental since last_memory_run; dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server with 12+ tools
@@ -87,10 +87,10 @@ Reviewer: ```json
 
 ## In Progress
 
-- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel; _wiRunPipeline now displays active run with real-time status; pending confirmation of flow visibility at bottom
-- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when 'recent' string passed to UUID field; requires UUID object conversion before SQL execution
-- Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue suspected during first load cycle
-- Pipeline execution workflow transparency (2026-03-19) — Run pipeline for work items missing: prompt summaries, code change visibility, user proceed confirmation; requires workflow runner refinement
+- Approval chat workflow (2026-03-19) — Added 2-pane approval panel with left pane showing current output and right pane for chat; enables requirement negotiation before final work_item save
+- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel; _wiRunPipeline now displays active run with real-time status updates
+- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion before SQL
+- Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle
 - Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure
 - Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism per specification
 
@@ -98,7 +98,7 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(33 events, 29 commits)`
+- **hooks** `(34 events, 30 commits)`
 
 ### Doc_type
 
@@ -110,11 +110,11 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(30 events, 26 commits)`
-- **auth** `(30 events, 27 commits)`
-- **graph-workflow** `(19 events, 16 commits)`
-- **workflow-runner** `(17 events, 16 commits)`
-- **embeddings** `(17 events, 16 commits)`
+- **UI** `(31 events, 27 commits)`
+- **auth** `(31 events, 28 commits)`
+- **graph-workflow** `(20 events, 17 commits)`
+- **workflow-runner** `(18 events, 17 commits)`
+- **embeddings** `(18 events, 17 commits)`
 - **shared-memory** `(14 events, 10 commits)`
 - **tagging**
 - **billing**
@@ -204,4 +204,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-19]** `dev_session` — Fixed AttributeError in main.py by removing stale `ensure_project_schema()` call; corrected memory endpoint CLAUDE.md generation with proper code_dir scoping; patched backend startup race condition in _continueToApp() retry logic to handle empty project list on first load. **[2026-03-19]** `bug_report` — Pipeline execution workflow missing critical user transparency: no prompt summaries displayed, code changes invisible, no proceed confirmation requested; identified as UI/UX gap requiring workflow runner refinement. **[2026-03-19]** `active_issue` — UUID validation required in pr_graph_runs queries when 'recent' string passed to UUID field causes psycopg2 InvalidTextRepresentation error; needs UUID object conversion guard. **[2026-03-19]** `active_issue` — Project visibility race condition: projects appear in Recent list but fail to display as active project in main view; suspected backend initialization timing issue during first load. **[2026-03-19]** `active_issue` — Pipeline execution progress panel now displays but needs confirmation of real-time status flow visibility at UI bottom. **[2026-03-18]** `architecture` — Confirmed hierarchical data model: Clients contain multiple Users (clarification from prior sessions); per-project tables with shared auth/billing tables. **[pending]** `implementation_gap` — memory_items and project_facts tables exist but update logic unimplemented; blocks improved memory/context mechanism per specification.
+**[2026-03-19]** `claude_cli` — Implemented 2-pane approval workflow in graph_workflow.js enabling chat-based requirement negotiation before final work_item save; left pane shows current document output, right pane enables live chat refinement. **[2026-03-19]** `session_notes` — Fixed pipeline execution progress tracking UI; _wiRunPipeline now correctly displays active run with real-time status updates in progress panel. **[2026-03-19]** `bug_report` — Identified UUID validation issue: psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field in pipeline run queries; requires UUID object conversion before SQL execution. **[2026-03-19]** `bug_report` — Detected project visibility race condition: projects appear in Recent but fail to display as active project in main view; suspected backend initialization timing issue on first load cycle. **[2026-03-18]** `session_summary` — Fixed memory endpoint CLAUDE.md template error: undefined code_dir variable at line 1120 now properly scoped from config; restored template generation functionality. **[2026-03-18]** `session_summary` — Fixed AttributeError in main.py: removed stale db.ensure_project_schema() call that doesn't exist; confirmed correct schema method is _ensure_shared_schema(). **[2026-03-18]** `session_summary` — Modified backend startup retry logic to handle race condition where projects list loads successfully but returns empty; prevents false "project not found" errors. **[2026-03-10]** `session_summary` — Identified critical data persistence bug: tags saved in UI disappear on session switch; unclear if rendering or database save failure requires investigation. **[2026-03-10]** `architecture_decision` — Approved nested tag hierarchy beyond 2-level structure via parent_id FK with unlimited depth; login confirmed as first-level only. **[pending]** `implementation_gap` — memory_items and project_facts tables exist but lack population logic; blocks improved memory/context mechanism per specification.
