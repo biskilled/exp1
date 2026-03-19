@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 01:19 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 01:36 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking), agent_roles, system_roles
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -47,8 +47,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-18] Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
 - [2026-03-18] Few more strucure - users are also part of client (client can have mutiple users). Also I would like to understand if yo
 - [2026-03-18] I would  to make sure memory is optimised the way we discussed previously :  As I do store propts, llm repsonse, tags an
 - [2026-03-18] I would like to start to work on the Roles. by adding system roles that can be added into any Agent roles. for example s
 - [2026-03-19] I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is not working. also I am
+- [2026-03-19] When app is stsrting - I still cannot see all project in prject page (only after I open the project). also it seems tha 

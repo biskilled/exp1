@@ -204,6 +204,14 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         input_tokens = resp.get("input_tokens", 0)
         output_tokens = resp.get("output_tokens", 0)
 
+        # Auto-save node output to documents/ if linked to a work item
+        work_item = ctx.get("_work_item")
+        if work_item and output and status != "error":
+            try:
+                _save_node_output(project, work_item, node_name, output)
+            except Exception as _ds:
+                log.warning(f"Could not save doc for node {node_name}: {_ds}")
+
         # Parse structured output if schema requested
         if output_schema:
             try:
@@ -263,11 +271,23 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
 
 # ── Main DAG runner ───────────────────────────────────────────────────────────
 
+def _save_node_output(project: str, work_item: dict, node_name: str, output: str) -> None:
+    """Save a node's text output to the documents folder."""
+    ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
+    safe_name = re.sub(r"[^a-z0-9_]", "", node_name.lower().replace(" ", "_"))[:50]
+    rel = f"{work_item['category']}/{work_item['slug']}/{safe_name}_{ts}.md"
+    dest = Path(settings.workspace_dir) / project / "documents" / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(f"# {node_name}\n\n{output}\n")
+    log.info(f"Saved node output → documents/{rel}")
+
+
 async def run_graph_workflow(
     workflow_id: str,
     user_input: str,
     run_id: str,
     project: str,
+    work_item_id: str | None = None,
 ) -> dict:
     """Execute a graph workflow asynchronously.
 
@@ -338,6 +358,25 @@ async def run_graph_workflow(
             fwd_in_degree[tgt] += 1
 
     ctx: dict[str, Any] = {"user_input": user_input}
+
+    # Load work item context for document auto-save
+    if work_item_id and db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid",
+                        (work_item_id,),
+                    )
+                    wi = cur.fetchone()
+            if wi:
+                slug = re.sub(r"[^a-z0-9_]", "", wi[1].lower().replace(" ", "_"))
+                ctx["_work_item"] = {
+                    "id": work_item_id, "category": wi[0], "name": wi[1], "slug": slug,
+                }
+        except Exception as _we:
+            log.warning(f"Could not load work_item {work_item_id}: {_we}")
+
     total_cost = 0.0
     done_nodes: set[str] = set()
     iteration_count: dict[str, int] = {nid: 0 for nid in nodes}

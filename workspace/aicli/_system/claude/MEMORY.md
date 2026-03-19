@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 01:19 UTC by aicli /memory_
+_Generated: 2026-03-19 01:36 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining Electron desktop UI, Python FastAPI backend, and MCP server integration for managing project context across multiple LLM providers. It uses hybrid storage (JSONL + PostgreSQL+pgvector), nested tagging with semantic search, composable system/agent roles, and multi-agent workflow orchestration. Current blockers: project visibility/selection UI bug during backend init, non-functional UI action buttons, and incomplete memory_items/project_facts table population.
 
 ## Project Facts
 
@@ -29,7 +33,7 @@ _Generated: 2026-03-19 01:19 UTC by aicli /memory_
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking), agent_roles, system_roles
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -61,10 +65,10 @@ _Generated: 2026-03-19 01:19 UTC by aicli /memory_
 
 ## In Progress
 
+- Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected; _continueToApp retry logic needs timing refinement
+- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; unclear purpose of 'Prompt Files' section; requires UI refactor for clarity and functional buttons
 - System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP standards) that can be added to agent roles like UI developer or backend developer
-- Project visibility and selection bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current/selectable in main view; timing issue in openProject() during backend initialization
-- Backend startup race condition (2026-03-18) — Added _continueToApp retry logic to handle projects query returning empty list; prevents false 'project not found' errors on first load
-- AttributeError fixes in main.py (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir variable scoping in memory endpoint
+- AttributeError fixes and race condition handling (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping; added retry logic for empty projects query response
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism per original specification
 - PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O; pagination/lazy-loading under evaluation
 
@@ -72,7 +76,7 @@ _Generated: 2026-03-19 01:19 UTC by aicli /memory_
 
 ### Bug
 
-- **hooks** `(12 events, 10 commits)`
+- **hooks** `(13 events, 10 commits)`
 
 ### Doc_type
 
@@ -86,7 +90,7 @@ _Generated: 2026-03-19 01:19 UTC by aicli /memory_
 
 - **shared-memory** `(14 events, 10 commits)`
 - **UI** `(11 events, 10 commits)`
-- **auth** `(1 events)`
+- **auth** `(11 events, 10 commits)`
 - **tagging**
 - **graph-workflow**
 - **billing**
@@ -175,3 +179,7 @@ _Generated: 2026-03-19 01:19 UTC by aicli /memory_
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-19]** claude_cli — User reports projects not visible in main project panel (only in Recent), plus button non-functional, system prompts missing, unclear Prompt Files section purpose; indicates frontend rendering/initialization timing issues blocking core project selection flow. **[2026-03-18]** development — Fixed AttributeError from stale db.ensure_project_schema() call and CLAUDE.md code_dir scoping bug; refined backend retry logic to handle empty projects query during startup; identified unresolved project visibility race condition and missing memory_items/project_facts population logic. **[2026-03-10]** architecture — Implemented load-once-on-access pattern to eliminate redundant SQL calls; approved nested tag hierarchy beyond 2 levels with parent_id FK; discovered tag persistence bug where tags disappear on session switch; identified port binding conflicts causing app restart failures. **[prior]** design — Confirmed hierarchical data model (clients → multiple users); approved composable system roles feature for agent role extensibility; established MCP server toolset (12+ tools) for project state, memory search, and entity management; documented dual-layer memory synthesis (raw JSONL → interaction_tags → 5 outputs).

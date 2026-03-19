@@ -361,6 +361,21 @@ api.graphWorkflows = {
   decide:     (runId, body)       => _post(`/graph/runs/${runId}/decision`, body),
 };
 
+// ── Documents API ─────────────────────────────────────────────────────────────
+
+api.documents = {
+  list:   (project)                => _get(`/documents/?project=${enc(project)}`),
+  read:   (path, project)          => _get(`/documents/read?path=${enc(path)}&project=${enc(project)}`),
+  save:   (path, content, project) => fetch(
+    _base() + `/documents/?project=${enc(project)}`,
+    { method: 'PUT', headers: _headers(), body: JSON.stringify({ path, content }) },
+  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  delete: (path, project)          => fetch(
+    _base() + `/documents/?path=${enc(path)}&project=${enc(project)}`,
+    { method: 'DELETE', headers: _headers() },
+  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+};
+
 const RECENT_KEY = 'aicli_recent_projects';
 
 export function addRecentProject(name) {

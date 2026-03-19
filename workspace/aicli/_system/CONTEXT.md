@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 01:22 UTC — do not edit manually.
+> Auto-generated 2026-03-19 01:37 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 147
-- **Last active**: 2026-03-19T01:19:37Z
+- **Sessions**: 148
+- **Last active**: 2026-03-19T01:36:16Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,7 +20,7 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking)
+- **db_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK for unlimited nesting, due_date tracking), agent_roles, system_roles
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; login as first-level hierarchy
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config
@@ -34,10 +34,10 @@
 
 ## In Progress
 
+- Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected; _continueToApp retry logic needs timing refinement
+- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; unclear purpose of 'Prompt Files' section; requires UI refactor for clarity and functional buttons
 - System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP standards) that can be added to agent roles like UI developer or backend developer
-- Project visibility and selection bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current/selectable in main view; timing issue in openProject() during backend initialization
-- Backend startup race condition (2026-03-18) — Added _continueToApp retry logic to handle projects query returning empty list; prevents false 'project not found' errors on first load
-- AttributeError fixes in main.py (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir variable scoping in memory endpoint
+- AttributeError fixes and race condition handling (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping; added retry logic for empty projects query response
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism per original specification
 - PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O; pagination/lazy-loading under evaluation
 
@@ -151,6 +151,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 01:25]** `claude_cli/claude`  
+→ When app is stsrting - I still cannot see all project in prject page (only after I open the project). also it seems tha 
+← _Now add the `_togglePromptFiles` global:_
+
 **[2026-03-19 00:57]** `claude_cli/claude`  
 →  I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is not working. also I a
 ← _Good. Now you need to **restart the backend** for all three fixes to take effect:  ```bash kill $(lsof -ti :8000) && cd ui/backend && python3.12 -m uvicorn main:app --host 127.0.0.1 --port 8000 --relo_
@@ -203,7 +207,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-17 21:06]** `claude_cli/claude`  
 → Can you run the command as well, as I dont see any change in the database . also I think that there are old tables that 
 ← _Clean. Here's the complete summary:  **Before:** 29 tables (mixed naming, 5 stale bare tables)   **After:** 24 tables — perfectly organized  ### Dropped (stale legacy tables) `commits`, `embeddings`, _
-
-**[2026-03-17 20:36]** `claude_cli/claude`  
-→ before I continue - I do see quite lots of table used for this project. can you remove unused tables. also restrucure th
-← _Clean. Let me also verify the `work_item_pipeline.py` core file is correct:_

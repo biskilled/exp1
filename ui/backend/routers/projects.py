@@ -224,6 +224,14 @@ async def create_project(body: NewProject):
         except Exception:
             pass
 
+    # Create documents folder
+    docs_dir = dest_dir / "documents"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    (docs_dir / "README.md").write_text(
+        f"# {body.name} — Documents\n\nProject documents go here. "
+        "Workflow outputs are saved automatically when runs are linked to a work item.\n"
+    )
+
     # Create per-LLM _system/ directories and stubs
     sys_dir = dest_dir / "_system"
     _ensure_per_llm_dirs(sys_dir)

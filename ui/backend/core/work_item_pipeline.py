@@ -25,6 +25,32 @@ log = logging.getLogger(__name__)
 _MAX_ITERATIONS = 2
 
 
+def _save_pipeline_doc(project: str, work_item_id: str, filename: str, content: str) -> None:
+    """Save a pipeline stage output to the documents folder. Silent on error."""
+    import re
+    from pathlib import Path
+    from config import settings
+    from core.database import db
+    if not db.is_available():
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid",
+                    (work_item_id,),
+                )
+                wi = cur.fetchone()
+        if not wi:
+            return
+        slug = re.sub(r"[^a-z0-9_]", "", wi[1].lower().replace(" ", "_"))
+        dest = Path(settings.workspace_dir) / project / "documents" / wi[0] / slug / filename
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content)
+    except Exception as e:
+        log.debug(f"_save_pipeline_doc: {e}")
+
+
 async def trigger_work_item_pipeline(
     work_item_id: str,
     project: str,
@@ -33,6 +59,8 @@ async def trigger_work_item_pipeline(
     existing_criteria: str = "",
 ) -> None:
     """Run the full 4-agent pipeline for a work item. Fully async, safe to background."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
     try:
         from core.api_keys import get_key
         import anthropic
@@ -93,6 +121,11 @@ async def trigger_work_item_pipeline(
         if not acceptance_criteria:
             _set_status(work_item_id, "failed", error="PM stage produced no output")
             return
+        try:
+            _save_pipeline_doc(project, work_item_id, f"pm_design_{ts}.md",
+                               f"# Acceptance Criteria\n\n{acceptance_criteria}")
+        except Exception:
+            pass
 
         # ── Stage 2: Architect — implementation plan ──────────────────────────
         arch_prompt = (
@@ -111,6 +144,11 @@ async def trigger_work_item_pipeline(
         if not implementation_plan:
             _set_status(work_item_id, "failed", error="Architect stage produced no output")
             return
+        try:
+            _save_pipeline_doc(project, work_item_id, f"architecture_{ts}.md",
+                               f"# Implementation Plan\n\n{implementation_plan}")
+        except Exception:
+            pass
 
         # Save AC + plan to work item
         _update_fields(work_item_id, acceptance_criteria, implementation_plan)
@@ -174,6 +212,11 @@ async def trigger_work_item_pipeline(
         if dev_output:
             final_plan = f"{implementation_plan}\n\n## Implementation Output\n{dev_output}"
             _update_fields(work_item_id, acceptance_criteria, final_plan)
+            try:
+                _save_pipeline_doc(project, work_item_id, f"implementation_{ts}.md",
+                                   f"# Implementation\n\n{dev_output}")
+            except Exception:
+                pass
 
         _set_status(work_item_id, "done")
         log.info(f"work_item_pipeline completed: {work_item_id}")

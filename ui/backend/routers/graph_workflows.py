@@ -106,6 +106,7 @@ class EdgeUpdate(BaseModel):
 class RunCreate(BaseModel):
     user_input: str = ""
     project: str = ""
+    work_item_id: str | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -517,7 +518,8 @@ async def start_run(
     # Fire-and-forget background execution
     async def _run():
         try:
-            await run_graph_workflow(workflow_id, body.user_input, run_id, p)
+            await run_graph_workflow(workflow_id, body.user_input, run_id, p,
+                                     work_item_id=body.work_item_id)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Graph run {run_id} failed: {e}")

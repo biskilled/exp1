@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
+- Project visibility in main view (2026-03-19) — Projects load in Recent section but not selectable/visible as current active project in main panel; race condition during backend init suspected; _continueToApp retry logic needs timing refinement
+- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) for adding items non-functional; system prompts not displaying; unclear purpose of 'Prompt Files' section; requires UI refactor for clarity and functional buttons
 - System roles feature design (2026-03-18) — Architecting composable system roles (e.g., 'coding' with clean code/comments/OOP standards) that can be added to agent roles like UI developer or backend developer
-- Project visibility and selection bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current/selectable in main view; timing issue in openProject() during backend initialization
-- Backend startup race condition (2026-03-18) — Added _continueToApp retry logic to handle projects query returning empty list; prevents false 'project not found' errors on first load
-- AttributeError fixes in main.py (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir variable scoping in memory endpoint
+- AttributeError fixes and race condition handling (2026-03-18) — Removed stale db.ensure_project_schema() call; fixed CLAUDE.md template code_dir scoping; added retry logic for empty projects query response
 - Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism per original specification
 - PROJECT.md load performance (2026-03-17) — >1 minute load time on free Railway tier; investigating DB query latency vs file I/O; pagination/lazy-loading under evaluation

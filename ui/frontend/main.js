@@ -9,6 +9,7 @@ import { renderSummary } from './views/summary.js';
 import { renderChat } from './views/chat.js';
 import { renderPrompts } from './views/prompts.js';
 import { renderCode } from './views/code.js';
+import { renderDocuments } from './views/documents.js';
 import { renderWorkflow } from './views/workflow.js';
 import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
@@ -25,8 +26,9 @@ const PROJECT_TABS = [
   { id: 'chat',     icon: '◉',  label: 'Chat'     },
   { id: 'planner',  icon: '◎',  label: 'Planner'  },
   { id: 'prompts',  icon: '≡',  label: 'Roles'    },
-  { id: 'code',     icon: '</>',label: 'Code'     },
-  { id: 'workflow', icon: '◈',  label: 'Pipelines'},
+  { id: 'code',      icon: '</>',label: 'Code'      },
+  { id: 'documents', icon: '📋', label: 'Documents' },
+  { id: 'workflow',  icon: '◈',  label: 'Pipelines' },
   { id: 'history',  icon: '⏱',  label: 'History'  },
   { id: 'settings', icon: '⚙',  label: 'Settings' },
 ];
@@ -466,8 +468,9 @@ export function navigateTo(viewId, opts = {}) {
     case 'chat':     renderChat(view);                        break;
     case 'planner':  renderEntities(view);                    break;
     case 'prompts':  renderPrompts(view, proj?.name);         break;
-    case 'code':     renderCode(view, proj?.name, proj);      break;
-    case 'workflow': renderWorkflow(view); break;
+    case 'code':      renderCode(view, proj?.name, proj);           break;
+    case 'documents': renderDocuments(view, proj?.name);            break;
+    case 'workflow':  renderWorkflow(view);                         break;
     case 'history':  renderHistory(view);                     break;
     case 'settings': renderSettings(view);                    break;
     case 'admin':    _renderAdminView(view);                  break;
