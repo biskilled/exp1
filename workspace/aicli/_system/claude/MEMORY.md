@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 02:33 UTC by aicli /memory_
+_Generated: 2026-03-19 02:47 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron/Vanilla JS frontend to enable AI-assisted development workflows across multiple LLM providers. Currently at v2.2.0 with core features (auth, shared memory, tagging, embeddings, MCP integration) implemented but facing UI integration bugs (graph workflow renderer, project visibility) and pending feature completion (Documents tab, role extensibility, memory population logic).
+aicli is a shared AI memory platform providing semantic project memory via Claude, OpenAI, DeepSeek, Gemini, and Grok adapters. Built with Python FastAPI backend, Electron+Vanilla JS frontend, PostgreSQL+pgvector semantic search, and JSONL flat-file history; features DAG-based workflow execution, nested tagging, MCP integration, and per-project document management. Currently resolving project visibility race conditions, pipeline creation workflows, and memory table population logic.
 
 ## Project Facts
 
@@ -44,7 +44,7 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
+- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
 
 ## Key Decisions
@@ -61,18 +61,18 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
-- Composable system roles (e.g., 'coding' with clean code/comments/OOP); input/output types configurable (prompts, MD files, JSON, GitHub code)
-- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
+- Backend startup race condition fix: retry logic handles empty project list on first load
+- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
 
 ## In Progress
 
-- Graph workflow UI import fix (2026-03-19) — Corrected main.js to import renderGraphWorkflow from graph_workflow.js instead of stale workflow.js; fixed case statement to call correct renderer
+- Project visibility race condition (2026-03-19) — Projects load in Recent but not selectable as active project in main panel; backend init timing issue suspected; requires investigation of project.md loading timing vs app startup
+- Graph workflow UI import fix (2026-03-19) — Corrected main.js to import renderGraphWorkflow from graph_workflow.js; fixed case statement to call correct renderer
+- Pipeline/workflow creation and sampling (2026-03-19) — No sample pipelines available; unable to create new pipelines; unclear which pipelines are connected; requires UI/backend workflow instantiation and example workflows
 - Role extensibility and input/output type definition (2026-03-19) — Design configurable input types (prompts, MD files, JSON) and output targets; support stateful vs stateless reviewer roles
 - Documents tab feature (2026-03-19) — Add 'Documents' tab after Code, mapped to per-project document folder; auto-create for all new projects; support multiple roles uploading docs
-- Project visibility in main view (2026-03-19) — Projects load in Recent but not selectable/visible as active project in main panel; suspected race condition during backend init
-- UI action buttons and Prompt Files visibility (2026-03-19) — Plus button (+) non-functional; system prompts not displaying; requires UI refactor
-- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism
+- Memory items and project_facts table population (unresolved) — Tables exist but update logic not implemented; blocks improved memory/context mechanism; requires implementation and testing
 
 ## Active Features / Bugs / Tasks
 
@@ -184,4 +184,4 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ## AI Synthesis
 
-**[2026-03-19]** `claude_cli` — Fixed graph workflow UI import bug: main.js was importing renderWorkflow from stale workflow.js instead of renderGraphWorkflow from graph_workflow.js; corrected import statement and case handler. **[2026-03-19]** `structured_state` — Identified three parallel work streams: (1) role extensibility with configurable input/output types and stateful/stateless reviewer modes, (2) Documents tab feature with per-project folder and multi-role support, (3) project visibility bug where Recent projects don't display as active in main panel. **[2026-03-18]** `memory_summary` — Fixed AttributeError by removing stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template with proper code_dir variable scoping at line 1120; improved backend startup race condition handling for empty project list on first load. **[2026-03-18]** `design_decision` — Confirmed hierarchical data model (clients contain multiple users); identified that memory_items and project_facts tables exist but lack update logic, blocking improved memory/context mechanism. **[2026-03-10]** `session_summary` — Eliminated redundant SQL calls via load-once-on-access pattern with explicit save syncing; approved nested tags feature beyond 2-level hierarchy; identified data persistence bug where tags disappear on session switch; noted port binding conflicts and need for improved /memory suggestion visibility.
+**[2026-03-19]** `claude_cli` — Project visibility race condition: projects appear in Recent list but not as selectable active project in main panel; suspected backend init timing issue where project.md loads after app startup. **[2026-03-19]** `main.js refactor` — Fixed graph workflow UI by correcting import from stale workflow.js to graph_workflow.js; updated case statement renderer calls. **[2026-03-19]** `workflow system` — Pipeline creation blocked; no sample pipelines available; unclear pipeline connection logic; requires workflow instantiation UI and example templates. **[2026-03-19]** `feature design` — Designed Documents tab feature to add per-project document folder after Code tab; auto-creation for new projects; multi-role document upload support. **[2026-03-18]** `runtime fixes` — Removed stale db.ensure_project_schema() call in main.py; fixed undefined code_dir variable at line 1120 in memory endpoint; added retry logic to handle empty project list on first load. **[2026-03-10]** `performance optimization` — Implemented load-once-on-access pattern: eliminated redundant SQL calls by caching tags into memory and updating DB only on explicit save. **[unresolved]** `data layer` — memory_items and project_facts tables exist but update logic not implemented; blocks memory/context improvement; requires implementation.

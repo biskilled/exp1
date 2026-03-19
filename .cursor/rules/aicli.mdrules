@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 02:33 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 02:47 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -24,7 +24,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Standalone stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p} (phase/feature/session_id indexed), embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
+- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
 
 ## Key Decisions
@@ -41,14 +41,14 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
-- Composable system roles (e.g., 'coding' with clean code/comments/OOP); input/output types configurable (prompts, MD files, JSON, GitHub code)
-- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
+- Backend startup race condition fix: retry logic handles empty project list on first load
+- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-19] I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is not working. also I am
 - [2026-03-19] When app is stsrting - I still cannot see all project in prject page (only after I open the project). also it seems tha 
 - [2026-03-19] I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be mapped to docusmnet fo
 - [2026-03-19] I would like to extend the roles and add a way to define input type (prompts, md file located under document folder, jso
 - [2026-03-19] I dont see any change in the UI . can you check all is done properly
+- [2026-03-19] It seems that project list is loading after the app is running as I cannot see any project when app start to run, but se

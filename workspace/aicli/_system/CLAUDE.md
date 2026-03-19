@@ -38,9 +38,9 @@ You are a senior Python software architect with deep expertise in:
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
-- Composable system roles (e.g., 'coding' with clean code/comments/OOP); input/output types configurable (prompts, MD files, JSON, GitHub code)
-- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
+- Backend startup race condition fix: retry logic handles empty project list on first load
+- Stateful vs stateless reviewer roles: stateful accumulates history; stateless operates on fresh context per request
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-19] `claude_cli`:  I cannot see any system_roles under system_roles. also the + to add system_roles or agent_roel is n
 - [2026-03-19] `claude_cli`: When app is stsrting - I still cannot see all project in prject page (only after I open the project)
 - [2026-03-19] `claude_cli`: I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be ma
 - [2026-03-19] `claude_cli`: I would like to extend the roles and add a way to define input type (prompts, md file located under 
 - [2026-03-19] `claude_cli`: I dont see any change in the UI . can you check all is done properly 
+- [2026-03-19] `claude_cli`: It seems that project list is loading after the app is running as I cannot see any project when app 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
