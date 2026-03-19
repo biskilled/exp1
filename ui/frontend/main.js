@@ -97,29 +97,29 @@ async function boot() {
 }
 
 async function _continueToApp(user) {
-  // Load project list — single fetch, don't block the UI.
-  // navigateTo('home') already does a background re-fetch so late-arriving projects appear.
-  try {
-    const data = await api.listProjects();
-    setState({ projects: data.projects || [] });
-  } catch (e) {
-    console.warn('Could not load projects:', e.message);
-  }
-
   updateStatusDot();
   renderSidebarContent();
 
-  // Show home screen immediately so the user can see all projects
+  // Show home immediately — navigateTo already background-fetches projects and re-renders
   navigateTo('home');
 
-  // Auto-restore last open project — tiny delay so the home list paints first
-  const recent = getRecentProjects();
-  const allNames = (state.projects || []).map(p => p.name);
-  const lastProject = recent.find(n => allNames.includes(n));
-  if (lastProject) {
-    _markProjectRestoring(lastProject);
-    setTimeout(() => openProject(lastProject).catch(() => {}), 200);
-  }
+  // Non-blocking: load projects for sidebar update + auto-restore
+  api.listProjects()
+    .then(data => {
+      const projects = data.projects || [];
+      setState({ projects });
+      renderSidebarContent();
+
+      // Auto-restore last open project
+      const recent = getRecentProjects();
+      const allNames = projects.map(p => p.name);
+      const lastProject = recent.find(n => allNames.includes(n));
+      if (lastProject) {
+        _markProjectRestoring(lastProject);
+        setTimeout(() => openProject(lastProject).catch(() => {}), 200);
+      }
+    })
+    .catch(e => console.warn('Could not load projects:', e.message));
 
   // Load balance chip — only when a real user is logged in
   if (state.backendOnline && state.user?.email) {

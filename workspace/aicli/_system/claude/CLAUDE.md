@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-19] `claude_cli`: I still have the same error - psycopg2.errors.InvalidTextRepresentation: invalid input syntax for ty
 - [2026-03-19] `claude_cli`: it looks better, but workflow complated after 2 seconds. I do not see any outcomes in my Documents, 
 - [2026-03-19] `claude_cli`: There are some UI improvement - I do see that GET /projects/ take some time to load and that is why 
 - [2026-03-19] `claude_cli`: Can you explain what the run pipeline is doing when it start running from the the planer/feature. I 
 - [2026-03-19] `claude_cli`: Looks better. I would like to have an option to chat as well in order to chance to requirement. once
+- [2026-03-19] `claude_cli`: Do you understand what is this app is about ? can you summerise that and let me know who are direct 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

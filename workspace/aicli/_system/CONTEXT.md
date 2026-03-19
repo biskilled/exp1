@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 23:13 UTC — do not edit manually.
+> Auto-generated 2026-03-19 23:23 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 170
-- **Last active**: 2026-03-19T23:13:27Z
+- **Sessions**: 171
+- **Last active**: 2026-03-19T23:22:46Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,12 +35,12 @@
 
 ## In Progress
 
-- Approval chat workflow (2026-03-19) — Added 2-pane approval panel with left pane showing current output and right pane for chat; enables requirement negotiation before final work_item save
-- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel; _wiRunPipeline now displays active run with real-time status updates
-- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion before SQL
+- Approval chat workflow (2026-03-19) — 2-pane approval panel enables requirement negotiation before work_item save; left pane shows current output, right pane for chat
+- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel; _wiRunPipeline displays active run with real-time status updates
+- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion
 - Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle
 - Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure
-- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism per specification
+- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Key Decisions
 
@@ -152,6 +152,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 23:22]** `claude_cli/claude`  
+→ Do you understand what is this app is about ? can you summerise that and let me know who are direct competitors?
+← _## What aicli Is  **aicli is a shared AI memory platform for software development teams.**  The core problem it solves: every time you switch between Claude CLI, Cursor, the web UI, or any other AI to_
+
 **[2026-03-19 23:04]** `claude_cli/claude`  
 → Looks better. I would like to have an option to chat as well in order to chance to requirement. once it is agreed, user 
 ← _The implementation looks correct. Here's what was done:  **Changes made:**  1. **`graph_workflow.js` — module state** (line 43): Added `let _approvalChatHistory = [];`  2. **`graph_workflow.js` — `_sh_
@@ -207,7 +211,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-19 12:09]** `claude_cli/claude`  
 → system designer - only run of explicitly placed of course . retry is per node, continue is per node (default is False). 
 ← _All clean — ROLE_PRESETS and exportLangGraph references have been fully removed.  Now let me update the MEMORY.md with the key changes:_
-
-**[2026-03-19 12:01]** `claude_cli/claude`  
-→ Yamel config need to be simple . at the moment all flows are sequece - node A -> Node B -> Node C it can have max rettry
-← _Good, I have the full picture. Let me write the architecture design now.  ---  ## Architecture Design  ### Current State vs Target  | Aspect | Today | Target | |--------|-------|--------| | Roles | Na_

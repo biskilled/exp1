@@ -810,12 +810,13 @@ async def _suggest_tags(
         response = await client.messages.create(
             model=settings.haiku_model,
             max_tokens=150,
+            system="You are a JSON API. Respond with a valid JSON array only. No explanation, no preamble, no markdown.",
             messages=[{"role": "user", "content": prompt}],
         )
         text = (response.content[0].text if response.content else "").strip()
         _log.info("[suggest_tags] Haiku raw response: %s", text)
-        # Extract JSON array from response
-        match = re.search(r'\[.*?\]', text, re.DOTALL)
+        # Extract JSON array from response — greedy match to capture full array with multiple objects
+        match = re.search(r'\[.*\]', text, re.DOTALL)
         if match:
             suggestions = json.loads(match.group())
             result = [s for s in suggestions if isinstance(s, dict) and s.get("name")][:3]

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 23:13 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-19 23:22 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -48,8 +48,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-19] I still have the same error - psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type uuid: "recent" [1
 - [2026-03-19] it looks better, but workflow complated after 2 seconds. I do not see any outcomes in my Documents, not even something m
 - [2026-03-19] There are some UI improvement - I do see that GET /projects/ take some time to load and that is why I dont see projects 
 - [2026-03-19] Can you explain what the run pipeline is doing when it start running from the the planer/feature. I have tried to test t
 - [2026-03-19] Looks better. I would like to have an option to chat as well in order to chance to requirement. once it is agreed, user 
+- [2026-03-19] Do you understand what is this app is about ? can you summerise that and let me know who are direct competitors?

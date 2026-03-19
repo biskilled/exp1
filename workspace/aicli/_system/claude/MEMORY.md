@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 23:13 UTC by aicli /memory_
+_Generated: 2026-03-19 23:22 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates Claude, OpenAI, DeepSeek, Gemini, and Grok through a unified FastAPI backend with PostgreSQL semantic search and JSONL file storage. It provides CLI and Electron UI interfaces with advanced features including nested tagging, multi-agent DAG workflows, approval-based document negotiation, and MCP server integration. Currently stabilizing pipeline execution tracking, fixing UUID validation issues, and resolving project visibility race conditions while completing memory table population for improved context handling.
+aicli is a shared AI memory platform that solves the problem of context loss when switching between Claude CLI, Cursor, web UI, and other AI tools. It provides persistent, multi-layer project memory with semantic search, nested tagging, workflow automation, and MCP integration to give every AI tool the same unified context. Currently in active development with 15+ features across architecture (UI, auth, workflows, embeddings, memory synthesis, MCP) and recent focus on approval workflows, progress tracking, and race condition fixes.
 
 ## Project Facts
 
@@ -87,18 +87,18 @@ Reviewer: ```json
 
 ## In Progress
 
-- Approval chat workflow (2026-03-19) — Added 2-pane approval panel with left pane showing current output and right pane for chat; enables requirement negotiation before final work_item save
-- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel; _wiRunPipeline now displays active run with real-time status updates
-- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion before SQL
+- Approval chat workflow (2026-03-19) — 2-pane approval panel enables requirement negotiation before work_item save; left pane shows current output, right pane for chat
+- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel; _wiRunPipeline displays active run with real-time status updates
+- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion
 - Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle
 - Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure
-- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism per specification
+- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(34 events, 30 commits)`
+- **hooks** `(35 events, 31 commits)`
 
 ### Doc_type
 
@@ -110,11 +110,11 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(31 events, 27 commits)`
-- **auth** `(31 events, 28 commits)`
-- **graph-workflow** `(20 events, 17 commits)`
-- **workflow-runner** `(18 events, 17 commits)`
-- **embeddings** `(18 events, 17 commits)`
+- **UI** `(33 events, 28 commits)`
+- **auth** `(32 events, 29 commits)`
+- **graph-workflow** `(21 events, 18 commits)`
+- **workflow-runner** `(19 events, 18 commits)`
+- **embeddings** `(19 events, 18 commits)`
 - **shared-memory** `(14 events, 10 commits)`
 - **tagging**
 - **billing**
@@ -204,4 +204,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-19]** `claude_cli` — Implemented 2-pane approval workflow in graph_workflow.js enabling chat-based requirement negotiation before final work_item save; left pane shows current document output, right pane enables live chat refinement. **[2026-03-19]** `session_notes` — Fixed pipeline execution progress tracking UI; _wiRunPipeline now correctly displays active run with real-time status updates in progress panel. **[2026-03-19]** `bug_report` — Identified UUID validation issue: psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field in pipeline run queries; requires UUID object conversion before SQL execution. **[2026-03-19]** `bug_report` — Detected project visibility race condition: projects appear in Recent but fail to display as active project in main view; suspected backend initialization timing issue on first load cycle. **[2026-03-18]** `session_summary` — Fixed memory endpoint CLAUDE.md template error: undefined code_dir variable at line 1120 now properly scoped from config; restored template generation functionality. **[2026-03-18]** `session_summary` — Fixed AttributeError in main.py: removed stale db.ensure_project_schema() call that doesn't exist; confirmed correct schema method is _ensure_shared_schema(). **[2026-03-18]** `session_summary` — Modified backend startup retry logic to handle race condition where projects list loads successfully but returns empty; prevents false "project not found" errors. **[2026-03-10]** `session_summary` — Identified critical data persistence bug: tags saved in UI disappear on session switch; unclear if rendering or database save failure requires investigation. **[2026-03-10]** `architecture_decision` — Approved nested tag hierarchy beyond 2-level structure via parent_id FK with unlimited depth; login confirmed as first-level only. **[pending]** `implementation_gap` — memory_items and project_facts tables exist but lack population logic; blocks improved memory/context mechanism per specification.
+**[2026-03-19]** `backend` — Fixed UUID validation error in pipeline run queries; string 'recent' now converted to UUID object before SQL execution. **[2026-03-19]** `workflow` — Implemented 2-pane approval panel for work_item negotiation chat; left pane shows output, right pane enables requirement discussion before save. **[2026-03-19]** `ui` — Fixed missing pipeline execution progress panel; _wiRunPipeline now displays real-time status updates for active runs. **[2026-03-19]** `architecture` — Identified project visibility race condition where projects appear in Recent but fail to display as active; suspect backend initialization timing issue on first load. **[2026-03-18]** `memory` — Fixed undefined `code_dir` template variable at line 1120 in memory endpoint causing CLAUDE.md generation failure; variable now properly scoped from config. **[2026-03-18]** `backend` — Modified retry logic to handle edge case where project list load succeeds but returns empty array; prevents false "project not found" errors. **[2026-03-18]** `database` — Confirmed memory_items and project_facts tables exist but populate logic unimplemented; blocks improved memory/context mechanism per specification. **[2026-03-10]** `performance` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags loaded into memory on project access, synced to DB only on explicit save. **[2026-03-10]** `data` — Identified tag persistence bug where saved tags disappear when switching sessions; unclear if rendering or database save failure. **[2026-03-10]** `architecture` — Approved nested tag hierarchy expansion beyond current 2-level (category→tag); confirmed login as first-level only per auth pattern.
