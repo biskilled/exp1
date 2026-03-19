@@ -11,6 +11,7 @@
 import { state } from '../stores/state.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
+import { renderMd } from '../utils/markdown.js';
 
 // ── IO type definitions ────────────────────────────────────────────────────────
 
@@ -37,8 +38,9 @@ let _selectedNodeId = null;
 let _pollInterval = null;
 let _currentRunId = null;
 let _roles = [];
-let _runStartTime = null;   // Date — when current run started
-let _timerInterval = null;  // setInterval handle for live clock
+let _runStartTime = null;       // Date — when current run started
+let _timerInterval = null;      // setInterval handle for live clock
+let _approvalChatHistory = [];  // [{role, content}] — chat within current approval gate
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -1463,31 +1465,161 @@ async function _openRunById(runId) {
 function _showApprovalPanel(run) {
   const wrap = document.getElementById('gw-approval-wrap');
   if (!wrap) return;
+
+  // Reset chat history for this approval gate
+  _approvalChatHistory = [];
+
   const waiting = run.context?._waiting || {};
-  wrap.style.display = '';
   const nextLabel = waiting.next_node ? ` → ${_esc(waiting.next_node)}` : '';
+
+  // Expand wrap to fill remaining run-panel space; hide timeline while approval is shown
+  wrap.style.cssText = 'display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;padding:0.5rem 0.75rem;';
+  const timelineWrap = document.getElementById('gw-rp-timeline')?.parentElement;
+  if (timelineWrap) timelineWrap.style.display = 'none';
+
   wrap.innerHTML = `
-    <div class="gw-approval">
-      <h4>⏸ Review: ${_esc(waiting.node_name || 'Node')} output${nextLabel}</h4>
-      <div style="font-size:0.75rem;color:var(--muted)">${_esc(waiting.approval_msg || 'Review output and approve or reject.')}</div>
-      ${waiting.output ? `<pre style="max-height:240px;overflow-y:auto;font-size:0.72rem;line-height:1.5;white-space:pre-wrap;word-break:break-word">${_esc(String(waiting.output).slice(0, 1200))}</pre>` : ''}
-      <div class="gw-approval-btns">
-        <button class="btn btn-primary btn-sm" onclick="window._gwDecide(true, false)">✓ Approve</button>
-        <button class="btn btn-ghost btn-sm" onclick="window._gwDecide(true, true)">↩ Retry</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="window._gwDecide(false, false)">✕ Stop</button>
+    <!-- header row: title + action buttons -->
+    <div style="display:flex;align-items:center;gap:0.6rem;flex-shrink:0;margin-bottom:0.3rem">
+      <span style="font-size:0.82rem;font-weight:700;flex:1">
+        ⏸ ${_esc(waiting.node_name || 'Node')}${nextLabel}
+      </span>
+      <button class="btn btn-primary btn-sm" onclick="window._gwDecide(true,false)">✓ Approve</button>
+      <button class="btn btn-ghost btn-sm" onclick="window._gwDecide(true,true)">↩ Retry</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="window._gwDecide(false,false)">✕ Stop</button>
+    </div>
+    <div style="font-size:0.71rem;color:var(--muted);flex-shrink:0;margin-bottom:0.4rem">
+      ${_esc(waiting.approval_msg || 'Review output and approve or reject.')}
+    </div>
+    <!-- 2-pane: current output (left) + chat (right) -->
+    <div style="display:flex;flex:1;gap:0.75rem;min-height:0;overflow:hidden">
+      <!-- Left: current output (updates after each chat reply) -->
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+                    color:var(--muted);margin-bottom:0.25rem;flex-shrink:0">Current Output</div>
+        <div id="gw-ap-output" style="flex:1;overflow-y:auto;background:var(--bg2);border-radius:5px;
+             padding:0.5rem 0.65rem;font-size:0.72rem;line-height:1.55;white-space:pre-wrap;
+             word-break:break-word;border:1px solid var(--border)">${_esc(waiting.output || '(no output)')}</div>
+      </div>
+      <!-- Right: chat pane -->
+      <div style="width:320px;flex-shrink:0;display:flex;flex-direction:column;min-height:0">
+        <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+                    color:var(--muted);margin-bottom:0.25rem;flex-shrink:0">Refine with Chat</div>
+        <div id="gw-ap-msgs" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;
+             gap:0.35rem;padding:0.4rem;background:var(--bg2);
+             border:1px solid var(--border);border-bottom:none;border-radius:5px 5px 0 0;min-height:60px">
+          <div id="gw-ap-hint" style="font-size:0.72rem;color:var(--muted);text-align:center;padding:0.5rem 0;margin:auto 0">
+            Ask the agent to change anything. Once satisfied, click Approve.
+          </div>
+        </div>
+        <div style="display:flex;gap:0.35rem;flex-shrink:0;border:1px solid var(--border);
+                    border-radius:0 0 5px 5px;padding:0.35rem;background:var(--bg2)">
+          <textarea id="gw-ap-input" placeholder="Request changes… (Ctrl+Enter to send)" rows="2"
+            style="flex:1;resize:none;padding:0.35rem 0.45rem;border:1px solid var(--border);
+                   border-radius:4px;background:var(--bg1);color:var(--fg);font-size:0.78rem;
+                   font-family:inherit;line-height:1.4;min-height:48px;max-height:100px"></textarea>
+          <button id="gw-ap-send" class="btn btn-primary btn-sm"
+            style="align-self:flex-end;padding:0.3rem 0.65rem;font-size:0.75rem"
+            onclick="window._gwApprovalSend()">Send</button>
+        </div>
       </div>
     </div>
   `;
+
+  // Ctrl/Cmd+Enter shortcut
+  const inp = document.getElementById('gw-ap-input');
+  if (inp) {
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); window._gwApprovalSend(); }
+    });
+    setTimeout(() => inp.focus(), 80);
+  }
+
   window._gwDecide = async (approved, retry) => {
     try {
       await api.graphWorkflows.decide(_currentRunId, { approved, retry });
+      // Restore timeline
+      const tl = document.getElementById('gw-rp-timeline')?.parentElement;
+      if (tl) tl.style.display = '';
       wrap.innerHTML = '';
-      wrap.style.display = 'none';
+      wrap.style.cssText = 'display:none;padding:0.5rem 0.75rem 0;flex-shrink:0';
+      _approvalChatHistory = [];
       _pollRun(_currentRunId);
     } catch (e) {
       toast(`Decision failed: ${e.message}`, 'error');
     }
   };
+
+  window._gwApprovalSend = async () => {
+    const input = document.getElementById('gw-ap-input');
+    const msg = input?.value?.trim();
+    if (!msg || !_currentRunId) return;
+
+    input.value = '';
+    input.disabled = true;
+    const sendBtn = document.getElementById('gw-ap-send');
+    if (sendBtn) sendBtn.disabled = true;
+
+    const priorHistory = [..._approvalChatHistory];
+    _approvalChatHistory.push({ role: 'user', content: msg });
+    _renderApprovalMessages();
+
+    try {
+      const { reply } = await api.graphWorkflows.approvalChat(_currentRunId, {
+        message: msg,
+        history: priorHistory,
+      });
+      _approvalChatHistory.push({ role: 'assistant', content: reply });
+      _renderApprovalMessages();
+      // Update the output pane with the latest full document
+      const outEl = document.getElementById('gw-ap-output');
+      if (outEl) outEl.textContent = reply;
+    } catch (e) {
+      toast(`Chat failed: ${e.message}`, 'error');
+      _approvalChatHistory.pop();
+      _renderApprovalMessages();
+    } finally {
+      if (input) input.disabled = false;
+      if (sendBtn) sendBtn.disabled = false;
+      if (input) input.focus();
+    }
+  };
+}
+
+function _renderApprovalMessages() {
+  const el = document.getElementById('gw-ap-msgs');
+  if (!el) return;
+
+  const hint = document.getElementById('gw-ap-hint');
+
+  if (!_approvalChatHistory.length) {
+    if (hint) hint.style.display = '';
+    el.querySelectorAll('.gw-ap-msg').forEach(m => m.remove());
+    return;
+  }
+  if (hint) hint.style.display = 'none';
+
+  // Rebuild message list (keep hint element in DOM, replace message divs)
+  el.querySelectorAll('.gw-ap-msg').forEach(m => m.remove());
+
+  for (const m of _approvalChatHistory) {
+    const isUser = m.role === 'user';
+    const preview = m.content.length > 400 ? m.content.slice(0, 400) + '…' : m.content;
+    const div = document.createElement('div');
+    div.className = 'gw-ap-msg';
+    div.style.cssText = `display:flex;flex-direction:column;align-items:${isUser ? 'flex-end' : 'flex-start'}`;
+    div.innerHTML = `
+      <div style="max-width:92%;padding:0.3rem 0.5rem;border-radius:7px;font-size:0.71rem;
+           line-height:1.45;word-break:break-word;white-space:pre-wrap;
+           background:${isUser ? 'rgba(100,108,255,0.18)' : 'var(--bg1)'};
+           border:1px solid ${isUser ? 'rgba(100,108,255,0.35)' : 'var(--border)'}">
+        ${_esc(preview)}
+      </div>
+      <div style="font-size:0.6rem;color:var(--muted);margin-top:0.1rem;padding:0 0.2rem">
+        ${isUser ? 'you' : 'agent'}
+      </div>`;
+    el.appendChild(div);
+  }
+  el.scrollTop = el.scrollHeight;
 }
 
 async function _cancelRun() {

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 22:16 UTC — do not edit manually.
+> Auto-generated 2026-03-19 22:54 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 168
-- **Last active**: 2026-03-19T21:06:23Z
+- **Sessions**: 169
+- **Last active**: 2026-03-19T22:24:38Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,11 +35,11 @@
 
 ## In Progress
 
-- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when 'recent' string passed to UUID field in pr_graph_runs WHERE clause; requires UUID object conversion or validation guard before SQL execution
-- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status but flow visibility at bottom of UI needs confirmation
-- Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle; suspected timing between project fetch and UI render
-- Pipeline UI node properties display (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation for new nodes
-- Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure; variable now properly scoped from config
+- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel; _wiRunPipeline now displays active run with real-time status; pending confirmation of flow visibility at bottom
+- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when 'recent' string passed to UUID field; requires UUID object conversion before SQL execution
+- Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue suspected during first load cycle
+- Pipeline execution workflow transparency (2026-03-19) — Run pipeline for work items missing: prompt summaries, code change visibility, user proceed confirmation; requires workflow runner refinement
+- Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure
 - Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism per specification
 
 ## Key Decisions
@@ -154,6 +154,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-19 22:05]** `claude_cli/claude`  
 → Can you explain what the run pipeline is doing when it start running from the the planer/feature. I have tried to test t
+← _All roles are correctly matched now: - PM → Product Manager ✓ - Architect → Sr. Architect ✓   - Developer → **Backend Developer** ✓ (not Web Developer) - Reviewer → Code Reviewer ✓  Let me do a quick _
 
 **[2026-03-19 20:55]** `claude_cli/claude`  
 → There are some UI improvement - I do see that GET /projects/ take some time to load and that is why I dont see projects 

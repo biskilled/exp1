@@ -802,6 +802,107 @@ async def make_run_decision(
     return {"status": "resuming", "next_nodes": next_nodes, "run_id": run_id}
 
 
+class ApprovalChatRequest(BaseModel):
+    message: str
+    history: list = []   # [{role: "user"|"assistant", content: str}]
+
+
+@router.post("/runs/{run_id}/chat")
+async def approval_chat(
+    run_id: str,
+    body: ApprovalChatRequest,
+    project: str = Query(""),
+    user=Depends(get_optional_user),
+):
+    """Chat with an approval-gate node to refine its output.
+
+    The LLM replies with the COMPLETE updated document each time.
+    Updates ctx[node_name] and _waiting.output in the DB so the
+    next pipeline node always receives the latest agreed version.
+    """
+    _require_db()
+    p = _active_project(project)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT workflow_id, project, context
+                   FROM pr_graph_runs WHERE id=%s AND status='waiting_approval'""",
+                (run_id,),
+            )
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Run not found or not in waiting_approval state")
+
+    workflow_id, run_project, ctx = row[0], row[1], row[2] or {}
+    p = run_project or p
+
+    waiting   = ctx.get("_waiting", {})
+    node_name = waiting.get("node_name", "")
+    # Current output: prefer live ctx entry (may have been refined by prior chat)
+    current_output = str(ctx.get(node_name, waiting.get("output", "")))
+
+    # ── Load node's combined system prompt ────────────────────────────────────
+    node_prompt = ""
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT n.role_prompt, n.role_id, r.system_prompt
+                       FROM pr_graph_nodes n
+                       LEFT JOIN mng_agent_roles r ON r.id = n.role_id
+                       WHERE n.workflow_id=%s AND n.name=%s""",
+                    (str(workflow_id), node_name),
+                )
+                nrow = cur.fetchone()
+                if nrow:
+                    role_prompt, role_id, role_sys = nrow
+                    if role_id and role_sys:
+                        node_prompt = (role_sys + "\n\n---\n\n" + (role_prompt or "")).strip()
+                    else:
+                        node_prompt = role_prompt or ""
+    except Exception as _pe:
+        log.warning(f"Could not load node prompt for chat ({node_name}): {_pe}")
+
+    # Append refinement mode instruction
+    node_prompt += (
+        "\n\n---\n\n"
+        "## Refinement Mode\n"
+        "The user wants to refine your output. When asked to change, add, or correct "
+        "anything, respond with the COMPLETE updated document in the same format and "
+        "structure as your original output — not just a description of changes."
+    )
+
+    # ── Build message history ─────────────────────────────────────────────────
+    # Start with the current output as first assistant turn so the LLM has context
+    messages: list[dict] = [{"role": "assistant", "content": current_output}]
+    # Append any prior chat turns
+    for turn in body.history:
+        if isinstance(turn, dict) and turn.get("role") in ("user", "assistant"):
+            messages.append({"role": turn["role"], "content": str(turn.get("content", ""))})
+    # The new user message
+    messages.append({"role": "user", "content": body.message})
+
+    # ── Call LLM ─────────────────────────────────────────────────────────────
+    from core.api_keys import get_key
+    from core.llm_clients import call_claude
+    api_key = get_key("claude")
+    resp = await call_claude(messages, system=node_prompt, api_key=api_key)
+    reply = resp.get("content", "")
+
+    # ── Persist refined output into run context ───────────────────────────────
+    ctx[node_name] = reply
+    ctx["_waiting"] = {**waiting, "output": reply}
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE pr_graph_runs SET context=%s WHERE id=%s",
+                (json.dumps(ctx), run_id),
+            )
+
+    return {"reply": reply, "node_name": node_name}
+
+
 @router.get("/{workflow_id}/runs")
 async def list_runs(
     workflow_id: str,
