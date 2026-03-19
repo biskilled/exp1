@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-19 16:21 UTC — do not edit manually.
+> Auto-generated 2026-03-19 16:37 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 163
-- **Last active**: 2026-03-19T16:20:50Z
+- **Sessions**: 164
+- **Last active**: 2026-03-19T16:36:06Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,7 +20,7 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok (independent adapters)
 - **workflow_engine**: Node-based async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
@@ -35,12 +35,12 @@
 
 ## In Progress
 
-- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status
-- UUID validation error in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation on 'recent' string passed to UUID field in pr_graph_runs WHERE clause; requires UUID object conversion or string validation
-- Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle still under investigation
-- Pipeline UI node properties display (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation
-- Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure
-- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
+- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when 'recent' string passed to UUID field in pr_graph_runs WHERE clause; requires UUID object conversion or validation guard before SQL execution
+- Pipeline execution progress tracking UI (2026-03-19) — Fixed missing progress panel display after pipeline trigger; _wiRunPipeline now shows active run with real-time execution status but flow visibility at bottom of UI needs confirmation
+- Project visibility race condition (2026-03-19) — Projects load in Recent but fail to display as active; backend initialization timing issue during first load cycle; suspected timing between project fetch and UI render
+- Pipeline UI node properties display (2026-03-19) — Display/configuration of max_retry, stateless, continue_on_fail; node removal with confirmation; inline modal creation for new nodes
+- Memory endpoint code_dir variable scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure; variable now properly scoped from config
+- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism per specification
 
 ## Key Decisions
 
@@ -56,7 +56,7 @@
 - Load-once-on-access pattern: eliminate redundant SQL; tag cache synced on explicit save
 - Multi-agent workflows: async DAG executor via asyncio.gather with loop-back + max_iterations cap; Cytoscape.js visualization
 - Port binding safety: freePort() kills stale uvicorn; Electron cleanup via process.exit()
-- Features linked to work_items with sequence numbering (starting 10000+) for improved memory and workflow status tracking
+- Features linked to work_items with sequence numbering (10000+) for improved memory and workflow status tracking
 - MCP server (stdio): 12+ tools for project state, memory search, entity management, feature status tracking
 - Hierarchical data model: Clients contain multiple Users; per-project tables with shared authentication/billing tables
 
@@ -152,6 +152,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-19 16:29]** `claude_cli/claude`  
+→ I still have the same error - psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type uuid: "recent" [1
+← _Now restart the backend to pick up the UUID guard fix:_
+
 **[2026-03-19 16:12]** `claude_cli/claude`  
 → Start to looks better. Now I do see the _work_item_pipeline but all I can see is an error saying - psycopg2.errors.Inval
 ← _Since the run panel is now at the bottom, there's no need to close the detail panel — they can both be open simultaneously. Let me remove that:_
@@ -206,6 +210,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-19 02:02]** `claude_cli/claude`  
 → I would like to extend the roles and add a way to define input type (prompts, md file located under document folder, jso
-
-**[2026-03-19 01:43]** `claude_cli/claude`  
-→ I would like to extend the workflow: I woudld like to add tab "Documents" after Code that will be mapped to docusmnet fo
