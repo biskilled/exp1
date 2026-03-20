@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-20 18:58 UTC by aicli /memory_
+_Generated: 2026-03-20 19:38 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with a dual-storage backend (JSONL + PostgreSQL pgvector) to enable semantic search, memory synthesis, and workflow automation. The system combines a Python CLI with an Electron desktop UI featuring embedded terminal and Monaco editor, supporting JWT-authenticated role-based access (admin/paid/free), nested tagging hierarchies, async DAG workflow execution, and MCP integration for project state management.
+aicli is a shared AI memory platform that combines a Python CLI, FastAPI backend, and Electron frontend to enable collaborative AI-assisted development with semantic memory, workflow automation, and multi-LLM support. Currently in active development (v2.2.0) with focus on pipeline approval workflows, database performance optimization, and memory synthesis via Claude Haiku; recent work addresses race conditions, UUID validation, and template variable scoping while pending implementation of memory_items table population.
 
 ## Project Facts
 
@@ -16,6 +16,7 @@ aicli is a shared AI memory platform that integrates multiple LLM providers (Cla
 - **db_engine**: SQL
 - **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
 - **deployment_target**: Claude_CLI_and_LLM_platforms
+- **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
 - **mcp_integration**: embedding_and_data_retrieval
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
 - **memory_management_pattern**: load_once_on_access_update_on_save
@@ -23,20 +24,20 @@ aicli is a shared AI memory platform that integrates multiple LLM providers (Cla
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
 - **performance_optimization**: redundant_SQL_calls_eliminated
 - **pipeline/auth**: Acceptance criteria:
-# PM Analysis: Email Verification Feature (Revised)
+# PM Analysis: Email Verification Feature
 
 ---
 
 ## Context Summary
 
-The tagged context confirms this work item builds upon an **existing authentication system** that already includes functional **Sign In and Register forms**. These forms are live and in use. This feature is therefore an **incremental enhancement** — not a greenfield build. The email verification layer must integrate clea
+The tagged context reveals this work item is an **incremental enhancement** to an existing authentication system. Sign In and Create Account forms are already live and functional. The prior PM analysis identified email verification as the missing layer—the system currently accepts any email without confirming ownership. The analys
 
 Reviewer: ```json
 {
   "passed": false,
   "score": 4,
   "issues": [
-    "Implementation is incomplete — file `backend/services/email_verification_service.py` is truncated mid-function at `can_resend_email()`. Cr
+    "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
 - **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
 - **stale_code_removed**: db_ensure_project_schema_call_replaced_with_ensure_shared_schema
 - **tagging_system**: nested_hierarchy_beyond_2_levels
@@ -63,14 +64,14 @@ Reviewer: ```json
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
+- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ contains code only; workspace/ stores per-project content; _system/ holds project state
-- Dual storage: JSONL (history.jsonl with rotation on /memory) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables
+- Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys
@@ -78,44 +79,44 @@ Reviewer: ```json
 - Load-once-on-access pattern: eliminate redundant SQL by caching tags/workflows/runs in memory; update DB only on explicit save
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
 - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
 - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
 - 2-pane approval chat workflow for requirement negotiation before work_item save
+- Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables
 
 ## In Progress
 
-- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` in `_continueToApp` now prevents empty home screen on initial load by properly handling edge case where list succeeds but returns empty
+- Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed on approval panel instead of current output and progress logs; requires investigation of chat panel state management and step sequencing
+- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` prevents empty home screen by properly handling edge case where list succeeds but returns empty
 - Pipeline sidebar caching (2026-03-20) — `_listCache` stores {workflows, roles, runs} to prevent redundant API calls during pipeline UI rendering
 - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion in backend handler
-- Approval chat workflow (2026-03-19) — 2-pane approval panel enables requirement negotiation before work_item save; left pane shows current output, right pane for chat interaction
-- Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure; variable now properly scoped from config
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism and requires implementation + testing
+- Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable causing CLAUDE.md generation failure; variable now properly scoped from config
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(38 events, 33 commits)`
+- **hooks** `(40 events, 35 commits)`
 
 ### Doc_type
 
 - **low-level-design** `(1 events)`
+- **Test** `(1 events)`
 - **high-level-design** `(1 events)`
 - **customer-meeting** — dsds
 - **retrospective**
-- **Test**
 
 ### Feature
 
-- **UI** `(36 events, 30 commits)`
-- **auth** `(34 events, 31 commits)`
-- **graph-workflow** `(23 events, 20 commits)`
-- **workflow-runner** `(21 events, 20 commits)`
-- **embeddings** `(21 events, 20 commits)`
-- **shared-memory** `(15 events, 10 commits)`
+- **UI** `(38 events, 32 commits)`
+- **shared-memory** `(37 events, 32 commits)`
+- **auth** `(36 events, 33 commits)`
+- **graph-workflow** `(25 events, 22 commits)`
+- **workflow-runner** `(23 events, 22 commits)`
+- **embeddings** `(23 events, 22 commits)`
 - **tagging**
 - **billing**
 - **mcp**
@@ -125,14 +126,14 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(32 events, 30 commits)`
-- **development**
+- **discovery** `(34 events, 32 commits)`
+- **development** `(1 events)`
 - **prod**
 
 ### Task
 
-- **memory** `(13 events, 10 commits)`
-- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(1 events)`
+- **memory** `(35 events, 32 commits)`
+- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(23 events, 22 commits)`
 
 ## Recent Memory
 
@@ -204,4 +205,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-20]** `dev` — Fixed project startup race condition: sequential `await api.listProjects()` in `_continueToApp` now prevents empty home screen when backend returns empty project list on first load. **[2026-03-20]** `dev` — Implemented pipeline sidebar caching with `_listCache` to store workflows/roles/runs, eliminating redundant API calls during pipeline UI rendering. **[2026-03-19]** `bug` — Identified and documented UUID validation issue: psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field in pipeline run queries; requires backend UUID object conversion. **[2026-03-19]** `feature` — Designed 2-pane approval chat workflow enabling requirement negotiation before work_item save; left pane shows output, right pane supports interactive chat. **[2026-03-18]** `bug` — Fixed AttributeError in main.py from stale `db.ensure_project_schema()` call; replaced with correct `_ensure_shared_schema()` method. **[2026-03-18]** `bug` — Fixed memory endpoint CLAUDE.md template error: undefined `code_dir` variable at line 1120 now properly scoped from config. **[2026-03-10]** `architecture` — Implemented load-once-on-access pattern: cache tags/workflows/runs in memory on project load, update database only on explicit save actions to reduce redundant SQL calls. **[2026-03-10]** `feature` — Approved nested tag hierarchy expansion via parent_id FK enabling unlimited depth beyond current 2-level structure. **[2026-03-10]** `bug` — Identified data persistence issue: tags saved in UI disappear when switching sessions; unclear if rendering or database save failure—requires investigation. **[pending]** `implementation` — Memory items and project_facts table population logic not implemented; blocks improved memory/context mechanism per original specification.
+**[2026-03-20]** `in_progress` — Fixed pipeline approval workflow rendering: old MD version displayed instead of current output; requires chat panel state management investigation. **[2026-03-20]** `in_progress` — Implemented sequential `await api.listProjects()` retry logic to prevent empty home screen on initial load when project list succeeds but returns empty. **[2026-03-20]** `in_progress` — Added `_listCache` to pipeline sidebar to cache {workflows, roles, runs} and prevent redundant API calls during rendering. **[2026-03-19]** `in_progress` — Identified psycopg2 UUID validation error: string 'recent' passed to UUID field requires backend UUID object conversion. **[2026-03-18]** `bug_fix` — Fixed undefined `code_dir` template variable at line 1120 in memory endpoint causing CLAUDE.md generation failure. **[2026-03-18]** `design_gap` — Identified that memory_items and project_facts tables exist in schema but lack update logic; blocks improved memory/context mechanism. **[2026-03-10]** `optimization` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags loaded into memory on project access and DB updated only on explicit save. **[2026-03-10]** `bug_identified` — Data persistence issue: tags saved in UI disappear when switching sessions; unclear if UI rendering or database save failure. **[2026-03-10]** `feature` — Approved nested tag hierarchy expansion beyond 2-level (category → tag) with unlimited depth via parent_id FK; login remains first-level. **[2026-03-10]** `backend_fix` — Implemented port binding safety via freePort() to kill stale uvicorn processes preventing intermittent app restart failures.

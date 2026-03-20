@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-20 18:59 UTC — do not edit manually.
+> Auto-generated 2026-03-20 19:38 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 175
-- **Last active**: 2026-03-20T18:49:06Z
+- **Sessions**: 176
+- **Last active**: 2026-03-20T19:17:56Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -29,23 +29,23 @@
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
-- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values (parent_id FK nesting), agent_roles, system_roles
+- **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 
 ## In Progress
 
-- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` in `_continueToApp` now prevents empty home screen on initial load by properly handling edge case where list succeeds but returns empty
+- Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed on approval panel instead of current output and progress logs; requires investigation of chat panel state management and step sequencing
+- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` prevents empty home screen by properly handling edge case where list succeeds but returns empty
 - Pipeline sidebar caching (2026-03-20) — `_listCache` stores {workflows, roles, runs} to prevent redundant API calls during pipeline UI rendering
 - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion in backend handler
-- Approval chat workflow (2026-03-19) — 2-pane approval panel enables requirement negotiation before work_item save; left pane shows current output, right pane for chat interaction
-- Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure; variable now properly scoped from config
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism and requires implementation + testing
+- Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable causing CLAUDE.md generation failure; variable now properly scoped from config
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ contains code only; workspace/ stores per-project content; _system/ holds project state
-- Dual storage: JSONL (history.jsonl with rotation on /memory) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables
+- Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys
@@ -53,12 +53,12 @@
 - Load-once-on-access pattern: eliminate redundant SQL by caching tags/workflows/runs in memory; update DB only on explicit save
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
 - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
 - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
 - 2-pane approval chat workflow for requirement negotiation before work_item save
+- Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables
 
 ---
 
@@ -152,6 +152,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-20 19:09]** `claude_cli/claude`  
+→ I am testing the Pipeline - when I clicked approved I do see the old md version . I would expcet to see process and afte
+← _Also verify the Python files have no obvious errors:_
+
 **[2026-03-20 18:19]** `claude_cli/claude`  
 → I still dont see the project loaded when app is started. all I can see in the logs is  Application startup complete. (us
 ← _Both files pass syntax validation. Here's a summary of what was implemented in the previous session and is ready to test:  **All 6 improvements are in place:**  1. **Projects load on startup** — `_con_
@@ -207,7 +211,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-19 14:12]** `claude_cli/claude`  
 → I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see any status/progress
 ← _All clean._
-
-**[2026-03-19 13:24]** `claude_cli/claude`  
-→ I would like to remove the IO. is it possible just to mainatin that using prompt. for example how doas prject manager wi
-← _Now verify syntax:_

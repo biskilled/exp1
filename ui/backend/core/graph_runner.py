@@ -301,7 +301,7 @@ def save_approved_output(project: str, work_item: dict, node_name: str, output: 
     """Save an *approved* node output with versioning.
 
     Latest version is at: documents/{category}/{slug}/{node}.md
-    Previous versions are moved to: documents/{category}/{slug}/old/{node}_{ts}.md
+    Previous versions (and any old timestamped files) are in: documents/{category}/{slug}/old/
 
     Call this ONLY when the user clicks Approve (not on every node run).
     """
@@ -311,16 +311,114 @@ def save_approved_output(project: str, work_item: dict, node_name: str, output: 
     dest_dir = Path(settings.workspace_dir) / project / "documents" / category / slug
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    dest = dest_dir / f"{safe_name}.md"
-    # Move existing file to old/ subfolder before overwriting
-    if dest.exists():
-        old_dir = dest_dir / "old"
+    old_dir = dest_dir / "old"
+    ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
+
+    # Move any existing timestamped files (from old runs) to old/
+    for stale in dest_dir.glob(f"{safe_name}_*.md"):
         old_dir.mkdir(exist_ok=True)
-        ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
+        stale.rename(old_dir / stale.name)
+
+    # Move current clean file to old/ before overwriting
+    dest = dest_dir / f"{safe_name}.md"
+    if dest.exists():
+        old_dir.mkdir(exist_ok=True)
         dest.rename(old_dir / f"{safe_name}_{ts}.md")
 
     dest.write_text(f"# {node_name}\n\n{output}\n")
     log.info(f"Saved approved output → documents/{category}/{slug}/{safe_name}.md")
+
+
+# ── Developer: code file extraction + git commit ───────────────────────────────
+
+def _parse_code_changes(output: str) -> list[tuple[str, str]]:
+    """Extract (file_path, content) pairs from LLM output.
+
+    Recognized patterns:
+      ### File: path/to/file.ext
+      ```lang
+      content
+      ```
+    Also handles:
+      ## path/to/file.ext
+      ```lang
+      content
+      ```
+    """
+    changes: list[tuple[str, str]] = []
+    pattern = r'(?:###?\s+(?:File:\s*)?|##\s+)([^\n`]+?)\s*\n```(?:\w+)?\n(.*?)```'
+    _EXTENSIONS = ('.py', '.js', '.ts', '.jsx', '.tsx', '.go', '.java', '.rs',
+                   '.rb', '.md', '.yaml', '.yml', '.json', '.toml', '.sh',
+                   '.css', '.html', '.sql', '.txt', '.env', '.cfg', '.ini')
+    for m in re.finditer(pattern, output, re.DOTALL):
+        path = m.group(1).strip().rstrip(':')
+        content = m.group(2)
+        # Only accept real file paths (must have extension or contain /)
+        if any(path.lower().endswith(ext) for ext in _EXTENSIONS) or '/' in path:
+            # Skip overly long "paths" (likely markdown headings)
+            if len(path) <= 200 and '\n' not in path:
+                changes.append((path, content))
+    return changes
+
+
+def _apply_code_and_commit(code_dir: str, changes: list[tuple[str, str]],
+                           node_name: str, run_id: str) -> str:
+    """Write file changes to code_dir and run git add/commit/push.
+
+    Returns the short commit hash on success, '' if nothing to commit, or an error string.
+    """
+    import subprocess
+    base = Path(code_dir).resolve()
+
+    wrote = 0
+    for rel_path, content in changes:
+        dest = (base / rel_path.lstrip("/")).resolve()
+        # Security: prevent path traversal
+        if not str(dest).startswith(str(base)):
+            log.warning(f"auto_commit: skipping traversal path {rel_path!r}")
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content)
+        log.info(f"auto_commit: wrote {rel_path}")
+        wrote += 1
+
+    if not wrote:
+        log.info("auto_commit: no files written — skipping commit")
+        return ""
+
+    try:
+        subprocess.run(["git", "add", "."], cwd=code_dir, check=True, capture_output=True)
+        msg = f"auto: {node_name} [{run_id[:8]}]"
+        subprocess.run(["git", "commit", "-m", msg], cwd=code_dir,
+                       check=True, capture_output=True, text=True)
+        hash_r = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                cwd=code_dir, capture_output=True, text=True)
+        commit_hash = hash_r.stdout.strip()
+        # Push in background — don't block or fail if remote unreachable
+        subprocess.Popen(["git", "push"], cwd=code_dir,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log.info(f"auto_commit: committed {commit_hash} for node '{node_name}'")
+        return commit_hash
+    except subprocess.CalledProcessError as e:
+        stderr = (e.stderr or b"").decode() if isinstance(e.stderr, bytes) else str(e.stderr or "")
+        if "nothing to commit" in stderr or "nothing added" in stderr:
+            return ""
+        log.warning(f"auto_commit git error: {stderr[:200]}")
+        return f"error: {stderr[:100]}"
+
+
+def _get_project_code_dir(project: str) -> str:
+    """Get code directory for a project (project.yaml → code_dir, else settings.code_dir)."""
+    try:
+        import yaml
+        proj_yaml = Path(settings.workspace_dir) / project / "project.yaml"
+        if proj_yaml.exists():
+            cfg = yaml.safe_load(proj_yaml.read_text()) or {}
+            if cfg.get("code_dir"):
+                return str(cfg["code_dir"])
+    except Exception:
+        pass
+    return settings.code_dir
 
 
 # ── LangGraph state type ───────────────────────────────────────────────────────
@@ -344,12 +442,14 @@ def _make_node_fn(node: dict, run_id: str, project: str, log_dir: str = "", pipe
     """Return an async LangGraph node function from a DB node dict.
 
     Applies per-node retry (max_retry) and continue_on_fail semantics.
+    If auto_commit=True, parses code file changes from output and git commits them.
     If log_dir is set, appends node output to the run log file.
     Every node's output is auto-saved to documents/pipelines/{pipeline_name}/...
     """
     node_copy = dict(node)
     max_retry = int(node_copy.get("max_retry", 3))
     continue_on_fail = bool(node_copy.get("continue_on_fail", False))
+    do_auto_commit = bool(node_copy.get("auto_commit", False))
 
     async def fn(state: WorkflowState) -> dict:
         # Mark this node as the currently running one in the run record
@@ -386,6 +486,24 @@ def _make_node_fn(node: dict, run_id: str, project: str, log_dir: str = "", pipe
 
         output = last_result.get("structured") or last_result.get("output", "")
         new_ctx = {**state["context"], node_copy["name"]: output}
+
+        # Developer auto-commit: parse code blocks from output and git commit
+        if do_auto_commit and output and last_result.get("status") != "error" and isinstance(output, str):
+            try:
+                code_dir = _get_project_code_dir(project)
+                changes = _parse_code_changes(output)
+                if changes:
+                    commit_hash = _apply_code_and_commit(code_dir, changes, node_copy["name"], run_id)
+                    if commit_hash and not commit_hash.startswith("error:"):
+                        # Store commit hash in context so downstream nodes and UI can see it
+                        new_ctx[f"{node_copy['name']}_commit"] = commit_hash
+                        log.info(f"Node '{node_copy['name']}' auto-committed: {commit_hash}")
+                    elif commit_hash.startswith("error:"):
+                        log.warning(f"Node '{node_copy['name']}' auto-commit failed: {commit_hash}")
+                else:
+                    log.info(f"Node '{node_copy['name']}': auto_commit=True but no code blocks found in output")
+            except Exception as _ace:
+                log.warning(f"auto_commit exception for '{node_copy['name']}': {_ace}")
 
         # Auto-save to documents/pipelines/... for every successful node
         if pipeline_name and output and last_result.get("status") != "error":
@@ -524,7 +642,7 @@ def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], lis
                 """SELECT id, name, role_file, role_prompt, provider, model,
                           output_schema, inject_context, require_approval, approval_msg, role_id,
                           stateless, retry_config, success_criteria,
-                          order_index, max_retry, continue_on_fail
+                          order_index, max_retry, continue_on_fail, auto_commit
                    FROM pr_graph_nodes WHERE workflow_id=%s ORDER BY order_index, created_at""",
                 (workflow_id,),
             )
@@ -542,6 +660,7 @@ def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], lis
                     "order_index": r[14] if len(r) > 14 else 0,
                     "max_retry": r[15] if len(r) > 15 else 3,
                     "continue_on_fail": r[16] if len(r) > 16 else False,
+                    "auto_commit": r[17] if len(r) > 17 else False,
                 }
 
             cur.execute(

@@ -17,7 +17,26 @@ import { renderEntities } from './views/entities.js';
 import { loadTagCache } from './utils/tagCache.js';
 import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';
 
-function renderHistory(container) { new HistoryView(container); }
+// ── History singleton — reused across tab switches, recreated on project change ─
+let _historyViewInstance = null;
+let _historyViewProject  = null;
+
+function renderHistory(container) {
+  const proj = state.currentProject?.name || null;
+  if (_historyViewInstance && _historyViewProject === proj) {
+    // Reuse existing instance: just re-attach its DOM to the container
+    container.innerHTML = '';
+    // The HistoryView writes into `container`, so we only need to re-call
+    // _render() + restore the current tab without re-fetching data.
+    _historyViewInstance.container = container;
+    _historyViewInstance._render();
+    _historyViewInstance._loadTab(_historyViewInstance.activeTab || 'chat');
+    return;
+  }
+  // New project or first open — create fresh
+  _historyViewProject  = proj;
+  _historyViewInstance = new HistoryView(container);
+}
 
 // ── Project nav tabs ───────────────────────────────────────────────────────────
 

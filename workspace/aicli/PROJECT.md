@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` in `_continueToApp` now prevents empty home screen on initial load by properly handling edge case where list succeeds but returns empty
+- Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed on approval panel instead of current output and progress logs; requires investigation of chat panel state management and step sequencing
+- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` prevents empty home screen by properly handling edge case where list succeeds but returns empty
 - Pipeline sidebar caching (2026-03-20) — `_listCache` stores {workflows, roles, runs} to prevent redundant API calls during pipeline UI rendering
 - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion in backend handler
-- Approval chat workflow (2026-03-19) — 2-pane approval panel enables requirement negotiation before work_item save; left pane shows current output, right pane for chat interaction
-- Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable at line 1120 causing CLAUDE.md generation failure; variable now properly scoped from config
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism and requires implementation + testing
+- Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable causing CLAUDE.md generation failure; variable now properly scoped from config
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism

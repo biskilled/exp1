@@ -91,6 +91,7 @@ class NodeCreate(BaseModel):
     order_index: int = 0
     max_retry: int = 3
     continue_on_fail: bool = False
+    auto_commit: bool = False
 
 
 class NodeUpdate(BaseModel):
@@ -114,6 +115,7 @@ class NodeUpdate(BaseModel):
     order_index: Optional[int] = None
     max_retry: Optional[int] = None
     continue_on_fail: Optional[bool] = None
+    auto_commit: Optional[bool] = None
 
 
 class EdgeCreate(BaseModel):
@@ -163,6 +165,7 @@ def _row_to_node(row) -> dict:
         "order_index": row[20] if len(row) > 20 else 0,
         "max_retry": row[21] if len(row) > 21 else 3,
         "continue_on_fail": row[22] if len(row) > 22 else False,
+        "auto_commit": row[23] if len(row) > 23 else False,
     }
 
 
@@ -473,13 +476,13 @@ async def create_node(
                     output_schema, inject_context, require_approval, approval_msg,
                     position_x, position_y,
                     inputs, outputs, stateless, retry_config, success_criteria,
-                    order_index, max_retry, continue_on_fail)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    order_index, max_retry, continue_on_fail, auto_commit)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    RETURNING id, workflow_id, name, role_file, role_prompt, provider, model,
                              output_schema, inject_context, position_x, position_y, created_at,
                              require_approval, approval_msg, role_id,
                              inputs, outputs, stateless, retry_config, success_criteria,
-                             order_index, max_retry, continue_on_fail""",
+                             order_index, max_retry, continue_on_fail, auto_commit""",
                 (
                     node_id, workflow_id, body.name, body.role_id, body.role_file,
                     body.role_prompt, body.provider, body.model,
@@ -488,7 +491,7 @@ async def create_node(
                     body.position_x, body.position_y,
                     json.dumps(body.inputs), json.dumps(body.outputs),
                     body.stateless, json.dumps(body.retry_config), body.success_criteria,
-                    body.order_index, body.max_retry, body.continue_on_fail,
+                    body.order_index, body.max_retry, body.continue_on_fail, body.auto_commit,
                 ),
             )
             row = cur.fetchone()
@@ -536,6 +539,8 @@ async def update_node(
         fields.append("max_retry=%s"); values.append(body.max_retry)
     if body.continue_on_fail is not None:
         fields.append("continue_on_fail=%s"); values.append(body.continue_on_fail)
+    if body.auto_commit is not None:
+        fields.append("auto_commit=%s"); values.append(body.auto_commit)
     if not fields:
         raise HTTPException(400, "Nothing to update")
     values.extend([node_id, workflow_id])

@@ -104,17 +104,21 @@ async def trigger_work_item_pipeline(
         if memory_text:
             context_block += f"[Recent Project Memory]\n{memory_text[:1500]}\n\n"
 
-        # ── Stage 1: PM — acceptance criteria ────────────────────────────────
+        # ── Stage 1: PM — short task spec + acceptance criteria ─────────────
         pm_prompt = (
             f"{context_block}"
             f"Work item: **{name}**\nDescription: {description}\n\n"
             f"{'Existing criteria:\n' + existing_criteria + chr(10) + chr(10) if existing_criteria else ''}"
-            f"Write clear, testable acceptance criteria (3-8 bullet points). "
-            f"Be specific and measurable. Start each with '- [ ]'."
+            f"Output in this EXACT format (keep it short):\n\n"
+            f"## Task\n<one-sentence task description>\n\n"
+            f"## Description\n<2-3 sentences explaining the goal>\n\n"
+            f"## Acceptance Criteria\n"
+            f"- [ ] <criterion 1>\n- [ ] <criterion 2>\n- [ ] <criterion 3 (max 5)>\n\n"
+            f"Be specific and testable. Total output under 250 words."
         )
         pm_resp = await client.messages.create(
             model=settings.haiku_model,
-            max_tokens=600,
+            max_tokens=400,
             messages=[{"role": "user", "content": pm_prompt}],
         )
         acceptance_criteria = (pm_resp.content[0].text if pm_resp.content else "").strip()
@@ -127,17 +131,22 @@ async def trigger_work_item_pipeline(
         except Exception:
             pass
 
-        # ── Stage 2: Architect — implementation plan ──────────────────────────
+        # ── Stage 2: Architect — concise implementation plan ─────────────────
         arch_prompt = (
             f"{context_block}"
-            f"Work item: **{name}**\nDescription: {description}\n\n"
+            f"Work item: **{name}**\n\n"
             f"Acceptance criteria:\n{acceptance_criteria}\n\n"
-            f"Write a concise technical implementation plan (numbered steps, "
-            f"include specific files/functions to change). Focus on HOW not WHAT."
+            f"Output in this EXACT format (keep it short):\n\n"
+            f"## Plan\n"
+            f"1. <step 1>\n2. <step 2>\n3. <step 3 (max 6 steps)>\n\n"
+            f"## Files to Change\n"
+            f"- `path/to/file.py` — <reason>\n\n"
+            f"## Notes\n<any important decisions or constraints (2-3 sentences max)>\n\n"
+            f"Total output under 300 words. Be precise about file paths."
         )
         arch_resp = await client.messages.create(
             model=settings.haiku_model,
-            max_tokens=800,
+            max_tokens=500,
             messages=[{"role": "user", "content": arch_prompt}],
         )
         implementation_plan = (arch_resp.content[0].text if arch_resp.content else "").strip()
@@ -161,8 +170,9 @@ async def trigger_work_item_pipeline(
                 f"Acceptance criteria:\n{acceptance_criteria}\n\n"
                 f"Implementation plan:\n{implementation_plan}\n\n"
                 f"{'Previous attempt feedback:\n' + dev_output + chr(10) + chr(10) if dev_output and iteration > 0 else ''}"
-                f"Provide a detailed technical implementation addressing all acceptance criteria. "
-                f"Include code snippets, specific changes, and rationale."
+                f"Implement the changes. For each file you modify, use this exact format:\n\n"
+                f"### File: path/to/file.ext\n```language\n<complete file content>\n```\n\n"
+                f"After all files, add a brief summary of what was changed and why."
             )
             dev_resp = await client.messages.create(
                 model=settings.claude_model if hasattr(settings, "claude_model") else settings.haiku_model,
