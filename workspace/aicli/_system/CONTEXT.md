@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-20 19:38 UTC — do not edit manually.
+> Auto-generated 2026-03-20 21:26 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 176
-- **Last active**: 2026-03-20T19:17:56Z
+- **Sessions**: 177
+- **Last active**: 2026-03-20T19:53:29Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,10 +35,10 @@
 
 ## In Progress
 
-- Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed on approval panel instead of current output and progress logs; requires investigation of chat panel state management and step sequencing
-- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` prevents empty home screen by properly handling edge case where list succeeds but returns empty
+- Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation
+- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` prevents empty home screen; edge case where list succeeds but returns empty now handled
 - Pipeline sidebar caching (2026-03-20) — `_listCache` stores {workflows, roles, runs} to prevent redundant API calls during pipeline UI rendering
-- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion in backend handler
+- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend
 - Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable causing CLAUDE.md generation failure; variable now properly scoped from config
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
 
@@ -50,7 +50,7 @@
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys
 - Nested tag hierarchy via parent_id FK with unlimited depth; tags synced across Chat/History/Commits on explicit save
-- Load-once-on-access pattern: eliminate redundant SQL by caching tags/workflows/runs in memory; update DB only on explicit save
+- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
@@ -152,6 +152,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-20 19:46]** `claude_cli/claude`  
+→ I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
+← _But `_loadTab` refetches if no cache. The real fix is that `_render()` reattaches to container and `_loadTab` uses the cached data. Let me check how the HistoryView handles this — when `_histData` is _
+
 **[2026-03-20 19:09]** `claude_cli/claude`  
 → I am testing the Pipeline - when I clicked approved I do see the old md version . I would expcet to see process and afte
 ← _Also verify the Python files have no obvious errors:_
@@ -207,7 +211,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-19 14:29]** `claude_cli/claude`  
 → Anotehr topic about Features, and I would like feature to be linked in Claude cli and aiCli, also I would feature top be
 ← _Everything is in place. Let me mark the task complete and update memory:_
-
-**[2026-03-19 14:12]** `claude_cli/claude`  
-→ I do see that when I run pipeline from work_item it is starting to run a pipeline . but I do not see any status/progress
-← _All clean._

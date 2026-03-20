@@ -56,6 +56,7 @@ def _row_to_role(row, include_prompt: bool = True) -> dict:
         "outputs":       row[12] if len(row) > 12 and row[12] is not None else [],
         "role_type":     row[13] if len(row) > 13 and row[13] else "agent",
         "output_schema": row[14] if len(row) > 14 else None,
+        "auto_commit":   row[15] if len(row) > 15 else False,
     }
     if include_prompt:
         r["system_prompt"] = row[4]
@@ -76,7 +77,7 @@ async def list_roles(
             cur.execute(
                 """SELECT id, project, name, description, system_prompt,
                           provider, model, tags, is_active, created_at, updated_at,
-                          inputs, outputs, role_type, output_schema
+                          inputs, outputs, role_type, output_schema, auto_commit
                    FROM mng_agent_roles
                    WHERE client_id=1 AND is_active=TRUE AND (project='_global' OR project=%s)
                    ORDER BY (project='_global') DESC, name""",
@@ -103,6 +104,7 @@ class RoleCreate(BaseModel):
     outputs:       list      = []
     role_type:     str       = "agent"
     output_schema: Optional[dict] = None
+    auto_commit:   bool      = False
 
 
 @router.post("/")
@@ -115,16 +117,17 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
             cur.execute(
                 """INSERT INTO mng_agent_roles
                        (client_id, project, name, description, system_prompt, provider, model, tags,
-                        inputs, outputs, role_type, output_schema)
-                   VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        inputs, outputs, role_type, output_schema, auto_commit)
+                   VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING id, project, name, description, system_prompt,
                              provider, model, tags, is_active, created_at, updated_at,
-                             inputs, outputs, role_type, output_schema""",
+                             inputs, outputs, role_type, output_schema, auto_commit""",
                 (body.project, body.name, body.description, body.system_prompt,
                  body.provider, body.model, body.tags,
                  _json.dumps(body.inputs), _json.dumps(body.outputs),
                  body.role_type,
-                 _json.dumps(body.output_schema) if body.output_schema else None),
+                 _json.dumps(body.output_schema) if body.output_schema else None,
+                 body.auto_commit),
             )
             row = cur.fetchone()
     return _row_to_role(row, include_prompt=True)
@@ -143,6 +146,7 @@ class RoleUpdate(BaseModel):
     outputs:       Optional[list]      = None
     role_type:     Optional[str]       = None
     output_schema: Optional[dict]      = None
+    auto_commit:   Optional[bool]      = None
     note:          str                 = ""
 
 
@@ -179,6 +183,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
         ("model",         body.model),
         ("tags",          body.tags),
         ("role_type",     body.role_type),
+        ("auto_commit",   body.auto_commit),
     ]:
         if val is not None:
             fields.append(f"{col}=%s")
@@ -214,7 +219,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
             cur.execute(
                 """SELECT id, project, name, description, system_prompt,
                           provider, model, tags, is_active, created_at, updated_at,
-                          inputs, outputs, role_type, output_schema
+                          inputs, outputs, role_type, output_schema, auto_commit
                    FROM mng_agent_roles WHERE id=%s""",
                 (role_id,),
             )

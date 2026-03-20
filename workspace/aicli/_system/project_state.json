@@ -30,7 +30,7 @@
     "JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy",
     "All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys",
     "Nested tag hierarchy via parent_id FK with unlimited depth; tags synced across Chat/History/Commits on explicit save",
-    "Load-once-on-access pattern: eliminate redundant SQL by caching tags/workflows/runs in memory; update DB only on explicit save",
+    "Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL",
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization",
     "Memory synthesis: Claude Haiku for dual-layer output (raw JSONL \u2192 interaction_tags \u2192 5 files); smart chunking per language/section",
     "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
@@ -67,10 +67,10 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD version displayed on approval panel instead of current output and progress logs; requires investigation of chat panel state management and step sequencing",
-    "Project startup race condition fix (2026-03-20) \u2014 Sequential `await api.listProjects()` prevents empty home screen by properly handling edge case where list succeeds but returns empty",
+    "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation",
+    "Project startup race condition fix (2026-03-20) \u2014 Sequential `await api.listProjects()` prevents empty home screen; edge case where list succeeds but returns empty now handled",
     "Pipeline sidebar caching (2026-03-20) \u2014 `_listCache` stores {workflows, roles, runs} to prevent redundant API calls during pipeline UI rendering",
-    "UUID validation in pipeline run queries (2026-03-19) \u2014 psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion in backend handler",
+    "UUID validation in pipeline run queries (2026-03-19) \u2014 psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend",
     "Memory endpoint code_dir scoping (2026-03-18) \u2014 Fixed undefined template variable causing CLAUDE.md generation failure; variable now properly scoped from config",
     "Memory items and project_facts table population (pending) \u2014 Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism"
   ],
@@ -104,7 +104,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-20T19:38:50Z",
+  "last_memory_run": "2026-03-20T19:53:57Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains code only; workspace/ stores per-project content; _system/ holds project state",
@@ -113,7 +113,7 @@
       "JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy",
       "All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys",
       "Nested tag hierarchy via parent_id FK with unlimited depth; tags synced across Chat/History/Commits on explicit save",
-      "Load-once-on-access pattern: eliminate redundant SQL by caching tags/workflows/runs in memory; update DB only on explicit save",
+      "Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL",
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization",
       "Memory synthesis: Claude Haiku for dual-layer output (raw JSONL \u2192 interaction_tags \u2192 5 files); smart chunking per language/section",
       "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
@@ -124,10 +124,10 @@
       "Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables"
     ],
     "in_progress": [
-      "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD version displayed on approval panel instead of current output and progress logs; requires investigation of chat panel state management and step sequencing",
-      "Project startup race condition fix (2026-03-20) \u2014 Sequential `await api.listProjects()` prevents empty home screen by properly handling edge case where list succeeds but returns empty",
+      "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation",
+      "Project startup race condition fix (2026-03-20) \u2014 Sequential `await api.listProjects()` prevents empty home screen; edge case where list succeeds but returns empty now handled",
       "Pipeline sidebar caching (2026-03-20) \u2014 `_listCache` stores {workflows, roles, runs} to prevent redundant API calls during pipeline UI rendering",
-      "UUID validation in pipeline run queries (2026-03-19) \u2014 psycopg2 InvalidTextRepresentation error when string 'recent' passed to UUID field; requires UUID object conversion in backend handler",
+      "UUID validation in pipeline run queries (2026-03-19) \u2014 psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend",
       "Memory endpoint code_dir scoping (2026-03-18) \u2014 Fixed undefined template variable causing CLAUDE.md generation failure; variable now properly scoped from config",
       "Memory items and project_facts table population (pending) \u2014 Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism"
     ],
@@ -138,17 +138,14 @@
       "ui_components": "xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre",
       "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "db_schema": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
       "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation",
-      "memory_synthesis": "Claude Haiku for dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
-      "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
-      "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings"
+      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder"
     },
-    "project_summary": "aicli is a shared AI memory platform that combines a Python CLI, FastAPI backend, and Electron frontend to enable collaborative AI-assisted development with semantic memory, workflow automation, and multi-LLM support. Currently in active development (v2.2.0) with focus on pipeline approval workflows, database performance optimization, and memory synthesis via Claude Haiku; recent work addresses race conditions, UUID validation, and template variable scoping while pending implementation of memory_items table population.",
-    "memory_digest": "**[2026-03-20]** `in_progress` \u2014 Fixed pipeline approval workflow rendering: old MD version displayed instead of current output; requires chat panel state management investigation. **[2026-03-20]** `in_progress` \u2014 Implemented sequential `await api.listProjects()` retry logic to prevent empty home screen on initial load when project list succeeds but returns empty. **[2026-03-20]** `in_progress` \u2014 Added `_listCache` to pipeline sidebar to cache {workflows, roles, runs} and prevent redundant API calls during rendering. **[2026-03-19]** `in_progress` \u2014 Identified psycopg2 UUID validation error: string 'recent' passed to UUID field requires backend UUID object conversion. **[2026-03-18]** `bug_fix` \u2014 Fixed undefined `code_dir` template variable at line 1120 in memory endpoint causing CLAUDE.md generation failure. **[2026-03-18]** `design_gap` \u2014 Identified that memory_items and project_facts tables exist in schema but lack update logic; blocks improved memory/context mechanism. **[2026-03-10]** `optimization` \u2014 Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags loaded into memory on project access and DB updated only on explicit save. **[2026-03-10]** `bug_identified` \u2014 Data persistence issue: tags saved in UI disappear when switching sessions; unclear if UI rendering or database save failure. **[2026-03-10]** `feature` \u2014 Approved nested tag hierarchy expansion beyond 2-level (category \u2192 tag) with unlimited depth via parent_id FK; login remains first-level. **[2026-03-10]** `backend_fix` \u2014 Implemented port binding safety via freePort() to kill stale uvicorn processes preventing intermittent app restart failures."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, Electron desktop UI, and embedded terminal/editor for collaborative development. It uses PostgreSQL with pgvector for semantic search, JSONL for primary storage, and supports multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with per-project memory synthesis via Claude Haiku. Currently in active development with focus on fixing approval workflow rendering, race conditions, UUID validation, and implementing pending memory table population.",
+    "memory_digest": "**[2026-03-20]** backend \u2014 Fixed project startup race condition where empty project list would cause false 'project not found' errors; added sequential await pattern in `_continueToApp()` retry logic. **[2026-03-20]** frontend \u2014 Implemented `_listCache` to prevent redundant API calls during pipeline sidebar rendering by caching workflows, roles, and runs; improves performance and consistency. **[2026-03-20]** frontend \u2014 Identified approval workflow rendering bug where old MD version displays instead of current output/progress logs; requires investigation of chat panel state management and step sequencing. **[2026-03-19]** backend \u2014 Resolved psycopg2 UUID validation error where string 'recent' passed to UUID field; now converts to UUID object in pipeline run query handlers. **[2026-03-18]** backend \u2014 Fixed memory endpoint failure by properly scoping `code_dir` template variable from config at line 1120; CLAUDE.md generation now completes successfully. **[2026-03-18]** architecture \u2014 Confirmed hierarchical data model: Clients contain Users; clarified per-project table structure and shared auth/billing tables. **[2026-03-10]** architecture \u2014 Implemented load-once-on-access caching pattern to eliminate redundant SQL calls; tags and workflows loaded once on project access, updated only on explicit save. **[2026-03-10]** architecture \u2014 Approved nested tag hierarchy expansion beyond 2-level structure via parent_id FK with unlimited depth; login designated as first-level only. **[pending]** backend \u2014 memory_items and project_facts tables exist in schema but update logic unimplemented; critical blocker for improved memory/context mechanism. **[2026-03-10]** data \u2014 Discovered tag persistence bug where saved UI tags disappear on session switch; unclear if UI rendering or database save failure; requires investigation."
   }
 }

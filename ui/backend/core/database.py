@@ -196,6 +196,7 @@ ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS inputs        JSONB        
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS outputs       JSONB        DEFAULT '[]';
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS role_type     VARCHAR(50)  NOT NULL DEFAULT 'agent';
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS output_schema JSONB        DEFAULT NULL;
+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS auto_commit   BOOLEAN      NOT NULL DEFAULT FALSE;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mar_cid_proj_name
     ON mng_agent_roles(client_id, project, name);
 CREATE INDEX IF NOT EXISTS idx_mar_cp ON mng_agent_roles(client_id, project);
@@ -633,9 +634,10 @@ class _Database:
             _Database._run_ddl_statements(conn, sql, label)
             log.debug(f"✅ {label} DDL done")
 
-        # Seed built-in global agent roles + system roles (idempotent)
+        # Seed built-in global agent roles + system roles + links (idempotent)
         _Database._seed_agent_roles(conn)
         _Database._seed_system_roles(conn)
+        _Database._seed_role_system_links(conn)
 
     def _ensure_shared_schema(self, conn) -> None:
         """Create all 15 pr_* flat tables. Runs once per process lifetime."""
@@ -1196,101 +1198,144 @@ class _Database:
 
     @staticmethod
     def _seed_agent_roles(conn) -> None:
-        """Insert the 10 built-in global roles (client_id=1). Idempotent."""
+        """Upsert the 10 built-in global roles (client_id=1).
+
+        Uses DO UPDATE so improved prompts take effect on server restart.
+        auto_commit=True is set on developer roles so pipeline nodes that
+        link to them automatically commit+push their file changes.
+        """
+        # (name, description, system_prompt, provider, model, role_type, auto_commit)
         _ROLES = [
             (
                 "Product Manager",
-                "Translates feature descriptions into acceptance criteria and user stories.",
-                "You are a senior product manager. Given a feature description, write 3-8 "
-                "acceptance criteria as bullet points starting with '- [ ]'. Each must be "
-                "specific, measurable, and testable. Also identify 2-3 user stories in "
-                "'As a [user], I want [goal]' format. Respond in plain text.",
-                "claude", "claude-haiku-4-5-20251001",
+                "Produces a concise task spec with acceptance criteria.",
+                "You are a senior product manager. Given a work item, produce ONLY:\n\n"
+                "## Task\n<one-sentence task statement>\n\n"
+                "## Description\n<2-3 sentences: goal, user value, scope>\n\n"
+                "## Acceptance Criteria\n"
+                "- [ ] <specific, testable criterion 1>\n"
+                "- [ ] <specific, testable criterion 2>\n"
+                "- [ ] <specific, testable criterion 3 (max 5 total)>\n\n"
+                "Rules: under 250 words total. No preamble. No user stories unless asked.",
+                "claude", "claude-haiku-4-5-20251001", "agent", False,
             ),
             (
                 "Sr. Architect",
-                "Designs technical architecture and numbered implementation plans.",
-                "You are a senior software architect. Given a feature and acceptance criteria, "
-                "write a numbered technical implementation plan. Include: specific files to "
-                "create or modify, functions/methods to add, database schema changes, and "
-                "integration points. Be precise about HOW to implement, not just WHAT.",
-                "claude", "claude-sonnet-4-6",
+                "Produces a concise numbered implementation plan with file paths.",
+                "You are a senior software architect. Given a task and acceptance criteria, "
+                "produce ONLY:\n\n"
+                "## Plan\n1. <concrete step>\n2. <concrete step>\n...(max 6 steps)\n\n"
+                "## Files to Change\n"
+                "- `path/to/file.py` — <what to add/modify>\n\n"
+                "## Notes\n<2-3 sentences: key decisions, patterns to follow, risks>\n\n"
+                "Rules: under 300 words. Be precise about file paths and function names. "
+                "No lengthy prose.",
+                "claude", "claude-sonnet-4-6", "system_designer", False,
             ),
             (
                 "Web Developer",
-                "Implements full-stack features against a technical plan.",
+                "Implements full-stack features; outputs complete files ready to commit.",
                 "You are a senior full-stack developer. Given an implementation plan and "
-                "acceptance criteria, write the actual code. Include complete file contents "
-                "or clear code diffs. Cover both frontend and backend changes. Add inline "
-                "comments for non-obvious logic. Ensure all acceptance criteria are met.",
-                "claude", "claude-sonnet-4-6",
+                "acceptance criteria, write the actual code changes.\n\n"
+                "For EACH file you create or modify, use this EXACT format:\n\n"
+                "### File: path/to/file.ext\n```language\n<complete file content>\n```\n\n"
+                "After all files, add:\n"
+                "## Summary\n- <bullet: what changed>\n- <bullet: why>\n\n"
+                "Rules:\n"
+                "- Write COMPLETE file content (not partial diffs)\n"
+                "- Cover both frontend and backend if needed\n"
+                "- All acceptance criteria must be met\n"
+                "- Add inline comments for non-obvious logic",
+                "claude", "claude-sonnet-4-6", "developer", True,
             ),
             (
                 "Backend Developer",
-                "Writes server-side code: APIs, DB schemas, business logic.",
-                "You are a senior backend developer. Implement server-side code including: "
-                "REST API endpoints, database migrations, business logic, error handling, "
-                "and input validation. Use the project's existing stack and patterns. "
-                "Write complete, production-ready code with proper error handling.",
-                "deepseek", "deepseek-chat",
+                "Writes server-side code: APIs, DB schemas, business logic; auto-commits.",
+                "You are a senior backend developer. Implement server-side code.\n\n"
+                "For EACH file you create or modify, use this EXACT format:\n\n"
+                "### File: path/to/file.ext\n```language\n<complete file content>\n```\n\n"
+                "After all files, add:\n"
+                "## Summary\n- <bullet: what changed>\n- <bullet: why>\n\n"
+                "Rules:\n"
+                "- Write COMPLETE file content (not partial diffs)\n"
+                "- REST API endpoints, DB migrations, business logic, error handling\n"
+                "- Use the project's existing stack and patterns\n"
+                "- Add input validation at all system boundaries",
+                "deepseek", "deepseek-chat", "developer", True,
             ),
             (
                 "Frontend Developer",
-                "Writes client-side code: UI components, styles, interactions.",
-                "You are a senior frontend developer. Implement client-side code including: "
-                "HTML structure, CSS styles, JavaScript logic, user interactions, and API "
-                "integration. Match the existing design system and patterns. Ensure "
-                "accessibility and responsiveness.",
-                "openai", "gpt-4o",
+                "Writes client-side code: UI components, styles, interactions; auto-commits.",
+                "You are a senior frontend developer. Implement client-side code.\n\n"
+                "For EACH file you create or modify, use this EXACT format:\n\n"
+                "### File: path/to/file.ext\n```language\n<complete file content>\n```\n\n"
+                "After all files, add:\n"
+                "## Summary\n- <bullet: what changed>\n- <bullet: why>\n\n"
+                "Rules:\n"
+                "- Write COMPLETE file content (not partial diffs)\n"
+                "- Match the existing design system and naming conventions\n"
+                "- Ensure accessibility (ARIA, keyboard nav) and responsiveness",
+                "openai", "gpt-4o", "developer", True,
             ),
             (
                 "DevOps Engineer",
-                "Writes CI/CD configs, Dockerfiles, and deployment infrastructure.",
-                "You are a senior DevOps engineer. Write: Dockerfiles, CI/CD pipeline configs "
-                "(GitHub Actions/GitLab CI), deployment scripts, environment configs, and "
-                "monitoring setup. Use best practices for security, scalability, and "
-                "reliability. Include health checks and rollback strategies.",
-                "claude", "claude-haiku-4-5-20251001",
+                "Writes CI/CD configs, Dockerfiles, deployment infrastructure; auto-commits.",
+                "You are a senior DevOps engineer. Write infrastructure-as-code.\n\n"
+                "For EACH file you create or modify, use this EXACT format:\n\n"
+                "### File: path/to/file.ext\n```language\n<complete file content>\n```\n\n"
+                "After all files, add:\n"
+                "## Summary\n- <bullet: what changed>\n- <bullet: why>\n\n"
+                "Rules:\n"
+                "- Dockerfiles, CI/CD (GitHub Actions/GitLab CI), deployment scripts\n"
+                "- Include health checks, rollback strategy, and env var docs\n"
+                "- Security: no hardcoded secrets, least-privilege IAM",
+                "claude", "claude-haiku-4-5-20251001", "developer", True,
             ),
             (
                 "Code Reviewer",
-                "Reviews code quality and returns score + issues as JSON.",
-                "You are a senior code reviewer. Review the provided implementation against "
-                "the acceptance criteria. Evaluate: correctness, code quality, edge cases, "
-                "error handling, and test coverage.\n\nReturn ONLY valid JSON:\n"
-                '{"score": 1-10, "passed": true/false, "issues": ["..."], '
-                '"suggestions": ["..."]}\n\nScore >= 7 means passed. Be specific.',
-                "claude", "claude-sonnet-4-6",
+                "Reviews code quality; returns score + issues as JSON.",
+                "You are a senior code reviewer. Review the implementation against "
+                "the acceptance criteria.\n\n"
+                "Return ONLY valid JSON (no markdown fences, no preamble):\n"
+                '{"score": <1-10>, "passed": <true|false>, '
+                '"ac_results": [{"criterion": "...", "status": "PASS|FAIL"}], '
+                '"issues": ["..."], "suggestions": ["..."]}\n\n'
+                "Score >= 7 means passed. Be specific and actionable.",
+                "claude", "claude-sonnet-4-6", "reviewer", False,
             ),
             (
                 "Security Reviewer",
-                "Audits code for OWASP Top 10 vulnerabilities.",
-                "You are a senior application security engineer. Review code for OWASP Top 10: "
-                "injection, broken auth, sensitive data exposure, XXE, broken access control, "
-                "security misconfigs, XSS, insecure deserialization, known vulnerabilities.\n\n"
+                "Audits code for OWASP Top 10 vulnerabilities; returns JSON.",
+                "You are a senior application security engineer. Review code for:\n"
+                "injection, broken auth, sensitive data exposure, XSS, CSRF, "
+                "insecure deserialization, broken access control, security misconfigs.\n\n"
                 "Return ONLY valid JSON:\n"
-                '{"score": 1-10, "passed": true/false, "vulnerabilities": ["..."], '
-                '"recommendations": ["..."]}',
-                "claude", "claude-haiku-4-5-20251001",
+                '{"score": <1-10>, "passed": <true|false>, '
+                '"vulnerabilities": ["..."], "recommendations": ["..."]}',
+                "claude", "claude-haiku-4-5-20251001", "reviewer", False,
             ),
             (
                 "QA Engineer",
-                "Writes comprehensive test cases including edge cases and boundary conditions.",
-                "You are a senior QA engineer. Given a feature and acceptance criteria, write "
-                "a comprehensive test plan including: happy path tests, boundary conditions, "
-                "error cases, edge cases, and performance considerations. For each test "
-                "provide: test name, preconditions, steps, expected result.",
-                "openai", "gpt-4o",
+                "Writes comprehensive test cases including edge cases.",
+                "You are a senior QA engineer. Given a feature and acceptance criteria, "
+                "produce a test plan.\n\n"
+                "## Test Cases\n"
+                "For each test: **Name** | Preconditions | Steps | Expected Result\n\n"
+                "Cover: happy path, boundary conditions, error cases, edge cases.\n"
+                "Keep each test case to 3-5 lines. Max 10 test cases.",
+                "openai", "gpt-4o", "agent", False,
             ),
             (
                 "AWS Architect",
-                "Designs AWS infrastructure using CDK/CloudFormation with security best practices.",
-                "You are a senior AWS solutions architect. Design and implement AWS "
-                "infrastructure using CDK (TypeScript) or CloudFormation. Include: compute "
-                "(ECS/Lambda/EC2), storage (S3/RDS/DynamoDB), networking (VPC/ALB/Route53), "
-                "IAM roles with least-privilege, security groups, auto-scaling, and cost "
-                "optimization notes.",
-                "claude", "claude-sonnet-4-6",
+                "Designs AWS infrastructure using CDK/CloudFormation.",
+                "You are a senior AWS solutions architect. Design AWS infrastructure.\n\n"
+                "For EACH infrastructure file, use this EXACT format:\n\n"
+                "### File: path/to/file.ts\n```typescript\n<complete CDK/CFN content>\n```\n\n"
+                "After all files, add:\n"
+                "## Summary\n- <resource created/modified>\n- <key decision>\n\n"
+                "Include: compute, storage, networking, IAM (least-privilege), "
+                "auto-scaling, cost notes.",
+                "claude", "claude-sonnet-4-6", "developer", True,
             ),
         ]
         _INTERNAL_FACT_PROMPT = (
@@ -1321,13 +1366,20 @@ class _Database:
 
         try:
             with conn.cursor() as cur:
-                for name, desc, prompt, provider, model in _ROLES:
+                for name, desc, prompt, provider, model, role_type, auto_commit in _ROLES:
                     cur.execute(
                         """INSERT INTO mng_agent_roles
-                               (client_id, project, name, description, system_prompt, provider, model)
-                           VALUES (1, '_global', %s, %s, %s, %s, %s)
-                           ON CONFLICT (client_id, project, name) DO NOTHING""",
-                        (name, desc, prompt, provider, model),
+                               (client_id, project, name, description, system_prompt,
+                                provider, model, role_type, auto_commit)
+                           VALUES (1, '_global', %s, %s, %s, %s, %s, %s, %s)
+                           ON CONFLICT (client_id, project, name) DO UPDATE SET
+                               description   = EXCLUDED.description,
+                               system_prompt = EXCLUDED.system_prompt,
+                               provider      = EXCLUDED.provider,
+                               model         = EXCLUDED.model,
+                               role_type     = EXCLUDED.role_type,
+                               auto_commit   = EXCLUDED.auto_commit""",
+                        (name, desc, prompt, provider, model, role_type, auto_commit),
                     )
                 # Seed the internal fact-extraction prompt (role_type='internal')
                 cur.execute(
@@ -1339,7 +1391,8 @@ class _Database:
                                'Internal: extracts durable architectural facts from memory summaries. '
                                'Used automatically by /memory, session-end, and workflow-end triggers.',
                                %s, 'claude', 'claude-haiku-4-5-20251001', 'internal')
-                       ON CONFLICT (client_id, project, name) DO NOTHING""",
+                       ON CONFLICT (client_id, project, name) DO UPDATE SET
+                           system_prompt = EXCLUDED.system_prompt""",
                     (_INTERNAL_FACT_PROMPT,),
                 )
             conn.commit()
@@ -1350,7 +1403,10 @@ class _Database:
 
     @staticmethod
     def _seed_system_roles(conn) -> None:
-        """Insert 4 built-in system roles (client_id=1). Idempotent."""
+        """Upsert 7 built-in system roles (client_id=1).
+
+        Uses DO UPDATE so improved content takes effect on server restart.
+        """
         _DEFAULT_SYSTEM_ROLES = [
             (
                 "coding_standards",
@@ -1410,6 +1466,56 @@ class _Database:
                 '"ac_results": [{"criterion": "...", "status": "PASS|FAIL", "note": "..."}], '
                 '"issues": ["..."], "suggestions": ["..."]}',
             ),
+            (
+                "doc_output_format",
+                "output",
+                "Keep docs short, use bullets, include Task/Description/AC or Plan headings.",
+                "## Document Output Rules\n\n"
+                "- Keep the total output under 300 words\n"
+                "- Use bullet points instead of paragraphs wherever possible\n"
+                "- Use standard section headings: ## Task, ## Description, "
+                "## Acceptance Criteria, ## Plan, ## Files to Change, ## Notes\n"
+                "- Each acceptance criterion or plan step must be a single concise line\n"
+                "- No preamble, no 'Sure, here is...', no repeating the prompt back\n"
+                "- No filler phrases: skip 'it is important to', 'please note that', etc.",
+            ),
+            (
+                "dev_code_format",
+                "development",
+                "Output complete files using ### File: path\\n```lang blocks; add Summary.",
+                "## Developer Output Format\n\n"
+                "For EACH file you create or modify, use this EXACT format:\n\n"
+                "### File: path/to/file.ext\n```language\n<complete file content>\n```\n\n"
+                "Rules:\n"
+                "- Always write COMPLETE file content, not partial snippets or diffs\n"
+                "- Include all imports, all existing functions — not just the changed part\n"
+                "- After all files, add a ## Summary section with bullet points:\n"
+                "  - What was changed and in which file\n"
+                "  - Why the change was needed\n"
+                "  - Any migration steps or env vars required\n"
+                "- If no files were modified, explain why in plain text",
+            ),
+            (
+                "dev_naming_conventions",
+                "development",
+                "mng_ global tables, pr_ project tables, snake_case, no abbreviations.",
+                "## Naming Conventions\n\n"
+                "Database tables:\n"
+                "- Global / client-scoped tables: prefix `mng_` (e.g. mng_users, mng_agent_roles)\n"
+                "- Project-scoped tables: prefix `pr_` (e.g. pr_commits, pr_graph_runs)\n"
+                "- Never create new tables outside these two namespaces\n"
+                "- Always include `client_id INT` FK on every table\n"
+                "- Project-scoped tables also have a `project VARCHAR(100)` column\n\n"
+                "Python:\n"
+                "- snake_case for variables, functions, modules\n"
+                "- PascalCase for classes\n"
+                "- ALL_CAPS for module-level constants\n"
+                "- No abbreviations: use `connection` not `conn`, `error` not `err`\n\n"
+                "JavaScript:\n"
+                "- camelCase for variables and functions\n"
+                "- PascalCase for classes and components\n"
+                "- UPPER_SNAKE_CASE for constants",
+            ),
         ]
         try:
             with conn.cursor() as cur:
@@ -1418,7 +1524,10 @@ class _Database:
                         """INSERT INTO mng_system_roles
                                (client_id, name, category, description, content)
                            VALUES (1, %s, %s, %s, %s)
-                           ON CONFLICT (client_id, name) DO NOTHING""",
+                           ON CONFLICT (client_id, name) DO UPDATE SET
+                               category    = EXCLUDED.category,
+                               description = EXCLUDED.description,
+                               content     = EXCLUDED.content""",
                         (name, category, description, content),
                     )
             conn.commit()
@@ -1426,6 +1535,56 @@ class _Database:
         except Exception as e:
             conn.rollback()
             log.warning(f"System roles seed skipped: {e}")
+
+    @staticmethod
+    def _seed_role_system_links(conn) -> None:
+        """Link agent roles to system roles. Idempotent — uses ON CONFLICT DO NOTHING."""
+        # (agent_role_name, system_role_name, order_index)
+        _LINKS = [
+            # Document-producing roles → doc output format
+            ("Product Manager",      "doc_output_format",      0),
+            ("Sr. Architect",        "doc_output_format",      0),
+            ("QA Engineer",          "doc_output_format",      0),
+            # Developer roles → code format + naming conventions + coding standards
+            ("Web Developer",        "dev_code_format",        0),
+            ("Web Developer",        "dev_naming_conventions", 1),
+            ("Web Developer",        "coding_standards",       2),
+            ("Backend Developer",    "dev_code_format",        0),
+            ("Backend Developer",    "dev_naming_conventions", 1),
+            ("Backend Developer",    "coding_standards",       2),
+            ("Backend Developer",    "security_principles",    3),
+            ("Frontend Developer",   "dev_code_format",        0),
+            ("Frontend Developer",   "dev_naming_conventions", 1),
+            ("Frontend Developer",   "coding_standards",       2),
+            ("DevOps Engineer",      "dev_code_format",        0),
+            ("DevOps Engineer",      "security_principles",    1),
+            ("AWS Architect",        "dev_code_format",        0),
+            ("AWS Architect",        "coding_standards",       1),
+            ("AWS Architect",        "security_principles",    2),
+            # Reviewer roles → reviewer standards + security
+            ("Code Reviewer",        "reviewer_standards",     0),
+            ("Code Reviewer",        "coding_standards",       1),
+            ("Security Reviewer",    "reviewer_standards",     0),
+            ("Security Reviewer",    "security_principles",    1),
+        ]
+        try:
+            with conn.cursor() as cur:
+                for agent_name, system_name, order_idx in _LINKS:
+                    cur.execute(
+                        """INSERT INTO mng_role_system_links
+                               (role_id, system_role_id, order_index)
+                           SELECT ar.id, sr.id, %s
+                           FROM   mng_agent_roles  ar
+                           JOIN   mng_system_roles sr ON sr.name = %s AND sr.client_id = 1
+                           WHERE  ar.name = %s AND ar.client_id = 1
+                           ON CONFLICT DO NOTHING""",
+                        (order_idx, system_name, agent_name),
+                    )
+            conn.commit()
+            log.debug("✅ Role-system links seeded")
+        except Exception as e:
+            conn.rollback()
+            log.warning(f"Role-system links seed skipped: {e}")
 
     @staticmethod
     def _seed_client_defaults(client_id: int, conn) -> None:

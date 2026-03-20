@@ -639,17 +639,25 @@ def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], lis
             }
 
             cur.execute(
-                """SELECT id, name, role_file, role_prompt, provider, model,
-                          output_schema, inject_context, require_approval, approval_msg, role_id,
-                          stateless, retry_config, success_criteria,
-                          order_index, max_retry, continue_on_fail, auto_commit
-                   FROM pr_graph_nodes WHERE workflow_id=%s ORDER BY order_index, created_at""",
+                """SELECT n.id, n.name, n.role_file, n.role_prompt, n.provider, n.model,
+                          n.output_schema, n.inject_context, n.require_approval, n.approval_msg,
+                          n.role_id, n.stateless, n.retry_config, n.success_criteria,
+                          n.order_index, n.max_retry, n.continue_on_fail,
+                          COALESCE(n.auto_commit, ar.auto_commit, FALSE) AS auto_commit,
+                          COALESCE(NULLIF(n.role_prompt, ''), ar.system_prompt, '') AS effective_prompt,
+                          COALESCE(NULLIF(n.provider, ''), ar.provider, '') AS effective_provider,
+                          COALESCE(NULLIF(n.model, ''), ar.model, '') AS effective_model
+                   FROM   pr_graph_nodes n
+                   LEFT JOIN mng_agent_roles ar ON ar.id = n.role_id
+                   WHERE  n.workflow_id=%s ORDER BY n.order_index, n.created_at""",
                 (workflow_id,),
             )
             for r in cur.fetchall():
                 nodes[r[0]] = {
                     "id": r[0], "name": r[1], "role_file": r[2],
-                    "role_prompt": r[3], "provider": r[4], "model": r[5],
+                    "role_prompt": r[18],           # effective_prompt (node or role)
+                    "provider": r[19],              # effective_provider
+                    "model": r[20],                 # effective_model
                     "output_schema": r[6], "inject_context": r[7],
                     "require_approval": r[8] if len(r) > 8 else False,
                     "approval_msg": r[9] if len(r) > 9 else "",

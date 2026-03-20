@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 19:38 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 19:53 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -36,7 +36,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys
 - Nested tag hierarchy via parent_id FK with unlimited depth; tags synced across Chat/History/Commits on explicit save
-- Load-once-on-access pattern: eliminate redundant SQL by caching tags/workflows/runs in memory; update DB only on explicit save
+- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
@@ -48,8 +48,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-19] I did reciave the following message : No JSON array found in response ... Also I still dont see project loading when app
 - [2026-03-20] Currently  memory_items (compressed knowledge) is based on prompt/responses, commit, workflows node results.  I would li
 - [2026-03-20] Projects only loading when I press to prject tab. as Project  loaded as default page, it should load when app is starter
 - [2026-03-20] I still dont see the project loaded when app is started. all I can see in the logs is  Application startup complete. (us
 - [2026-03-20] I am testing the Pipeline - when I clicked approved I do see the old md version . I would expcet to see process and afte
+- [2026-03-20] I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
