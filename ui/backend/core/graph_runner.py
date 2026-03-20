@@ -658,9 +658,18 @@ async def run_graph_workflow(
             if aname in ctx:
                 last_ran_name = aname
                 break
+        # Look up node IDs for the waiting node and next node (needed by make_run_decision)
+        waiting_node_id = next(
+            (nid for nid, n in nodes.items() if n["name"] == last_ran_name), None
+        )
+        next_node_id = next(
+            (nid for nid, n in nodes.items() if n["name"] == next_node_name), None
+        )
         ctx["_waiting"] = {
             "node_name": last_ran_name,          # node whose output to show in approval panel
+            "node_id": waiting_node_id,          # ID of the waiting node (for retry)
             "next_node": next_node_name,         # node that will run after approval
+            "successors": [next_node_id] if next_node_id else [],  # IDs expected by decision endpoint
             "output": ctx.get(last_ran_name, ""),
             "approval_msg": next(
                 (n.get("approval_msg", "") for n in nodes.values() if n["name"] == last_ran_name),
@@ -741,15 +750,30 @@ async def resume_graph_workflow(
     snapshot = app.get_state(config)
     if snapshot.next:
         next_node_name = snapshot.next[0]
+        # Derive approval_names from workflow nodes (needed after server restart)
+        _, resume_nodes, _ = _load_workflow_from_db(workflow_id)
+        resume_approval_names = [n["name"] for n in resume_nodes.values() if n.get("require_approval")]
         last_ran_name = next_node_name
-        for aname in reversed(approval_names):
+        for aname in reversed(resume_approval_names):
             if aname in result_ctx:
                 last_ran_name = aname
                 break
+        waiting_node_id = next(
+            (nid for nid, n in resume_nodes.items() if n["name"] == last_ran_name), None
+        )
+        next_node_id = next(
+            (nid for nid, n in resume_nodes.items() if n["name"] == next_node_name), None
+        )
         result_ctx["_waiting"] = {
             "node_name": last_ran_name,
+            "node_id": waiting_node_id,
             "next_node": next_node_name,
+            "successors": [next_node_id] if next_node_id else [],
             "output": result_ctx.get(last_ran_name, ""),
+            "approval_msg": next(
+                (n.get("approval_msg", "") for n in resume_nodes.values() if n["name"] == last_ran_name),
+                f"Review {last_ran_name} output and approve to proceed to {next_node_name}.",
+            ),
         }
         _update_run_db(run_id, "waiting_approval", ctx=result_ctx, total_cost=total_cost)
         return result_ctx

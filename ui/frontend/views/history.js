@@ -909,41 +909,85 @@ export class HistoryView {
   // ── Runs tab ───────────────────────────────────────────────────────────────
 
   async _renderRuns(container) {
-    const res  = await fetch(_histUrl('/history/runs?limit=20'));
-    const data = await res.json();
-    const runs = data.runs || [];
+    container.innerHTML = '<div style="padding:16px;color:var(--muted)">Loading runs…</div>';
+    try {
+      const res  = await fetch(_histUrl('/history/runs?limit=50'));
+      const data = await res.json();
+      const runs = data.runs || [];
 
-    if (!runs.length) {
-      container.innerHTML = "<div style='padding:20px;color:var(--muted)'>No workflow runs yet.</div>";
-      return;
+      if (!runs.length) {
+        container.innerHTML = "<div style='padding:20px;color:var(--muted)'>No workflow runs yet.</div>";
+        return;
+      }
+
+      const STATUS_COLORS = {
+        done: '#3ecf8e', error: '#e85d75', running: '#f5a623',
+        stopped: '#888', cancelled: '#888', waiting_approval: '#9b7ef8',
+      };
+
+      const escH = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+      container.innerHTML = runs.map(r => {
+        const statusColor = STATUS_COLORS[r.status] || 'var(--muted)';
+        const ts = (r.started_at || '').slice(0, 16).replace('T', ' ');
+        const dur = r.duration_secs ? `${r.duration_secs}s` : '';
+        const cost = r.total_cost_usd > 0 ? `$${Number(r.total_cost_usd).toFixed(4)}` : '';
+        const input = (r.user_input || '').slice(0, 80);
+        // If the run has an ID (DB run), clicking opens it in the Pipelines tab
+        const clickHandler = r.id && /^[0-9a-f-]{36}$/.test(r.id)
+          ? `onclick="window._historyView._openRunInPipelines('${escH(r.id)}')"`
+          : `onclick="window._historyView._showRunDetail('${escH(r.file)}')"`;
+        return `
+          <div class="run-entry" style="border:1px solid var(--border);border-radius:6px;
+               padding:10px 14px;margin-bottom:8px;cursor:pointer;
+               transition:background 0.12s" onmouseover="this.style.background='var(--bg2)'"
+               onmouseout="this.style.background=''" ${clickHandler}>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;display:inline-block"></span>
+              <strong style="font-size:0.82rem">${escH(r.workflow || r.file)}</strong>
+              <span style="color:${statusColor};font-size:0.72rem">${escH(r.status || '')}</span>
+              <span style="color:var(--muted);font-size:0.72rem;margin-left:auto">${escH(ts)}</span>
+              ${r.steps ? `<span style="color:var(--muted);font-size:0.72rem">${r.steps} steps</span>` : ''}
+              ${dur ? `<span style="color:var(--muted);font-size:0.72rem">${escH(dur)}</span>` : ''}
+              ${cost ? `<span style="color:#3ecf8e;font-size:0.72rem">${escH(cost)}</span>` : ''}
+            </div>
+            ${input ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:4px;
+                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(input)}</div>` : ''}
+            ${r.error ? `<div style="font-size:0.72rem;color:#e85d75;margin-top:4px">${escH(r.error.slice(0,100))}</div>` : ''}
+          </div>`;
+      }).join('');
+    } catch (e) {
+      container.innerHTML = `<div style='padding:20px;color:var(--red)'>Could not load runs: ${e.message}</div>`;
     }
-    container.innerHTML = runs.map(r => `
-      <div class="run-entry" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;cursor:pointer"
-        onclick="window._historyView._showRunDetail('${r.file}')">
-        <div style="display:flex;gap:12px;align-items:center">
-          <strong>${r.workflow || r.file}</strong>
-          <span style="color:var(--muted);font-size:12px">${r.started_at?.slice(0, 16) || ''}</span>
-          <span>${r.steps || 0} steps</span>
-          <span style="color:green">$${(r.total_cost_usd || 0).toFixed(5)}</span>
-          <span style="color:var(--muted)">${r.duration_secs || 0}s</span>
-        </div>
-      </div>`).join('');
+  }
+
+  _openRunInPipelines(runId) {
+    // Set pending run to auto-open when Pipelines tab renders
+    window._pendingRunOpen = runId;
+    // Navigate to Pipelines tab (renderGraphWorkflow will pick up _pendingRunOpen)
+    if (window.navigateTo) {
+      window.navigateTo('workflow');
+    }
   }
 
   async _showRunDetail(filename) {
-    const res = await fetch(_histUrl(`/history/runs/${filename}`));
-    const run = await res.json();
-    const modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1000';
-    modal.innerHTML = `
-      <div style="background:var(--bg);border-radius:8px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto">
-        <div style="display:flex;justify-content:space-between;margin-bottom:16px">
-          <strong>Run: ${run.workflow}</strong>
-          <button onclick="this.closest('div[style*=fixed]').remove()">✕</button>
-        </div>
-        <pre style="font-size:12px;background:var(--surface);padding:12px;border-radius:4px;overflow-x:auto">${JSON.stringify(run, null, 2)}</pre>
-      </div>`;
-    document.body.appendChild(modal);
+    try {
+      const res = await fetch(_histUrl(`/history/runs/${filename}`));
+      const run = await res.json();
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1000';
+      modal.innerHTML = `
+        <div style="background:var(--bg);border-radius:8px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto">
+          <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+            <strong>Run: ${run.workflow}</strong>
+            <button onclick="this.closest('div[style*=fixed]').remove()">✕</button>
+          </div>
+          <pre style="font-size:12px;background:var(--surface);padding:12px;border-radius:4px;overflow-x:auto">${JSON.stringify(run, null, 2)}</pre>
+        </div>`;
+      document.body.appendChild(modal);
+    } catch (e) {
+      alert(`Could not load run detail: ${e.message}`);
+    }
   }
 
   // ── Evals tab ──────────────────────────────────────────────────────────────

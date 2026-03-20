@@ -405,13 +405,6 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
             style="font-size:0.6rem;padding:0.13rem 0.35rem;background:var(--surface2);
                    border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
                    color:var(--text2);font-family:var(--font);outline:none;margin-right:3px">+▸</button>
-          <button title="Run pipeline" data-wi-run-btn="${wi.id}"
-            onclick="window._wiRunPipeline('${_esc(wi.id)}','${_esc(project)}')"
-            style="font-size:0.6rem;padding:0.13rem 0.35rem;
-                   background:${isRunning ? '#e67e22' : 'var(--accent)'};
-                   border:none;border-radius:var(--radius);cursor:pointer;color:#fff;
-                   font-family:var(--font);outline:none;white-space:nowrap">
-            ${isRunning ? '⟳' : '▶'}</button>
         </td>
       </tr>`;
 

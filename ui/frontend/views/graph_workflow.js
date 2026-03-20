@@ -355,9 +355,9 @@ export function renderGraphWorkflow(container) {
             </div>
             <!-- Approval panel shown here when waiting -->
             <div id="gw-approval-wrap" style="display:none;padding:0.5rem 0.75rem 0;flex-shrink:0"></div>
-            <div style="display:flex;flex:1;overflow:hidden">
-              <div class="gw-rp-timeline" id="gw-rp-timeline" style="flex:1;overflow-y:auto"></div>
-              <div class="gw-rp-deliverables" id="gw-rp-deliverables" style="display:none;width:220px;border-left:1px solid var(--border)"></div>
+            <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
+              <div class="gw-rp-timeline" id="gw-rp-timeline"></div>
+              <div class="gw-rp-deliverables" id="gw-rp-deliverables" style="display:none;border-top:1px solid var(--border)"></div>
             </div>
             <!-- Legacy log body (hidden, kept for backward compat) -->
             <div id="gw-log" style="display:none">
@@ -621,7 +621,8 @@ function _showWorkflow(wf) {
   const nameEl = document.getElementById('gw-wf-name');
   const nameWrap = document.getElementById('gw-wf-name-wrap');
   const runControls = document.getElementById('gw-run-controls');
-  if (nameEl) nameEl.value = wf.name;
+  const displayName = wf.name === '_work_item_pipeline' ? 'Work Item Pipeline' : wf.name;
+  if (nameEl) nameEl.value = displayName;
   if (nameWrap) nameWrap.style.display = '';
   if (runControls) runControls.style.display = 'flex';
   _renderPipeline(wf);
@@ -798,6 +799,8 @@ async function _createFromTemplate(tmpl) {
 
 async function _saveWorkflowName(value) {
   if (!_currentWf || !value) return;
+  // Don't save the display-only alias back to the DB
+  if (_currentWf.name === '_work_item_pipeline') return;
   try {
     await api.graphWorkflows.update(_currentWf.id, { name: value });
     _currentWf.name = value;
@@ -1354,7 +1357,7 @@ function _renderRunTimeline(steps, currentNodeName) {
                : stepStatus === 'running' ? '⟳' : stepStatus === 'skipped' ? '⤳' : '○';
 
     const outputPreview = nr.output
-      ? `<div class="gw-rp-step-out">${_esc(nr.output.slice(0, 280))}</div>` : '';
+      ? `<div class="gw-rp-step-out">${renderMd(nr.output.slice(0, 500))}</div>` : '';
 
     return `
       <div class="gw-rp-step ${stepStatus}">
@@ -1403,18 +1406,49 @@ function _renderDeliverables(files, directory, run) {
   el.style.display = '';
 
   const isWorkItem = _currentWf?.name === '_work_item_pipeline';
-  const planner = isWorkItem ? `<div class="gw-rp-del-file">📋 <span>Planner → open work item for AC &amp; plan</span></div>` : '';
+  const savedNote = isWorkItem
+    ? `<div style="font-size:0.72rem;color:#3ecf8e;margin-top:0.4rem">✓ Work item updated in Planner — open it to view AC &amp; implementation plan</div>`
+    : '';
+
+  const ctx = run?.context || {};
+  // Build a summary of each node output for display
+  const nodeOutputs = (_currentWf?.nodes || []).map(n => {
+    const output = ctx[n.name];
+    if (!output || typeof output !== 'string') return '';
+    const preview = output.slice(0, 600);
+    return `
+      <details style="margin:0.35rem 0" open>
+        <summary style="cursor:pointer;font-size:0.72rem;font-weight:600;color:var(--fg);
+                        padding:0.25rem 0;list-style:none;display:flex;align-items:center;gap:0.4rem">
+          <span style="color:#3ecf8e">✓</span> ${_esc(n.name)}
+        </summary>
+        <div class="md-prose" style="font-size:0.71rem;line-height:1.5;
+             margin:0.25rem 0 0.35rem 0.75rem;padding:0.4rem 0.5rem;
+             background:var(--bg2);border-radius:4px;border-left:2px solid var(--accent)">
+          ${renderMd(preview)}${output.length > 600 ? '<p style="color:var(--muted)">…</p>' : ''}
+        </div>
+      </details>`;
+  }).filter(Boolean).join('');
 
   el.innerHTML = `
-    <div class="gw-rp-del-title">Deliverables</div>
-    ${files.map(f => `
-      <div class="gw-rp-del-file" title="${_esc(f.path)}">
-        📄 <span>${_esc(f.name)}</span>
-        <span style="margin-left:auto;font-size:0.63rem;color:var(--muted)">${(f.size/1024).toFixed(1)}k</span>
-      </div>`).join('')}
-    ${files.length === 0 ? '<div style="font-size:0.72rem;color:var(--muted)">No files saved yet</div>' : ''}
-    ${planner}
-    <div style="font-size:0.63rem;color:var(--muted);margin-top:0.35rem">📁 ${_esc(directory)}</div>
+    <div style="padding:0.5rem 0.75rem">
+      <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+                  color:var(--muted);margin-bottom:0.4rem">
+        ✓ Pipeline Complete
+      </div>
+      ${nodeOutputs}
+      ${files.length > 0 ? `
+        <div style="margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid var(--border)">
+          <div style="font-size:0.65rem;font-weight:600;color:var(--muted);margin-bottom:0.25rem">SAVED FILES</div>
+          ${files.map(f => `
+            <div style="display:flex;align-items:center;gap:0.35rem;font-size:0.71rem;padding:0.15rem 0" title="${_esc(f.path)}">
+              📄 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(f.name)}</span>
+              <span style="color:var(--muted)">${(f.size/1024).toFixed(1)}k</span>
+            </div>`).join('')}
+          <div style="font-size:0.63rem;color:var(--muted);margin-top:0.3rem">📁 ${_esc(directory)}</div>
+        </div>` : ''}
+      ${savedNote}
+    </div>
   `;
 }
 
@@ -1498,9 +1532,9 @@ function _showApprovalPanel(run) {
       <div style="flex:1;display:flex;flex-direction:column;min-width:0">
         <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
                     color:var(--muted);margin-bottom:0.25rem;flex-shrink:0">Current Output</div>
-        <div id="gw-ap-output" style="flex:1;overflow-y:auto;background:var(--bg2);border-radius:5px;
-             padding:0.5rem 0.65rem;font-size:0.72rem;line-height:1.55;white-space:pre-wrap;
-             word-break:break-word;border:1px solid var(--border)">${_esc(waiting.output || '(no output)')}</div>
+        <div id="gw-ap-output" class="md-prose" style="flex:1;overflow-y:auto;background:var(--bg2);border-radius:5px;
+             padding:0.5rem 0.65rem;font-size:0.72rem;line-height:1.55;
+             border:1px solid var(--border)">${renderMd(waiting.output || '*(no output)*')}</div>
       </div>
       <!-- Right: chat pane -->
       <div style="width:320px;flex-shrink:0;display:flex;flex-direction:column;min-height:0">
@@ -1572,9 +1606,9 @@ function _showApprovalPanel(run) {
       });
       _approvalChatHistory.push({ role: 'assistant', content: reply });
       _renderApprovalMessages();
-      // Update the output pane with the latest full document
+      // Update the output pane with the latest full document (as Markdown)
       const outEl = document.getElementById('gw-ap-output');
-      if (outEl) outEl.textContent = reply;
+      if (outEl) outEl.innerHTML = renderMd(reply);
     } catch (e) {
       toast(`Chat failed: ${e.message}`, 'error');
       _approvalChatHistory.pop();

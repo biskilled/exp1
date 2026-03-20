@@ -900,6 +900,20 @@ async def approval_chat(
                 (json.dumps(ctx), run_id),
             )
 
+    # ── Also update the in-memory LangGraph state so the next node sees the revised output ─
+    try:
+        from core.graph_runner import _APP_REGISTRY
+        if run_id in _APP_REGISTRY:
+            app, _ = _APP_REGISTRY[run_id]
+            config = {"configurable": {"thread_id": run_id}}
+            snapshot = app.get_state(config)
+            if snapshot.values:
+                curr_ctx = dict(snapshot.values.get("context", {}))
+                curr_ctx[node_name] = reply
+                app.update_state(config, {"context": curr_ctx})
+    except Exception as _lg_err:
+        log.warning(f"Could not update LangGraph state after chat refinement: {_lg_err}")
+
     return {"reply": reply, "node_name": node_name}
 
 

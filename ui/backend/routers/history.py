@@ -442,11 +442,81 @@ async def get_session_phases(project: str | None = Query(None)):
 async def workflow_runs(
     project: str | None = Query(None),
     workflow: str | None = Query(None),
-    limit: int = Query(20),
+    limit: int = Query(50),
 ):
-    """List workflow run logs."""
-    runs_dir = _project_dir(project) / "runs"
+    """List workflow run logs — queries DB first (LangGraph runs), falls back to file system."""
+    # Try DB first (LangGraph runs in pr_graph_runs)
+    if db.is_available() and project:
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    if workflow:
+                        cur.execute(
+                            """SELECT r.id, r.status, r.user_input, r.started_at, r.finished_at,
+                                      r.total_cost_usd, r.error, r.current_node, r.context,
+                                      w.name AS workflow_name
+                               FROM pr_graph_runs r
+                               LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
+                               WHERE r.client_id=1 AND r.project=%s AND w.name=%s
+                               ORDER BY r.started_at DESC LIMIT %s""",
+                            (project, workflow, min(limit, 200)),
+                        )
+                    else:
+                        cur.execute(
+                            """SELECT r.id, r.status, r.user_input, r.started_at, r.finished_at,
+                                      r.total_cost_usd, r.error, r.current_node, r.context,
+                                      w.name AS workflow_name
+                               FROM pr_graph_runs r
+                               LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
+                               WHERE r.client_id=1 AND r.project=%s
+                               ORDER BY r.started_at DESC LIMIT %s""",
+                            (project, min(limit, 200)),
+                        )
+                    rows = cur.fetchall()
 
+                    # Count node results per run
+                    run_ids = [str(r[0]) for r in rows]
+                    step_counts: dict = {}
+                    if run_ids:
+                        placeholders = ",".join(["%s"] * len(run_ids))
+                        cur.execute(
+                            f"SELECT run_id, COUNT(*) FROM pr_graph_node_results WHERE run_id IN ({placeholders}) GROUP BY run_id",
+                            run_ids,
+                        )
+                        for sc_row in cur.fetchall():
+                            step_counts[str(sc_row[0])] = sc_row[1]
+
+            runs = []
+            for r in rows:
+                started = r[3]
+                finished = r[4]
+                duration_secs = 0
+                if started and finished:
+                    duration_secs = round((finished - started).total_seconds(), 1)
+                wf_name = r[9] or "Unknown"
+                if wf_name == "_work_item_pipeline":
+                    wf_name = "Work Item Pipeline"
+                runs.append({
+                    "id": str(r[0]),
+                    "file": str(r[0]),  # legacy field used by _showRunDetail click
+                    "workflow": wf_name,
+                    "status": r[1],
+                    "user_input": (r[2] or "")[:120],
+                    "started_at": started.isoformat() if started else None,
+                    "finished_at": finished.isoformat() if finished else None,
+                    "total_cost_usd": float(r[5] or 0),
+                    "duration_secs": duration_secs,
+                    "steps": step_counts.get(str(r[0]), 0),
+                    "error": r[6],
+                    "current_node": r[7],
+                })
+            return {"runs": runs}
+        except Exception as _dbe:
+            import logging
+            logging.getLogger(__name__).warning(f"DB run query failed, falling back to files: {_dbe}")
+
+    # Fallback: file-based run logs
+    runs_dir = _project_dir(project) / "runs"
     if not runs_dir.exists():
         return {"runs": []}
 

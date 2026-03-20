@@ -110,6 +110,15 @@ async function _continueToApp(user) {
       setState({ projects });
       renderSidebarContent();
 
+      // If still on home page, force a re-render so projects appear immediately
+      // (race condition: if this .then() runs before navigateTo's internal fetch
+      //  sets state, navigateTo sees changed=false and skips renderHome)
+      if (state.activeView === 'home') {
+        const vc = document.getElementById('views-container');
+        const view = vc?.querySelector('.view');
+        if (view) renderHome(view);
+      }
+
       // Auto-restore last open project
       const recent = getRecentProjects();
       const allNames = projects.map(p => p.name);
