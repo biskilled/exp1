@@ -531,7 +531,9 @@ async function _loadList() {
 function _renderRoleLibrary() {
   const lib = document.getElementById('gw-role-library');
   if (!lib) return;
-  if (!_roles.length) {
+  // Internal roles (fact extraction etc.) are system-managed — not pipeline nodes
+  const pipelineRoles = _roles.filter(r => r.role_type !== 'internal');
+  if (!pipelineRoles.length) {
     lib.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No roles — create them in the Roles tab</div>';
     return;
   }
@@ -539,7 +541,7 @@ function _renderRoleLibrary() {
   const TYPE_COLORS = {
     agent: '#3ecf8e', system_designer: '#9b7ef8', reviewer: '#2dd4bf',
   };
-  lib.innerHTML = _roles.map(r => {
+  lib.innerHTML = pipelineRoles.map(r => {
     const color = TYPE_COLORS[r.role_type || 'agent'] || '#6b7490';
     const badge = r.role_type === 'system_designer' ? 'SYS'
                 : r.role_type === 'reviewer' ? 'REV' : 'AGT';

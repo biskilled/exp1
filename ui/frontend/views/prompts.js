@@ -181,6 +181,30 @@ async function _loadRoles(projectName) {
   }
 }
 
+function _renderRoleItem(r) {
+  const isActive = _activeRole?.id === r.id;
+  const isInternal = r.role_type === 'internal';
+  const badge = isInternal
+    ? `<span style="font-size:0.55rem;padding:0.05rem 0.3rem;border-radius:3px;
+                   background:rgba(155,126,248,0.18);color:#9b7ef8;flex-shrink:0">INT</span>`
+    : '';
+  return `
+    <div onclick="window._rolesSelect(${r.id})"
+         style="padding:0.4rem 0.75rem;cursor:pointer;border-bottom:1px solid var(--border);
+                display:flex;align-items:center;gap:0.5rem;
+                background:${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'};
+                border-left:2px solid ${isActive ? 'var(--accent)' : 'transparent'}"
+         onmouseenter="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'var(--surface2)'}'"
+         onmouseleave="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'}'">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.7rem;font-weight:500;color:var(--text);
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(r.name)}</div>
+        <div style="font-size:0.55rem;color:var(--muted)">${_esc(r.provider || '')} ${r.model ? '· ' + _esc(r.model) : ''}</div>
+      </div>
+      ${badge}
+    </div>`;
+}
+
 function _renderRolesList() {
   const body = document.getElementById('roles-list-body');
   if (!body) return;
@@ -189,22 +213,22 @@ function _renderRolesList() {
       No roles yet — click <strong>+</strong> to create one</div>`;
     return;
   }
-  body.innerHTML = _roles.map(r => `
-    <div onclick="window._rolesSelect(${r.id})"
-         style="padding:0.4rem 0.75rem;cursor:pointer;border-bottom:1px solid var(--border);
-                display:flex;align-items:center;gap:0.5rem;
-                background:${_activeRole?.id === r.id ? 'var(--accent)18' : 'transparent'};
-                border-left:2px solid ${_activeRole?.id === r.id ? 'var(--accent)' : 'transparent'}"
-         onmouseenter="if(!${_activeRole?.id === r.id})this.style.background='var(--surface2)'"
-         onmouseleave="if(!${_activeRole?.id === r.id})this.style.background='${_activeRole?.id === r.id ? 'var(--accent)18' : 'transparent'}'">
-      <span style="font-size:0.62rem;color:var(--muted);flex-shrink:0">≡</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:0.7rem;font-weight:500;color:var(--text);
-                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(r.name)}</div>
-        <div style="font-size:0.55rem;color:var(--muted)">${_esc(r.provider || '')} ${r.model ? '· ' + _esc(r.model) : ''}</div>
-      </div>
-    </div>
-  `).join('');
+  const regularRoles  = _roles.filter(r => r.role_type !== 'internal');
+  const internalRoles = _roles.filter(r => r.role_type === 'internal');
+
+  let html = regularRoles.map(_renderRoleItem).join('');
+
+  if (internalRoles.length) {
+    html += `<div style="padding:0.3rem 0.75rem;font-size:0.58rem;font-weight:700;
+                          text-transform:uppercase;letter-spacing:0.06em;color:#9b7ef8;
+                          background:rgba(155,126,248,0.06);border-top:1px solid var(--border);
+                          border-bottom:1px solid var(--border);margin-top:0.25rem">
+               Internal Prompts
+             </div>`;
+    html += internalRoles.map(_renderRoleItem).join('');
+  }
+
+  body.innerHTML = html;
 }
 
 async function _rolesNew() {
@@ -371,10 +395,14 @@ function _renderRoleEditor(role) {
   const toolbar = document.getElementById('prompts-toolbar');
   if (!body) return;
 
+  const isInternal = role.role_type === 'internal';
   if (toolbar) toolbar.innerHTML = `
     <span class="prompts-editor-path" id="prompts-path">Role: ${_esc(role.name)}</span>
-    <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);font-size:0.62rem"
-      onclick="window._rolesDelete(${role.id})">Delete</button>
+    ${isInternal
+      ? `<span style="font-size:0.6rem;padding:0.15rem 0.5rem;border-radius:10px;
+                      background:rgba(155,126,248,0.18);color:#9b7ef8">INT — system managed</span>`
+      : `<button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);font-size:0.62rem"
+           onclick="window._rolesDelete(${role.id})">Delete</button>`}
     <button class="btn btn-primary btn-sm" id="roles-save-btn"
       onclick="window._rolesSave(${role.id})">Save</button>
   `;
@@ -433,6 +461,7 @@ function _renderRoleEditor(role) {
             <option value="agent" ${(role.role_type||'agent')==='agent'?'selected':''}>Agent</option>
             <option value="system_designer" ${role.role_type==='system_designer'?'selected':''}>System Designer</option>
             <option value="reviewer" ${role.role_type==='reviewer'?'selected':''}>Reviewer</option>
+            <option value="internal" ${role.role_type==='internal'?'selected':''}>Internal</option>
           </select>
         </div>
       </div>

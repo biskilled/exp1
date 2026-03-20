@@ -1087,10 +1087,15 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
 
 
 async def _extract_project_facts(project: str, memory_item_id: str | None = None) -> int:
-    """Layer 3: Extract durable facts from recent memory and store in project_facts.
+    """Layer 3: Extract durable architectural facts from recent memory_items.
 
-    Haiku extracts 3-8 key-value facts (e.g. auth_pattern=JWT).
-    Conflicts are invalidated (valid_until=NOW()) before inserting new facts.
+    Uses the 'internal_project_fact' agent role from mng_agent_roles for the
+    prompt text and model choice — the user can edit both in the Roles tab.
+
+    Facts use temporal validity: valid_until=NULL means current.  Changing a
+    fact invalidates the old row (sets valid_until=NOW()) and inserts the new
+    value, preserving the full history.
+
     Returns count of new facts inserted.
     """
     if not db.is_available():
@@ -1099,21 +1104,41 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
         from core.api_keys import get_key
         import anthropic
 
-        key = get_key("claude") or get_key("anthropic")
+        # ── Load the internal role (system_prompt + model + provider) ─────────
+        role_system = ""
+        role_model = settings.haiku_model
+        role_provider = "claude"
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT system_prompt, model, provider FROM mng_agent_roles
+                           WHERE client_id=1 AND project='_global'
+                             AND name='internal_project_fact' AND is_active=TRUE
+                           LIMIT 1""",
+                    )
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        role_system   = row[0]
+                        role_model    = row[1] or settings.haiku_model
+                        role_provider = row[2] or "claude"
+        except Exception as _re:
+            log.debug(f"_extract_project_facts: could not load role: {_re}")
+
+        key = get_key(role_provider) or get_key("claude") or get_key("anthropic")
         if not key:
             return 0
 
-        # Collect recent memory_items as context
+        # ── Load sources: recent memory_items + existing facts ────────────────
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT content FROM pr_memory_items
+                    """SELECT id::text, content FROM pr_memory_items
                        WHERE client_id=1 AND project=%s
-                       ORDER BY created_at DESC LIMIT 5""",
+                       ORDER BY created_at DESC LIMIT 6""",
                     (project,),
                 )
-                mem_texts = [r[0] for r in cur.fetchall()]
-                # Also include existing facts for context
+                mem_rows = cur.fetchall()
                 cur.execute(
                     """SELECT fact_key, fact_value FROM pr_project_facts
                        WHERE client_id=1 AND project=%s AND valid_until IS NULL
@@ -1122,64 +1147,96 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
                 )
                 existing_facts = {r[0]: r[1] for r in cur.fetchall()}
 
-        if not mem_texts:
+        if not mem_rows:
             return 0
 
-        context = "\n\n".join(mem_texts[:3])
-        existing_block = (
-            "Existing facts (update if changed, skip if unchanged):\n"
-            + "\n".join(f"  {k}: {v}" for k, v in list(existing_facts.items())[:15])
-            if existing_facts else ""
+        source_ids = [r[0] for r in mem_rows]
+        combined   = "\n\n---\n\n".join(r[1] for r in mem_rows[:5])
+
+        existing_block = ""
+        if existing_facts:
+            existing_block = (
+                "Already-extracted facts (confirm if still true, update value if changed, "
+                "skip entirely if unchanged):\n"
+                + "\n".join(f"  {k}: {v}" for k, v in list(existing_facts.items())[:20])
+                + "\n\n"
+            )
+
+        user_msg = (
+            f"{existing_block}"
+            f"Development notes to analyze:\n{combined[:3500]}"
         )
 
-        client = anthropic.AsyncAnthropic(api_key=key)
-        resp = await client.messages.create(
-            model=settings.haiku_model,
-            max_tokens=400,
-            messages=[{"role": "user", "content":
-                f"Extract 3-8 durable technical facts from this project memory. "
-                f"Return ONLY valid JSON object: {{\"fact_key\": \"fact_value\", ...}}\n"
-                f"fact_key examples: auth_pattern, ui_library, db_engine, deployment_target\n\n"
-                f"{existing_block}\n\nRecent memory:\n{context[:2000]}"}],
+        # ── Call the LLM ──────────────────────────────────────────────────────
+        client_a = anthropic.AsyncAnthropic(api_key=key)
+        resp = await client_a.messages.create(
+            model=role_model,
+            max_tokens=600,
+            system=role_system,
+            messages=[{"role": "user", "content": user_msg}],
         )
         text = (resp.content[0].text if resp.content else "").strip()
+
+        # Strip markdown fences if present
         if "```" in text:
             for part in text.split("```"):
                 s = part.strip().lstrip("json").strip()
-                if s.startswith("{"):
+                if s.startswith("["):
                     text = s
                     break
-        facts: dict = json.loads(text)
-        if not isinstance(facts, dict):
+
+        # ── Parse JSON array [{"key": ..., "value": ..., "confidence": ...}] ──
+        raw_list = json.loads(text)
+        if not isinstance(raw_list, list):
             return 0
 
+        # Filter: valid structure + confidence >= 0.7
+        CONFIDENCE_THRESHOLD = 0.70
+        facts: list[tuple[str, str]] = []
+        for item in raw_list:
+            if not isinstance(item, dict):
+                continue
+            k = str(item.get("key", "")).strip()
+            v = str(item.get("value", "")).strip()
+            conf = float(item.get("confidence", 1.0))
+            if k and v and conf >= CONFIDENCE_THRESHOLD:
+                facts.append((k, v))
+
+        if not facts:
+            return 0
+
+        # ── Upsert with temporal validity ─────────────────────────────────────
+        # source_memory_id: use the most recent memory_item for traceability
+        src_id = source_ids[0] if source_ids else None
         inserted = 0
         with db.conn() as conn:
             with conn.cursor() as cur:
-                for k, v in facts.items():
-                    if not isinstance(k, str) or not isinstance(v, str):
-                        continue
-                    # Invalidate conflicting current fact
+                for k, v in facts:
+                    # If value changed → expire the old fact
                     cur.execute(
                         """UPDATE pr_project_facts SET valid_until=NOW()
-                           WHERE client_id=1 AND project=%s AND fact_key=%s AND valid_until IS NULL
+                           WHERE client_id=1 AND project=%s
+                             AND fact_key=%s AND valid_until IS NULL
                              AND fact_value != %s""",
                         (project, k, v),
                     )
-                    # Insert new fact (unique index prevents duplicates)
+                    # Insert new fact (ON CONFLICT skips if value identical)
                     try:
                         cur.execute(
                             """INSERT INTO pr_project_facts
                                    (client_id, project, fact_key, fact_value, source_memory_id)
-                               VALUES (1, %s,%s,%s,%s::uuid)
+                               VALUES (1, %s, %s, %s, %s::uuid)
                                ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL
                                DO NOTHING""",
-                            (project, k, v, memory_item_id),
+                            (project, k, v, memory_item_id or src_id),
                         )
                         inserted += cur.rowcount
                     except Exception:
                         pass
-
+            log.debug(
+                f"_extract_project_facts: {project} → {inserted} new, "
+                f"{len(facts)} passed threshold (model={role_model})"
+            )
         return inserted
     except Exception as e:
         log.debug(f"_extract_project_facts failed: {e}")

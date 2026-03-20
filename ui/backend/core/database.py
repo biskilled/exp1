@@ -1292,6 +1292,32 @@ class _Database:
                 "claude", "claude-sonnet-4-6",
             ),
         ]
+        _INTERNAL_FACT_PROMPT = (
+            "You are a precise technical fact extractor. Your job is to identify DURABLE "
+            "architectural facts from software development notes.\n\n"
+            "EXTRACTION RULES:\n"
+            "1. Only extract facts that will STILL BE TRUE in 3+ months\n"
+            "2. Only extract facts that CONSTRAIN future development decisions\n"
+            "3. Be SPECIFIC — 'pgvector cosine similarity, no ChromaDB' not 'uses a vector db'\n"
+            "4. Only include facts where confidence >= 0.7\n\n"
+            "INCLUDE: tech stack choices, architectural patterns, auth methods, DB schema "
+            "conventions, naming rules, API style, deployment targets, SDK choices.\n\n"
+            "EXCLUDE (these pollute facts and go stale fast): bugs fixed, one-off decisions, "
+            "user preferences, tasks/TODOs, events that happened, temporary workarounds.\n\n"
+            "OUTPUT: Valid JSON array ONLY. No preamble, no markdown fences, no explanation.\n\n"
+            'Format: [{"key": "snake_case_id", "value": "specific concrete value", "confidence": 0.0-1.0}]\n\n'
+            "Good examples:\n"
+            '[{"key":"auth_method","value":"JWT via python-jose + bcrypt, no passlib","confidence":0.95},\n'
+            ' {"key":"vector_db","value":"pgvector cosine similarity, replaced ChromaDB","confidence":0.92},\n'
+            ' {"key":"frontend_pattern","value":"Vanilla JS ES modules, no framework, no bundler","confidence":0.98},\n'
+            ' {"key":"table_naming","value":"mng_ global, pr_ per-project, 25 fixed tables total","confidence":0.99}]\n\n'
+            "Bad extractions — DO NOT produce:\n"
+            '- {"key":"fixed_bug","value":"fixed login redirect"} — event\n'
+            '- {"key":"todo","value":"add dark mode"} — task\n'
+            '- {"key":"tech","value":"Python"} — too vague\n'
+            '- {"key":"auth","value":"JWT"} — missing specifics'
+        )
+
         try:
             with conn.cursor() as cur:
                 for name, desc, prompt, provider, model in _ROLES:
@@ -1302,6 +1328,19 @@ class _Database:
                            ON CONFLICT (client_id, project, name) DO NOTHING""",
                         (name, desc, prompt, provider, model),
                     )
+                # Seed the internal fact-extraction prompt (role_type='internal')
+                cur.execute(
+                    """INSERT INTO mng_agent_roles
+                           (client_id, project, name, description, system_prompt,
+                            provider, model, role_type)
+                       VALUES (1, '_global',
+                               'internal_project_fact',
+                               'Internal: extracts durable architectural facts from memory summaries. '
+                               'Used automatically by /memory, session-end, and workflow-end triggers.',
+                               %s, 'claude', 'claude-haiku-4-5-20251001', 'internal')
+                       ON CONFLICT (client_id, project, name) DO NOTHING""",
+                    (_INTERNAL_FACT_PROMPT,),
+                )
             conn.commit()
             log.debug("✅ Agent roles seeded")
         except Exception as e:

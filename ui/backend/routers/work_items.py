@@ -648,6 +648,13 @@ def _finalize_work_item_pipeline(
     except Exception as _me:
         log.debug(f"Memory synthesis skipped: {_me}")
 
+    # Run fact extraction in background after feature memory is synthesized
+    try:
+        from routers.projects import _extract_project_facts
+        asyncio.create_task(_extract_project_facts(project))
+    except Exception as _fe:
+        log.debug(f"Fact extraction skipped: {_fe}")
+
     _save_pipeline_interaction(project, item_id, run_id, item_name, ac, rev)
 
     if rev:
