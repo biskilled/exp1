@@ -223,13 +223,8 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         input_tokens = resp.get("input_tokens", 0)
         output_tokens = resp.get("output_tokens", 0)
 
-        # Auto-save node output to documents/ if linked to a work item
-        work_item = ctx.get("_work_item")
-        if work_item and output and status != "error":
-            try:
-                _save_node_output_work_item(project, work_item, node_name, output)
-            except Exception as _ds:
-                log.warning(f"Could not save doc for node {node_name}: {_ds}")
+        # Note: work-item output is saved only on user approval (not on every run).
+        # See save_approved_output() called from make_run_decision endpoint.
 
         # Parse structured output if schema requested
         if output_schema:
@@ -302,15 +297,30 @@ def _save_node_output(project: str, pipeline_name: str, run_id: str, node_name: 
     log.info(f"Saved node output → documents/{rel}")
 
 
-def _save_node_output_work_item(project: str, work_item: dict, node_name: str, output: str) -> None:
-    """Save a node's text output when triggered from a Planner work item."""
-    ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
+def save_approved_output(project: str, work_item: dict, node_name: str, output: str) -> None:
+    """Save an *approved* node output with versioning.
+
+    Latest version is at: documents/{category}/{slug}/{node}.md
+    Previous versions are moved to: documents/{category}/{slug}/old/{node}_{ts}.md
+
+    Call this ONLY when the user clicks Approve (not on every node run).
+    """
     safe_name = re.sub(r"[^a-z0-9_]", "", node_name.lower().replace(" ", "_"))[:50]
-    rel = f"{work_item['category']}/{work_item['slug']}/{safe_name}_{ts}.md"
-    dest = Path(settings.workspace_dir) / project / "documents" / rel
-    dest.parent.mkdir(parents=True, exist_ok=True)
+    slug = work_item.get("slug", "unknown")
+    category = work_item.get("category", "feature")
+    dest_dir = Path(settings.workspace_dir) / project / "documents" / category / slug
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    dest = dest_dir / f"{safe_name}.md"
+    # Move existing file to old/ subfolder before overwriting
+    if dest.exists():
+        old_dir = dest_dir / "old"
+        old_dir.mkdir(exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
+        dest.rename(old_dir / f"{safe_name}_{ts}.md")
+
     dest.write_text(f"# {node_name}\n\n{output}\n")
-    log.info(f"Saved node output → documents/{rel}")
+    log.info(f"Saved approved output → documents/{category}/{slug}/{safe_name}.md")
 
 
 # ── LangGraph state type ───────────────────────────────────────────────────────
@@ -785,18 +795,34 @@ async def resume_graph_workflow(
 
 
 def _fire_background(run_id: str, project: str) -> None:
-    """Fire-and-forget: embed node outputs + refresh project memory."""
+    """Fire-and-forget: embed node outputs + refresh project memory.
+
+    Both tasks are wrapped so unhandled exceptions are logged (not surfaced as
+    "Task exception was never retrieved" warnings).
+    """
+    async def _safe_embed():
+        try:
+            from core.embeddings import embed_node_outputs
+            await embed_node_outputs(run_id, project)
+        except Exception as _e:
+            log.debug(f"Background embed failed (non-critical): {_e}")
+
+    async def _refresh_memory():
+        try:
+            import httpx
+            # Long timeout — memory synthesis may take 30-120 s
+            async with httpx.AsyncClient(timeout=httpx.Timeout(180.0)) as client:
+                await client.post(f"{settings.backend_url}/projects/{project}/memory")
+            log.debug(f"Background memory refresh done for project={project}")
+        except Exception as _e:
+            log.debug(f"Background memory refresh failed (non-critical): {_e}")
+
     try:
-        from core.embeddings import embed_node_outputs
-        asyncio.create_task(embed_node_outputs(run_id, project))
+        asyncio.create_task(_safe_embed())
     except Exception:
         pass
 
     try:
-        import httpx
-        async def _refresh_memory():
-            async with httpx.AsyncClient() as client:
-                await client.post(f"{settings.backend_url}/projects/{project}/memory")
         asyncio.create_task(_refresh_memory())
     except Exception:
         pass

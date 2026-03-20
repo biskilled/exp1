@@ -764,12 +764,27 @@ async def make_run_decision(
         return {"status": "stopped", "run_id": run_id}
 
     if body.retry and waiting_node_id:
+        # Mark running immediately so frontend stops showing the approval panel
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE pr_graph_runs SET status='running' WHERE id=%s", (run_id,))
         asyncio.create_task(
             resume_graph_workflow(run_id, workflow_id, project, ctx,
                                   start_node_ids=[waiting_node_id],
                                   approved=True, retry=True, reason=body.reason)
         )
         return {"status": "resuming", "from_node": waiting_node_id, "run_id": run_id}
+
+    # Save approved output to documents/ with versioning (latest vs old/)
+    from core.graph_runner import save_approved_output as _save_approved
+    work_item = ctx.get("_work_item")
+    approved_node_name = waiting.get("node_name", "")
+    approved_output = str(ctx.get(approved_node_name, waiting.get("output", "")))
+    if work_item and approved_node_name and approved_output:
+        try:
+            _save_approved(project, work_item, approved_node_name, approved_output)
+        except Exception as _se:
+            log.warning(f"Could not save approved output: {_se}")
 
     # Approved — determine next nodes
     ctx.pop("_waiting", None)
@@ -788,6 +803,14 @@ async def make_run_decision(
                 )
         _try_finalize_wi(ctx)
         return {"status": "done", "run_id": run_id}
+
+    # Mark as running immediately so the frontend stops showing the old approval panel
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE pr_graph_runs SET status='running', context=%s WHERE id=%s",
+                (json.dumps(ctx), run_id),
+            )
 
     async def _resume_and_finalize():
         final_ctx = await resume_graph_workflow(

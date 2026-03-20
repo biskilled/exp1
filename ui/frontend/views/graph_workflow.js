@@ -52,6 +52,7 @@ let _prevNodeStatuses = {};  // {node_name: status} — track transitions for lo
 // Approval panel state
 let _approvalBaselineOutput = '';   // original output when approval panel opened
 let _approvalEditMode = false;      // whether edit textarea is active
+let _currentApprovalNodeName = null; // node name currently shown in approval panel
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -1321,9 +1322,16 @@ function _pollRun(runId) {
         _onRunComplete(run);
       }
       if (run.status === 'waiting_approval') {
-        clearInterval(_pollInterval); _pollInterval = null;
-        if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
-        _showApprovalPanel(run);
+        const newNodeName = run.context?._waiting?.node_name;
+        // Only stop polling + show panel when we have a NEW approval gate
+        // (different node from what was just approved). This prevents the
+        // brief window where the DB still shows waiting_approval for the
+        // node we just approved before the backend flips it to 'running'.
+        if (newNodeName && newNodeName !== _currentApprovalNodeName) {
+          clearInterval(_pollInterval); _pollInterval = null;
+          if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+          _showApprovalPanel(run);
+        }
       }
     } catch {
       clearInterval(_pollInterval); _pollInterval = null;
@@ -1610,6 +1618,7 @@ function _showApprovalPanel(run) {
   _approvalChatHistory = [];
   _approvalBaselineOutput = run.context?._waiting?.output || '';
   _approvalEditMode = false;
+  _currentApprovalNodeName = run.context?._waiting?.node_name || null;
 
   const waiting = run.context?._waiting || {};
   const nextLabel = waiting.next_node ? ` → ${_esc(waiting.next_node)}` : '';

@@ -162,10 +162,14 @@ function _renderTree(node, depth) {
       const isSel = child.path === _selectedPath;
       html += `
         <div class="doc-file-row" data-path="${_esc(child.path)}"
-             style="padding:0.3rem 0.5rem 0.3rem ${pad + 8}px;cursor:pointer;
-                    font-size:0.7rem;border-radius:3px;
+             style="padding:0.2rem 0.4rem 0.2rem ${pad + 8}px;cursor:pointer;
+                    font-size:0.7rem;border-radius:3px;display:flex;align-items:center;gap:0.25rem;
                     ${isSel ? 'background:var(--accent-dim,rgba(99,102,241,.15));color:var(--accent)' : 'color:var(--text)'}">
-          ${_esc(child.name)}
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(child.name)}</span>
+          <span class="doc-tree-del" data-del-path="${_esc(child.path)}"
+                style="opacity:0;transition:opacity 0.1s;flex-shrink:0;font-size:0.75rem;
+                       line-height:1;padding:0 0.2rem;border-radius:2px;color:var(--red)"
+                title="Delete ${_esc(child.name)}">×</span>
         </div>`;
     }
   }
@@ -174,7 +178,39 @@ function _renderTree(node, depth) {
 
 function _attachTreeEvents(body) {
   body.querySelectorAll('.doc-file-row').forEach(row => {
-    row.addEventListener('click', () => _docSelect(row.dataset.path));
+    row.addEventListener('click', (e) => {
+      if (e.target.classList.contains('doc-tree-del')) return; // handled below
+      _docSelect(row.dataset.path);
+    });
+    // Show/hide × button on hover
+    row.addEventListener('mouseenter', () => {
+      const btn = row.querySelector('.doc-tree-del');
+      if (btn) btn.style.opacity = '1';
+    });
+    row.addEventListener('mouseleave', () => {
+      const btn = row.querySelector('.doc-tree-del');
+      if (btn) btn.style.opacity = '0';
+    });
+  });
+
+  body.querySelectorAll('.doc-tree-del').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const path = btn.dataset.delPath;
+      if (!path || !confirm(`Delete "${path}"?`)) return;
+      try {
+        await api.documents.delete(path, _project);
+        toast('Deleted', 'success');
+        if (_selectedPath === path) {
+          _selectedPath = '';
+          const viewer = document.getElementById('doc-viewer');
+          if (viewer) viewer.innerHTML = `<div style="color:var(--muted);font-size:0.72rem;padding:1.5rem;margin:auto">Select a file from the tree</div>`;
+        }
+        await _loadDocs();
+      } catch (e2) {
+        toast(`Delete failed: ${e2.message}`, 'error');
+      }
+    });
   });
 }
 
