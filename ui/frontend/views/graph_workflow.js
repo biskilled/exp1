@@ -42,11 +42,24 @@ let _runStartTime = null;       // Date — when current run started
 let _timerInterval = null;      // setInterval handle for live clock
 let _approvalChatHistory = [];  // [{role, content}] — chat within current approval gate
 
+// Cache for sidebar data — loaded once per project, refreshed on mutation
+let _listCache = null;  // { workflows, roles, recentRuns, project } or null
+
+// Run log accumulator — live text log entries for current run
+let _runLog = [];  // [{node, msg, ts}]
+let _prevNodeStatuses = {};  // {node_name: status} — track transitions for log entries
+
+// Approval panel state
+let _approvalBaselineOutput = '';   // original output when approval panel opened
+let _approvalEditMode = false;      // whether edit textarea is active
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export function renderGraphWorkflow(container) {
   container.className = 'view active gw-view';
+  const prevProject = _project;
   _project = state.currentProject?.name || '';
+  if (prevProject !== _project) _listCache = null;  // invalidate on project switch
 
   if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
   _currentWf = null;
@@ -356,7 +369,13 @@ export function renderGraphWorkflow(container) {
             <!-- Approval panel shown here when waiting -->
             <div id="gw-approval-wrap" style="display:none;padding:0.5rem 0.75rem 0;flex-shrink:0"></div>
             <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
+              <!-- Status cards row -->
               <div class="gw-rp-timeline" id="gw-rp-timeline"></div>
+              <!-- Full-width text log -->
+              <div id="gw-run-log" style="flex:1;overflow-y:auto;padding:0.5rem 0.75rem;
+                   font-family:var(--font-mono,monospace);font-size:0.72rem;line-height:1.6;
+                   border-top:1px solid var(--border);min-height:80px"></div>
+              <!-- Deliverables (shown on completion) -->
               <div class="gw-rp-deliverables" id="gw-rp-deliverables" style="display:none;border-top:1px solid var(--border)"></div>
             </div>
             <!-- Legacy log body (hidden, kept for backward compat) -->
@@ -484,37 +503,56 @@ async function _loadList() {
   const el = document.getElementById('gw-wf-list');
   if (!el) return;
 
-  // Load workflows + roles + recent runs in parallel
-  const [wfResult, roleResult, runsResult] = await Promise.allSettled([
-    api.graphWorkflows.list(_project || ''),
-    api.agentRoles.list(_project || '_global'),
-    api.graphWorkflows.recentRuns(_project || '', 15),
-  ]);
-
-  // Populate role library sidebar
-  if (roleResult.status === 'fulfilled') {
-    _roles = roleResult.value.roles || [];
-    _renderRoleLibrary();
-  }
-
-  // Populate recent runs sidebar
-  const recentRuns = runsResult.status === 'fulfilled' ? (runsResult.value.runs || []) : [];
-  _renderRecentRuns(recentRuns);
-
-  if (wfResult.status === 'rejected') {
-    el.innerHTML = `<div style="padding:0.4rem 0.75rem;color:var(--red);font-size:0.75rem">${_esc(wfResult.reason?.message || 'Error')}</div>`;
+  // Render from cache immediately if available for this project
+  if (_listCache && _listCache.project === _project) {
+    _applyListData(_listCache.workflows, _listCache.roles, _listCache.recentRuns);
+    // Refresh in background (fire and forget)
+    _refreshListInBackground();
     return;
   }
 
-  const { workflows } = wfResult.value;
-  if (!workflows.length) {
+  // No cache — show loading and fetch
+  el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div>';
+  await _refreshListInBackground();
+}
+
+async function _refreshListInBackground() {
+  try {
+    const [wfResult, roleResult, runsResult] = await Promise.allSettled([
+      api.graphWorkflows.list(_project || ''),
+      api.agentRoles.list(_project || '_global'),
+      api.graphWorkflows.recentRuns(_project || '', 15),
+    ]);
+
+    const workflows = wfResult.status === 'fulfilled' ? (wfResult.value.workflows || []) : null;
+    const roles = roleResult.status === 'fulfilled' ? (roleResult.value.roles || []) : null;
+    const recentRuns = runsResult.status === 'fulfilled' ? (runsResult.value.runs || []) : [];
+
+    if (workflows !== null) {
+      _listCache = { project: _project, workflows, roles: roles || _roles, recentRuns };
+      _applyListData(workflows, roles, recentRuns);
+    }
+  } catch (_) {}
+}
+
+function _applyListData(workflows, roles, recentRuns) {
+  const el = document.getElementById('gw-wf-list');
+  if (!el) return;
+
+  if (roles) {
+    _roles = roles;
+    _renderRoleLibrary();
+  }
+  _renderRecentRuns(recentRuns);
+
+  if (!workflows || !workflows.length) {
     el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No flows yet — use "From Template" to start</div>';
     return;
   }
   el.innerHTML = workflows.map(wf => {
     const isWiPipeline = wf.name === '_work_item_pipeline';
     const label = isWiPipeline ? '⚙ Work Item Pipeline' : _esc(wf.name);
-    const note  = wf.description
+    const note = wf.description
       ? `<div style="font-size:0.65rem;color:var(--muted)">${_esc((isWiPipeline ? 'Auto-pipeline from Planner' : wf.description).slice(0,40))}</div>`
       : '';
     return `
@@ -648,6 +686,7 @@ async function _newWorkflow() {
     });
     _currentWf = wf;
     _showWorkflow(wf);
+    _listCache = null;
     _loadList();
   } catch (e) {
     toast(`Could not create pipeline: ${e.message}`, 'error');
@@ -1186,6 +1225,7 @@ async function _deleteNode(nodeId) {
     if (_selectedNodeId === nodeId) _closeDetail();
     const wf = await api.graphWorkflows.get(_currentWf.id);
     _currentWf = wf;
+    _listCache = null;
     _renderPipeline(wf);
   } catch (e) {
     toast(`Delete failed: ${e.message}`, 'error');
@@ -1243,6 +1283,11 @@ function _openRunPanel(wfName, nodes) {
   // Set workflow name
   const nameEl = document.getElementById('gw-rp-wf-name');
   if (nameEl) nameEl.textContent = wfName || 'Pipeline';
+
+  // Reset run log state
+  _runLog = [];
+  _prevNodeStatuses = {};
+  _renderRunLog();
 
   // Build pending timeline from nodes
   _renderRunTimeline(nodes.map(n => ({ node_name: n.name, node_id: n.id, status: 'pending' })), null);
@@ -1327,6 +1372,30 @@ function _updateRunPanel(run) {
 
   _renderRunTimeline(steps, run.current_node);
 
+  // Generate log entries for newly-changed node statuses
+  for (const nr of (run.node_results || [])) {
+    const prev = _prevNodeStatuses[nr.node_name];
+    if (prev !== nr.status) {
+      _prevNodeStatuses[nr.node_name] = nr.status;
+      if (nr.status === 'running') {
+        _appendRunLog(nr.node_name, 'Processing…');
+      } else if (nr.status === 'done') {
+        const dur = nr.started_at ? ` (${_fmtDurIso(nr.started_at, nr.finished_at)})` : '';
+        const cost = nr.cost_usd > 0 ? `, $${Number(nr.cost_usd).toFixed(4)}` : '';
+        _appendRunLog(nr.node_name, `✓ Done${dur}${cost}`);
+      } else if (nr.status === 'error') {
+        _appendRunLog(nr.node_name, `✗ Error: ${nr.output?.slice(0, 100) || 'unknown'}`);
+      }
+    }
+  }
+  // Log when current_node changes (running but no result yet)
+  if (run.current_node && run.current_node !== _prevNodeStatuses['__current__']) {
+    _prevNodeStatuses['__current__'] = run.current_node;
+    if (!run.node_results?.find(nr => nr.node_name === run.current_node && nr.status === 'running')) {
+      _appendRunLog(run.current_node, 'Processing…');
+    }
+  }
+
   // Update node card status dots on canvas
   for (const nr of (run.node_results || [])) {
     const dot2 = document.getElementById(`status-${nr.node_id}`);
@@ -1371,6 +1440,40 @@ function _renderRunTimeline(steps, currentNodeName) {
   }).join('');
 }
 
+// ── Run log (full-width text log below timeline cards) ─────────────────────────
+
+function _appendRunLog(nodeName, msg) {
+  const ts = new Date().toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  _runLog.push({ node: nodeName, msg, ts });
+  _renderRunLog();
+}
+
+function _renderRunLog() {
+  const el = document.getElementById('gw-run-log');
+  if (!el) return;
+  if (!_runLog.length) {
+    el.innerHTML = '<span style="color:var(--muted)">Waiting for pipeline to start…</span>';
+    return;
+  }
+  el.innerHTML = _runLog.map(e => {
+    const nodeColor = _getNodeColor(e.node);
+    return `<div style="margin-bottom:0.1rem">
+      <span style="color:${nodeColor};font-weight:600">${_esc(e.node)}:</span>
+      <span style="color:var(--muted);font-size:0.65rem;margin:0 0.35rem">${e.ts}</span>
+      <span>${_esc(e.msg)}</span>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function _getNodeColor(nodeName) {
+  // Map node name to a color based on a stable hash
+  const colors = ['#9b7ef8', '#3ecf8e', '#f5a623', '#2dd4bf', '#e85d75', '#5b8ef0'];
+  let hash = 0;
+  for (const c of (nodeName || '')) hash = (hash * 31 + c.charCodeAt(0)) & 0xffff;
+  return colors[hash % colors.length];
+}
+
 async function _onRunComplete(run) {
   // Final timer update
   const timerEl = document.getElementById('gw-rp-timer');
@@ -1396,8 +1499,9 @@ async function _onRunComplete(run) {
     } catch (_) {}
   }
 
-  // Refresh sidebar run history
-  _loadList();
+  // Refresh sidebar run history (background — no loading flash)
+  _listCache = null;
+  _refreshListInBackground();
 }
 
 function _renderDeliverables(files, directory, run) {
@@ -1502,8 +1606,10 @@ function _showApprovalPanel(run) {
   const wrap = document.getElementById('gw-approval-wrap');
   if (!wrap) return;
 
-  // Reset chat history for this approval gate
+  // Reset chat history and approval state for this gate
   _approvalChatHistory = [];
+  _approvalBaselineOutput = run.context?._waiting?.output || '';
+  _approvalEditMode = false;
 
   const waiting = run.context?._waiting || {};
   const nextLabel = waiting.next_node ? ` → ${_esc(waiting.next_node)}` : '';
@@ -1531,8 +1637,17 @@ function _showApprovalPanel(run) {
       <!-- Left: current output (updates after each chat reply) -->
       <div style="flex:1;display:flex;flex-direction:column;min-width:0">
         <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
-                    color:var(--muted);margin-bottom:0.25rem;flex-shrink:0">Current Output</div>
-        <div id="gw-ap-output" class="md-prose" style="flex:1;overflow-y:auto;background:var(--bg2);border-radius:5px;
+                    color:var(--muted);margin-bottom:0.25rem;flex-shrink:0;display:flex;align-items:center;gap:0.5rem">
+          Current Output
+          <button id="gw-ap-edit-toggle" onclick="window._gwToggleEditMode()"
+            style="font-size:0.6rem;padding:0.1rem 0.4rem;background:var(--surface2);border:1px solid var(--border);
+                   border-radius:3px;cursor:pointer;color:var(--text2,var(--muted));font-family:var(--font)">
+            ✏ Edit
+          </button>
+          <span id="gw-ap-processing" style="display:none;font-size:0.65rem;color:#f5a623">⟳ Processing…</span>
+        </div>
+        <div id="gw-ap-output" class="md-prose" data-raw-content="${_esc(waiting.output || '')}"
+             style="flex:1;overflow-y:auto;background:var(--bg2);border-radius:5px;
              padding:0.5rem 0.65rem;font-size:0.72rem;line-height:1.55;
              border:1px solid var(--border)">${renderMd(waiting.output || '*(no output)*')}</div>
       </div>
@@ -1594,6 +1709,8 @@ function _showApprovalPanel(run) {
     input.disabled = true;
     const sendBtn = document.getElementById('gw-ap-send');
     if (sendBtn) sendBtn.disabled = true;
+    const processingEl = document.getElementById('gw-ap-processing');
+    if (processingEl) processingEl.style.display = '';
 
     const priorHistory = [..._approvalChatHistory];
     _approvalChatHistory.push({ role: 'user', content: msg });
@@ -1606,9 +1723,15 @@ function _showApprovalPanel(run) {
       });
       _approvalChatHistory.push({ role: 'assistant', content: reply });
       _renderApprovalMessages();
-      // Update the output pane with the latest full document (as Markdown)
+      // Update the output pane with the latest full document, showing diff vs baseline
       const outEl = document.getElementById('gw-ap-output');
-      if (outEl) outEl.innerHTML = renderMd(reply);
+      if (outEl && outEl.tagName !== 'TEXTAREA') {
+        outEl.dataset.rawContent = reply;
+        outEl.innerHTML = _renderApprovalDiff(_approvalBaselineOutput, reply);
+      } else if (outEl?.tagName === 'TEXTAREA') {
+        outEl.value = reply;
+      }
+      // Keep _approvalBaselineOutput as the original — so all changes remain highlighted
     } catch (e) {
       toast(`Chat failed: ${e.message}`, 'error');
       _approvalChatHistory.pop();
@@ -1616,10 +1739,76 @@ function _showApprovalPanel(run) {
     } finally {
       if (input) input.disabled = false;
       if (sendBtn) sendBtn.disabled = false;
+      if (processingEl) processingEl.style.display = 'none';
       if (input) input.focus();
     }
   };
 }
+
+function _renderApprovalDiff(baseline, current) {
+  if (!baseline || baseline === current) return renderMd(current);
+
+  // Simple line-level diff: highlight lines in current that are not in baseline
+  const baseLines = baseline.split('\n');
+  const currLines = current.split('\n');
+  const baseSet = new Set(baseLines);
+
+  let html = '';
+  for (const line of currLines) {
+    if (!baseSet.has(line) && line.trim()) {
+      // New or changed line — highlight with green left border
+      html += `<div style="background:rgba(62,207,142,0.15);display:block;border-left:3px solid #3ecf8e;padding-left:0.4rem;margin:1px 0">${renderMd(line)}</div>`;
+    } else {
+      html += renderMd(line + '\n');
+    }
+  }
+  return html || renderMd(current);
+}
+
+window._gwToggleEditMode = () => {
+  const outEl = document.getElementById('gw-ap-output');
+  const toggle = document.getElementById('gw-ap-edit-toggle');
+  if (!outEl) return;
+  _approvalEditMode = !_approvalEditMode;
+  if (_approvalEditMode) {
+    // Get raw markdown from data attribute or use baseline
+    const rawMd = outEl.dataset.rawContent || _approvalBaselineOutput;
+    const ta = document.createElement('textarea');
+    ta.id = 'gw-ap-output';
+    ta.value = rawMd;
+    ta.style.cssText = 'flex:1;overflow-y:auto;background:var(--bg2);border-radius:5px;padding:0.5rem 0.65rem;font-size:0.72rem;line-height:1.55;resize:none;border:2px solid var(--accent);color:var(--fg);font-family:var(--font-mono,"Menlo",monospace);width:100%;box-sizing:border-box;min-height:200px';
+    outEl.replaceWith(ta);
+    if (toggle) toggle.textContent = '👁 Preview';
+  } else {
+    const ta = document.getElementById('gw-ap-output');
+    const content = ta?.value || '';
+    const div = document.createElement('div');
+    div.id = 'gw-ap-output';
+    div.className = 'md-prose';
+    div.dataset.rawContent = content;
+    div.style.cssText = 'flex:1;overflow-y:auto;background:var(--bg2);border-radius:5px;padding:0.5rem 0.65rem;font-size:0.72rem;line-height:1.55;border:1px solid var(--border)';
+    div.innerHTML = _renderApprovalDiff(_approvalBaselineOutput, content);
+    ta?.replaceWith(div);
+    if (toggle) toggle.textContent = '✏ Edit';
+    // Save the edited content back through approval chat if changed
+    if (content !== _approvalBaselineOutput && _currentRunId) {
+      api.graphWorkflows.approvalChat(_currentRunId, {
+        message: `Please use exactly this revised content as the new output (direct edit by user):\n\n${content}`,
+        history: [],
+      }).then(r => {
+        _approvalChatHistory.push({ role: 'user', content: '(direct edit)' });
+        _approvalChatHistory.push({ role: 'assistant', content: r.reply });
+        _renderApprovalMessages();
+        // Update output pane with diff vs original baseline
+        const outUpdated = document.getElementById('gw-ap-output');
+        if (outUpdated && outUpdated.tagName !== 'TEXTAREA') {
+          outUpdated.dataset.rawContent = r.reply;
+          outUpdated.innerHTML = _renderApprovalDiff(_approvalBaselineOutput, r.reply);
+        }
+      }).catch(() => {});
+    }
+  }
+};
 
 function _renderApprovalMessages() {
   const el = document.getElementById('gw-ap-msgs');
@@ -1670,7 +1859,8 @@ async function _cancelRun() {
     if (dot)  dot.className = 'gw-rp-status-dot cancelled';
     if (st)   { st.textContent = 'cancelled'; st.style.color = '#888'; }
     if (stop) stop.style.display = 'none';
-    _loadList(); // refresh run history
+    _listCache = null;
+    _refreshListInBackground(); // refresh run history
   } catch (e) {
     toast(`Cancel failed: ${e.message}`, 'error');
   }

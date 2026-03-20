@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-19 23:22 UTC by aicli /memory_
+_Generated: 2026-03-20 17:08 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform that solves the problem of context loss when switching between Claude CLI, Cursor, web UI, and other AI tools. It provides persistent, multi-layer project memory with semantic search, nested tagging, workflow automation, and MCP integration to give every AI tool the same unified context. Currently in active development with 15+ features across architecture (UI, auth, workflows, embeddings, memory synthesis, MCP) and recent focus on approval workflows, progress tracking, and race condition fixes.
 
 ## Project Facts
 
@@ -14,6 +10,7 @@ aicli is a shared AI memory platform that solves the problem of context loss whe
 - **data_model_hierarchy**: clients_contain_multiple_users
 - **data_persistence_issue**: tags_disappear_on_session_switch
 - **db_engine**: SQL
+- **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
 - **deployment_target**: Claude_CLI_and_LLM_platforms
 - **mcp_integration**: embedding_and_data_retrieval
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
@@ -22,26 +19,19 @@ aicli is a shared AI memory platform that solves the problem of context loss whe
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
 - **performance_optimization**: redundant_SQL_calls_eliminated
 - **pipeline/auth**: Acceptance criteria:
-# Feature: Authentication (auth)
+# PM Analysis: Email Verification Feature
 
-## User Stories
+## Context Summary
+The existing system already has **sign in and account creation** functionality implemented. The scope of this work item is **narrowly focused on adding email verification** to the existing registration flow. No other authentication changes are required. This is an incremental enhancement to the current create account workflow.
 
-- As a user, I want to create an account with email and password so that I can access the application securely
-- As a registered user, I want to log in with my credentials so that I can access my personalized account and data
-- As a user, I want to reset my forgotten password so that I can regain access to my account
+---
 
-## Acceptance Criteria
-
-- [ ]
-
-Reviewer: ```json
-{
-  "score": 4,
-  "passed": false,
-  "issues": [
-    "CRITICAL: Implementation is incomplete - file `core/auth/password_service.py` cuts off mid-function, leaving the codebase in a non-functio
+## 
+- **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
 - **stale_code_removed**: db_ensure_project_schema_call_replaced_with_ensure_shared_schema
 - **tagging_system**: nested_hierarchy_beyond_2_levels
+- **tagging_system_hierarchy**: nested_hierarchy_beyond_2_levels_approved
+- **ui_action_menu_pattern**: 3_dot_menu_for_action_visibility
 - **ui_library**: 3_dot_menu_pattern
 - **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
 - **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
@@ -98,7 +88,7 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(35 events, 31 commits)`
+- **hooks** `(36 events, 32 commits)`
 
 ### Doc_type
 
@@ -110,11 +100,11 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(33 events, 28 commits)`
-- **auth** `(32 events, 29 commits)`
-- **graph-workflow** `(21 events, 18 commits)`
-- **workflow-runner** `(19 events, 18 commits)`
-- **embeddings** `(19 events, 18 commits)`
+- **UI** `(34 events, 29 commits)`
+- **auth** `(33 events, 30 commits)`
+- **graph-workflow** `(22 events, 19 commits)`
+- **workflow-runner** `(20 events, 19 commits)`
+- **embeddings** `(20 events, 19 commits)`
 - **shared-memory** `(14 events, 10 commits)`
 - **tagging**
 - **billing**
@@ -125,7 +115,7 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(11 events, 10 commits)`
+- **discovery** `(12 events, 10 commits)`
 - **development**
 - **prod**
 
@@ -201,7 +191,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-19]** `backend` — Fixed UUID validation error in pipeline run queries; string 'recent' now converted to UUID object before SQL execution. **[2026-03-19]** `workflow` — Implemented 2-pane approval panel for work_item negotiation chat; left pane shows output, right pane enables requirement discussion before save. **[2026-03-19]** `ui` — Fixed missing pipeline execution progress panel; _wiRunPipeline now displays real-time status updates for active runs. **[2026-03-19]** `architecture` — Identified project visibility race condition where projects appear in Recent but fail to display as active; suspect backend initialization timing issue on first load. **[2026-03-18]** `memory` — Fixed undefined `code_dir` template variable at line 1120 in memory endpoint causing CLAUDE.md generation failure; variable now properly scoped from config. **[2026-03-18]** `backend` — Modified retry logic to handle edge case where project list load succeeds but returns empty array; prevents false "project not found" errors. **[2026-03-18]** `database` — Confirmed memory_items and project_facts tables exist but populate logic unimplemented; blocks improved memory/context mechanism per specification. **[2026-03-10]** `performance` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags loaded into memory on project access, synced to DB only on explicit save. **[2026-03-10]** `data` — Identified tag persistence bug where saved tags disappear when switching sessions; unclear if rendering or database save failure. **[2026-03-10]** `architecture` — Approved nested tag hierarchy expansion beyond current 2-level (category→tag); confirmed login as first-level only per auth pattern.

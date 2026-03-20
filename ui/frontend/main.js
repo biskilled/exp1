@@ -99,38 +99,36 @@ async function boot() {
 async function _continueToApp(user) {
   updateStatusDot();
   renderSidebarContent();
+  navigateTo('home');  // render immediately (may be empty)
 
-  // Show home immediately — navigateTo already background-fetches projects and re-renders
-  navigateTo('home');
+  // Await project list — ensures home re-render happens before auto-restore
+  let projects = [];
+  try {
+    const data = await api.listProjects();
+    projects = data.projects || [];
+    setState({ projects });
+    renderSidebarContent();
+    // Force home page re-render with loaded projects
+    if (state.activeView === 'home') {
+      const vc = document.getElementById('views-container');
+      const view = vc?.querySelector('.view.active') || vc?.querySelector('.view');
+      if (view) renderHome(view);
+    }
+  } catch (e) {
+    console.warn('Could not load projects:', e.message);
+  }
 
-  // Non-blocking: load projects for sidebar update + auto-restore
-  api.listProjects()
-    .then(data => {
-      const projects = data.projects || [];
-      setState({ projects });
-      renderSidebarContent();
+  // Auto-restore last open project
+  if (projects.length) {
+    const recent = getRecentProjects();
+    const allNames = projects.map(p => p.name);
+    const lastProject = recent.find(n => allNames.includes(n));
+    if (lastProject) {
+      _markProjectRestoring(lastProject);
+      setTimeout(() => openProject(lastProject).catch(() => {}), 200);
+    }
+  }
 
-      // If still on home page, force a re-render so projects appear immediately
-      // (race condition: if this .then() runs before navigateTo's internal fetch
-      //  sets state, navigateTo sees changed=false and skips renderHome)
-      if (state.activeView === 'home') {
-        const vc = document.getElementById('views-container');
-        const view = vc?.querySelector('.view');
-        if (view) renderHome(view);
-      }
-
-      // Auto-restore last open project
-      const recent = getRecentProjects();
-      const allNames = projects.map(p => p.name);
-      const lastProject = recent.find(n => allNames.includes(n));
-      if (lastProject) {
-        _markProjectRestoring(lastProject);
-        setTimeout(() => openProject(lastProject).catch(() => {}), 200);
-      }
-    })
-    .catch(e => console.warn('Could not load projects:', e.message));
-
-  // Load balance chip — only when a real user is logged in
   if (state.backendOnline && state.user?.email) {
     updateBalanceChip().catch(() => {});
   }
@@ -459,16 +457,12 @@ export function navigateTo(viewId, opts = {}) {
   switch (viewId) {
     case 'home':
       renderHome(view);
-      // Refresh project list in background so newly added projects appear
+      // Refresh on every home visit (user may have added projects from CLI)
       api.listProjects().then(d => {
         const fresh = d.projects || [];
-        const cur   = state.projects || [];
-        const changed = fresh.length !== cur.length ||
-          fresh.some((p, i) => p.name !== (cur[i]?.name));
-        if (changed) {
-          setState({ projects: fresh });
-          renderHome(view);  // re-render with updated list
-        }
+        setState({ projects: fresh });
+        renderSidebarContent();
+        renderHome(view);  // always re-render
       }).catch(() => {});
       break;
     case 'summary':  renderSummary(view, proj?.name);         break;

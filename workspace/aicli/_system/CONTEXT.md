@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-20 16:18 UTC — do not edit manually.
+> Auto-generated 2026-03-20 18:09 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 173
-- **Last active**: 2026-03-20T00:23:29Z
+- **Sessions**: 174
+- **Last active**: 2026-03-20T17:08:06Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -152,6 +152,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-20 16:29]** `claude_cli/claude`  
+→ Projects only loading when I press to prject tab. as Project  loaded as default page, it should load when app is starter
+← _Here's a summary of all 8 fixes applied:  ---  **1. Projects not loading on startup** (`main.js`) - Added a re-render of `renderHome(view)` in `_continueToApp`'s `.then()` callback when still on the h_
+
 **[2026-03-20 00:15]** `claude_cli/claude`  
 → Currently  memory_items (compressed knowledge) is based on prompt/responses, commit, workflows node results.  I would li
 ← _Now let me verify all changes are consistent by doing a quick sanity check:_
@@ -207,7 +211,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-19 13:13]** `claude_cli/claude`  
 → UI improvement - new nodes in Pipeline we need to show more details at the node (same as it was) like model, input/outpu
 ← _Good — the polling code at line 1158 still finds the element by ID, and `className` assignment will trigger the `.running`/`.done`/`.error` CSS which now uses `display:inline-block`. Everything is con_
-
-**[2026-03-19 12:46]** `claude_cli/claude`  
-→ UI improvmenet - in pipeline for each node - can you add more properties (max retry, stateless, continue on fail - so us
-← _Done. Here's a summary of all changes made to `graph_workflow.js`:  **Buttons & labels:** - `+ New Flow` → `+ New Pipeline` (toolbar button, empty state button, modal title) - `Saved Flows` → `Saved P_

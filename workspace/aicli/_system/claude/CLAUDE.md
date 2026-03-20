@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-19] `claude_cli`: Can you explain what the run pipeline is doing when it start running from the the planer/feature. I 
 - [2026-03-19] `claude_cli`: Looks better. I would like to have an option to chat as well in order to chance to requirement. once
 - [2026-03-19] `claude_cli`: Do you understand what is this app is about ? can you summerise that and let me know who are direct 
 - [2026-03-19] `claude_cli`: I did reciave the following message : No JSON array found in response ... Also I still dont see proj
 - [2026-03-20] `claude_cli`: Currently  memory_items (compressed knowledge) is based on prompt/responses, commit, workflows node 
+- [2026-03-20] `claude_cli`: Projects only loading when I press to prject tab. as Project  loaded as default page, it should load
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
