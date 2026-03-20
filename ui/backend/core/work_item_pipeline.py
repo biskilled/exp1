@@ -247,27 +247,56 @@ async def trigger_work_item_pipeline(
         dev_sys, dev_provider, dev_model = _load_role("Web Developer")
         rev_sys, rev_provider, rev_model = _load_role("Code Reviewer")
 
+        # Import code-commit helpers from graph_runner (reuse, don't duplicate)
+        from core.graph_runner import _parse_code_changes, _apply_code_and_commit, _get_project_code_dir
+
         dev_output = ""
         reviewer_feedback = ""
+        commit_hash = ""
         for iteration in range(_MAX_ITERATIONS + 1):
             dev_user = (
                 f"Work item: **{name}**\n\n"
                 f"Acceptance criteria:\n{acceptance_criteria}\n\n"
                 f"Implementation plan:\n{implementation_plan}\n\n"
                 f"{'Previous reviewer feedback:\n' + reviewer_feedback + chr(10) + chr(10) if reviewer_feedback and iteration > 0 else ''}"
-                f"Implement the changes now."
+                f"Implement the changes now. Write complete file content for every file you create or modify."
             )
-            dev_output = await _call(dev_provider, dev_model, dev_sys, dev_user, max_tokens=2000)
+            # Developer needs generous token budget to write full files
+            dev_output = await _call(dev_provider, dev_model, dev_sys, dev_user, max_tokens=8000)
             if not dev_output:
                 break
 
-            # Reviewer: fresh context (stateless Trycycle)
+            log.info(f"work_item_pipeline developer output: {len(dev_output)} chars, iteration={iteration}")
+
+            # Auto-commit: parse ### File: blocks and write + git commit
+            try:
+                code_dir = _get_project_code_dir(project)
+                changes = _parse_code_changes(dev_output)
+                if changes:
+                    log.info(f"work_item_pipeline: found {len(changes)} file(s) to commit")
+                    commit_hash = _apply_code_and_commit(
+                        code_dir, changes, f"work-item/{name}", work_item_id[:8]
+                    )
+                    if commit_hash and not commit_hash.startswith("error:"):
+                        log.info(f"work_item_pipeline: committed {commit_hash}")
+                    else:
+                        log.warning(f"work_item_pipeline: commit failed: {commit_hash}")
+                        commit_hash = ""
+                else:
+                    log.info("work_item_pipeline developer: no ### File: blocks found in output")
+            except Exception as _ce:
+                log.warning(f"work_item_pipeline auto_commit failed: {_ce}")
+
+            # Reviewer: fresh context — pass full dev output, summarised if very long
+            rev_preview = dev_output if len(dev_output) <= 4000 else (
+                dev_output[:2000] + "\n\n[...middle truncated...]\n\n" + dev_output[-1500:]
+            )
             rev_user = (
                 f"Acceptance criteria:\n{acceptance_criteria}\n\n"
-                f"Implementation:\n{dev_output[:2000]}\n\n"
-                f"Review now."
+                f"Implementation:\n{rev_preview}\n\n"
+                f"Review now and return JSON only."
             )
-            rev_text = await _call(rev_provider, rev_model, rev_sys, rev_user, max_tokens=400)
+            rev_text = await _call(rev_provider, rev_model, rev_sys, rev_user, max_tokens=500)
             score = 8
             passed = True
             try:
@@ -282,19 +311,25 @@ async def trigger_work_item_pipeline(
                 passed = parsed.get("passed", score >= 7)
                 if not passed and parsed.get("issues"):
                     reviewer_feedback = "\n".join(parsed["issues"])
+                log.info(f"work_item_pipeline reviewer: score={score}, passed={passed}")
             except Exception:
-                pass
+                log.debug(f"work_item_pipeline reviewer JSON parse failed: {rev_text[:200]}")
 
             if passed or score >= 7:
                 break
 
         # ── Store final output in work item implementation_plan ──────────────
         if dev_output:
-            final_plan = f"{implementation_plan}\n\n## Implementation Output\n{dev_output}"
+            commit_note = f"\n\n**Commit:** `{commit_hash}`" if commit_hash else ""
+            final_plan = (
+                f"{implementation_plan}\n\n"
+                f"## Implementation Output{commit_note}\n\n"
+                f"{dev_output}"
+            )
             _update_fields(work_item_id, acceptance_criteria, final_plan)
             try:
                 _save_pipeline_doc(project, work_item_id, f"implementation_{ts}.md",
-                                   f"# Implementation\n\n{dev_output}")
+                                   f"# Implementation{commit_note}\n\n{dev_output}")
             except Exception:
                 pass
 

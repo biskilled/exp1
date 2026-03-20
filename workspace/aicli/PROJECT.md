@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
+- Work item pipeline role integration (2026-03-20) — Fixed hardcoded Haiku/Anthropic; now queries mng_agent_roles and respects configured LLM provider per role
 - SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
-- Workflow performance optimization (2026-03-20) — Async DAG executor bottlenecks and query caching improvements needed for slow execution
 - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion
 - Pipeline approval workflow rendering (2026-03-20) — Old MD displayed instead of current output/progress logs; requires chat panel state management fix
-- Backend startup race condition handling (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; timing issue during initialization
+- Backend startup race condition handling (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; fixed retry logic to handle empty project list
 - Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism

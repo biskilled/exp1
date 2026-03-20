@@ -2,241 +2,300 @@
 
 # Technical Architecture: Email Verification Feature
 
-> **Status:** Architecture phase in progress. Six critical open questions from PM analysis remain unresolved. This plan assumes stakeholder decisions below; any deviation will require re-architecture.
+---
+
+## 1. Implementation Plan
+
+### Phase 1: Database & Token Infrastructure (Steps 1–3)
+1. **Create `email_verification_tokens` table** to store cryptographically secure tokens with expiration and single-use enforcement.
+2. **Add `email_verified` boolean column to `users` table** (default: `false`) to track verification status.
+3. **Add `email_verified_at` timestamp column to `users` table** to record when verification occurred.
+
+### Phase 2: Email Service Integration (Steps 4–5)
+4. **Integrate email service client** (SendGrid selected as default; configurable via env var) to send transactional emails.
+5. **Create email template** for verification emails with embedded token link, expiration notice, and clear CTA.
+
+### Phase 3: Token Generation & Verification Logic (Steps 6–8)
+6. **Implement `generateVerificationToken(userId, email)`** — server-side token generator using `crypto.randomBytes(32)` hashed with SHA-256; store token, userId, email, expiration (now + 24h), and used flag in DB.
+7. **Implement `verifyEmailToken(token)`** — lookup token, validate expiration, validate not-yet-used, mark as used, set `email_verified=true` and `email_verified_at=now()` on user.
+8. **Implement `requestVerificationEmail(userId, email)`** — rate-limit check (60s cooldown), generate new token, send email asynchronously; return cooldown end timestamp to client.
+
+### Phase 4: Create Account Flow Enhancement (Steps 9–10)
+9. **Modify Create Account endpoint POST `/auth/register`** — on successful user creation, synchronously generate token and enqueue email send (fire-and-forget async task); return existing success response without changes to form or UX.
+10. **Ensure email send completes within 2 minutes** via background job queue (Bull/RabbitMQ) with 30-second SLA; log failures for monitoring.
+
+### Phase 5: Sign In Flow Enhancement (Steps 11–12)
+11. **Modify Sign In endpoint POST `/auth/login`** — on successful authentication, return user object with `email_verified` flag; client conditionally renders verification banner.
+12. **Create `GET /auth/verification-status`** — authenticated endpoint returning `{ email_verified: boolean, last_resend_at: timestamp }` to drive client-side cooldown timer.
+
+### Phase 6: Email Verification Endpoint (Steps 13–14)
+13. **Create `GET /auth/verify-email?token=<token>`** — validate token, mark as used, update user, redirect to success page (`/auth/verification-success`) with success message in query param or session flash.
+14. **Create `GET /auth/verification-success`** — public page displaying success message; if token invalid/expired in session, redirect to error page instead.
+
+### Phase 7: Error Handling & Self-Service (Steps 15–16)
+15. **Create `GET /auth/verify-email?token=<expired-or-used-token>`** — detect invalid/expired state, display error message, render "Request new verification email" button linking to resend endpoint.
+16. **Create `POST /auth/resend-verification`** — authenticated endpoint; rate-limit (60s), generate new token, send email, return `{ cooldown_until: timestamp }`.
+
+### Phase 8: Protected Resource Middleware (Steps 17–18)
+17. **Create authentication middleware `requireVerifiedEmail`** — check `user.email_verified === true`; if false, redirect to `/auth/awaiting-verification`.
+18. **Apply middleware to all protected routes** — identify all routes requiring verification (e.g., `/dashboard`, `/api/protected/*`); update route definitions.
+
+### Phase 9: Awaiting Verification Screen (Steps 19–20)
+19. **Create `/auth/awaiting-verification` page** — displays message, resend button with cooldown timer, logout option.
+20. **Integrate WebSocket or polling** (optional, low priority) — real-time verification status updates as alternative to page refresh.
+
+### Phase 10: Testing & Monitoring (Steps 21–22)
+21. **Add unit tests** for token generation, expiration logic, rate-limiting, and email send.
+22. **Add integration tests** for full flow: register → receive email → click link → redirect → access protected resource.
 
 ---
 
-## CRITICAL ASSUMPTIONS (Must Be Confirmed Before Dev Starts)
+## 2. Files to Change
 
-| Question | Assumed Answer | Impact | Risk if Wrong |
-|----------|----------------|--------|---------------|
-| **Token Expiry** | 24 hours | `mng_verification_tokens.expires_at` calculation | If security mandates 1 hour, token logic & email template must change |
-| **Resend Attempt Cap** | No hard cap; 60s rate-limit only | Rate-limit middleware; no account lockout logic | If a hard cap (e.g., 5 attempts) is required, add `resend_count` tracking & account review trigger |
-| **Existing User Backfill** | All pre-existing users grandfathered as verified (`verified_at = NOW()`) | Pre-migration script required; no retroactive enforcement | If retroactive verification required, scope expands significantly (email campaign, user communication, UX overhaul) |
-| **Email Service** | AWS SES (common in existing stacks; SendGrid/Mailgun if already contracted) | All email sending logic uses chosen provider SDK | Wrong choice = vendor lock-in; email delivery failures |
-| **Unverified User Access** | Full redirect to "Awaiting Verification" screen (non-blocking banner at Sign In, but no access to protected resources until verified) | Middleware/route guards check `verified_at` before resource access | If partial access allowed, auth checks must be granular per-resource |
-| **UI Changes Approval** | Design team has reviewed "Awaiting Verification" screen, verification banner, and token error pages | No rework post-dev; components ship with design sign-off | If design review happens during dev, timeline slips 1–2 weeks |
-
-**→ Confirm all six assumptions with stakeholders before proceeding to Developer phase.**
-
----
-
-## 1. IMPLEMENTATION PLAN (Execution Order)
-
-### Phase 1: Database & Core Token Infrastructure (Days 1–2)
-
-**1.1** Create `mng_verification_tokens` table
-- Stores unique, single-use tokens with expiry and redemption metadata
-- Indexed on `token` and `user_id` for fast lookups
-- Primary key: `id`; unique constraint on `token`
-
-**1.2** Create `mng_resend_cooldown` table (or cache layer if using Redis)
-- Tracks last resend timestamp per user to enforce 60-second cooldown
-- Stores: `user_id`, `last_resend_at`
-- Used to calculate remaining cooldown on frontend
-
-**1.3** Alter existing `users` table (or equivalent; prefix not applied as this table pre-exists)
-- Add `verified_at` column (nullable TIMESTAMP; NULL = unverified, set to NOW() on successful verification)
-- Add index on `verified_at` for querying verified vs. unverified users
-- Backfill existing users: `UPDATE users SET verified_at = created_at`
-
-### Phase 2: Backend Token & Email Logic (Days 2–4)
-
-**2.1** Implement token generation & storage
-- Create `TokenService` class with `generateToken(userId)` method
-- Uses `crypto.randomBytes(32).toString('hex')` for cryptographically secure token
-- Stores token in `mng_verification_tokens` with `expires_at = NOW() + 24 hours`
-- Returns token string and token object (id, user_id, expires_at)
-
-**2.2** Implement email sending
-- Create `EmailService` class with `sendVerificationEmail(email, token, baseUrl)` method
-- Integrates AWS SES (or configured provider)
-- Email template: Plain-text + HTML with verification link: `{baseUrl}/verify-email?token={token}`
-- Email subject: `"Confirm Your Email Address"`
-- No styling changes to existing brand; use existing email template wrapper if available
-
-**2.3** Hook email into registration flow
-- Modify existing **Create Account** endpoint (`POST /auth/register` or equivalent)
-- After successful user creation, call `TokenService.generateToken(userId)` and `EmailService.sendVerificationEmail()`
-- Wrap in background job (Bull, Celery, or SQS) to send async (not blocking HTTP response)
-- Job should retry up to 3 times with exponential backoff (1s, 2s, 4s)
-- Return 201 Created to user immediately; email delivery is fire-and-forget
-
-**2.4** Implement token verification endpoint
-- Create `POST /auth/verify-email` endpoint
-- Input: `{ token: string }`
-- Logic:
-  1. Look up token in `mng_verification_tokens` by `token` string
-  2. Check `expires_at > NOW()` (if expired, return 410 Gone with error message)
-  3. Check `redeemed_at IS NULL` (if already used, return 409 Conflict with "already used" message)
-  4. Set `users.verified_at = NOW()` for token's user
-  5. Set `mng_verification_tokens.redeemed_at = NOW()` (mark as used; soft-delete)
-  6. Return 200 OK with success message
-- Response: `{ success: true, message: "Email verified! Your account is now active." }`
-
-**2.5** Implement resend verification email endpoint
-- Create `POST /auth/resend-verification` endpoint
-- Input: `{ email: string }` (or use authenticated user if already signed in)
-- Logic:
-  1. Look up user by email
-  2. Check if user is already verified (`verified_at IS NOT NULL`) → return 400 "Already verified"
-  3. Check cooldown via `mng_resend_cooldown`: `SELECT last_resend_at WHERE user_id = ? AND last_resend_at > NOW() - INTERVAL 60 SECONDS`
-     - If cooldown active, return 429 Too Many Requests with `{ remaining_seconds: X }`
-  4. Invalidate existing unused tokens: `UPDATE mng_verification_tokens SET redeemed_at = NOW() WHERE user_id = ? AND redeemed_at IS NULL`
-  5. Generate new token and send email (same as **2.3**)
-  6. Upsert `mng_resend_cooldown.last_resend_at = NOW()` for this user
-  7. Return 200 OK
-
-**2.6** Implement protected resource guard
-- Create middleware/decorator: `requireVerified`
-- Checks `users.verified_at IS NOT NULL` for authenticated requests
-- If unverified, return 403 Forbidden with redirect hint: `{ error: "Email not verified", redirect: "/awaiting-verification" }`
-- Apply this middleware to ALL protected routes (on top of existing authentication middleware)
-
-### Phase 3: Sign In Flow Enhancement (Days 4–5)
-
-**3.1** Modify existing Sign In endpoint
-- After successful credential validation, check `users.verified_at`
-- If verified: Return existing 200 OK response unchanged
-- If unverified: Still return 200 OK with JWT/session token (user is authenticated), but include flag: `{ authenticated: true, verified: false, message: "Please verify your email to access protected features" }`
-- Frontend intercepts and shows banner/inline prompt
-
-**3.2** Create "Awaiting Verification" screen endpoint
-- Create `GET /auth/awaiting-verification` (protected by auth middleware only, NOT by `requireVerified`)
-- Returns:
-  - User's partially masked email address (e.g., `user@exa***le.com`)
-  - Current cooldown status: `{ cooldown_active: bool, remaining_seconds: int }`
-  - Query `mng_resend_cooldown` to compute remaining seconds
-
-### Phase 4: Frontend Components (Days 5–6)
-
-**4.1** Verification banner on Sign In form
-- Component: `EmailVerificationBanner`
-- Display conditions: user signed in with `{ verified: false }` in response, or `localStorage.pending_verification_email` flag is set
-- Content:
-  ```
-  ┌──────────────────────────────────────────────┐
-  | ⚠️  Email Not Verified                        |
-  | We sent a verification link to your email.   |
-  | [Resend Email] [Dismiss]                     |
-  └──────────────────────────────────────────────┘
-  ```
-- Button states:
-  - Normal: `[Resend Email]` clickable
-  - Cooldown active: `[Resend Email (0:45)]` disabled with countdown
-  - Success: "✓ Email sent. Check your inbox." (auto-dismiss after 3s)
-
-**4.2** Create "Awaiting Verification" screen component
-- Route: `/awaiting-verification`
-- Fetches data from `GET /auth/awaiting-verification`
-- Content:
-  ```
-  ┌─────────────────────────────────────────────────┐
-  | 📧 Verify Your Email                            |
-  | We sent a link to: user@exa***le.com            |
-  | Click the link in the email to activate your    |
-  | account. Didn't receive it?                     |
-  | [Resend Email] [Change Email] [Sign Out]        |
-  └─────────────────────────────────────────────────┘
-  ```
-- "Resend Email" button wired to `POST /auth/resend-verification`
-- "Change Email" → Sign Out and return to Register form
-- Countdown timer logic: `useEffect(() => { setRemaining(...) }, [cooldownEnd])`
-
-**4.3** Create email verification link handler page
-- Route: `/verify-email?token=<TOKEN>`
-- On load:
-  1. Extract `token` from query string
-  2. Call `POST /auth/verify-email` with token
-  3. If 200: Show "✓ Email verified! Redirecting..." → navigate to `/dashboard`
-  4. If 410: Show "Link expired. [Request new link]" → call `POST /auth/resend-verification` if user is authenticated
-  5. If 409: Show "This link has already been used. [Back to Sign In]"
-  6. If 401: Show "Session expired. [Sign in again]"
-
-**4.4** Update protected route guards
-- Wrap all protected routes with `<RequireVerified>` component
-- If `verified: false`, redirect to `/awaiting-verification` instead of rendering protected content
-- Preserve intended destination in query param for redirect-after-verify (e.g., `/awaiting-verification?next=/dashboard`)
-
-### Phase 5: Testing & QA (Days 6–7)
-
-**5.1** Unit tests
-- `TokenService.generateToken()` — token uniqueness and format
-- `TokenService.verifyToken()` — expiry check, single-use enforcement, user lookup
-- `EmailService.sendVerificationEmail()` — mock AWS SES, verify template rendering
-- Resend cooldown logic — verify 60s enforcement and reset against `mng_resend_cooldown`
-
-**5.2** Integration tests
-- Register → Email sent → Token valid → Verify → Access protected resource ✓
-- Expired token → 410 error ✓
-- Double-click token → 409 already used ✓
-- Resend within 60s → 429 cooldown error ✓
-- Sign In unverified → Banner shown, no access to protected resources ✓
-- Existing user backfill → All pre-existing accounts marked verified ✓
-
-**5.3** E2E tests (Cypress/Playwright)
-- Full registration and verification flow
-- Resend email with cooldown timer
-- Token expiry simulation
-- Unverified user redirect from protected route
+| File Path | Changes | Rationale |
+|-----------|---------|-----------|
+| `database/migrations/001_create_email_verification_tokens.sql` | **Create new table** with columns: `id`, `user_id` (FK), `email`, `token` (UNIQUE), `expires_at`, `used_at`, `created_at`. | Store token state with expiration and single-use enforcement. |
+| `database/migrations/002_add_email_verified_to_users.sql` | **Add columns** `email_verified` (BOOLEAN DEFAULT false), `email_verified_at` (TIMESTAMP NULL). | Track verification status and timestamp per user. |
+| `src/config/email.config.ts` | **Create new file** with SendGrid client initialization, template IDs, sender email config. | Centralize email service configuration. |
+| `src/templates/emails/verification-email.html` | **Create new file** with HTML email template including token link, expiration notice, brand assets. | Email template content. |
+| `src/services/tokenService.ts` | **Create new file** with `generateVerificationToken()`, `verifyEmailToken()`, helper functions. | Encapsulate token logic. |
+| `src/services/emailService.ts` | **Create new file** with `sendVerificationEmail()`, email queue management, error handling. | Encapsulate email sending. |
+| `src/services/rateLimitService.ts` | **Create new file** (or extend if exists) with `checkResendCooldown()`, `recordResendAttempt()`. | Rate-limit logic for resend requests. |
+| `src/routes/auth.routes.ts` | **Modify** POST `/auth/register` — add token generation and async email send. | Trigger email on account creation. |
+| `src/routes/auth.routes.ts` | **Add** POST `/auth/resend-verification` — rate-limited resend endpoint. | Self-service resend flow. |
+| `src/routes/auth.routes.ts` | **Add** GET `/auth/verify-email?token=<token>` — token validation and user activation. | Email link verification flow. |
+| `src/routes/auth.routes.ts` | **Add** GET `/auth/verification-status` — return verification status + cooldown. | Client can render banner + timer. |
+| `src/middleware/requireVerifiedEmail.ts` | **Create new file** with middleware checking `user.email_verified`. | Protect routes from unverified users. |
+| `src/routes/index.ts` | **Add** `requireVerifiedEmail` middleware to protected routes (e.g., `/dashboard`, `/api/protected`). | Enforce verification on protected resources. |
+| `src/pages/auth/VerificationSuccess.tsx` | **Create new file** — success page after token click, shows confirmation message. | Post-verification landing page. |
+| `src/pages/auth/AwaitingVerification.tsx` | **Create new file** — intermediate page for unverified users, resend button + timer. | UX for unverified users blocked from protected resources. |
+| `src/pages/auth/SignIn.tsx` | **Modify** — conditionally render verification banner if `user.email_verified === false`. | Show prompt on sign-in for unverified users. |
+| `src/pages/auth/CreateAccount.tsx` | **No visual changes** — backend sends email; frontend UX unchanged. | Acceptance criteria: form layout unmodified. |
+| `src/components/VerificationBanner.tsx` | **Create new file** — reusable banner component with resend button + cooldown timer. | DRY: use in SignIn and AwaitingVerification pages. |
+| `src/utils/tokenUtils.ts` | **Create new file** — helper functions for token encoding/decoding, timestamp validation. | Utility functions for token handling. |
+| `tests/unit/tokenService.test.ts` | **Create new file** — unit tests for token generation, expiration, single-use. | Token logic tests. |
+| `tests/integration/emailVerification.test.ts` | **Create new file** — end-to-end tests: register → email → verify → access protected. | Integration tests. |
+| `.env.example` | **Add** `EMAIL_SERVICE=sendgrid`, `SENDGRID_API_KEY`, `VERIFICATION_TOKEN_EXPIRY_HOURS=24`, `RESEND_COOLDOWN_SECONDS=60`. | Config template. |
 
 ---
 
-## 2. FILES TO CREATE & MODIFY
+## 3. New Components
 
-### **New Files**
+### 3.1 Database Tables
 
-| Path | Purpose | Key Content |
-|------|---------|-------------|
-| `backend/src/models/MngVerificationToken.ts` | ORM model for `mng_verification_tokens` table | Schema, indexes, relation to User |
-| `backend/src/models/MngResendCooldown.ts` | ORM model for `mng_resend_cooldown` table | Schema, relation to User |
-| `backend/src/services/TokenService.ts` | Token generation, validation, and redemption | `generateToken()`, `verifyToken()`, `invalidateUserTokens()` |
-| `backend/src/services/EmailService.ts` | Email sending abstraction | `sendVerificationEmail(email, token, baseUrl)` |
-| `backend/src/jobs/SendVerificationEmailJob.ts` | Background job for async email delivery | Retry logic, exponential backoff, error handling |
-| `backend/src/middlewares/requireVerified.ts` | Auth middleware enforcing email verification | 403 + redirect hint for unverified users |
-| `backend/src/templates/verificationEmail.html` | Email HTML template | Branding, token link, CTA button |
-| `backend/src/templates/verificationEmail.txt` | Email plain-text fallback | Token link, instructions |
-| `database/migrations/001_add_mng_verification_tokens.sql` | Create `mng_verification_tokens` table | Full DDL with indexes and constraints |
-| `database/migrations/002_add_mng_resend_cooldown.sql` | Create `mng_resend_cooldown` table | Full DDL with indexes |
-| `database/migrations/003_add_users_verified_at.sql` | Alter `users` table + backfill | Add `verified_at`, index, backfill statement |
-| `frontend/src/components/EmailVerificationBanner.tsx` | In-form verification prompt | Resend button, cooldown timer, success/dismissed states |
-| `frontend/src/components/AwaitingVerificationScreen.tsx` | Full-page verification awaiting screen | Masked email display, resend logic, sign-out link |
-| `frontend/src/pages/VerifyEmailPage.tsx` | Verification link handler page | Token extraction, API call, all error/success states |
-| `frontend/src/components/RequireVerified.tsx` | Protected route wrapper | Redirect to `/awaiting-verification` if unverified |
-| `frontend/src/hooks/useVerificationStatus.ts` | React hook for verification state | Derived state from auth context, cooldown tracking |
-
-### **Modified Files**
-
-| Path | Changes |
-|------|---------|
-| `backend/src/models/User.ts` | Add `verified_at?: Date \| null` field; ensure constructor initializes as `null` |
-| `backend/src/routes/authRoutes.ts` | Add `POST /auth/verify-email`, `POST /auth/resend-verification`, `GET /auth/awaiting-verification`; modify `POST /auth/register` to trigger verification email job; modify `POST /auth/sign-in` to include `verified` flag in response |
-| `backend/src/database/index.ts` | Register `MngVerificationToken` and `MngResendCooldown` models with ORM |
-| `backend/src/app.ts` | Apply `requireVerified` middleware to all protected route groups |
-| `frontend/src/pages/SignInPage.tsx` | Conditionally render `<EmailVerificationBanner />` when sign-in response includes `verified: false` |
-| `frontend/src/routes/ProtectedRoute.tsx` | Wrap with `<RequireVerified>`; read `verified` from auth context; redirect if false |
-| `frontend/src/context/AuthContext.tsx` | Store `verified` boolean alongside existing auth state; update on sign-in response and successful verification |
-| `database/migrations/index.ts` | Register migrations 001, 002, and 003 in order |
-| `.env.example` | Add `EMAIL_PROVIDER=aws_ses`, `AWS_SES_REGION=us-east-1`, `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY`, `EMAIL_FROM_ADDRESS=noreply@yourdomain.com` |
-
----
-
-## 3. NEW COMPONENTS & FUNCTIONS
-
-### **Database Schema**
-
+#### `email_verification_tokens`
 ```sql
--- Migration 001: mng_verification_tokens
-CREATE TABLE mng_verification_tokens (
-  id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id       UUID          NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  token         VARCHAR(64)   NOT NULL,
-  expires_at    TIMESTAMP     NOT NULL,
-  redeemed_at   TIMESTAMP     NULL DEFAULT NULL,
-  created_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
-
-  CONSTRAINT uq_mng_verification_tokens_token UNIQUE (token)
+CREATE TABLE email_verification_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email VARCHAR(255) NOT NULL,
+  token VARCHAR(255) NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  used_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT now(),
+  INDEX(user_id),
+  INDEX(token),
+  INDEX(expires_at)
 );
+```
 
-CREATE INDEX idx_mng_verification_tokens_token   ON mng_verification_tokens (token);
-CREATE
+### 3.2 User Table Additions
+```sql
+ALTER TABLE users
+ADD COLUMN email_verified BOOLEAN DEFAULT false,
+ADD COLUMN email_verified_at TIMESTAMP NULL;
+```
+
+---
+
+### 3.3 Service Functions
+
+#### `tokenService.ts`
+```typescript
+export async function generateVerificationToken(
+  userId: string,
+  email: string,
+  expiryHours: number = 24
+): Promise<{ token: string; expiresAt: Date }> {
+  // Generate 32-byte random token, hash with SHA-256
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const hashedToken = crypto
+    .createHash('sha256')
+    .update(rawToken)
+    .digest('hex');
+  const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
+
+  await db.query(
+    `INSERT INTO email_verification_tokens (user_id, email, token, expires_at)
+     VALUES ($1, $2, $3, $4)`,
+    [userId, email, hashedToken, expiresAt]
+  );
+
+  return { token: rawToken, expiresAt };
+}
+
+export async function verifyEmailToken(token: string): Promise<{ userId: string; email: string }> {
+  const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+  const result = await db.query(
+    `SELECT id, user_id, email, expires_at, used_at
+     FROM email_verification_tokens
+     WHERE token = $1`,
+    [hashedToken]
+  );
+
+  if (!result.rows.length) throw new Error('INVALID_TOKEN');
+  
+  const row = result.rows[0];
+  
+  if (new Date() > new Date(row.expires_at)) throw new Error('TOKEN_EXPIRED');
+  if (row.used_at) throw new Error('TOKEN_ALREADY_USED');
+
+  // Mark token as used and update user
+  await db.query('BEGIN');
+  try {
+    await db.query(
+      `UPDATE email_verification_tokens SET used_at = now() WHERE id = $1`,
+      [row.id]
+    );
+    await db.query(
+      `UPDATE users SET email_verified = true, email_verified_at = now() WHERE id = $1`,
+      [row.user_id]
+    );
+    await db.query('COMMIT');
+  } catch (e) {
+    await db.query('ROLLBACK');
+    throw e;
+  }
+
+  return { userId: row.user_id, email: row.email };
+}
+```
+
+#### `emailService.ts`
+```typescript
+import sgMail from '@sendgrid/mail';
+
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+export async function sendVerificationEmail(
+  email: string,
+  verificationLink: string,
+  expiresAt: Date
+): Promise<void> {
+  const expiresIn = Math.ceil((expiresAt.getTime() - Date.now()) / 1000 / 3600);
+
+  const msg = {
+    to: email,
+    from: process.env.EMAIL_FROM || 'noreply@app.com',
+    subject: 'Verify your email address',
+    html: `
+      <p>Click the link below to verify your email address (expires in ${expiresIn} hours):</p>
+      <a href="${verificationLink}">${verificationLink}</a>
+      <p>If you did not create an account, please ignore this email.</p>
+    `,
+  };
+
+  // Enqueue async send (fire-and-forget with error logging)
+  sgMail.send(msg).catch(err => {
+    console.error(`Failed to send verification email to ${email}:`, err);
+    // TODO: Log to monitoring service (DataDog, Sentry, etc.)
+  });
+}
+```
+
+#### `rateLimitService.ts`
+```typescript
+export async function checkResendCooldown(userId: string): Promise<{ allowed: boolean; cooldownUntil?: Date }> {
+  const lastResend = await redis.get(`resend_cooldown:${userId}`);
+  
+  if (lastResend) {
+    const cooldownEnd = new Date(parseInt(lastResend) + 60 * 1000);
+    return { allowed: false, cooldownUntil: cooldownEnd };
+  }
+  
+  return { allowed: true };
+}
+
+export async function recordResendAttempt(userId: string): Promise<void> {
+  await redis.set(`resend_cooldown:${userId}`, Date.now().toString(), 'EX', 60);
+}
+```
+
+---
+
+### 3.4 API Endpoints
+
+#### POST `/auth/resend-verification`
+```typescript
+export async function resendVerificationEmail(req: Request, res: Response) {
+  const userId = req.user.id;
+  const email = req.user.email;
+
+  // Check cooldown
+  const { allowed, cooldownUntil } = await checkResendCooldown(userId);
+  if (!allowed) {
+    return res.status(429).json({ error: 'COOLDOWN_ACTIVE', cooldownUntil });
+  }
+
+  // Generate token
+  const { token, expiresAt } = await generateVerificationToken(userId, email);
+  const verificationLink = `${process.env.APP_URL}/auth/verify-email?token=${token}`;
+
+  // Send email
+  await sendVerificationEmail(email, verificationLink, expiresAt);
+
+  // Record cooldown
+  await recordResendAttempt(userId);
+
+  res.json({ cooldownUntil: new Date(Date.now() + 60 * 1000) });
+}
+```
+
+#### GET `/auth/verify-email?token=<token>`
+```typescript
+export async function verifyEmail(req: Request, res: Response) {
+  const { token } = req.query;
+
+  try {
+    const { userId } = await verifyEmailToken(token as string);
+    
+    // Set success flash or session
+    req.session.verificationSuccess = true;
+    res.redirect('/auth/verification-success');
+  } catch (err) {
+    if (err.message === 'TOKEN_EXPIRED' || err.message === 'TOKEN_ALREADY_USED') {
+      res.redirect(`/auth/verification-error?reason=${err.message}`);
+    } else {
+      res.redirect('/auth/verification-error?reason=INVALID_TOKEN');
+    }
+  }
+}
+```
+
+#### GET `/auth/verification-status`
+```typescript
+export async function getVerificationStatus(req: Request, res: Response) {
+  const userId = req.user.id;
+  const { allowed: resendAllowed, cooldownUntil } = await checkResendCooldown(userId);
+
+  res.json({
+    email_verified: req.user.email_verified,
+    can_resend: resendAllowed,
+    resend_cooldown_until: cooldownUntil || null,
+  });
+}
+```
+
+---
+
+### 3.5 Middleware
+
+#### `requireVerifiedEmail.ts`
+```typescript
+export function requireVerifiedEmail(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.redirect('/auth/login');
+  }
+
+  if (!req

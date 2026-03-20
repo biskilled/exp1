@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-20 22:05 UTC by aicli /memory_
+_Generated: 2026-03-20 22:15 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform built with Python/FastAPI backend, PostgreSQL semantic search, and Electron desktop UI. It provides multi-user project management with work item tracking, nested tagging, MCP integration, and an async DAG workflow engine for AI-assisted development tasks. Current focus is on SQL performance optimization (batch inserts, query caching) and fixing workflow/UI state management issues blocking production deployment.
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron-based frontend for collaborative development workflows. It integrates with multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok), uses PostgreSQL with pgvector for semantic search, and provides async DAG workflow execution with approval-based negotiation, tagging hierarchies, and MCP integration for project state management.
 
 ## Project Facts
 
@@ -84,26 +84,26 @@ Reviewer: ```json
 - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
 - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
 - 2-pane approval chat workflow for requirement negotiation before work_item save
-- System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)
+- Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
 
 ## In Progress
 
+- Work item pipeline role integration (2026-03-20) — Fixed hardcoded Haiku/Anthropic; now queries mng_agent_roles and respects configured LLM provider per role
 - SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
-- Workflow performance optimization (2026-03-20) — Async DAG executor bottlenecks and query caching improvements needed for slow execution
 - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion
 - Pipeline approval workflow rendering (2026-03-20) — Old MD displayed instead of current output/progress logs; requires chat panel state management fix
-- Backend startup race condition handling (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; timing issue during initialization
+- Backend startup race condition handling (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; fixed retry logic to handle empty project list
 - Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(42 events, 37 commits)`
+- **hooks** `(43 events, 38 commits)`
 
 ### Doc_type
 
-- **Test** `(25 events, 24 commits)`
+- **Test** `(26 events, 25 commits)`
 - **low-level-design** `(1 events)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -111,12 +111,12 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(40 events, 34 commits)`
-- **shared-memory** `(39 events, 34 commits)`
-- **auth** `(38 events, 35 commits)`
-- **graph-workflow** `(27 events, 24 commits)`
-- **workflow-runner** `(26 events, 24 commits)`
-- **embeddings** `(25 events, 24 commits)`
+- **UI** `(41 events, 35 commits)`
+- **shared-memory** `(40 events, 35 commits)`
+- **auth** `(39 events, 36 commits)`
+- **graph-workflow** `(28 events, 25 commits)`
+- **workflow-runner** `(27 events, 25 commits)`
+- **embeddings** `(26 events, 25 commits)`
 - **tagging**
 - **billing**
 - **mcp**
@@ -126,14 +126,14 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(36 events, 34 commits)`
-- **development** `(28 events, 25 commits)`
+- **discovery** `(37 events, 35 commits)`
+- **development** `(29 events, 26 commits)`
 - **prod**
 
 ### Task
 
-- **memory** `(38 events, 34 commits)`
-- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(25 events, 24 commits)`
+- **memory** `(39 events, 35 commits)`
+- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(26 events, 25 commits)`
 
 ## Recent Memory
 
@@ -205,4 +205,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**2026-03-20** `in_progress` — SQL query optimization identified as P0: row-by-row INSERTs during event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; batch refactor and pagination required. **2026-03-20** `in_progress` — Workflow execution performance degraded; async DAG executor bottlenecks and query caching improvements needed for analysis. **2026-03-19** `bug_fix` — UUID validation: psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field in pipeline run queries; backend UUID object conversion required. **2026-03-20** `in_progress` — Pipeline approval workflow displaying stale MD instead of current output/progress logs; chat panel state management and step sequencing investigation needed. **2026-03-18** `bug_fixed` — Backend startup race condition: modified retry logic to handle empty project list return; confirmed hierarchical data model (clients contain multiple users). **2026-03-18** `bug_fixed` — AttributeError in main.py removed stale `ensure_project_schema()` call; memory endpoint CLAUDE.md template error fixed (code_dir variable scoping). **2026-03-14** `design` — Nested tag hierarchy approved; load-once-on-access pattern for tags/workflows to eliminate redundant SQL queries confirmed. **2026-03-10** `feature_enhancement` — Planner UI improvements: action button visibility increased via 3-dot menu; unarchive capability added. **2026-03-10** `bug_identified` — Tags saved in UI disappear when switching sessions; root cause unclear (rendering vs. database save). **pending_implementation` — memory_items and project_facts table population logic not implemented; blocks improved memory/context mechanism.
+**[2026-03-20]** `work_item_pipeline.py` — Fixed hardcoded Haiku/Anthropic by refactoring to query mng_agent_roles table; work item pipeline now respects configured LLM provider and model per role instead of ignoring configuration. **[2026-03-20]** `event_migration, memory_synthesis` — Identified SQL performance bottlenecks: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination for optimization. **[2026-03-20]** `workflow_approval_panel` — Chat panel rendering outdated MD instead of current output/progress logs; state management fix needed in approval workflow UI. **[2026-03-19]** `pipeline_run_queries` — UUID validation error (psycopg2 InvalidTextRepresentation) when string 'recent' passed to UUID field; requires conversion to UUID objects in query layer. **[2026-03-18]** `backend_startup` — Fixed race condition where projects loaded successfully but returned empty list; retry logic in _continueToApp() now handles edge case preventing false "project not found" errors. **[2026-03-10]** `memory_architecture` — Implemented load-once-on-access pattern: tags/workflows/runs cached in memory on project load, DB updates only on explicit save to reduce redundant SQL calls.
