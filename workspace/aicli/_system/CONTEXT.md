@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-20 21:26 UTC — do not edit manually.
+> Auto-generated 2026-03-20 21:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 177
-- **Last active**: 2026-03-20T19:53:29Z
+- **Sessions**: 178
+- **Last active**: 2026-03-20T21:51:23Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,11 +35,11 @@
 
 ## In Progress
 
+- SQL query optimization (2026-03-20) — P0 issues identified: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
+- Workflow performance optimization (2026-03-20) — Workflow execution runs very slowly; requires analysis of async DAG executor bottlenecks and potential query caching improvements
+- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations (e.g., document generation role outputs short bullet-point descriptions)
 - Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation
-- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` prevents empty home screen; edge case where list succeeds but returns empty now handled
-- Pipeline sidebar caching (2026-03-20) — `_listCache` stores {workflows, roles, runs} to prevent redundant API calls during pipeline UI rendering
 - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend
-- Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable causing CLAUDE.md generation failure; variable now properly scoped from config
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Key Decisions
@@ -58,7 +58,7 @@
 - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
 - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
 - 2-pane approval chat workflow for requirement negotiation before work_item save
-- Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables
+- System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)
 
 ---
 
@@ -152,6 +152,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-20 21:48]** `claude_cli/claude`  
+→ I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w
+← _## Performance Analysis Results  I found significant issues in both areas. Here's the breakdown:  ---  ### SQL Query Issues (by priority)  | Priority | Issue | Location | Impact | |----------|-------|_
+
+**[2026-03-20 21:32]** `claude_cli/claude`  
+→ Work Item pieplien suppose to use the existing roles - PM - project manage, architect - Sr architect. can you optimize t
+
 **[2026-03-20 19:46]** `claude_cli/claude`  
 → I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
 ← _But `_loadTab` refetches if no cache. The real fix is that `_render()` reattaches to container and `_loadTab` uses the cached data. Let me check how the HistoryView handles this — when `_histData` is _
@@ -203,11 +210,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-19 16:12]** `claude_cli/claude`  
 → Start to looks better. Now I do see the _work_item_pipeline but all I can see is an error saying - psycopg2.errors.Inval
 ← _Since the run panel is now at the bottom, there's no need to close the detail panel — they can both be open simultaneously. Let me remove that:_
-
-**[2026-03-19 15:40]** `claude_cli/claude`  
-→ I am starting a pipeline from my feature tab (auth) - it looks like something is satring, but I do not see any update pr
-← _All clean. Here's a summary of every fix:  ---  ## What was broken and what's fixed  ### 1. UI — no progress visible after triggering pipeline (main fix) **Root cause**: `_wiRunPipeline` only showed a_
-
-**[2026-03-19 14:29]** `claude_cli/claude`  
-→ Anotehr topic about Features, and I would like feature to be linked in Claude cli and aiCli, also I would feature top be
-← _Everything is in place. Let me mark the task complete and update memory:_

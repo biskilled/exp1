@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 19:53 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 21:51 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -44,12 +44,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
 - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
 - 2-pane approval chat workflow for requirement negotiation before work_item save
-- Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables
+- System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-20] Currently  memory_items (compressed knowledge) is based on prompt/responses, commit, workflows node results.  I would li
-- [2026-03-20] Projects only loading when I press to prject tab. as Project  loaded as default page, it should load when app is starter
 - [2026-03-20] I still dont see the project loaded when app is started. all I can see in the logs is  Application startup complete. (us
 - [2026-03-20] I am testing the Pipeline - when I clicked approved I do see the old md version . I would expcet to see process and afte
 - [2026-03-20] I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
+- [2026-03-20] Work Item pieplien suppose to use the existing roles - PM - project manage, architect - Sr architect. can you optimize t
+- [2026-03-20] I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w

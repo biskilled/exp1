@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
+- SQL query optimization (2026-03-20) — P0 issues identified: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
+- Workflow performance optimization (2026-03-20) — Workflow execution runs very slowly; requires analysis of async DAG executor bottlenecks and potential query caching improvements
+- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations (e.g., document generation role outputs short bullet-point descriptions)
 - Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation
-- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` prevents empty home screen; edge case where list succeeds but returns empty now handled
-- Pipeline sidebar caching (2026-03-20) — `_listCache` stores {workflows, roles, runs} to prevent redundant API calls during pipeline UI rendering
 - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend
-- Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable causing CLAUDE.md generation failure; variable now properly scoped from config
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
