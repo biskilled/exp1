@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-20 21:56 UTC — do not edit manually.
+> Auto-generated 2026-03-20 22:07 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 179
-- **Last active**: 2026-03-20T21:54:30Z
+- **Sessions**: 180
+- **Last active**: 2026-03-20T22:05:31Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,12 +35,12 @@
 
 ## In Progress
 
-- SQL query optimization (2026-03-20) — P0 issues: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
-- Workflow performance optimization (2026-03-20) — Workflow execution runs very slowly; requires analysis of async DAG executor bottlenecks and potential query caching improvements
-- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations for document generation
-- Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation
-- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
+- SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
+- Workflow performance optimization (2026-03-20) — Async DAG executor bottlenecks and query caching improvements needed for slow execution
+- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion
+- Pipeline approval workflow rendering (2026-03-20) — Old MD displayed instead of current output/progress logs; requires chat panel state management fix
+- Backend startup race condition handling (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; timing issue during initialization
+- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
 
 ## Key Decisions
 
@@ -154,6 +154,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-20 21:55]** `claude_cli/claude`  
 → can you run /memory , also can you check why running workflow is so slow. each steps takes a while, and once step is app
+← _Now let me save a note to memory about this fix:_
 
 **[2026-03-20 21:48]** `claude_cli/claude`  
 → I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w

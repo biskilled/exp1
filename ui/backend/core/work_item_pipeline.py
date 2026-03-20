@@ -139,18 +139,39 @@ async def trigger_work_item_pipeline(
 ) -> None:
     """Run the full 4-agent pipeline for a work item. Fully async, safe to background."""
     from datetime import datetime, timezone
+    from core.api_keys import get_key
+    from core.llm_clients import call_claude, call_deepseek, call_gemini, call_grok
+
     ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
+
+    async def _call(provider: str, model: str, system: str, user: str, max_tokens: int = 800) -> str:
+        """Dispatch to the correct LLM provider using the role's configured provider."""
+        api_key = get_key(provider) or get_key("claude") or get_key("anthropic")
+        messages = [{"role": "user", "content": user}]
+        try:
+            if provider in ("claude", "anthropic", ""):
+                resp = await call_claude(messages, system=system, model=model, api_key=api_key, max_tokens=max_tokens)
+            elif provider == "openai":
+                from core.llm_clients import _async_openai_client
+                client = _async_openai_client(api_key)
+                full = ([{"role": "system", "content": system}] if system else []) + messages
+                raw = await client.chat.completions.create(model=model, messages=full, max_tokens=max_tokens)
+                return raw.choices[0].message.content or ""
+            elif provider == "deepseek":
+                resp = await call_deepseek(messages, system=system, api_key=api_key, max_tokens=max_tokens)
+            elif provider == "gemini":
+                resp = await call_gemini(user, system=system, model=model, api_key=api_key)
+            elif provider == "grok":
+                resp = await call_grok(messages, system=system, api_key=api_key, max_tokens=max_tokens)
+            else:
+                # Unknown provider — fall back to claude
+                resp = await call_claude(messages, system=system, model=model, api_key=get_key("claude"), max_tokens=max_tokens)
+            return resp.get("content", "").strip()
+        except Exception as _ce:
+            log.warning(f"work_item_pipeline _call({provider}) failed: {_ce}")
+            raise
+
     try:
-        from core.api_keys import get_key
-        import anthropic
-
-        key = get_key("claude") or get_key("anthropic")
-        if not key:
-            _set_status(work_item_id, "failed", error="No API key")
-            return
-
-        client = anthropic.AsyncAnthropic(api_key=key)
-
         # ── Load project context ───────────────────────────────────────────────
         project_facts_text = ""
         memory_text = ""
@@ -184,20 +205,14 @@ async def trigger_work_item_pipeline(
             context_block += f"[Recent Project Memory]\n{memory_text[:1500]}\n\n"
 
         # ── Stage 1: PM — short task spec + acceptance criteria ─────────────
-        pm_prompt_sys, _, pm_model = _load_role("Product Manager")
+        pm_sys, pm_provider, pm_model = _load_role("Product Manager")
         pm_user = (
             f"{context_block}"
             f"Work item: **{name}**\nDescription: {description}\n\n"
             f"{'Existing criteria:\n' + existing_criteria + chr(10) + chr(10) if existing_criteria else ''}"
             f"Produce the task spec now."
         )
-        pm_resp = await client.messages.create(
-            model=pm_model,
-            max_tokens=400,
-            system=pm_prompt_sys,
-            messages=[{"role": "user", "content": pm_user}],
-        )
-        acceptance_criteria = (pm_resp.content[0].text if pm_resp.content else "").strip()
+        acceptance_criteria = await _call(pm_provider, pm_model, pm_sys, pm_user, max_tokens=400)
         if not acceptance_criteria:
             _set_status(work_item_id, "failed", error="PM stage produced no output")
             return
@@ -208,20 +223,14 @@ async def trigger_work_item_pipeline(
             pass
 
         # ── Stage 2: Architect — concise implementation plan ─────────────────
-        arch_prompt_sys, _, arch_model = _load_role("Sr. Architect")
+        arch_sys, arch_provider, arch_model = _load_role("Sr. Architect")
         arch_user = (
             f"{context_block}"
             f"Work item: **{name}**\n\n"
             f"Acceptance criteria:\n{acceptance_criteria}\n\n"
             f"Produce the implementation plan now."
         )
-        arch_resp = await client.messages.create(
-            model=arch_model,
-            max_tokens=500,
-            system=arch_prompt_sys,
-            messages=[{"role": "user", "content": arch_user}],
-        )
-        implementation_plan = (arch_resp.content[0].text if arch_resp.content else "").strip()
+        implementation_plan = await _call(arch_provider, arch_model, arch_sys, arch_user, max_tokens=500)
         if not implementation_plan:
             _set_status(work_item_id, "failed", error="Architect stage produced no output")
             return
@@ -235,8 +244,8 @@ async def trigger_work_item_pipeline(
         _update_fields(work_item_id, acceptance_criteria, implementation_plan)
 
         # ── Stage 3+4: Developer → Reviewer (loop up to max_iterations) ──────
-        dev_prompt_sys, _, dev_model = _load_role("Web Developer")
-        rev_prompt_sys, _, rev_model = _load_role("Code Reviewer")
+        dev_sys, dev_provider, dev_model = _load_role("Web Developer")
+        rev_sys, rev_provider, rev_model = _load_role("Code Reviewer")
 
         dev_output = ""
         reviewer_feedback = ""
@@ -248,13 +257,7 @@ async def trigger_work_item_pipeline(
                 f"{'Previous reviewer feedback:\n' + reviewer_feedback + chr(10) + chr(10) if reviewer_feedback and iteration > 0 else ''}"
                 f"Implement the changes now."
             )
-            dev_resp = await client.messages.create(
-                model=dev_model,
-                max_tokens=2000,
-                system=dev_prompt_sys,
-                messages=[{"role": "user", "content": dev_user}],
-            )
-            dev_output = (dev_resp.content[0].text if dev_resp.content else "").strip()
+            dev_output = await _call(dev_provider, dev_model, dev_sys, dev_user, max_tokens=2000)
             if not dev_output:
                 break
 
@@ -264,13 +267,7 @@ async def trigger_work_item_pipeline(
                 f"Implementation:\n{dev_output[:2000]}\n\n"
                 f"Review now."
             )
-            rev_resp = await client.messages.create(
-                model=rev_model,
-                max_tokens=400,
-                system=rev_prompt_sys,
-                messages=[{"role": "user", "content": rev_user}],
-            )
-            rev_text = (rev_resp.content[0].text if rev_resp.content else "").strip()
+            rev_text = await _call(rev_provider, rev_model, rev_sys, rev_user, max_tokens=400)
             score = 8
             passed = True
             try:

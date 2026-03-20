@@ -67,12 +67,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "SQL query optimization (2026-03-20) \u2014 P0 issues: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination",
-    "Workflow performance optimization (2026-03-20) \u2014 Workflow execution runs very slowly; requires analysis of async DAG executor bottlenecks and potential query caching improvements",
-    "System roles enhancement (2026-03-20) \u2014 Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations for document generation",
-    "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation",
-    "UUID validation in pipeline run queries (2026-03-19) \u2014 psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend",
-    "Memory items and project_facts table population (pending) \u2014 Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism"
+    "SQL query optimization (2026-03-20) \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination",
+    "Workflow performance optimization (2026-03-20) \u2014 Async DAG executor bottlenecks and query caching improvements needed for slow execution",
+    "UUID validation in pipeline run queries (2026-03-19) \u2014 psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion",
+    "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD displayed instead of current output/progress logs; requires chat panel state management fix",
+    "Backend startup race condition handling (2026-03-18) \u2014 Project visibility bug where AiCli appears in Recent but not main view; timing issue during initialization",
+    "Memory items and project_facts table population (pending) \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -104,7 +104,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-20T21:56:37Z",
+  "last_memory_run": "2026-03-20T22:05:54Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains code only; workspace/ stores per-project content; _system/ holds project state",
@@ -124,12 +124,12 @@
       "System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)"
     ],
     "in_progress": [
-      "SQL query optimization (2026-03-20) \u2014 P0 issues: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination",
-      "Workflow performance optimization (2026-03-20) \u2014 Workflow execution runs very slowly; requires analysis of async DAG executor bottlenecks and potential query caching improvements",
-      "System roles enhancement (2026-03-20) \u2014 Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations for document generation",
-      "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation",
-      "UUID validation in pipeline run queries (2026-03-19) \u2014 psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend",
-      "Memory items and project_facts table population (pending) \u2014 Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism"
+      "SQL query optimization (2026-03-20) \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination",
+      "Workflow performance optimization (2026-03-20) \u2014 Async DAG executor bottlenecks and query caching improvements needed for slow execution",
+      "UUID validation in pipeline run queries (2026-03-19) \u2014 psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion",
+      "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD displayed instead of current output/progress logs; requires chat panel state management fix",
+      "Backend startup race condition handling (2026-03-18) \u2014 Project visibility bug where AiCli appears in Recent but not main view; timing issue during initialization",
+      "Memory items and project_facts table population (pending) \u2014 Tables exist but update logic unimplemented; blocks improved memory/context mechanism"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -144,7 +144,7 @@
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder"
     },
-    "project_summary": "aicli is a shared AI memory platform that integrates multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with a unified CLI and Electron desktop UI, backed by PostgreSQL with semantic search (pgvector) and JSONL storage. The system enables complex workflow orchestration via async DAG execution, memory synthesis using Claude Haiku, and project-scoped tagging/event tracking with MCP integration for advanced capability exposure. Current focus is resolving critical SQL performance bottlenecks (batch INSERT, pagination), workflow execution latency, and data persistence issues in the approval workflow pipeline.",
-    "memory_digest": "**2026-03-20** `in_progress` \u2014 Identified P0 SQL performance issues: event migration uses 2000+ row-by-row queries for 1000 events (needs batch INSERT) and memory synthesis has unbounded fetchall() (needs pagination); workflow execution runs slowly; requires async DAG executor analysis. **2026-03-20** `in_progress` \u2014 Pipeline approval panel displays stale MD instead of current output logs; chat state management and step sequencing under investigation. **2026-03-20** `in_progress` \u2014 System roles enhancement to leverage existing PM/architect roles and add document generation formatting expectations. **2026-03-19** `bug` \u2014 UUID validation: backend crashes when 'recent' string passed to UUID field in pipeline run queries; requires UUID object conversion. **2026-03-18** `fix` \u2014 Removed stale `db.ensure_project_schema()` call in main.py (method doesn't exist; use `_ensure_shared_schema` instead). **2026-03-18** `fix` \u2014 Memory endpoint CLAUDE.md template: fixed undefined `code_dir` variable at line 1120 by properly scoping from config. **2026-03-18** `fix` \u2014 Backend startup race condition: modified retry logic to handle edge case where project list load succeeds but returns empty array. **2026-03-18** `identified` \u2014 Project visibility timing bug: AiCli appears in Recent projects but not displaying as current in main view; suspected initialization race condition. **2026-03-10** `architecture` \u2014 Implemented load-once-on-access pattern: tags and workflows cached in memory, DB updated only on explicit save to eliminate redundant SQL calls. **2026-03-10** `identified` \u2014 Data persistence bug: tags saved in UI disappear on session switch; unclear if rendering or DB save failure; requires investigation."
+    "project_summary": "aicli is a shared AI memory platform built with Python/FastAPI backend, PostgreSQL semantic search, and Electron desktop UI. It provides multi-user project management with work item tracking, nested tagging, MCP integration, and an async DAG workflow engine for AI-assisted development tasks. Current focus is on SQL performance optimization (batch inserts, query caching) and fixing workflow/UI state management issues blocking production deployment.",
+    "memory_digest": "**2026-03-20** `in_progress` \u2014 SQL query optimization identified as P0: row-by-row INSERTs during event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; batch refactor and pagination required. **2026-03-20** `in_progress` \u2014 Workflow execution performance degraded; async DAG executor bottlenecks and query caching improvements needed for analysis. **2026-03-19** `bug_fix` \u2014 UUID validation: psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field in pipeline run queries; backend UUID object conversion required. **2026-03-20** `in_progress` \u2014 Pipeline approval workflow displaying stale MD instead of current output/progress logs; chat panel state management and step sequencing investigation needed. **2026-03-18** `bug_fixed` \u2014 Backend startup race condition: modified retry logic to handle empty project list return; confirmed hierarchical data model (clients contain multiple users). **2026-03-18** `bug_fixed` \u2014 AttributeError in main.py removed stale `ensure_project_schema()` call; memory endpoint CLAUDE.md template error fixed (code_dir variable scoping). **2026-03-14** `design` \u2014 Nested tag hierarchy approved; load-once-on-access pattern for tags/workflows to eliminate redundant SQL queries confirmed. **2026-03-10** `feature_enhancement` \u2014 Planner UI improvements: action button visibility increased via 3-dot menu; unarchive capability added. **2026-03-10** `bug_identified` \u2014 Tags saved in UI disappear when switching sessions; root cause unclear (rendering vs. database save). **pending_implementation` \u2014 memory_items and project_facts table population logic not implemented; blocks improved memory/context mechanism."
   }
 }
