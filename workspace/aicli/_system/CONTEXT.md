@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-20 21:52 UTC — do not edit manually.
+> Auto-generated 2026-03-20 21:56 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 178
-- **Last active**: 2026-03-20T21:51:23Z
+- **Sessions**: 179
+- **Last active**: 2026-03-20T21:54:30Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,9 +35,9 @@
 
 ## In Progress
 
-- SQL query optimization (2026-03-20) — P0 issues identified: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
+- SQL query optimization (2026-03-20) — P0 issues: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
 - Workflow performance optimization (2026-03-20) — Workflow execution runs very slowly; requires analysis of async DAG executor bottlenecks and potential query caching improvements
-- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations (e.g., document generation role outputs short bullet-point descriptions)
+- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations for document generation
 - Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation
 - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
@@ -152,12 +152,16 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-20 21:55]** `claude_cli/claude`  
+→ can you run /memory , also can you check why running workflow is so slow. each steps takes a while, and once step is app
+
 **[2026-03-20 21:48]** `claude_cli/claude`  
 → I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w
 ← _## Performance Analysis Results  I found significant issues in both areas. Here's the breakdown:  ---  ### SQL Query Issues (by priority)  | Priority | Issue | Location | Impact | |----------|-------|_
 
 **[2026-03-20 21:32]** `claude_cli/claude`  
 → Work Item pieplien suppose to use the existing roles - PM - project manage, architect - Sr architect. can you optimize t
+← _All 4 pipeline roles load correctly with their system role content appended. Let me update the tasks:_
 
 **[2026-03-20 19:46]** `claude_cli/claude`  
 → I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
@@ -206,7 +210,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-19 16:29]** `claude_cli/claude`  
 → I still have the same error - psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type uuid: "recent" [1
 ← _Now restart the backend to pick up the UUID guard fix:_
-
-**[2026-03-19 16:12]** `claude_cli/claude`  
-→ Start to looks better. Now I do see the _work_item_pipeline but all I can see is an error saying - psycopg2.errors.Inval
-← _Since the run panel is now at the bottom, there's no need to close the detail panel — they can both be open simultaneously. Let me remove that:_

@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-20 21:51 UTC by aicli /memory_
+_Generated: 2026-03-20 21:56 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform designed for collaborative LLM-assisted development with per-project semantic storage (PostgreSQL + pgvector), multi-provider LLM integration, and async workflow orchestration. The project currently comprises 15 active features (UI, shared-memory, auth, graph-workflow, tagging, MCP integration) with ongoing performance optimization of SQL queries and workflow execution, plus system role enhancement for document generation workflows.
 
 ## Project Facts
 
@@ -88,9 +84,9 @@ Reviewer: ```json
 
 ## In Progress
 
-- SQL query optimization (2026-03-20) — P0 issues identified: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
+- SQL query optimization (2026-03-20) — P0 issues: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
 - Workflow performance optimization (2026-03-20) — Workflow execution runs very slowly; requires analysis of async DAG executor bottlenecks and potential query caching improvements
-- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations (e.g., document generation role outputs short bullet-point descriptions)
+- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations for document generation
 - Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation
 - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
@@ -99,11 +95,11 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(40 events, 35 commits)`
+- **hooks** `(42 events, 37 commits)`
 
 ### Doc_type
 
-- **Test** `(23 events, 22 commits)`
+- **Test** `(25 events, 24 commits)`
 - **low-level-design** `(1 events)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -111,12 +107,12 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(38 events, 32 commits)`
-- **shared-memory** `(37 events, 32 commits)`
-- **auth** `(36 events, 33 commits)`
-- **graph-workflow** `(25 events, 22 commits)`
-- **workflow-runner** `(23 events, 22 commits)`
-- **embeddings** `(23 events, 22 commits)`
+- **UI** `(40 events, 34 commits)`
+- **shared-memory** `(39 events, 34 commits)`
+- **auth** `(38 events, 35 commits)`
+- **graph-workflow** `(27 events, 24 commits)`
+- **workflow-runner** `(25 events, 24 commits)`
+- **embeddings** `(25 events, 24 commits)`
 - **tagging**
 - **billing**
 - **mcp**
@@ -126,14 +122,14 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(34 events, 32 commits)`
-- **development** `(23 events, 22 commits)`
+- **discovery** `(36 events, 34 commits)`
+- **development** `(28 events, 25 commits)`
 - **prod**
 
 ### Task
 
-- **memory** `(35 events, 32 commits)`
-- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(23 events, 22 commits)`
+- **memory** `(37 events, 34 commits)`
+- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(25 events, 24 commits)`
 
 ## Recent Memory
 
@@ -202,7 +198,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-20]** `claude_cli` — Identified P0 SQL performance issues: row-by-row INSERT in event migration (2000+ queries for 1000 events at admin.py:666-695) and unbounded fetchall() in memory synthesis requiring batch refactoring and pagination. **[2026-03-20]** `claude_cli` — Workflow execution performance severely degraded; requires bottleneck analysis in async DAG executor and query caching strategy review. **[2026-03-20]** `claude_cli` — System roles enhancement initiated to map work_item pipeline to existing roles (PM, architect) with formatting expectations for document generation (short bullets). **[2026-03-20]** `feature` — Pipeline approval workflow showing stale MD output instead of current logs; blocked on chat panel state management and step sequencing. **[2026-03-19]** `bug` — UUID validation failure when string 'recent' passed to UUID field in pipeline run queries; backend needs UUID object conversion. **[2026-03-18]** `bug` — Memory endpoint CLAUDE.md generation fixed by properly scoping code_dir variable from config (line 1120). **[2026-03-18]** `bug` — Backend startup race condition mitigated with retry logic handling empty project list on first load. **[2026-03-10]** `decision` — Implemented load-once-on-access pattern to cache tags/workflows/runs in memory, updating DB only on explicit save to reduce redundant SQL. **[2026-03-10]** `bug` — Tags saved in UI disappear on session switch; cause unclear (rendering vs database), requires investigation. **[pending]** `task` — memory_items and project_facts tables exist but update logic not implemented; blocks memory/context mechanism improvements.

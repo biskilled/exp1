@@ -101,7 +101,9 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
     inject_context = node.get("inject_context", True)
     output_schema = node.get("output_schema")
 
-    # Build system prompt — precedence: inline > role_file > mng_agent_roles DB
+    # Build system prompt — precedence: inline > role_file > pre-loaded from _load_workflow_from_db
+    # NOTE: _load_workflow_from_db already JOINs mng_agent_roles and returns the effective prompt in
+    # node["role_prompt"], so we skip the redundant DB queries that were here before.
     if role_file and not role_prompt:
         role_path = Path(settings.workspace_dir) / project / "prompts" / role_file
         if role_path.exists():
@@ -109,51 +111,20 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         else:
             log.warning(f"role_file not found: {role_path}")
 
-    # Always load DB role's system_prompt when role_id is set.
-    # If node also has role_prompt (pipeline task instructions), combine: DB persona + task instructions.
-    if node.get("role_id") and db.is_available():
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT system_prompt FROM mng_agent_roles WHERE id=%s AND client_id=1 AND is_active=TRUE",
-                        (node["role_id"],),
-                    )
-                    row = cur.fetchone()
-                    if row and row[0]:
-                        db_sys = row[0]
-                        role_prompt = (db_sys + "\n\n---\n\n" + role_prompt).strip() if role_prompt else db_sys
-        except Exception as _re:
-            log.warning(f"Could not load role {node['role_id']}: {_re}")
-
-    # Prepend linked system roles (coding standards, security, etc.) in order
-    role_id = node.get("role_id")
-    if role_id and db.is_available():
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """SELECT sr.content
-                           FROM mng_system_roles sr
-                           JOIN mng_role_system_links l ON l.system_role_id = sr.id
-                           WHERE l.role_id = %s AND sr.is_active = TRUE
-                           ORDER BY l.order_index ASC, l.id ASC""",
-                        (role_id,),
-                    )
-                    blocks = [r[0] for r in cur.fetchall() if r[0]]
-            if blocks:
-                role_prompt = "\n\n---\n\n".join(blocks) + "\n\n---\n\n" + (role_prompt or "")
-        except Exception as _se:
-            log.warning(f"Could not load system roles for role {role_id}: {_se}")
-
-    # Build user message
+    # Build user message — cap each prior node's output at 3000 chars to prevent
+    # unbounded context growth as the pipeline advances.
+    _CTX_CAP = 3000
     user_parts = []
     if inject_context and ctx:
         ctx_str = "\n\n".join(
-            f"=== {k} output ===\n{v if isinstance(v, str) else json.dumps(v)}"
+            f"=== {k} output ===\n"
+            + (v[:_CTX_CAP] + "\n[...truncated]" if isinstance(v, str) and len(v) > _CTX_CAP
+               else (v if isinstance(v, str) else json.dumps(v)[:_CTX_CAP]))
             for k, v in ctx.items()
+            if not k.startswith("_")   # skip internal keys like _work_item
         )
-        user_parts.append(f"<context>\n{ctx_str}\n</context>")
+        if ctx_str:
+            user_parts.append(f"<context>\n{ctx_str}\n</context>")
 
     # Add output schema instruction
     if output_schema:
@@ -193,14 +164,13 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         if provider == "claude":
             resp = await call_claude(messages, system=role_prompt, model=model, api_key=api_key)
         elif provider == "openai":
-            from core.llm_clients import _openai_client
-            import openai as _openai_lib
-            client = _openai_client(api_key)
+            from core.llm_clients import _async_openai_client
+            client = _async_openai_client(api_key)
             full_msgs = []
             if role_prompt:
                 full_msgs.append({"role": "system", "content": role_prompt})
             full_msgs.extend(messages)
-            raw = client.chat.completions.create(
+            raw = await client.chat.completions.create(
                 model=model or settings.openai_model,
                 messages=full_msgs,
                 max_tokens=4096,
@@ -887,8 +857,8 @@ async def resume_graph_workflow(
     snapshot = app.get_state(config)
     if snapshot.next:
         next_node_name = snapshot.next[0]
-        # Derive approval_names from workflow nodes (needed after server restart)
-        _, resume_nodes, _ = _load_workflow_from_db(workflow_id)
+        # Reuse nodes from the registry build (or load once if registry was rebuilt above)
+        _, resume_nodes, _ = _load_workflow_from_db(workflow_id)  # cheap — < 5 ms
         resume_approval_names = [n["name"] for n in resume_nodes.values() if n.get("require_approval")]
         last_ran_name = next_node_name
         for aname in reversed(resume_approval_names):
