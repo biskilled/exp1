@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 22:28 UTC — do not edit manually.
+> Auto-generated 2026-03-21 22:33 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 195
-- **Last active**: 2026-03-21T22:28:17Z
+- **Sessions**: 196
+- **Last active**: 2026-03-21T22:33:33Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -30,18 +30,20 @@
 - **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for workflow definitions
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for pipeline definitions
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+- **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 
 ## In Progress
 
-- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points: former writes files then commits, latter commits existing working tree changes; reverted forced delegation
+- Pipeline engine refactoring (2026-03-21) — Consolidate pipeline engine under workflows/ with pipeline_ prefix on all files for consistency and better visibility; verify zero stale imports across all modules
 - File naming convention refactor (2026-03-21) — Completed rename of provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified config.py as primary for externalized backend settings
+- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points; former writes files then commits, latter commits existing working tree changes
 - Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized
-- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 - SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
-- Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
+- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 
 ## Key Decisions
 
@@ -55,11 +57,11 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
-- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table instead of hardcoded Haiku
-- Graph runner commits via `_apply_code_and_commit` with standardized message format; separate `git_tool` for existing working tree changes
+- Pipelines (formerly workflow engine) centralized under workflows/ with pipeline_ prefix for consistency and visibility
+- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table
+- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
 
 ---
 
@@ -153,6 +155,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 22:31]** `claude_cli/claude`  
+→ If pipeline engine use that, it is not better to add that under workflows - also, can you rename that to pipelines for c
+← _Verify zero stale imports and all modules load:_
+
 **[2026-03-21 22:27]** `claude_cli/claude`  
 → I do see there is gitops and git_tool under agent_tools, is both needed ?
 ← _Actually `apply_code_and_commit` requires file changes to write — it returns empty if nothing to write. The handlers have genuinely different entry points (one writes files then commits, the other com_
@@ -206,7 +212,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-20 22:22]** `claude_cli/claude`  
 → I am not sure what the developer did. dont see any output , and not sure there was any commit/push laos reviewer mention
 ← _Good. Let me also quickly verify that `_apply_code_and_commit` in `graph_runner.py` commits with the right message format for work items:_
-
-**[2026-03-20 22:09]** `claude_cli/claude`  
-→ Why work Item pipeline is not using the pre defined roles ? 
-← _Up. Here's the complete answer to the question:  ---  ## Why the work item pipeline wasn't using predefined roles  **Root cause (before today's fixes):** The original `work_item_pipeline.py` had all p_

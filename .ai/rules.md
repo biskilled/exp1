@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 22:28 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 22:33 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -25,9 +25,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for workflow definitions
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for pipeline definitions
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+- **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 
 ## Key Decisions
 
@@ -41,16 +43,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
-- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table instead of hardcoded Haiku
-- Graph runner commits via `_apply_code_and_commit` with standardized message format; separate `git_tool` for existing working tree changes
+- Pipelines (formerly workflow engine) centralized under workflows/ with pipeline_ prefix for consistency and visibility
+- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table
+- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] test prompt from manual run
 - [2026-03-21] WHy there is model and routers folder, shoud thay all be under routers? also I do see some files like work_item_pipeline
 - [2026-03-21] All 4 files - pricing and the one start with provider are realted to agents providers. can you add thos files over there
 - [2026-03-21] can you rename all files under providers to start with pr_  also the one under memory - start with mem_ . I do have yaml
 - [2026-03-21] I do see there is gitops and git_tool under agent_tools, is both needed ?
+- [2026-03-21] If pipeline engine use that, it is not better to add that under workflows - also, can you rename that to pipelines for c

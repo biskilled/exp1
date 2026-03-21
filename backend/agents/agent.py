@@ -103,7 +103,7 @@ class Agent:
 
         tools: list[dict] = []
         if with_tools:
-            from tools.agent_tools import ALL_TOOL_DEFS
+            from agents.tools import ALL_TOOL_DEFS
             tools = ALL_TOOL_DEFS
 
         return cls(name=role_name, system_prompt=system_prompt,
@@ -231,7 +231,7 @@ class Agent:
                 )
 
             # Tool use turn — invoke each tool and append results
-            from tools.agent_tools import invoke_tool
+            from agents.tools import invoke_tool
 
             # Append assistant turn with tool calls
             messages.append({"role": "assistant", "content": resp.get("raw", resp)})

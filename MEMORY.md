@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 22:28 UTC by aicli /memory_
+_Generated: 2026-03-21 22:33 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining Claude CLI with a full-stack web application (FastAPI backend, Electron+Vanilla JS frontend) for collaborative development workflows. It features semantic search via PostgreSQL+pgvector, async DAG-based workflow execution with graph visualization, dual JSONL+SQL storage, and multi-LLM provider support. Current state: core architecture stable with file/module organization complete; three critical bugs unresolved (project visibility, tag persistence across sessions, port binding conflicts) and SQL performance optimization needed.
+aicli is a shared AI memory platform built on FastAPI (backend) + Electron (desktop UI) that enables collaboration across Claude CLI, LLM platforms, and MCP-integrated workflows. It combines JSONL-based history storage with PostgreSQL pgvector embeddings for semantic search, manages nested tag hierarchies and DAG-based pipelines, and supports multi-provider LLM adapters (Claude, OpenAI, DeepSeek, Gemini, Grok). Current focus: pipeline engine consolidation, module organization audit, SQL optimization, and debugging project visibility race conditions in backend initialization.
 
 ## Project Facts
 
@@ -65,9 +65,11 @@ Reviewer: ```json
 - **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for workflow definitions
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for pipeline definitions
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+- **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 
 ## Key Decisions
 
@@ -81,26 +83,26 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
-- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table instead of hardcoded Haiku
-- Graph runner commits via `_apply_code_and_commit` with standardized message format; separate `git_tool` for existing working tree changes
+- Pipelines (formerly workflow engine) centralized under workflows/ with pipeline_ prefix for consistency and visibility
+- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table
+- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
 
 ## In Progress
 
-- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points: former writes files then commits, latter commits existing working tree changes; reverted forced delegation
+- Pipeline engine refactoring (2026-03-21) — Consolidate pipeline engine under workflows/ with pipeline_ prefix on all files for consistency and better visibility; verify zero stale imports across all modules
 - File naming convention refactor (2026-03-21) — Completed rename of provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified config.py as primary for externalized backend settings
+- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points; former writes files then commits, latter commits existing working tree changes
 - Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized
-- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 - SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
-- Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
+- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(53 events, 47 commits)`
+- **hooks** `(54 events, 48 commits)`
 
 ### Doc_type
 
@@ -118,7 +120,7 @@ Reviewer: ```json
 - **graph-workflow** `(31 events, 27 commits)`
 - **workflow-runner** `(29 events, 27 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **billing** `(8 events, 7 commits)`
+- **billing** `(9 events, 8 commits)`
 - **tagging**
 - **mcp**
 - **test-picker-feature**
@@ -127,8 +129,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(47 events, 44 commits)`
-- **development** `(40 events, 35 commits)`
+- **discovery** `(48 events, 45 commits)`
+- **development** `(41 events, 36 commits)`
 - **prod**
 
 ### Task
@@ -206,4 +208,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-21]** `development_history` — Clarified that `apply_code_and_commit` and `git_tool` serve different purposes (former writes files and commits, latter commits existing working tree changes) with distinct entry points; reverted forced delegation. **[2026-03-21]** `in_progress` — Completed file naming refactor with pr_ and mem_ prefixes across agent and memory providers; clarified config.py role as centralizing externalized backend settings. **[2026-03-21]** `in_progress` — Finished backend module organization audit distinguishing routers/ (API endpoints) from models/ (data structures) with centralized workflow logic. **[2026-03-21]** `in_progress` — Project visibility bug remains: AiCli appears in Recent projects but not main project list; backend startup retry logic partially addresses race condition but root cause unresolved. **[2026-03-21]** `in_progress` — Identified SQL performance issues: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination. **[2026-03-10]** `memory_digest` — Implemented load-once-on-access pattern to cache tags/workflows in memory and update DB only on explicit save; discovered tags disappear on session switch (UI rendering vs database save failure unclear); noted intermittent port binding conflicts.
+**[2026-03-21]** `claude_cli` — Consolidated pipeline engine under workflows/ with pipeline_ prefix on all files for consistency and visibility; verified zero stale imports. **[2026-03-21]** `in_progress` — Completed provider file rename refactor (pr_ prefix for agents/providers/, mem_ prefix for memory/) and clarified config.py as central externalized settings hub. **[2026-03-21]** `in_progress` — Confirmed agent tool separation: `_apply_code_and_commit` writes files then commits (distinct from `git_tool` which commits existing working tree changes); reverted forced delegation. **[2026-03-21]** `in_progress` — Backend module organization clarified: routers/ for API endpoints, models/ for data structures, workflow/pipeline logic centralized. **[2026-03-18]** `in_progress` — Fixed AttributeError in main.py (removed stale `ensure_project_schema` call), undefined `code_dir` in memory endpoint CLAUDE.md template, backend startup race condition with retry logic. **[2026-03-10]** `in_progress` — Implemented load-once-on-access memory caching strategy; approved nested tag hierarchy expansion; identified data persistence bug (tags disappear on session switch); improved port binding safety. **[2026-03-14]** `project_facts` — Confirmed hierarchical data model (clients contain users), standardized schema method convention (_ensure_shared_schema), pending memory_items and project_facts table population.

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 
 from core.auth import create_access_token, get_current_user
-from models import user as user_store
+from data import user as user_store
 
 router = APIRouter()
 

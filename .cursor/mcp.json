@@ -3,7 +3,7 @@
     "aicli": {
       "command": "python3.12",
       "args": [
-        "/Users/user/Documents/gdrive_cellqlick/2026/aicli/backend/tools/mcp/server.py"
+        "/Users/user/Documents/gdrive_cellqlick/2026/aicli/backend/agents/mcp/server.py"
       ],
       "env": {
         "BACKEND_URL": "http://localhost:8000",
