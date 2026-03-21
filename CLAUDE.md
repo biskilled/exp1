@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-21] `claude_cli`: Let me check that all went well. when I try to open aiCli - it mention that it cannot find the proje
-- [2026-03-21] `claude_cli`: I till see the rror - Project did not found aiCli. also I do not see any project loaded. the project
 - [2026-03-21] `claude_cli`: Now Ui is failing to load - Javascriot error at main process - child_process:483:16
 - [2026-03-21] `claude_cli`: looks better. now I dont see any automated commits also mcp server is not configured well. I do see 
 - [2026-03-21] `claude_cli`: I would like to make sure backend is witten properly - I do see storage folder who is only managing 
+- [2026-03-21] `claude_cli`: I do not see hooks runing yet. 
+- [2026-03-21] `claude_cli`: test prompt from manual run
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

@@ -28,7 +28,7 @@ import yaml
 
 from core.config import settings
 from core.api_keys import get_key
-from core import llm_clients
+from agents import providers as llm_clients
 
 # ── File helpers ──────────────────────────────────────────────────────────────
 

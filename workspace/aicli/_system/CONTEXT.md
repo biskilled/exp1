@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 21:30 UTC — do not edit manually.
+> Auto-generated 2026-03-21 21:40 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 190
-- **Last active**: 2026-03-21T21:29:42Z
+- **Sessions**: 191
+- **Last active**: 2026-03-21T21:39:43Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,12 +35,12 @@
 
 ## In Progress
 
-- Backend code organization refactor (2026-03-21) — User questioned storage folder managing sessions and scattered memory management classes under core; requires consolidation of memory classes and clarification of model usage
-- MCP server path and configuration alignment (2026-03-21) — Fixed path references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched to env vars instead of hardcoded arguments; created missing .claude/mcp.json
-- Electron backend path resolution (2026-03-21) — Fixed BACKEND_DIR path pointing to old/ui/backend instead of correct aicli/backend; verified all project lookup endpoints work correctly
-- Automated commit hooks configuration (2026-03-21) — Ensured all hooks configured without hardcoded strings; using backend_url environment variable; hooks not yet fully operational
-- Project visibility bug investigation (2026-03-21) — AiCli project appearing in Recent but not in main project list; suspected race condition in Electron initialization; partial fix applied
-- SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
+- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup
+- Backend code organization refactor — Consolidation of memory management classes under core module; clarification of model usage patterns required
+- MCP server path and configuration alignment — Fixed env var references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched from hardcoded arguments
+- Electron backend path resolution — Corrected BACKEND_DIR path from old/ui/backend to aicli/backend; verified project lookup endpoints functional
+- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; suspected race condition in Electron initialization
+- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
 
 ## Key Decisions
 
@@ -152,6 +152,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 21:35]** `claude_cli/claude`  
+→ test prompt from manual run
+
+**[2026-03-21 21:34]** `claude_cli/claude`  
+→ I do not see hooks runing yet. 
+← _Clean. Now commit and push:_
+
 **[2026-03-21 21:24]** `claude_cli/claude`  
 → I would like to make sure backend is witten properly - I do see storage folder who is only managing session, which I don
 ← _Verify the backend still imports cleanly:_
@@ -202,11 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-20 19:46]** `claude_cli/claude`  
 → I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
 ← _But `_loadTab` refetches if no cache. The real fix is that `_render()` reattaches to container and `_loadTab` uses the cached data. Let me check how the HistoryView handles this — when `_histData` is _
-
-**[2026-03-20 19:09]** `claude_cli/claude`  
-→ I am testing the Pipeline - when I clicked approved I do see the old md version . I would expcet to see process and afte
-← _Also verify the Python files have no obvious errors:_
-
-**[2026-03-20 18:19]** `claude_cli/claude`  
-→ I still dont see the project loaded when app is started. all I can see in the logs is  Application startup complete. (us
-← _Both files pass syntax validation. Here's a summary of what was implemented in the previous session and is ready to test:  **All 6 improvements are in place:**  1. **Projects load on startup** — `_con_

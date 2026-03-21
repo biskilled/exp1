@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 21:29 UTC by aicli /memory_
+_Generated: 2026-03-21 21:39 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining Claude CLI, FastAPI backend, PostgreSQL semantic search, and Electron desktop UI. It manages per-project development history via dual storage (JSONL + pgvector), implements DAG-based workflow execution with visual graph interface, and integrates MCP for context retrieval. Current focus: backend code organization refactoring, MCP configuration alignment, and SQL query optimization.
+aicli is a shared AI memory platform enabling Claude CLI and other LLM platforms to persist development context, manage complex workflows via DAG execution, and synthesize insights across sessions. Built on Python FastAPI backend, PostgreSQL with pgvector embeddings, Electron UI with Vanilla JS, it supports multi-user authentication, nested tagging hierarchies, and configurable LLM provider integration. Currently in active development with ongoing fixes to commit hooks, SQL performance, project visibility bugs, and memory table population.
 
 ## Project Facts
 
@@ -88,12 +88,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Backend code organization refactor (2026-03-21) — User questioned storage folder managing sessions and scattered memory management classes under core; requires consolidation of memory classes and clarification of model usage
-- MCP server path and configuration alignment (2026-03-21) — Fixed path references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched to env vars instead of hardcoded arguments; created missing .claude/mcp.json
-- Electron backend path resolution (2026-03-21) — Fixed BACKEND_DIR path pointing to old/ui/backend instead of correct aicli/backend; verified all project lookup endpoints work correctly
-- Automated commit hooks configuration (2026-03-21) — Ensured all hooks configured without hardcoded strings; using backend_url environment variable; hooks not yet fully operational
-- Project visibility bug investigation (2026-03-21) — AiCli project appearing in Recent but not in main project list; suspected race condition in Electron initialization; partial fix applied
-- SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
+- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup
+- Backend code organization refactor — Consolidation of memory management classes under core module; clarification of model usage patterns required
+- MCP server path and configuration alignment — Fixed env var references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched from hardcoded arguments
+- Electron backend path resolution — Corrected BACKEND_DIR path from old/ui/backend to aicli/backend; verified project lookup endpoints functional
+- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; suspected race condition in Electron initialization
+- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
 
 ## Active Features / Bugs / Tasks
 
@@ -127,7 +127,7 @@ Reviewer: ```json
 ### Phase
 
 - **discovery** `(39 events, 37 commits)`
-- **development** `(31 events, 28 commits)`
+- **development** `(32 events, 28 commits)`
 - **prod**
 
 ### Task
@@ -205,4 +205,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-21]** `in_progress` — Backend code organization refactoring requested: consolidate scattered memory management classes currently under core module, clarify model usage, and eliminate storage folder redundancy for session management. **[2026-03-21]** `in_progress` — MCP configuration finalized: switched from hardcoded arguments to environment variables (BACKEND_URL, ACTIVE_PROJECT) across aicli.yaml, .cursor/mcp.json, and .claude/mcp.json; created missing .claude/mcp.json. **[2026-03-21]** `bug_fix` — Electron backend path resolution corrected: BACKEND_DIR was pointing to old/ui/backend instead of aicli/backend; verified all project lookup endpoints now functional. **[2026-03-21]** `bug_investigation` — Project visibility race condition identified: AiCli project appears in Recent projects list but fails to display as active in main project view during Electron initialization; partial retry logic fix applied. **[2026-03-20]** `perf_issue` — SQL query inefficiencies discovered: event migration uses row-by-row INSERT and memory synthesis has unbounded fetchall(); requires batch INSERT refactor and pagination implementation. **[2026-03-10]** `architecture` — Load-once-on-access pattern implemented to reduce redundant SQL calls: tags and workflows cached in memory on project access, updated to DB only on explicit save actions.
+**[2026-03-21]** `claude_cli` — User confirmed hooks configuration not yet operational; requires verification of execution logic and environment bindings. **[2026-03-21]** `backend refactor` — Code organization scattered across memory management classes; consolidation under core module pending. **[2026-03-21]** `mcp configuration` — Unified env var approach across .cursor/mcp.json and .claude/mcp.json; removed hardcoded argument patterns. **[2026-03-21]** `electron paths` — Corrected BACKEND_DIR reference from old/ui/backend to aicli/backend; project lookup endpoints verified functional. **[2026-03-21]** `project visibility` — AiCli appearing in Recent projects but missing from main list; race condition in Electron initialization suspected. **[2026-03-20]** `sql optimization` — Identified inefficient row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; batch refactor required. **[2026-03-18]** `bug fixes` — Removed stale db.ensure_project_schema() call; fixed memory endpoint code_dir variable scoping; improved backend startup retry logic for empty project lists. **[2026-03-10]** `tag hierarchy` — Approved unlimited nested tag depth via parent_id FK; confirmed login as first-level hierarchy. **[2026-03-10]** `data persistence` — Tags saved in UI disappear on session switch; root cause unclear (rendering vs database save). **[2026-03-14]** `project state` — 14 active features/tasks tracked (UI, shared-memory, auth, graph-workflow, workflow-runner, embeddings, tagging, billing, mcp, dropbox, pagination); discovery/development phases active with 39/32 events respectively.

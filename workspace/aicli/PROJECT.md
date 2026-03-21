@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Backend code organization refactor (2026-03-21) — User questioned storage folder managing sessions and scattered memory management classes under core; requires consolidation of memory classes and clarification of model usage
-- MCP server path and configuration alignment (2026-03-21) — Fixed path references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched to env vars instead of hardcoded arguments; created missing .claude/mcp.json
-- Electron backend path resolution (2026-03-21) — Fixed BACKEND_DIR path pointing to old/ui/backend instead of correct aicli/backend; verified all project lookup endpoints work correctly
-- Automated commit hooks configuration (2026-03-21) — Ensured all hooks configured without hardcoded strings; using backend_url environment variable; hooks not yet fully operational
-- Project visibility bug investigation (2026-03-21) — AiCli project appearing in Recent but not in main project list; suspected race condition in Electron initialization; partial fix applied
-- SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
+- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup
+- Backend code organization refactor — Consolidation of memory management classes under core module; clarification of model usage patterns required
+- MCP server path and configuration alignment — Fixed env var references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched from hardcoded arguments
+- Electron backend path resolution — Corrected BACKEND_DIR path from old/ui/backend to aicli/backend; verified project lookup endpoints functional
+- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; suspected race condition in Electron initialization
+- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination

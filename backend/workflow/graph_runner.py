@@ -89,7 +89,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
               "input_tokens": int, "output_tokens": int, "status": str}
     """
     from core.api_keys import get_key
-    from core.llm_clients import call_claude, call_deepseek, call_gemini, call_grok
+    from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
     from core.provider_costs import estimate_cost
 
     node_id = node["id"]
@@ -899,7 +899,7 @@ def _fire_background(run_id: str, project: str) -> None:
     """
     async def _safe_embed():
         try:
-            from core.embeddings import embed_node_outputs
+            from memory.embeddings import embed_node_outputs
             await embed_node_outputs(run_id, project)
         except Exception as _e:
             log.debug(f"Background embed failed (non-critical): {_e}")

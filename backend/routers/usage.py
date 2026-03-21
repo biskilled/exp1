@@ -21,7 +21,7 @@ from core.config import settings
 from core.auth import get_current_user
 from data.database import db
 from core.pricing import calculate_cost
-from models.user import find_by_id, list_users
+from data.user import find_by_id, list_users
 
 router = APIRouter()
 

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 21:29 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 21:39 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -48,8 +48,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] Let me check that all went well. when I try to open aiCli - it mention that it cannot find the project. also there is st
-- [2026-03-21] I till see the rror - Project did not found aiCli. also I do not see any project loaded. the project aiCli is under the 
 - [2026-03-21] Now Ui is failing to load - Javascriot error at main process - child_process:483:16
 - [2026-03-21] looks better. now I dont see any automated commits also mcp server is not configured well. I do see that aiCli.yaml is u
 - [2026-03-21] I would like to make sure backend is witten properly - I do see storage folder who is only managing session, which I don
+- [2026-03-21] I do not see hooks runing yet.
+- [2026-03-21] test prompt from manual run

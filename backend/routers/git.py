@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from data.database import db
-from core.llm_clients import call_claude
+from agents.providers import call_claude
 
 log = logging.getLogger(__name__)
 

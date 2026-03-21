@@ -913,7 +913,7 @@ async def approval_chat(
 
     # ── Call LLM ─────────────────────────────────────────────────────────────
     from core.api_keys import get_key
-    from core.llm_clients import call_claude
+    from agents.providers import call_claude
     api_key = get_key("claude")
     resp = await call_claude(messages, system=node_prompt, api_key=api_key)
     reply = resp.get("content", "")
