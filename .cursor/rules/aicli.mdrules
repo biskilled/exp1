@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 21:17 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 21:29 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -31,7 +31,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state
-- Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables
+- Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector (1536-dim embeddings) for semantic search and per-project indexed tables
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys
@@ -48,8 +48,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] What is the cli folder is used for ?
 - [2026-03-21] Let me check that all went well. when I try to open aiCli - it mention that it cannot find the project. also there is st
 - [2026-03-21] I till see the rror - Project did not found aiCli. also I do not see any project loaded. the project aiCli is under the 
 - [2026-03-21] Now Ui is failing to load - Javascriot error at main process - child_process:483:16
 - [2026-03-21] looks better. now I dont see any automated commits also mcp server is not configured well. I do see that aiCli.yaml is u
+- [2026-03-21] I would like to make sure backend is witten properly - I do see storage folder who is only managing session, which I don

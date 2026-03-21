@@ -25,7 +25,7 @@
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state",
-    "Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables",
+    "Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector (1536-dim embeddings) for semantic search and per-project indexed tables",
     "Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development",
     "JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy",
     "All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys",
@@ -67,12 +67,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
+    "Backend code organization refactor (2026-03-21) \u2014 User questioned storage folder managing sessions and scattered memory management classes under core; requires consolidation of memory classes and clarification of model usage",
     "MCP server path and configuration alignment (2026-03-21) \u2014 Fixed path references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched to env vars instead of hardcoded arguments; created missing .claude/mcp.json",
     "Electron backend path resolution (2026-03-21) \u2014 Fixed BACKEND_DIR path pointing to old/ui/backend instead of correct aicli/backend; verified all project lookup endpoints work correctly",
     "Automated commit hooks configuration (2026-03-21) \u2014 Ensured all hooks configured without hardcoded strings; using backend_url environment variable; hooks not yet fully operational",
     "Project visibility bug investigation (2026-03-21) \u2014 AiCli project appearing in Recent but not in main project list; suspected race condition in Electron initialization; partial fix applied",
-    "SQL query optimization (2026-03-20) \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination",
-    "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD displayed instead of current output/progress logs in approval panel; requires chat panel state management fix"
+    "SQL query optimization (2026-03-20) \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -104,11 +104,11 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-21T21:17:53Z",
+  "last_memory_run": "2026-03-21T21:30:07Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state",
-      "Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables",
+      "Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector (1536-dim embeddings) for semantic search and per-project indexed tables",
       "Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development",
       "JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy",
       "All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys",
@@ -124,12 +124,12 @@
       "Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval"
     ],
     "in_progress": [
+      "Backend code organization refactor (2026-03-21) \u2014 User questioned storage folder managing sessions and scattered memory management classes under core; requires consolidation of memory classes and clarification of model usage",
       "MCP server path and configuration alignment (2026-03-21) \u2014 Fixed path references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched to env vars instead of hardcoded arguments; created missing .claude/mcp.json",
       "Electron backend path resolution (2026-03-21) \u2014 Fixed BACKEND_DIR path pointing to old/ui/backend instead of correct aicli/backend; verified all project lookup endpoints work correctly",
       "Automated commit hooks configuration (2026-03-21) \u2014 Ensured all hooks configured without hardcoded strings; using backend_url environment variable; hooks not yet fully operational",
       "Project visibility bug investigation (2026-03-21) \u2014 AiCli project appearing in Recent but not in main project list; suspected race condition in Electron initialization; partial fix applied",
-      "SQL query optimization (2026-03-20) \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination",
-      "Pipeline approval workflow rendering (2026-03-20) \u2014 Old MD displayed instead of current output/progress logs in approval panel; requires chat panel state management fix"
+      "SQL query optimization (2026-03-20) \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -149,7 +149,7 @@
       "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
       "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings"
     },
-    "project_summary": "aicli is a shared AI memory platform built on FastAPI + PostgreSQL + Electron, enabling multi-user project collaboration with semantic memory synthesis, DAG-based workflow automation, and LLM provider agnostic integration. Currently at v2.2.0, the project is in active development with focus on fixing backend path resolution, MCP server configuration, and optimizing SQL query performance for production readiness.",
-    "memory_digest": "**[2026-03-21]** `claude_cli` \u2014 MCP server path references corrected across aicli.yaml, .cursor/mcp.json, and .claude/mcp.json; switched from hardcoded arguments to environment variables (BACKEND_URL, ACTIVE_PROJECT) for robust configuration. **[2026-03-21]** `claude_cli` \u2014 Fixed critical Electron backend path resolution: BACKEND_DIR was pointing to old/ui/backend instead of aicli/backend, causing all project lookups to fail; verified all three endpoints now work correctly. **[2026-03-21]** `claude_cli` \u2014 Automated commit hooks require finalization; infrastructure now supports environment-based configuration to eliminate hardcoded backend URLs. **[2026-03-21]** `claude_cli` \u2014 Project visibility race condition identified: AiCli appearing in Recent but absent from main project list; partially addressed through Electron initialization fixes. **[2026-03-20]** `synthesis` \u2014 Work item pipeline refactored to query mng_agent_roles table and respect per-role LLM provider configuration instead of hardcoded Haiku/Anthropic. **[2026-03-20]** `synthesis` \u2014 Identified SQL optimization requirements: row-by-row INSERT operations and unbounded fetchall() in memory synthesis need batch refactoring and pagination. **[2026-03-18]** `synthesis` \u2014 Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call; corrected memory endpoint template variable scoping for code_dir. **[2026-03-10]** `synthesis` \u2014 Implemented load-once-on-access caching pattern: tags/workflows/runs cached in memory on project access, updates committed to DB only on explicit save to reduce redundant SQL. **[2026-03-10]** `synthesis` \u2014 Approved nested tag hierarchy expansion beyond 2-level structure; confirmed login as first-level-only designation. **[2026-03-10]** `synthesis` \u2014 Identified data persistence bug where UI-saved tags disappear on session switch; root cause investigation pending."
+    "project_summary": "aicli is a shared AI memory platform combining Claude CLI, FastAPI backend, PostgreSQL semantic search, and Electron desktop UI. It manages per-project development history via dual storage (JSONL + pgvector), implements DAG-based workflow execution with visual graph interface, and integrates MCP for context retrieval. Current focus: backend code organization refactoring, MCP configuration alignment, and SQL query optimization.",
+    "memory_digest": "**[2026-03-21]** `in_progress` \u2014 Backend code organization refactoring requested: consolidate scattered memory management classes currently under core module, clarify model usage, and eliminate storage folder redundancy for session management. **[2026-03-21]** `in_progress` \u2014 MCP configuration finalized: switched from hardcoded arguments to environment variables (BACKEND_URL, ACTIVE_PROJECT) across aicli.yaml, .cursor/mcp.json, and .claude/mcp.json; created missing .claude/mcp.json. **[2026-03-21]** `bug_fix` \u2014 Electron backend path resolution corrected: BACKEND_DIR was pointing to old/ui/backend instead of aicli/backend; verified all project lookup endpoints now functional. **[2026-03-21]** `bug_investigation` \u2014 Project visibility race condition identified: AiCli project appears in Recent projects list but fails to display as active in main project view during Electron initialization; partial retry logic fix applied. **[2026-03-20]** `perf_issue` \u2014 SQL query inefficiencies discovered: event migration uses row-by-row INSERT and memory synthesis has unbounded fetchall(); requires batch INSERT refactor and pagination implementation. **[2026-03-10]** `architecture` \u2014 Load-once-on-access pattern implemented to reduce redundant SQL calls: tags and workflows cached in memory on project access, updated to DB only on explicit save actions."
   }
 }

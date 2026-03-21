@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 21:19 UTC — do not edit manually.
+> Auto-generated 2026-03-21 21:30 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 189
-- **Last active**: 2026-03-21T21:17:28Z
+- **Sessions**: 190
+- **Last active**: 2026-03-21T21:29:42Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,17 +35,17 @@
 
 ## In Progress
 
+- Backend code organization refactor (2026-03-21) — User questioned storage folder managing sessions and scattered memory management classes under core; requires consolidation of memory classes and clarification of model usage
 - MCP server path and configuration alignment (2026-03-21) — Fixed path references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched to env vars instead of hardcoded arguments; created missing .claude/mcp.json
 - Electron backend path resolution (2026-03-21) — Fixed BACKEND_DIR path pointing to old/ui/backend instead of correct aicli/backend; verified all project lookup endpoints work correctly
 - Automated commit hooks configuration (2026-03-21) — Ensured all hooks configured without hardcoded strings; using backend_url environment variable; hooks not yet fully operational
 - Project visibility bug investigation (2026-03-21) — AiCli project appearing in Recent but not in main project list; suspected race condition in Electron initialization; partial fix applied
 - SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
-- Pipeline approval workflow rendering (2026-03-20) — Old MD displayed instead of current output/progress logs in approval panel; requires chat panel state management fix
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state
-- Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables
+- Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector (1536-dim embeddings) for semantic search and per-project indexed tables
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys
@@ -152,6 +152,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 21:24]** `claude_cli/claude`  
+→ I would like to make sure backend is witten properly - I do see storage folder who is only managing session, which I don
+← _Verify the backend still imports cleanly:_
+
 **[2026-03-21 21:11]** `claude_cli/claude`  
 → looks better. now I dont see any automated commits also mcp server is not configured well. I do see that aiCli.yaml is u
 ← _Here's a summary of what was fixed:  ---  **1. MCP Server — wrong path (all 3 configs updated)** - `aicli.yaml`: `ui/mcp_server.py` → `backend/tools/mcp/server.py` - `.cursor/mcp.json`: same path fix _
@@ -206,7 +210,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-20 18:19]** `claude_cli/claude`  
 → I still dont see the project loaded when app is started. all I can see in the logs is  Application startup complete. (us
 ← _Both files pass syntax validation. Here's a summary of what was implemented in the previous session and is ready to test:  **All 6 improvements are in place:**  1. **Projects load on startup** — `_con_
-
-**[2026-03-20 16:29]** `claude_cli/claude`  
-→ Projects only loading when I press to prject tab. as Project  loaded as default page, it should load when app is starter
-← _Here's a summary of all 8 fixes applied:  ---  **1. Projects not loading on startup** (`main.js`) - Added a re-render of `renderHome(view)` in `_continueToApp`'s `.then()` callback when still on the h_
