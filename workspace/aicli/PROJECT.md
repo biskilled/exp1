@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Backend module organization audit (2026-03-21) — Clarified that routers/ handles API endpoints and models/ handles data structures; work_item_pipeline.py and embedding.py logically belong in workflow/memory subsystems respectively; verified no orphaned references remain after refactoring
+- Agent providers file reorganization (2026-03-21) — Relocated pricing.py and provider-related files to agents/providers/ with pr_ prefix; clarified config.py role in centralizing externalized backend settings
 - Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup validation
+- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized; no orphaned references remain
 - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 - SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
 - Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
-- memory_items and project_facts table population — Per specification, these tables should be populated to enable improved memory/context mechanism; update logic not yet implemented

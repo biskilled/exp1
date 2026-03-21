@@ -6,7 +6,7 @@ from __future__ import annotations
 import openai
 
 from core.config import settings
-from agents.providers.base import AsyncProvider
+from agents.providers.pr_base import AsyncProvider
 
 
 async def call_grok(

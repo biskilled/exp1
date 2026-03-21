@@ -8,7 +8,7 @@ from __future__ import annotations
 import openai
 
 from core.config import settings
-from agents.providers.base import AsyncProvider
+from agents.providers.pr_base import AsyncProvider
 
 
 def _async_client(api_key: str | None, base_url: str | None = None) -> openai.AsyncOpenAI:

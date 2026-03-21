@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 21:49 UTC by aicli /memory_
+_Generated: 2026-03-21 22:20 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that enables Claude CLI, Cursor, and other LLM clients to maintain persistent, searchable project context across sessions. It combines JSONL-based local storage with PostgreSQL+pgvector for semantic search, features JWT-authenticated multi-user support, async DAG-based workflow execution with Cytoscape visualization, and integrates an MCP server for AI-driven work item management. Currently in active development with focus on backend module organization, query optimization, and resolving data persistence issues.
+aicli is a shared AI memory platform integrating Claude CLI with LLM-powered workflow automation, semantic search via PostgreSQL pgvector, and multi-role project management. The system combines dual-layer storage (JSONL + PostgreSQL), async DAG workflow execution, nested tag hierarchies, and MCP integration for AI-assisted development. Current focus is stabilizing project visibility, optimizing SQL performance, fixing tag persistence across sessions, and completing agent provider reorganization with config centralization.
 
 ## Project Facts
 
@@ -65,8 +65,9 @@ Reviewer: ```json
 - **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 
 ## Key Decisions
 
@@ -84,22 +85,22 @@ Reviewer: ```json
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
 - Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
-- Backend module organization: routers/ for API endpoints, models/ for data structures; workflow logic centralized (not scattered across modules)
+- Agent providers organized in agents/providers/ with pr_ prefix; config.py centralizes externalized settings (backend_url, haiku_model, db_pool_max, MCP settings)
 
 ## In Progress
 
-- Backend module organization audit (2026-03-21) — Clarified that routers/ handles API endpoints and models/ handles data structures; work_item_pipeline.py and embedding.py logically belong in workflow/memory subsystems respectively; verified no orphaned references remain after refactoring
+- Agent providers file reorganization (2026-03-21) — Relocated pricing.py and provider-related files to agents/providers/ with pr_ prefix; clarified config.py role in centralizing externalized backend settings
 - Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup validation
+- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized; no orphaned references remain
 - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 - SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
 - Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
-- memory_items and project_facts table population — Per specification, these tables should be populated to enable improved memory/context mechanism; update logic not yet implemented
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(46 events, 40 commits)`
+- **hooks** `(51 events, 45 commits)`
 
 ### Doc_type
 
@@ -126,8 +127,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(39 events, 37 commits)`
-- **development** `(36 events, 32 commits)`
+- **discovery** `(40 events, 37 commits)`
+- **development** `(37 events, 33 commits)`
 - **prod**
 
 ### Task
@@ -205,4 +206,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-21]** `claude_cli` — Backend module organization clarified: routers/ handles API endpoints, models/ holds data structures; work_item_pipeline.py and embedding.py logically belong in workflow/memory subsystems; verified clean refactoring with no orphaned references. **[2026-03-21]** `reported_issue` — Automated commit hooks not executing; requires verification of hook environment setup and trigger logic. **[2026-03-18]** `code_fix` — Fixed AttributeError in main.py by removing stale `db.ensure_project_schema()` call; replaced with correct `_ensure_shared_schema()` method. **[2026-03-18]** `code_fix` — Memory endpoint CLAUDE.md template error resolved; undefined `code_dir` variable now properly scoped from config at line 1120. **[2026-03-18]** `architecture_fix` — Backend startup race condition mitigated with enhanced retry logic in `_continueToApp()` to handle empty project list on first load. **[2026-03-14]** `bug_open` — Project visibility issue: AiCli appears in Recent but not as active in main view; timing issue during backend initialization suspected. **[2026-03-10]** `performance_issue` — Database redundancy identified; implemented load-once-on-access pattern with explicit DB save to reduce SQL calls. **[2026-03-10]** `data_persistence_bug` — Tags saved in UI disappear when switching sessions; unclear if UI rendering or database save failure. **[2026-03-10]** `optimization_needed` — Row-by-row INSERT and unbounded fetchall() in event migration and memory synthesis require batch refactoring and pagination. **[TBD]** `pending_implementation` — memory_items and project_facts tables not being populated per specification; logic implementation required.
+**[2026-03-21]** `claude_cli` — Reorganized agent provider files into agents/providers/ with pr_ prefix for pricing and provider implementations; clarified config.py as centralized configuration hub for backend settings, models, and MCP configuration. **[2026-03-21]** `backend_audit` — Completed module organization audit confirming routers/ handles API endpoints and models/ handles data structures; verified no orphaned references after refactoring. **[2026-03-21]** `hooks` — User reported automated commit hooks not executing; hook execution logic and environment setup require verification. **[2026-03-18]** `bug_fixes` — Fixed AttributeError in main.py (stale db.ensure_project_schema call), memory endpoint CLAUDE.md template error (code_dir variable scoping), and backend startup race condition affecting empty project list handling. **[2026-03-14]** `project_state` — AiCli project visibility bug identified: appears in Recent projects but not main project list; suspected race condition during backend initialization with partial fix via retry logic. **[2026-03-10]** `database_performance` — Implemented load-once-on-access pattern for tags and workflows to reduce redundant SQL calls; identified tag persistence bug where UI-saved tags disappear on session switch. **[2026-03-10]** `ui_improvements` — Enhanced planner visibility with 3-dot action menu replacing small buttons; added unarchive capability. **[Pending]** `memory_items_population` — memory_items and project_facts tables specified but not yet populated; update logic requires implementation to enable improved memory/context mechanism.

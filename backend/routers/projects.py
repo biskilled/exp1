@@ -622,7 +622,7 @@ async def update_project_summary(project_name: str, body: dict = Body(...)):
     (proj_dir / "PROJECT.md").write_text(content)
     # Embed updated PROJECT.md for semantic search (fire-and-forget)
     try:
-        from memory.embeddings import embed_and_store as _embed
+        from memory.mem_embeddings import embed_and_store as _embed
         asyncio.create_task(_embed(project_name, "project_md", "PROJECT.md", content))
     except Exception:
         pass
@@ -951,7 +951,7 @@ async def _summarize_session_memory(project: str) -> int:
                             created += 1
                             # Embed into pgvector for semantic search
                             try:
-                                from memory.embeddings import embed_and_store
+                                from memory.mem_embeddings import embed_and_store
                                 asyncio.create_task(embed_and_store(
                                     project, "memory_item", str(row[0]), final_summary,
                                     doc_type="session_summary",
@@ -1073,7 +1073,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
                 memory_id = str(row[0])
                 # Embed into pgvector for semantic search
                 try:
-                    from memory.embeddings import embed_and_store
+                    from memory.mem_embeddings import embed_and_store
                     asyncio.create_task(embed_and_store(
                         project, "memory_item", memory_id, final_summary,
                         doc_type="feature_summary",
@@ -1745,7 +1745,7 @@ async def generate_memory(project_name: str):
 
     # ── Fire-and-forget background tasks (incremental — only process new data) ─
     try:
-        from memory.embeddings import ingest_history as _ih, ingest_roles as _ir, ingest_commit as _ic
+        from memory.mem_embeddings import ingest_history as _ih, ingest_roles as _ir, ingest_commit as _ic
         # Pass since=last_memory_run so only new history entries are embedded
         asyncio.create_task(_ih(project_name, since=last_memory_run))
         asyncio.create_task(_ir(project_name))  # roles: always re-embed (files may change)

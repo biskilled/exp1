@@ -63,7 +63,7 @@ async def write_prompt(body: PromptWrite, project: str | None = Query(None)):
     # Embed role files for semantic search (fire-and-forget)
     if "roles/" in body.path:
         try:
-            from memory.embeddings import embed_and_store as _embed
+            from memory.mem_embeddings import embed_and_store as _embed
             p = project or settings.active_project or "default"
             asyncio.create_task(_embed(p, "role", body.path, body.content))
         except Exception:

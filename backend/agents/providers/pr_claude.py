@@ -9,7 +9,7 @@ from __future__ import annotations
 import anthropic
 
 from core.config import settings
-from agents.providers.base import AsyncProvider
+from agents.providers.pr_base import AsyncProvider
 
 
 def _client(api_key: str | None) -> anthropic.AsyncAnthropic:

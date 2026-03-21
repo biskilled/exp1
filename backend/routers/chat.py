@@ -24,7 +24,7 @@ from data.database import db
 from agents.providers.pr_pricing import load_pricing, calculate_cost, can_user_access
 from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
 from routers.usage import log_usage
-from memory.sessions import SessionStore
+from memory.mem_sessions import SessionStore
 
 router = APIRouter()
 
@@ -289,7 +289,7 @@ async def _stream_response(
 
         # Fire-and-forget: embed + auto-tag suggestions + proactive feature detection
         try:
-            from memory.embeddings import embed_and_store as _embed
+            from memory.mem_embeddings import embed_and_store as _embed
             asyncio.create_task(_embed(
                 project, "history", _ts, f"Q: {message}\nA: {content}",
                 chunk_index=0, chunk_type="full",

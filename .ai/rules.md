@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 21:49 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 22:20 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -25,8 +25,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 
 ## Key Decisions
 
@@ -44,12 +45,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
 - Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
-- Backend module organization: routers/ for API endpoints, models/ for data structures; workflow logic centralized (not scattered across modules)
+- Agent providers organized in agents/providers/ with pr_ prefix; config.py centralizes externalized settings (backend_url, haiku_model, db_pool_max, MCP settings)
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] looks better. now I dont see any automated commits also mcp server is not configured well. I do see that aiCli.yaml is u
 - [2026-03-21] I would like to make sure backend is witten properly - I do see storage folder who is only managing session, which I don
 - [2026-03-21] I do not see hooks runing yet.
 - [2026-03-21] test prompt from manual run
 - [2026-03-21] WHy there is model and routers folder, shoud thay all be under routers? also I do see some files like work_item_pipeline
+- [2026-03-21] All 4 files - pricing and the one start with provider are realted to agents providers. can you add thos files over there

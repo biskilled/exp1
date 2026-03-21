@@ -164,7 +164,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
         if provider == "claude":
             resp = await call_claude(messages, system=role_prompt, model=model, api_key=api_key)
         elif provider == "openai":
-            from agents.providers.openai import _async_client as _async_openai_client
+            from agents.providers.pr_openai import _async_client as _async_openai_client
             client = _async_openai_client(api_key)
             full_msgs = []
             if role_prompt:
@@ -899,7 +899,7 @@ def _fire_background(run_id: str, project: str) -> None:
     """
     async def _safe_embed():
         try:
-            from memory.embeddings import embed_node_outputs
+            from memory.mem_embeddings import embed_node_outputs
             await embed_node_outputs(run_id, project)
         except Exception as _e:
             log.debug(f"Background embed failed (non-critical): {_e}")

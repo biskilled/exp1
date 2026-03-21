@@ -119,28 +119,28 @@ class Agent:
     ) -> dict:
         """Dispatch to the correct provider and return a standard response dict."""
         if self.provider in ("claude", "anthropic", ""):
-            from agents.providers.claude import call_claude
+            from agents.providers.pr_claude import call_claude
             return await call_claude(
                 messages, system=self.system_prompt,
                 model=self.model, tools=self.tools or None,
                 max_tokens=max_tokens, api_key=api_key,
             )
         elif self.provider == "openai":
-            from agents.providers.openai import call_openai
+            from agents.providers.pr_openai import call_openai
             return await call_openai(
                 messages, system=self.system_prompt,
                 model=self.model, tools=self.tools or None,
                 max_tokens=max_tokens, api_key=api_key,
             )
         elif self.provider == "deepseek":
-            from agents.providers.deepseek import call_deepseek
+            from agents.providers.pr_deepseek import call_deepseek
             return await call_deepseek(
                 messages, system=self.system_prompt,
                 tools=self.tools or None,
                 max_tokens=max_tokens, api_key=api_key,
             )
         elif self.provider == "gemini":
-            from agents.providers.gemini import call_gemini
+            from agents.providers.pr_gemini import call_gemini
             user_text = " ".join(
                 m["content"] for m in messages if m.get("role") == "user"
             )
@@ -149,7 +149,7 @@ class Agent:
                 model=self.model, api_key=api_key,
             )
         elif self.provider == "grok":
-            from agents.providers.grok import call_grok
+            from agents.providers.pr_grok import call_grok
             return await call_grok(
                 messages, system=self.system_prompt,
                 model=self.model, max_tokens=max_tokens, api_key=api_key,

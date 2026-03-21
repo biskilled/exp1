@@ -152,7 +152,7 @@ async def trigger_work_item_pipeline(
             if provider in ("claude", "anthropic", ""):
                 resp = await call_claude(messages, system=system, model=model, api_key=api_key, max_tokens=max_tokens)
             elif provider == "openai":
-                from agents.providers.openai import _async_client as _async_openai_client
+                from agents.providers.pr_openai import _async_client as _async_openai_client
                 client = _async_openai_client(api_key)
                 full = ([{"role": "system", "content": system}] if system else []) + messages
                 raw = await client.chat.completions.create(model=model, messages=full, max_tokens=max_tokens)
