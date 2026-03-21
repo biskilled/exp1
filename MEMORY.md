@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 22:33 UTC by aicli /memory_
+_Generated: 2026-03-21 22:52 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform built on FastAPI (backend) + Electron (desktop UI) that enables collaboration across Claude CLI, LLM platforms, and MCP-integrated workflows. It combines JSONL-based history storage with PostgreSQL pgvector embeddings for semantic search, manages nested tag hierarchies and DAG-based pipelines, and supports multi-provider LLM adapters (Claude, OpenAI, DeepSeek, Gemini, Grok). Current focus: pipeline engine consolidation, module organization audit, SQL optimization, and debugging project visibility race conditions in backend initialization.
 
 ## Project Facts
 
@@ -102,7 +98,7 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(54 events, 48 commits)`
+- **hooks** `(55 events, 49 commits)`
 
 ### Doc_type
 
@@ -117,10 +113,10 @@ Reviewer: ```json
 - **UI** `(43 events, 37 commits)`
 - **shared-memory** `(42 events, 37 commits)`
 - **auth** `(41 events, 38 commits)`
-- **graph-workflow** `(31 events, 27 commits)`
-- **workflow-runner** `(29 events, 27 commits)`
+- **graph-workflow** `(32 events, 27 commits)`
+- **workflow-runner** `(30 events, 27 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **billing** `(9 events, 8 commits)`
+- **billing** `(10 events, 9 commits)`
 - **tagging**
 - **mcp**
 - **test-picker-feature**
@@ -129,8 +125,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(48 events, 45 commits)`
-- **development** `(41 events, 36 commits)`
+- **discovery** `(49 events, 46 commits)`
+- **development** `(42 events, 37 commits)`
 - **prod**
 
 ### Task
@@ -205,7 +201,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-21]** `claude_cli` — Consolidated pipeline engine under workflows/ with pipeline_ prefix on all files for consistency and visibility; verified zero stale imports. **[2026-03-21]** `in_progress` — Completed provider file rename refactor (pr_ prefix for agents/providers/, mem_ prefix for memory/) and clarified config.py as central externalized settings hub. **[2026-03-21]** `in_progress` — Confirmed agent tool separation: `_apply_code_and_commit` writes files then commits (distinct from `git_tool` which commits existing working tree changes); reverted forced delegation. **[2026-03-21]** `in_progress` — Backend module organization clarified: routers/ for API endpoints, models/ for data structures, workflow/pipeline logic centralized. **[2026-03-18]** `in_progress` — Fixed AttributeError in main.py (removed stale `ensure_project_schema` call), undefined `code_dir` in memory endpoint CLAUDE.md template, backend startup race condition with retry logic. **[2026-03-10]** `in_progress` — Implemented load-once-on-access memory caching strategy; approved nested tag hierarchy expansion; identified data persistence bug (tags disappear on session switch); improved port binding safety. **[2026-03-14]** `project_facts` — Confirmed hierarchical data model (clients contain users), standardized schema method convention (_ensure_shared_schema), pending memory_items and project_facts table population.

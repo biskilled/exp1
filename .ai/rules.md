@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 22:33 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 22:52 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -51,8 +51,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] WHy there is model and routers folder, shoud thay all be under routers? also I do see some files like work_item_pipeline
 - [2026-03-21] All 4 files - pricing and the one start with provider are realted to agents providers. can you add thos files over there
 - [2026-03-21] can you rename all files under providers to start with pr_  also the one under memory - start with mem_ . I do have yaml
 - [2026-03-21] I do see there is gitops and git_tool under agent_tools, is both needed ?
 - [2026-03-21] If pipeline engine use that, it is not better to add that under workflows - also, can you rename that to pipelines for c
+- [2026-03-21] There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen

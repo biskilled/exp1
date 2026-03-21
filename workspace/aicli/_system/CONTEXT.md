@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 22:33 UTC — do not edit manually.
+> Auto-generated 2026-03-21 22:53 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 196
-- **Last active**: 2026-03-21T22:33:33Z
+- **Sessions**: 197
+- **Last active**: 2026-03-21T22:52:55Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -155,6 +155,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 22:48]** `claude_cli/claude`  
+→ There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen
+← _All imports clean. The backend restructure is complete and verified:  - `agents/tools/` (moved from `tools/agent_tools/`) - `agents/mcp/` (moved from `tools/mcp/`) - `tools/` folder deleted - `routers_
+
 **[2026-03-21 22:31]** `claude_cli/claude`  
 → If pipeline engine use that, it is not better to add that under workflows - also, can you rename that to pipelines for c
 ← _Verify zero stale imports and all modules load:_
@@ -208,7 +212,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-21 10:46]** `claude_cli/claude`  
 → I think there is bit of confusation , and that is why roles are not defined well. I would like to restrucure the code fo
-
-**[2026-03-20 22:22]** `claude_cli/claude`  
-→ I am not sure what the developer did. dont see any output , and not sure there was any commit/push laos reviewer mention
-← _Good. Let me also quickly verify that `_apply_code_and_commit` in `graph_runner.py` commits with the right message format for work items:_
