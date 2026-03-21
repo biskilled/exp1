@@ -248,7 +248,7 @@ async def trigger_work_item_pipeline(
         rev_sys, rev_provider, rev_model = _load_role("Code Reviewer")
 
         # Import code-commit helpers from graph_runner (reuse, don't duplicate)
-        from gitops.git import parse_code_changes as _parse_code_changes, apply_code_and_commit as _apply_code_and_commit, get_project_code_dir as _get_project_code_dir
+        from pipelines.pipeline_git import parse_code_changes as _parse_code_changes, apply_code_and_commit as _apply_code_and_commit, get_project_code_dir as _get_project_code_dir
 
         dev_output = ""
         reviewer_feedback = ""

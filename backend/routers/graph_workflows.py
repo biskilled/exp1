@@ -654,7 +654,7 @@ async def start_run(
     user=Depends(get_optional_user),
 ):
     _require_db()
-    from workflow.graph_runner import run_graph_workflow
+    from pipelines.pipeline_graph_runner import run_graph_workflow
 
     p = _active_project(body.project)
     run_id = str(uuid.uuid4())
@@ -712,7 +712,7 @@ async def make_run_decision(
     approved=False → stop the run
     """
     _require_db()
-    from workflow.graph_runner import resume_graph_workflow
+    from pipelines.pipeline_graph_runner import resume_graph_workflow
 
     p = _active_project(project)
 
@@ -781,7 +781,7 @@ async def make_run_decision(
         return {"status": "resuming", "from_node": waiting_node_id, "run_id": run_id}
 
     # Save approved output to documents/ with versioning (latest vs old/)
-    from workflow.graph_runner import save_approved_output as _save_approved
+    from pipelines.pipeline_graph_runner import save_approved_output as _save_approved
     work_item = ctx.get("_work_item")
     approved_node_name = waiting.get("node_name", "")
     approved_output = str(ctx.get(approved_node_name, waiting.get("output", "")))
@@ -930,7 +930,7 @@ async def approval_chat(
 
     # ── Also update the in-memory LangGraph state so the next node sees the revised output ─
     try:
-        from workflow.graph_runner import _APP_REGISTRY
+        from pipelines.pipeline_graph_runner import _APP_REGISTRY
         if run_id in _APP_REGISTRY:
             app, _ = _APP_REGISTRY[run_id]
             config = {"configurable": {"thread_id": run_id}}

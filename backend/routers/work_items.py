@@ -374,7 +374,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                     )
 
             # Run in background via graph_runner
-            from workflow.graph_runner import run_graph_workflow
+            from pipelines.pipeline_graph_runner import run_graph_workflow
 
             async def _run_graph():
                 try:
@@ -401,7 +401,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                         pass
                     # Fallback: standalone pipeline
                     try:
-                        from workflow.work_item_pipeline import trigger_work_item_pipeline
+                        from pipelines.pipeline_work_items import trigger_work_item_pipeline
                         await trigger_work_item_pipeline(item_id, p, name, desc, existing_ac)
                     except Exception as fb_exc:
                         log.error(f"Standalone fallback also failed: {fb_exc}")
@@ -420,7 +420,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
                 "UPDATE pr_work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid",
                 (item_id,),
             )
-    from workflow.work_item_pipeline import trigger_work_item_pipeline
+    from pipelines.pipeline_work_items import trigger_work_item_pipeline
     asyncio.create_task(trigger_work_item_pipeline(item_id, p, name, desc, existing_ac))
     return {"status": "pipeline started", "work_item_id": item_id, "project": p}
 

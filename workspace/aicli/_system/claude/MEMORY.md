@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 22:23 UTC by aicli /memory_
+_Generated: 2026-03-21 22:28 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL+pgvector semantic search, a desktop Electron UI with xterm.js terminal and Monaco editor, and stdio MCP server integration. It manages projects through per-project JSONL storage, SQL schema, and memory synthesis via Claude Haiku, with async DAG workflow execution, JWT authentication, and support for multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok). Current development focuses on file naming consistency (pr_/mem_ prefixes), fixing tag persistence bugs, optimizing SQL queries, and resolving project visibility race conditions during backend startup.
+aicli is a shared AI memory platform combining Claude CLI with a full-stack web application (FastAPI backend, Electron+Vanilla JS frontend) for collaborative development workflows. It features semantic search via PostgreSQL+pgvector, async DAG-based workflow execution with graph visualization, dual JSONL+SQL storage, and multi-LLM provider support. Current state: core architecture stable with file/module organization complete; three critical bugs unresolved (project visibility, tag persistence across sessions, port binding conflicts) and SQL performance optimization needed.
 
 ## Project Facts
 
@@ -17,7 +17,7 @@ aicli is a shared AI memory platform combining a Python FastAPI backend with Pos
 - **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
 - **deployment_target**: Claude_CLI_and_LLM_platforms
 - **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
-- **mcp_integration**: embedding_and_data_retrieval
+- **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
 - **memory_management_pattern**: load_once_on_access_update_on_save
 - **pending_implementation**: memory_items_and_project_facts_table_population
@@ -85,13 +85,13 @@ Reviewer: ```json
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
 - Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table instead of hardcoded Haiku
-- Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
+- Graph runner commits via `_apply_code_and_commit` with standardized message format; separate `git_tool` for existing working tree changes
 
 ## In Progress
 
-- File naming convention refactor (2026-03-21) — Renamed provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified dual use of yaml config and config.py (config.py is primary for externalized backend settings)
-- Agent providers file reorganization (2026-03-21) — Relocated pricing.py and provider implementations to agents/providers/ with pr_ prefix; config.py role clarified as centralizing backend_url, haiku_model, db_pool_max, MCP settings
-- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized; no orphaned references remain
+- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points: former writes files then commits, latter commits existing working tree changes; reverted forced delegation
+- File naming convention refactor (2026-03-21) — Completed rename of provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified config.py as primary for externalized backend settings
+- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized
 - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 - SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
 - Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
@@ -100,7 +100,7 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(52 events, 46 commits)`
+- **hooks** `(53 events, 47 commits)`
 
 ### Doc_type
 
@@ -118,7 +118,7 @@ Reviewer: ```json
 - **graph-workflow** `(31 events, 27 commits)`
 - **workflow-runner** `(29 events, 27 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **billing** `(1 events)`
+- **billing** `(8 events, 7 commits)`
 - **tagging**
 - **mcp**
 - **test-picker-feature**
@@ -127,8 +127,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(46 events, 43 commits)`
-- **development** `(38 events, 34 commits)`
+- **discovery** `(47 events, 44 commits)`
+- **development** `(40 events, 35 commits)`
 - **prod**
 
 ### Task
@@ -206,4 +206,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-21]** `claude_cli` — Renamed agent provider files to pr_ prefix and memory providers to mem_ prefix for consistency; clarified that config.py is primary source for externalized backend settings (backend_url, haiku_model, db_pool_max, MCP configuration) while yaml config handles workflow definitions. **[2026-03-21]** `audit` — Completed backend module organization audit confirming routers/ for endpoints, models/ for data structures, workflow logic centralized, and no orphaned references remaining. **[2026-03-18]** `development` — Fixed AttributeError in main.py removing stale `ensure_project_schema` call; corrected undefined `code_dir` variable in memory endpoint template scoping to config; improved backend startup race condition handling to support empty project list on first load. **[2026-03-14]** `ongoing` — Identified data persistence bug where tags saved in UI disappear on session switch; identified SQL performance issues with row-by-row INSERTs and unbounded fetchall() requiring batch refactor; diagnosed project visibility bug (AiCli in Recent but not main list) as potential race condition during initialization. **[2026-03-10]** `architecture` — Implemented load-once-on-access memory pattern for tags/workflows/runs to reduce redundant SQL; approved nested tag hierarchy beyond 2-level constraint with unlimited depth; enhanced UI/UX for planner with improved action visibility and unarchive capability.
+**[2026-03-21]** `development_history` — Clarified that `apply_code_and_commit` and `git_tool` serve different purposes (former writes files and commits, latter commits existing working tree changes) with distinct entry points; reverted forced delegation. **[2026-03-21]** `in_progress` — Completed file naming refactor with pr_ and mem_ prefixes across agent and memory providers; clarified config.py role as centralizing externalized backend settings. **[2026-03-21]** `in_progress` — Finished backend module organization audit distinguishing routers/ (API endpoints) from models/ (data structures) with centralized workflow logic. **[2026-03-21]** `in_progress` — Project visibility bug remains: AiCli appears in Recent projects but not main project list; backend startup retry logic partially addresses race condition but root cause unresolved. **[2026-03-21]** `in_progress` — Identified SQL performance issues: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination. **[2026-03-10]** `memory_digest` — Implemented load-once-on-access pattern to cache tags/workflows in memory and update DB only on explicit save; discovered tags disappear on session switch (UI rendering vs database save failure unclear); noted intermittent port binding conflicts.

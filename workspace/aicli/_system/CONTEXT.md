@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 22:23 UTC — do not edit manually.
+> Auto-generated 2026-03-21 22:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 194
-- **Last active**: 2026-03-21T22:23:15Z
+- **Sessions**: 195
+- **Last active**: 2026-03-21T22:28:17Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -36,9 +36,9 @@
 
 ## In Progress
 
-- File naming convention refactor (2026-03-21) — Renamed provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified dual use of yaml config and config.py (config.py is primary for externalized backend settings)
-- Agent providers file reorganization (2026-03-21) — Relocated pricing.py and provider implementations to agents/providers/ with pr_ prefix; config.py role clarified as centralizing backend_url, haiku_model, db_pool_max, MCP settings
-- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized; no orphaned references remain
+- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points: former writes files then commits, latter commits existing working tree changes; reverted forced delegation
+- File naming convention refactor (2026-03-21) — Completed rename of provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified config.py as primary for externalized backend settings
+- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized
 - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 - SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
 - Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
@@ -59,7 +59,7 @@
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
 - Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table instead of hardcoded Haiku
-- Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
+- Graph runner commits via `_apply_code_and_commit` with standardized message format; separate `git_tool` for existing working tree changes
 
 ---
 
@@ -153,6 +153,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 22:27]** `claude_cli/claude`  
+→ I do see there is gitops and git_tool under agent_tools, is both needed ?
+← _Actually `apply_code_and_commit` requires file changes to write — it returns empty if nothing to write. The handlers have genuinely different entry points (one writes files then commits, the other com_
+
 **[2026-03-21 22:22]** `claude_cli/claude`  
 → can you rename all files under providers to start with pr_  also the one under memory - start with mem_ . I do have yaml
 ← _**Verify everything loads:**_
@@ -206,7 +210,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-20 22:09]** `claude_cli/claude`  
 → Why work Item pipeline is not using the pre defined roles ? 
 ← _Up. Here's the complete answer to the question:  ---  ## Why the work item pipeline wasn't using predefined roles  **Root cause (before today's fixes):** The original `work_item_pipeline.py` had all p_
-
-**[2026-03-20 21:55]** `claude_cli/claude`  
-→ can you run /memory , also can you check why running workflow is so slow. each steps takes a while, and once step is app
-← _Now let me save a note to memory about this fix:_

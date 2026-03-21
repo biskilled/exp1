@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
 - Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table instead of hardcoded Haiku
-- Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
+- Graph runner commits via `_apply_code_and_commit` with standardized message format; separate `git_tool` for existing working tree changes
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-21] `claude_cli`: I do not see hooks runing yet. 
 - [2026-03-21] `claude_cli`: test prompt from manual run
 - [2026-03-21] `claude_cli`: WHy there is model and routers folder, shoud thay all be under routers? also I do see some files lik
 - [2026-03-21] `claude_cli`: All 4 files - pricing and the one start with provider are realted to agents providers. can you add t
 - [2026-03-21] `claude_cli`: can you rename all files under providers to start with pr_  also the one under memory - start with m
+- [2026-03-21] `claude_cli`: I do see there is gitops and git_tool under agent_tools, is both needed ?
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

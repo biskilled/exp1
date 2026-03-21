@@ -474,7 +474,7 @@ async def _handle_run_command(pipeline_name: str, project: str, session_id: str)
                     (run_id, project, workflow_id, f"/run {pipeline_name}"),
                 )
 
-        from workflow.graph_runner import run_graph_workflow
+        from pipelines.pipeline_graph_runner import run_graph_workflow
 
         async def _bg():
             try:

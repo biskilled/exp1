@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from core.config import settings
-from workflow.workflow_runner import (
+from pipelines.pipeline_runner import (
     start_run, decide, load_run, list_runs,
 )
 

@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- File naming convention refactor (2026-03-21) — Renamed provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified dual use of yaml config and config.py (config.py is primary for externalized backend settings)
-- Agent providers file reorganization (2026-03-21) — Relocated pricing.py and provider implementations to agents/providers/ with pr_ prefix; config.py role clarified as centralizing backend_url, haiku_model, db_pool_max, MCP settings
-- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized; no orphaned references remain
+- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points: former writes files then commits, latter commits existing working tree changes; reverted forced delegation
+- File naming convention refactor (2026-03-21) — Completed rename of provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified config.py as primary for externalized backend settings
+- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized
 - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 - SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
 - Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
