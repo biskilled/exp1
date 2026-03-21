@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 23:07 UTC by aicli /memory_
+_Generated: 2026-03-21 23:10 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI featuring embedded terminal, Monaco editor, and workflow visualization. It provides multi-LLM support (Claude, OpenAI, DeepSeek, Gemini, Grok), semantic search via embeddings, async DAG workflow execution, MCP tool integration, and tiered authentication; currently in active development with focus on billing data organization, visibility bugs, and SQL performance optimization.
+aicli is a shared AI memory platform that integrates with Claude CLI and other LLM platforms, combining FastAPI backend with PostgreSQL+pgvector for semantic search, Electron UI with xterm.js/Monaco editor, and an async DAG workflow engine. The system manages per-project hierarchical tags, memory synthesis via Claude Haiku, and MCP server integration for work item management. Currently in active development with 13 active features and 7 active doc types; recent work has focused on provider storage consolidation, backend module reorganization, and resolving project visibility and data persistence bugs.
 
 ## Project Facts
 
@@ -84,20 +84,20 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix; respects configured LLM provider/model per role
+- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data (provider_costs.json, provider_bala...); API keys in data/api_keys.json; pricing/coupon config in data/
+- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data; API keys in data/api_keys.json; pricing/coupon config in data/
 
 ## In Progress
 
-- Provider storage consolidation (2026-03-21) — Resolved ambiguous storage layout: moved all provider runtime data to data/provider_usage/; API keys and billing config remain in data/ root; clarified billing data organization under provider_usage/
-- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); verified imports resolve cleanly after relocation
-- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional post-relocation; cleaned up empty mcp/tools/ directory
-- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause of visibility gap unresolved
-- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+- Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files (anthropic.jsonl, openai.jsonl, local_recalculate.jsonl) are gitignored and local-only
+- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation
+- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories
+- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved
 - Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
+- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
 
 ## Active Features / Bugs / Tasks
 
@@ -209,4 +209,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-21]** `claude_cli` — Consolidated provider billing storage: all runtime provider data moved to data/provider_usage/ (provider_costs.json, provider_bala...); API keys remain in data/api_keys.json; resolved ambiguous file layout across data/ and provider/ directories. **[2026-03-21]** `validation` — Tool naming convention completed with tool_ prefix applied to agents/tools/ files (tool_git.py, tool_file.py); verified import paths resolve cleanly after module relocation and cleaned empty mcp/tools/ directory. **[2026-03-21]** `investigation` — Backend startup race condition partially mitigated with retry logic for empty project list edge case, but root cause of AiCli project visibility gap (appears in Recent but not main list) remains unresolved. **[2026-03-18]** `bugfix` — Fixed AttributeError in main.py removing stale db.ensure_project_schema() call; corrected memory endpoint CLAUDE.md template variable scoping for code_dir at line 1120; confirmed hierarchical data model (Clients → Users). **[2026-03-10]** `architecture` — Implemented load-once-on-access pattern for tags/workflows to reduce SQL overhead; approved nested tag hierarchy with unlimited depth; identified data persistence bug where tags disappear on session switch. **[prior]** `design` — Established memory_items and project_facts table schema but implementation of update logic remains pending; identified SQL optimization backlog including batch INSERT refactoring and pagination for unbounded fetchall() calls.
+**[2026-03-21]** `Development` — Consolidated provider storage: anthropic.jsonl, openai.jsonl, and local_recalculate.jsonl confirmed as local-only, gitignored runtime files in data/provider_usage/; no action needed. **[2026-03-21]** `Refactor` — Completed tool naming convention with agents/tools/tool_*.py prefix; verified import chains resolve cleanly after relocation from deprecated structure. **[2026-03-21]** `Architecture` — Validated backend module reorganization: agents/tools/ and agents/mcp/ import paths functional; cleaned up empty mcp/tools/ directory. **[2026-03-18]** `Bug Fixes` — Fixed AttributeError in main.py (removed stale `db.ensure_project_schema()` call); fixed CLAUDE.md memory endpoint template with properly scoped `code_dir` variable at line 1120; improved backend startup retry logic to handle empty project list edge case. **[2026-03-14]** `Known Issues` — Project visibility bug: AiCli appears in Recent but missing from main project list (suspected initialization race condition); data persistence issue: tags disappear on session switch (root cause unclear: UI rendering vs. DB save failure). **[2026-03-10]** `Performance` — Implemented load-once-on-access pattern for tags/workflows to reduce redundant SQL calls; design approved for nested tag hierarchy beyond 2-level structure with login as first-level only.

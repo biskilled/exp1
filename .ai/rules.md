@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:07 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:10 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -44,16 +44,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix; respects configured LLM provider/model per role
+- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data (provider_costs.json, provider_bala...); API keys in data/api_keys.json; pricing/coupon config in data/
+- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data; API keys in data/api_keys.json; pricing/coupon config in data/
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] If pipeline engine use that, it is not better to add that under workflows - also, can you rename that to pipelines for c
 - [2026-03-21] There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen
 - [2026-03-21] Is there is a reason to have tools under mcp as well ?
 - [2026-03-21] Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - currently there is o
 - [2026-03-21] I do see provider files unde data , I do see also provider_usage folder under data (which might make sense) and do see s
+- [2026-03-21] What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty

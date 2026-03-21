@@ -36,11 +36,11 @@ You are a senior Python software architect with deep expertise in:
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix; respects configured LLM provider/model per role
+- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data (provider_costs.json, provider_bala...); API keys in data/api_keys.json; pricing/coupon config in data/
+- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data; API keys in data/api_keys.json; pricing/coupon config in data/
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-21] `claude_cli`: If pipeline engine use that, it is not better to add that under workflows - also, can you rename tha
 - [2026-03-21] `claude_cli`: There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee ag
 - [2026-03-21] `claude_cli`: Is there is a reason to have tools under mcp as well ?  
 - [2026-03-21] `claude_cli`: Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - 
 - [2026-03-21] `claude_cli`: I do see provider files unde data , I do see also provider_usage folder under data (which might make
+- [2026-03-21] `claude_cli`: What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

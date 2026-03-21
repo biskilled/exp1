@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 23:07 UTC — do not edit manually.
+> Auto-generated 2026-03-21 23:10 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 200
-- **Last active**: 2026-03-21T23:07:24Z
+- **Sessions**: 201
+- **Last active**: 2026-03-21T23:10:07Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -39,12 +39,12 @@
 
 ## In Progress
 
-- Provider storage consolidation (2026-03-21) — Resolved ambiguous storage layout: moved all provider runtime data to data/provider_usage/; API keys and billing config remain in data/ root; clarified billing data organization under provider_usage/
-- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); verified imports resolve cleanly after relocation
-- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional post-relocation; cleaned up empty mcp/tools/ directory
-- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause of visibility gap unresolved
-- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+- Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files (anthropic.jsonl, openai.jsonl, local_recalculate.jsonl) are gitignored and local-only
+- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation
+- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories
+- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved
 - Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
+- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
 
 ## Key Decisions
 
@@ -58,11 +58,11 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix; respects configured LLM provider/model per role
+- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data (provider_costs.json, provider_bala...); API keys in data/api_keys.json; pricing/coupon config in data/
+- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data; API keys in data/api_keys.json; pricing/coupon config in data/
 
 ---
 
@@ -156,6 +156,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 23:09]** `claude_cli/claude`  
+→ What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty 
+← _`backend/data/provider_usage/` is already gitignored — the empty files just exist locally and will never be committed. Nothing to change._
+
 **[2026-03-21 23:06]** `claude_cli/claude`  
 → I do see provider files unde data , I do see also provider_usage folder under data (which might make sense) and do see s
 ← _Done. Final layout:  ``` data/ ├── api_keys.json          ← server secrets (config) ├── coupons.json           ← billing config ├── pricing.json           ← markup/tier config ├── database.py         _
@@ -210,7 +214,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 21:03]** `claude_cli/claude`  
 → Now Ui is failing to load - Javascriot error at main process - child_process:483:16
 ← _Now verify the final path values are correct:_
-
-**[2026-03-21 20:58]** `claude_cli/claude`  
-→ I till see the rror - Project did not found aiCli. also I do not see any project loaded. the project aiCli is under the 
-← _All three endpoints work correctly. The summary of what was happening and what to do:  ---  ## Root cause  The Electron app (`old/ui/electron/main.js`) was launching the backend with: ```js BACKEND_DI_
