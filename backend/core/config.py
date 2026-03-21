@@ -55,8 +55,8 @@ class Settings(BaseSettings):
     require_auth: bool = False          # set True in Railway env vars
     access_token_expire_minutes: int = 60 * 24 * 7   # 7 days
 
-    # Data storage (user accounts, usage logs)
-    data_dir: str = str(_BACKEND_DIR / "data")
+    # Secrets — api_keys.json lives here (outside backend/, never committed)
+    secrets_dir: str = str(_ENGINE_ROOT / "data")
 
     # PostgreSQL (optional — falls back to JSON file store when empty)
     database_url: str = ""   # set DATABASE_URL=postgresql://... in .env

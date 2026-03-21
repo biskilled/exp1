@@ -359,14 +359,10 @@ def _calc_cost(provider: str, input_tok: int, output_tok: int) -> float:
         "grok":     (5.0, 15.0),
     }
     try:
-        cost_path = Path(settings.data_dir) / "provider_usage" / "provider_costs.json"
-        if cost_path.exists():
-            costs = json.loads(cost_path.read_text())
-            if provider in costs:
-                c = costs[provider]
-                inp_rate = float(c.get("input_per_million", rates.get(provider, (3.0, 15.0))[0]))
-                out_rate = float(c.get("output_per_million", rates.get(provider, (3.0, 15.0))[1]))
-                return (input_tok * inp_rate + output_tok * out_rate) / 1_000_000
+        from agents.providers.pr_costs import estimate_cost
+        db_cost = estimate_cost(provider, provider, input_tok, output_tok)
+        if db_cost > 0:
+            return db_cost
     except Exception:
         pass
     r = rates.get(provider, (3.0, 15.0))

@@ -7,15 +7,13 @@ GET  /billing/history        → last 50 transactions
 POST /billing/add-payment    → placeholder (Stripe not yet integrated)
 """
 
-import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from core.config import settings
 from core.auth import get_current_user
+from data.database import db
 from agents.providers.pr_pricing import load_pricing
 from data.user import find_by_id, update_user
 
@@ -24,57 +22,90 @@ router = APIRouter()
 
 # ── Transaction helpers ────────────────────────────────────────────────────────
 
-def _tx_path(user_id: str) -> Path:
-    p = Path(settings.data_dir) / "transactions" / f"{user_id}.jsonl"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    return p
+def _append_transaction(user_id: str, tx_type: str, amount_usd: float, description: str, ref: str = "") -> None:
+    if not db.is_available():
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO mng_transactions (user_id, type, amount_usd, description, ref)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (user_id, tx_type, amount_usd, description, ref),
+                )
+    except Exception:
+        pass
 
 
 def _load_transactions(user_id: str) -> list[dict]:
-    path = _tx_path(user_id)
-    if not path.exists():
-        return []
-    records = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line:
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return records
-
-
-def _append_transaction(user_id: str, tx_type: str, amount_usd: float, description: str, ref: str = "") -> None:
-    record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "type": tx_type,
-        "amount_usd": amount_usd,
-        "description": description,
-        "ref": ref,
-    }
-    with open(_tx_path(user_id), "a", encoding="utf-8") as f:
-        f.write(json.dumps(record) + "\n")
-
-
-# ── Coupon helpers ─────────────────────────────────────────────────────────────
-
-def _coupons_path() -> Path:
-    return Path(settings.data_dir) / "coupons.json"
-
-
-def _load_coupons() -> list[dict]:
-    path = _coupons_path()
-    if not path.exists():
+    if not db.is_available():
         return []
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT type, amount_usd, description, ref, created_at
+                       FROM mng_transactions WHERE user_id=%s
+                       ORDER BY created_at DESC LIMIT 50""",
+                    (user_id,),
+                )
+                return [
+                    {
+                        "type":        r[0],
+                        "amount_usd":  float(r[1]),
+                        "description": r[2],
+                        "ref":         r[3],
+                        "ts":          r[4].isoformat() if r[4] else None,
+                    }
+                    for r in cur.fetchall()
+                ]
     except Exception:
         return []
 
 
-def _save_coupons(coupons: list[dict]) -> None:
-    _coupons_path().write_text(json.dumps(coupons, indent=2), encoding="utf-8")
+# ── Coupon helpers ─────────────────────────────────────────────────────────────
+
+def _get_coupon(code: str) -> dict | None:
+    if not db.is_available():
+        return None
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT code,amount_usd,max_uses,used_count,used_by,expires_at
+                       FROM mng_coupons WHERE client_id=1 AND code=%s""",
+                    (code,),
+                )
+                r = cur.fetchone()
+                if not r:
+                    return None
+                return {
+                    "code":       r[0],
+                    "amount_usd": float(r[1]),
+                    "max_uses":   r[2],
+                    "used_count": r[3],
+                    "used_by":    r[4] or [],
+                    "expires_at": r[5].isoformat() if r[5] else None,
+                }
+    except Exception:
+        return None
+
+
+def _mark_coupon_used(code: str, user_id: str) -> None:
+    if not db.is_available():
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE mng_coupons
+                       SET used_count = used_count + 1,
+                           used_by    = used_by || %s::jsonb
+                       WHERE client_id=1 AND code=%s""",
+                    (f'["{user_id}"]', code),
+                )
+    except Exception:
+        pass
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -82,7 +113,6 @@ def _save_coupons(coupons: list[dict]) -> None:
 @router.get("/balance")
 async def get_balance(current_user: dict = Depends(get_current_user)):
     user_id = current_user.get("sub") or current_user.get("id")
-    # dev admin — synthetic response
     if user_id == "dev-admin":
         return {
             "role": "admin",
@@ -134,20 +164,16 @@ async def apply_coupon(body: CouponBody, current_user: dict = Depends(get_curren
         raise HTTPException(status_code=404, detail="User not found")
 
     code = body.code.upper().strip()
-    coupons = _load_coupons()
-    coupon = next((c for c in coupons if c["code"] == code), None)
+    coupon = _get_coupon(code)
     if not coupon:
         raise HTTPException(status_code=404, detail=f"Coupon code '{code}' not found")
 
-    # Already used by this user?
     if user_id in (coupon.get("used_by") or []):
         raise HTTPException(status_code=400, detail="You have already used this coupon")
 
-    # Max uses reached?
     if coupon.get("max_uses") and coupon.get("used_count", 0) >= coupon["max_uses"]:
         raise HTTPException(status_code=400, detail="Coupon has reached its maximum uses")
 
-    # Expired?
     expires_at = coupon.get("expires_at")
     if expires_at:
         try:
@@ -158,21 +184,10 @@ async def apply_coupon(body: CouponBody, current_user: dict = Depends(get_curren
             pass
 
     amount = coupon["amount_usd"]
-
-    # Credit user
     new_added = round(user.get("balance_added_usd", 0.0) + amount, 6)
-    coupons_used = user.get("coupons_used") or []
-    coupons_used = list(coupons_used) + [code]
+    coupons_used = list(user.get("coupons_used") or []) + [code]
     update_user(user_id, balance_added_usd=new_added, coupons_used=coupons_used)
-
-    # Update coupon usage
-    coupon["used_count"] = coupon.get("used_count", 0) + 1
-    used_by = list(coupon.get("used_by") or [])
-    used_by.append(user_id)
-    coupon["used_by"] = used_by
-    _save_coupons(coupons)
-
-    # Append transaction
+    _mark_coupon_used(code, user_id)
     _append_transaction(user_id, "coupon_credit", amount, f"Coupon {code}", code)
 
     return {
@@ -189,7 +204,7 @@ async def billing_history(current_user: dict = Depends(get_current_user)):
     if user_id == "dev-admin":
         return {"transactions": [], "total": 0}
     records = _load_transactions(user_id)
-    return {"transactions": records[-50:], "total": len(records)}
+    return {"transactions": records, "total": len(records)}
 
 
 @router.post("/add-payment")

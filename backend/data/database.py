@@ -42,12 +42,18 @@ log = logging.getLogger(__name__)
 
 _DDL_CLIENTS = """
 CREATE TABLE IF NOT EXISTS mng_clients (
-    id         SERIAL       PRIMARY KEY,
-    slug       VARCHAR(50)  UNIQUE NOT NULL,
-    name       VARCHAR(255) NOT NULL DEFAULT '',
-    plan       VARCHAR(20)  NOT NULL DEFAULT 'free',
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    id               SERIAL       PRIMARY KEY,
+    slug             VARCHAR(50)  UNIQUE NOT NULL,
+    name             VARCHAR(255) NOT NULL DEFAULT '',
+    plan             VARCHAR(20)  NOT NULL DEFAULT 'free',
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    pricing_config   JSONB        DEFAULT NULL,
+    provider_costs   JSONB        DEFAULT NULL,
+    provider_balances JSONB       DEFAULT NULL
 );
+ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS pricing_config    JSONB DEFAULT NULL;
+ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS provider_costs    JSONB DEFAULT NULL;
+ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS provider_balances JSONB DEFAULT NULL;
 """
 
 # ─── DDL: mng_users / usage_logs / transactions ───────────────────────────────
@@ -88,10 +94,15 @@ CREATE TABLE IF NOT EXISTS mng_usage_logs (
     charged_usd   NUMERIC(12, 8) NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
-ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS charged_usd NUMERIC(12, 8) NOT NULL DEFAULT 0;
+ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS charged_usd   NUMERIC(12, 8) NOT NULL DEFAULT 0;
+ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS source        VARCHAR(50)    NOT NULL DEFAULT 'request';
+ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS metadata      JSONB          DEFAULT NULL;
+ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS period_start  TIMESTAMPTZ    DEFAULT NULL;
+ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS period_end    TIMESTAMPTZ    DEFAULT NULL;
 CREATE INDEX IF NOT EXISTS idx_usage_user_id    ON mng_usage_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_usage_created_at ON mng_usage_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_provider   ON mng_usage_logs(provider);
+CREATE INDEX IF NOT EXISTS idx_usage_source     ON mng_usage_logs(source);
 
 CREATE TABLE IF NOT EXISTS mng_transactions (
     id            SERIAL         PRIMARY KEY,
@@ -106,6 +117,26 @@ CREATE TABLE IF NOT EXISTS mng_transactions (
 CREATE INDEX IF NOT EXISTS idx_tx_user_id    ON mng_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_tx_created_at ON mng_transactions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tx_type       ON mng_transactions(type);
+"""
+
+# ─── DDL: mng_coupons ────────────────────────────────────────────────────────
+
+_DDL_COUPONS = """
+CREATE TABLE IF NOT EXISTS mng_coupons (
+    id          SERIAL         PRIMARY KEY,
+    client_id   INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    code        VARCHAR(50)    NOT NULL,
+    amount_usd  NUMERIC(10, 4) NOT NULL DEFAULT 0,
+    max_uses    INT            NOT NULL DEFAULT 1,
+    used_count  INT            NOT NULL DEFAULT 0,
+    used_by     JSONB          NOT NULL DEFAULT '[]',
+    description TEXT           NOT NULL DEFAULT '',
+    expires_at  TIMESTAMPTZ    DEFAULT NULL,
+    created_by  VARCHAR(255)   NOT NULL DEFAULT 'admin',
+    created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_client_code ON mng_coupons(client_id, code);
+CREATE INDEX IF NOT EXISTS idx_mcp_client ON mng_coupons(client_id);
 """
 
 # ─── DDL: mng_* entity + session + role tables ───────────────────────────────
@@ -629,6 +660,7 @@ class _Database:
         for label, sql in [
             ("mng_clients", _DDL_CLIENTS),
             ("mng_core (users/usage/tx)", _DDL_CORE),
+            ("mng_coupons", _DDL_COUPONS),
             ("mng_entity+session+role tables", _DDL_MNG_TABLES),
         ]:
             _Database._run_ddl_statements(conn, sql, label)

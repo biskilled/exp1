@@ -1,17 +1,19 @@
 """
-Pricing engine — loads pricing.json, applies admin-set markup, enforces free-tier limits.
+Pricing engine — loads markup config from mng_clients.pricing_config,
+applies admin-set markup, enforces free-tier limits.
 
-Responsibilities:
-- Load/save {DATA_DIR}/pricing.json (created with defaults on first use)
-- calculate_cost(provider, model, input_tokens, output_tokens, markup_pct) → USD
-- can_user_access(user, provider, model) → (bool, reason_str)
+Key functions:
+    load_pricing()                                         → config dict
+    save_pricing(cfg)                                      → persist to DB
+    calculate_cost(provider, model, in, out, markup)       → USD
+    can_user_access(user, provider, model)                 → (bool, reason)
 """
 
 import json
-from pathlib import Path
+import logging
 from typing import Optional
 
-from core.config import settings
+log = logging.getLogger(__name__)
 
 # ── Base costs (USD per 1M tokens: input, output) ─────────────────────────────
 
@@ -42,7 +44,7 @@ BASE_COSTS: dict[str, dict[str, tuple[float, float]]] = {
     },
 }
 
-_DEFAULT_PRICING = {
+_DEFAULT_PRICING: dict = {
     "free_tier_limit_usd": 5.0,
     "free_tier_models": ["claude-haiku-4-5-20251001", "deepseek-chat", "gemini-2.0-flash"],
     "providers": {
@@ -55,31 +57,41 @@ _DEFAULT_PRICING = {
 }
 
 
-def _pricing_path() -> Path:
-    p = Path(settings.data_dir) / "pricing.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    return p
-
-
 def load_pricing() -> dict:
-    """Read pricing.json; creates default if missing."""
-    path = _pricing_path()
-    if not path.exists():
-        save_pricing(_DEFAULT_PRICING)
-        return dict(_DEFAULT_PRICING)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        # Merge any missing keys from defaults
-        for k, v in _DEFAULT_PRICING.items():
-            if k not in data:
-                data[k] = v
-        return data
-    except Exception:
-        return dict(_DEFAULT_PRICING)
+    """Read pricing config from mng_clients; falls back to defaults."""
+    from data.database import db
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pricing_config FROM mng_clients WHERE id=1")
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        data = row[0]
+                        for k, v in _DEFAULT_PRICING.items():
+                            if k not in data:
+                                data[k] = v
+                        return data
+        except Exception as e:
+            log.debug(f"load_pricing DB error: {e}")
+    return dict(_DEFAULT_PRICING)
 
 
 def save_pricing(cfg: dict) -> None:
-    _pricing_path().write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    """Persist pricing config to mng_clients."""
+    from data.database import db
+    if not db.is_available():
+        log.warning("save_pricing: DB not available")
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE mng_clients SET pricing_config=%s WHERE id=1",
+                    (json.dumps(cfg),),
+                )
+    except Exception as e:
+        log.warning(f"save_pricing DB error: {e}")
 
 
 def calculate_cost(
@@ -104,7 +116,6 @@ def can_user_access(user: dict, provider: str, model: str) -> tuple[bool, str]:
     """
     role = user.get("role", "free")
 
-    # Admins bypass all checks
     if role == "admin":
         return True, ""
 
@@ -117,14 +128,12 @@ def can_user_access(user: dict, provider: str, model: str) -> tuple[bool, str]:
     balance = balance_added - balance_used
 
     if role == "free":
-        # Free users: only allowed models + must be within free limit
         if model not in free_models:
             return False, f"Model '{model}' requires a paid account. Upgrade to access this model."
         if balance_used >= free_limit:
             return False, f"Free tier limit of ${free_limit:.2f} reached. Add credits to continue."
         return True, ""
 
-    # Paid role: any model, balance must be positive
     if balance <= 0:
         return False, "Insufficient balance. Please add credits to your account."
 

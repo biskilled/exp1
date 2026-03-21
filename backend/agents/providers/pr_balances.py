@@ -1,41 +1,39 @@
 """
-Manual provider balance store — admin-entered current balance per provider.
+Manual provider balance store — admin-entered current balance per provider,
+stored in mng_clients.provider_balances.
 
 Since Anthropic (personal accounts) and OpenAI do not expose per-API-key
 balance endpoints, the admin can manually enter the current balance shown
-in their provider dashboard. Stored in {DATA_DIR}/provider_balances.json.
+in their provider dashboard.
 """
 
 import json
+import logging
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
 
-from core.config import settings
+log = logging.getLogger(__name__)
 
 _PROVIDERS = ("claude", "openai", "deepseek", "gemini", "grok")
-
 _EMPTY_ENTRY: dict = {"balance_usd": None, "updated_at": None, "updated_by": None}
 
 
-def _path() -> Path:
-    p = Path(settings.data_dir) / "provider_usage" / "provider_balances.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    return p
-
-
 def load_balances() -> dict:
-    """Return manual balances for all providers."""
-    path = _path()
-    if not path.exists():
-        return {p: dict(_EMPTY_ENTRY) for p in _PROVIDERS}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        for p in _PROVIDERS:
-            data.setdefault(p, dict(_EMPTY_ENTRY))
-        return data
-    except Exception:
-        return {p: dict(_EMPTY_ENTRY) for p in _PROVIDERS}
+    """Return manual balances for all providers from mng_clients."""
+    from data.database import db
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT provider_balances FROM mng_clients WHERE id=1")
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        data = row[0]
+                        for p in _PROVIDERS:
+                            data.setdefault(p, dict(_EMPTY_ENTRY))
+                        return data
+        except Exception as e:
+            log.debug(f"load_balances DB error: {e}")
+    return {p: dict(_EMPTY_ENTRY) for p in _PROVIDERS}
 
 
 def save_balances(updates: dict, updated_by: str = "admin") -> dict:
@@ -44,6 +42,7 @@ def save_balances(updates: dict, updated_by: str = "admin") -> dict:
     `updates` is a dict of {provider: balance_usd (float or None)}.
     Returns the full updated store.
     """
+    from data.database import db
     data = load_balances()
     now = datetime.now(timezone.utc).isoformat()
     for provider, balance_usd in updates.items():
@@ -54,5 +53,16 @@ def save_balances(updates: dict, updated_by: str = "admin") -> dict:
             "updated_at":  now,
             "updated_by":  updated_by,
         }
-    _path().write_text(json.dumps(data, indent=2), encoding="utf-8")
+    if not db.is_available():
+        log.warning("save_balances: DB not available")
+        return data
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE mng_clients SET provider_balances=%s WHERE id=1",
+                    (json.dumps(data),),
+                )
+    except Exception as e:
+        log.warning(f"save_balances DB error: {e}")
     return data

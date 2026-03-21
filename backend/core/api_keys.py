@@ -24,7 +24,7 @@ _ENV_FALLBACKS = {
 
 
 def _keys_path() -> Path:
-    p = Path(settings.data_dir) / "api_keys.json"
+    p = Path(settings.secrets_dir) / "api_keys.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 

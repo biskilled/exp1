@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 23:27 UTC — do not edit manually.
+> Auto-generated 2026-03-21 23:39 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 202
-- **Last active**: 2026-03-21T23:27:01Z
+- **Sessions**: 203
+- **Last active**: 2026-03-21T23:38:40Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,16 +35,16 @@
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
-- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json, data/pricing.json, data/coupons.json
+- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json (file-based); pricing, coupons, user_logs (migrating to SQL tables)
 
 ## In Progress
 
+- Database schema consolidation (2026-03-21) — Identified that pricing.json and coupon data should migrate from JSON files to SQL tables; api_keys.json remains as file (needed pre-DB connection); mng_users and mng_users_logs can be merged into single table
 - Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files (anthropic.jsonl, openai.jsonl, local_recalculate.jsonl) are gitignored and local-only
 - Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation
 - Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories
 - Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved
 - Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
-- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
 
 ## Key Decisions
 
@@ -62,7 +62,7 @@
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data; API keys in data/api_keys.json; pricing/coupon config in data/
+- Database schema consolidation: api_keys.json stays as file in aicli/data/; pricing, coupons, and user logs migrate to managed SQL tables instead of separate JSON files
 
 ---
 
@@ -156,6 +156,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 23:37]** `claude_cli/claude`  
+→ Can you recheck what is database schema, I dont think it is required to add 5 new table, but possible to merge that mng_
+← _Now I have the full picture. Here's my analysis:  **`api_keys.json`** — stays as a file, but moved **outside** `backend/` to `aicli/data/`. It's server secrets; can't go in DB (you need it to connect _
+
 **[2026-03-21 23:25]** `claude_cli/claude`  
 → The backend is used for code only, it wont have any read permissions... any file data will be updated and used as data h
 ← _`backend/data/provider_usage/` is already gitignored — the empty files just exist locally and will never be committed. Nothing to change._
@@ -210,7 +214,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 21:24]** `claude_cli/claude`  
 → I would like to make sure backend is witten properly - I do see storage folder who is only managing session, which I don
 ← _Verify the backend still imports cleanly:_
-
-**[2026-03-21 21:11]** `claude_cli/claude`  
-→ looks better. now I dont see any automated commits also mcp server is not configured well. I do see that aiCli.yaml is u
-← _Here's a summary of what was fixed:  ---  **1. MCP Server — wrong path (all 3 configs updated)** - `aicli.yaml`: `ui/mcp_server.py` → `backend/tools/mcp/server.py` - `.cursor/mcp.json`: same path fix _

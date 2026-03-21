@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 23:27 UTC by aicli /memory_
+_Generated: 2026-03-21 23:38 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform enabling users to manage development projects, workflows, and task tracking with Claude and other LLM providers. It combines a Python FastAPI backend with PostgreSQL semantic search (pgvector), a desktop Electron UI with xterm.js terminal and Monaco editor, and an MCP server for tool integration. Currently in active development with 14 feature areas tracked; recent work focused on database schema consolidation, provider billing data organization, and debugging project visibility and data persistence issues.
 
 ## Project Facts
 
@@ -66,7 +70,7 @@ Reviewer: ```json
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
-- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json, data/pricing.json, data/coupons.json
+- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json (file-based); pricing, coupons, user_logs (migrating to SQL tables)
 
 ## Key Decisions
 
@@ -84,22 +88,22 @@ Reviewer: ```json
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data; API keys in data/api_keys.json; pricing/coupon config in data/
+- Database schema consolidation: api_keys.json stays as file in aicli/data/; pricing, coupons, and user logs migrate to managed SQL tables instead of separate JSON files
 
 ## In Progress
 
+- Database schema consolidation (2026-03-21) — Identified that pricing.json and coupon data should migrate from JSON files to SQL tables; api_keys.json remains as file (needed pre-DB connection); mng_users and mng_users_logs can be merged into single table
 - Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files (anthropic.jsonl, openai.jsonl, local_recalculate.jsonl) are gitignored and local-only
 - Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation
 - Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories
 - Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved
 - Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
-- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(59 events, 52 commits)`
+- **hooks** `(62 events, 55 commits)`
 
 ### Doc_type
 
@@ -111,14 +115,14 @@ Reviewer: ```json
 
 ### Feature
 
-- **graph-workflow** `(44 events, 39 commits)`
+- **graph-workflow** `(48 events, 42 commits)`
+- **workflow-runner** `(45 events, 42 commits)`
 - **UI** `(43 events, 37 commits)`
-- **workflow-runner** `(42 events, 39 commits)`
 - **shared-memory** `(42 events, 37 commits)`
 - **auth** `(41 events, 38 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **mcp** `(13 events, 12 commits)`
-- **billing** `(13 events, 12 commits)`
+- **mcp** `(16 events, 15 commits)`
+- **billing** `(16 events, 15 commits)`
 - **tagging**
 - **test-picker-feature**
 - **dropbox**
@@ -126,8 +130,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(52 events, 49 commits)`
-- **development** `(45 events, 40 commits)`
+- **discovery** `(55 events, 52 commits)`
+- **development** `(48 events, 43 commits)`
 - **prod**
 
 ### Task
@@ -202,3 +206,7 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-21]** `session_analysis` — Database schema rationalization identified: pricing.json and coupons should migrate to SQL tables; mng_users and mng_users_logs can merge into single table; api_keys.json remains file-based (required pre-DB initialization). **[2026-03-21]** `refactoring` — Completed provider storage consolidation to data/provider_usage/ with gitignored local JSON files; validated tool naming convention (tool_ prefix) and backend module imports functional post-relocation. **[2026-03-21]** `infrastructure` — Tool naming and module organization validated; cleaned up empty directories and confirmed agents/tools/ and agents/mcp/ import paths operational. **[2026-03-18]** `bug_fixes` — Fixed AttributeError in main.py (removed stale ensure_project_schema call); resolved memory endpoint CLAUDE.md template variable scoping issue (code_dir now properly scoped at line 1120); improved backend startup race condition handling for empty project list on first load. **[2026-03-10]** `architecture` — Implemented load-once-on-access pattern for tags/workflows to reduce redundant SQL; approved nested tag hierarchy expansion; identified data persistence bug (tags disappearing on session switch) requiring further triage. **[2026-03-10]** `performance` — Diagnosed multiple redundant SQL calls; designed strategy to cache data in memory and update DB only on explicit save; identified port binding conflicts on app restart requiring port cleanup logic.

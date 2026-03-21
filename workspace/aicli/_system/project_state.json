@@ -25,7 +25,7 @@
     "llm_provider_adapters": "agents/providers/ with pr_ prefix for pricing and provider implementations",
     "pipeline_engine": "Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix",
     "pipeline_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation",
-    "billing_storage": "data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json, data/pricing.json, data/coupons.json"
+    "billing_storage": "data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json (file-based); pricing, coupons, user_logs (migrating to SQL tables)"
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state",
@@ -42,7 +42,7 @@
     "Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling",
     "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
     "Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes",
-    "Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data; API keys in data/api_keys.json; pricing/coupon config in data/"
+    "Database schema consolidation: api_keys.json stays as file in aicli/data/; pricing, coupons, and user logs migrate to managed SQL tables instead of separate JSON files"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -71,12 +71,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
+    "Database schema consolidation (2026-03-21) \u2014 Identified that pricing.json and coupon data should migrate from JSON files to SQL tables; api_keys.json remains as file (needed pre-DB connection); mng_users and mng_users_logs can be merged into single table",
     "Provider storage consolidation (2026-03-21) \u2014 Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files (anthropic.jsonl, openai.jsonl, local_recalculate.jsonl) are gitignored and local-only",
     "Tool naming convention completion (2026-03-21) \u2014 Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation",
     "Backend module restructure validation (2026-03-21) \u2014 Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories",
     "Project visibility bug investigation (ongoing) \u2014 AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved",
-    "Data persistence issue triage (pending) \u2014 Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure",
-    "SQL query optimization backlog \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination"
+    "Data persistence issue triage (pending) \u2014 Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -108,7 +108,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-21T23:27:27Z",
+  "last_memory_run": "2026-03-21T23:39:04Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state",
@@ -125,15 +125,15 @@
       "Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling",
       "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
       "Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes",
-      "Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data; API keys in data/api_keys.json; pricing/coupon config in data/"
+      "Database schema consolidation: api_keys.json stays as file in aicli/data/; pricing, coupons, and user logs migrate to managed SQL tables instead of separate JSON files"
     ],
     "in_progress": [
+      "Database schema consolidation (2026-03-21) \u2014 Identified that pricing.json and coupon data should migrate from JSON files to SQL tables; api_keys.json remains as file (needed pre-DB connection); mng_users and mng_users_logs can be merged into single table",
       "Provider storage consolidation (2026-03-21) \u2014 Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files (anthropic.jsonl, openai.jsonl, local_recalculate.jsonl) are gitignored and local-only",
       "Tool naming convention completion (2026-03-21) \u2014 Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation",
       "Backend module restructure validation (2026-03-21) \u2014 Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories",
       "Project visibility bug investigation (ongoing) \u2014 AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved",
-      "Data persistence issue triage (pending) \u2014 Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure",
-      "SQL query optimization backlog \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination"
+      "Data persistence issue triage (pending) \u2014 Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -142,16 +142,18 @@
       "ui_components": "xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre",
       "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "db_schema": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
       "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic",
+      "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation",
       "memory_synthesis": "Claude Haiku for dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
       "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)",
-      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder"
+      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
+      "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for pipeline definitions",
+      "billing_storage": "data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json (file-based); pricing, coupons, user_logs (migrating to SQL tables)"
     },
-    "project_summary": "aicli is a shared AI memory platform that integrates with Claude CLI and other LLM platforms, combining FastAPI backend with PostgreSQL+pgvector for semantic search, Electron UI with xterm.js/Monaco editor, and an async DAG workflow engine. The system manages per-project hierarchical tags, memory synthesis via Claude Haiku, and MCP server integration for work item management. Currently in active development with 13 active features and 7 active doc types; recent work has focused on provider storage consolidation, backend module reorganization, and resolving project visibility and data persistence bugs.",
-    "memory_digest": "**[2026-03-21]** `Development` \u2014 Consolidated provider storage: anthropic.jsonl, openai.jsonl, and local_recalculate.jsonl confirmed as local-only, gitignored runtime files in data/provider_usage/; no action needed. **[2026-03-21]** `Refactor` \u2014 Completed tool naming convention with agents/tools/tool_*.py prefix; verified import chains resolve cleanly after relocation from deprecated structure. **[2026-03-21]** `Architecture` \u2014 Validated backend module reorganization: agents/tools/ and agents/mcp/ import paths functional; cleaned up empty mcp/tools/ directory. **[2026-03-18]** `Bug Fixes` \u2014 Fixed AttributeError in main.py (removed stale `db.ensure_project_schema()` call); fixed CLAUDE.md memory endpoint template with properly scoped `code_dir` variable at line 1120; improved backend startup retry logic to handle empty project list edge case. **[2026-03-14]** `Known Issues` \u2014 Project visibility bug: AiCli appears in Recent but missing from main project list (suspected initialization race condition); data persistence issue: tags disappear on session switch (root cause unclear: UI rendering vs. DB save failure). **[2026-03-10]** `Performance` \u2014 Implemented load-once-on-access pattern for tags/workflows to reduce redundant SQL calls; design approved for nested tag hierarchy beyond 2-level structure with login as first-level only."
+    "project_summary": "aicli is a shared AI memory platform enabling users to manage development projects, workflows, and task tracking with Claude and other LLM providers. It combines a Python FastAPI backend with PostgreSQL semantic search (pgvector), a desktop Electron UI with xterm.js terminal and Monaco editor, and an MCP server for tool integration. Currently in active development with 14 feature areas tracked; recent work focused on database schema consolidation, provider billing data organization, and debugging project visibility and data persistence issues.",
+    "memory_digest": "**[2026-03-21]** `session_analysis` \u2014 Database schema rationalization identified: pricing.json and coupons should migrate to SQL tables; mng_users and mng_users_logs can merge into single table; api_keys.json remains file-based (required pre-DB initialization). **[2026-03-21]** `refactoring` \u2014 Completed provider storage consolidation to data/provider_usage/ with gitignored local JSON files; validated tool naming convention (tool_ prefix) and backend module imports functional post-relocation. **[2026-03-21]** `infrastructure` \u2014 Tool naming and module organization validated; cleaned up empty directories and confirmed agents/tools/ and agents/mcp/ import paths operational. **[2026-03-18]** `bug_fixes` \u2014 Fixed AttributeError in main.py (removed stale ensure_project_schema call); resolved memory endpoint CLAUDE.md template variable scoping issue (code_dir now properly scoped at line 1120); improved backend startup race condition handling for empty project list on first load. **[2026-03-10]** `architecture` \u2014 Implemented load-once-on-access pattern for tags/workflows to reduce redundant SQL; approved nested tag hierarchy expansion; identified data persistence bug (tags disappearing on session switch) requiring further triage. **[2026-03-10]** `performance` \u2014 Diagnosed multiple redundant SQL calls; designed strategy to cache data in memory and update DB only on explicit save; identified port binding conflicts on app restart requiring port cleanup logic."
   }
 }

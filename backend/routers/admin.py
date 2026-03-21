@@ -23,12 +23,10 @@ GET    /admin/provider-usage-history      → last N fetch results
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from core.config import settings
 from core.auth import get_current_user
 from data.database import db
 from agents.providers.pr_pricing import load_pricing, save_pricing
@@ -54,60 +52,67 @@ def _require_admin(current_user: dict = Depends(get_current_user)) -> dict:
 # ── Usage helpers ──────────────────────────────────────────────────────────────
 
 def _usage_summary(user_id: str) -> dict:
-    path = Path(settings.data_dir) / "usage" / f"{user_id}.jsonl"
-    if not path.exists():
+    """Aggregate usage stats for a user from mng_usage_logs."""
+    if not db.is_available():
         return {"total_calls": 0, "total_tokens": 0, "total_cost_usd": 0.0}
-    total_calls = total_tokens = 0
-    total_cost = 0.0
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            r = json.loads(line)
-            total_calls += 1
-            total_tokens += r.get("input_tokens", 0) + r.get("output_tokens", 0)
-            total_cost += r.get("cost_usd", 0.0)
-        except json.JSONDecodeError:
-            pass
-    return {"total_calls": total_calls, "total_tokens": total_tokens, "total_cost_usd": round(total_cost, 6)}
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT COUNT(*), COALESCE(SUM(input_tokens+output_tokens),0),
+                              COALESCE(SUM(cost_usd),0)
+                       FROM mng_usage_logs WHERE user_id=%s AND source='request'""",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+                return {
+                    "total_calls":    int(row[0]) if row else 0,
+                    "total_tokens":   int(row[1]) if row else 0,
+                    "total_cost_usd": round(float(row[2]), 6) if row else 0.0,
+                }
+    except Exception:
+        return {"total_calls": 0, "total_tokens": 0, "total_cost_usd": 0.0}
 
 
 # ── Coupon helpers ─────────────────────────────────────────────────────────────
 
-_AICLI_COUPON = {
-    "code": "AICLI",
-    "amount_usd": 10.0,
-    "max_uses": 999,
-    "used_count": 0,
-    "used_by": [],
-    "description": "Test coupon — $10 credit",
-    "expires_at": None,
-    "created_by": "system",
-    "created_at": "2026-03-07T00:00:00Z",
-}
-
-
-def _coupons_path() -> Path:
-    p = Path(settings.data_dir) / "coupons.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    return p
-
-
 def _load_coupons() -> list[dict]:
-    path = _coupons_path()
-    if not path.exists():
-        coupons = [_AICLI_COUPON]
-        _save_coupons(coupons)
-        return coupons
+    """Load all coupons from mng_coupons, seeding the default AICLI coupon if empty."""
+    if not db.is_available():
+        return []
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT code,amount_usd,max_uses,used_count,used_by,description,"
+                    "expires_at,created_by,created_at FROM mng_coupons WHERE client_id=1"
+                )
+                rows = cur.fetchall()
+                if not rows:
+                    # Seed default coupon
+                    cur.execute(
+                        """INSERT INTO mng_coupons
+                           (client_id,code,amount_usd,max_uses,description,created_by,created_at)
+                           VALUES (1,'AICLI',10.0,999,'Test coupon — $10 credit','system',NOW())
+                           ON CONFLICT DO NOTHING"""
+                    )
+                    return _load_coupons()
+                return [
+                    {
+                        "code":        r[0],
+                        "amount_usd":  float(r[1]),
+                        "max_uses":    r[2],
+                        "used_count":  r[3],
+                        "used_by":     r[4] or [],
+                        "description": r[5],
+                        "expires_at":  r[6].isoformat() if r[6] else None,
+                        "created_by":  r[7],
+                        "created_at":  r[8].isoformat() if r[8] else None,
+                    }
+                    for r in rows
+                ]
     except Exception:
-        return [_AICLI_COUPON]
-
-
-def _save_coupons(coupons: list[dict]) -> None:
-    _coupons_path().write_text(json.dumps(coupons, indent=2), encoding="utf-8")
+        return []
 
 
 # ── Stats ──────────────────────────────────────────────────────────────────────
@@ -275,35 +280,41 @@ class CouponCreate(BaseModel):
 
 @router.post("/coupons")
 async def create_coupon(body: CouponCreate, admin: dict = Depends(_require_admin)):
-    coupons = _load_coupons()
     code = body.code.upper().strip()
-    if any(c["code"] == code for c in coupons):
-        raise HTTPException(status_code=400, detail=f"Coupon code '{code}' already exists")
     admin_email = admin.get("email", "admin")
-    coupon = {
-        "code": code,
-        "amount_usd": body.amount_usd,
-        "max_uses": body.max_uses,
-        "used_count": 0,
-        "used_by": [],
-        "description": body.description,
-        "expires_at": body.expires_at,
-        "created_by": admin_email,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO mng_coupons
+                       (client_id,code,amount_usd,max_uses,description,expires_at,created_by)
+                       VALUES (1,%s,%s,%s,%s,%s,%s)
+                       RETURNING code,amount_usd,max_uses,used_count,used_by,
+                                 description,expires_at,created_by,created_at""",
+                    (code, body.amount_usd, body.max_uses, body.description,
+                     body.expires_at, admin_email),
+                )
+                r = cur.fetchone()
+    except Exception as e:
+        if "unique" in str(e).lower():
+            raise HTTPException(status_code=400, detail=f"Coupon code '{code}' already exists")
+        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "code": r[0], "amount_usd": float(r[1]), "max_uses": r[2],
+        "used_count": r[3], "used_by": r[4] or [], "description": r[5],
+        "expires_at": r[6].isoformat() if r[6] else None,
+        "created_by": r[7], "created_at": r[8].isoformat() if r[8] else None,
     }
-    coupons.append(coupon)
-    _save_coupons(coupons)
-    return coupon
 
 
 @router.delete("/coupons/{code}")
 async def delete_coupon(code: str, _: dict = Depends(_require_admin)):
-    coupons = _load_coupons()
     code = code.upper().strip()
-    new_list = [c for c in coupons if c["code"] != code]
-    if len(new_list) == len(coupons):
-        raise HTTPException(status_code=404, detail=f"Coupon '{code}' not found")
-    _save_coupons(new_list)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM mng_coupons WHERE client_id=1 AND code=%s", (code,))
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail=f"Coupon '{code}' not found")
     return {"deleted": code}
 
 

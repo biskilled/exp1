@@ -6,22 +6,23 @@ Supported providers & their API constraints:
                GET /v1/organization/usage/completions  (date range, Admin API key required)
   - Anthropic: GET /v1/organizations/{org_id}/usage  (Admin API key + beta header required)
 
-Results are stored as JSONL in {DATA_DIR}/provider_usage/{provider}.jsonl.
+Results are stored in mng_usage_logs with source='api_fetch' or 'local_recalc'.
 
-A "local recalculate" mode re-estimates cost from our own mng_usage_logs + provider_costs.json,
+A "local recalculate" mode re-estimates cost from our own mng_usage_logs,
 which works without any special key permissions.
 """
 
 import asyncio
 import json
+import logging
 import urllib.request
 import urllib.error
 from datetime import datetime, date as _date, timedelta, timezone
-from pathlib import Path
 from typing import Optional
 
-from core.config import settings
 from core.api_keys import get_key
+
+log = logging.getLogger(__name__)
 
 try:
     import httpx as _httpx
@@ -31,81 +32,118 @@ except ImportError:
 
 # ── Storage helpers ────────────────────────────────────────────────────────────
 
-def _usage_dir() -> Path:
-    p = Path(settings.data_dir) / "provider_usage"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
 def _save_result(provider: str, result: dict) -> None:
-    """Append a fetch result to the provider's JSONL history file."""
+    """Insert a fetch result into mng_usage_logs."""
+    from data.database import db
+    if not db.is_available():
+        return
     try:
-        path = _usage_dir() / f"{provider}.jsonl"
-        record = {"fetched_at": datetime.now(timezone.utc).isoformat(), **result}
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
-    except Exception:
-        pass
+        source = "local_recalc" if provider == "local_recalculate" else "api_fetch"
+        period_start = result.get("start_date")
+        period_end   = result.get("end_date")
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO mng_usage_logs
+                       (provider, input_tokens, output_tokens, cost_usd,
+                        source, metadata, period_start, period_end)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (
+                        provider,
+                        result.get("total_input_tokens", 0),
+                        result.get("total_output_tokens", 0),
+                        result.get("total_cost_usd", 0.0),
+                        source,
+                        json.dumps(result),
+                        period_start,
+                        period_end,
+                    ),
+                )
+    except Exception as e:
+        log.debug(f"_save_result DB error: {e}")
 
 
 def delete_history_record(provider: str, fetched_at: str) -> bool:
-    """Remove a single record from the provider's JSONL history by fetched_at timestamp."""
-    path = _usage_dir() / f"{provider}.jsonl"
-    if not path.exists():
+    """Remove a single record from mng_usage_logs by created_at timestamp."""
+    from data.database import db
+    if not db.is_available():
         return False
     try:
-        lines = [l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
-        new_lines, deleted = [], False
-        for line in lines:
-            try:
-                r = json.loads(line)
-                if r.get("fetched_at") == fetched_at:
-                    deleted = True
-                    continue
-            except Exception:
-                pass
-            new_lines.append(line)
-        path.write_text("\n".join(new_lines) + ("\n" if new_lines else ""), encoding="utf-8")
-        return deleted
-    except Exception:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                source = "local_recalc" if provider == "local_recalculate" else "api_fetch"
+                cur.execute(
+                    """DELETE FROM mng_usage_logs
+                       WHERE provider=%s AND source=%s
+                       AND created_at::text LIKE %s""",
+                    (provider, source, fetched_at[:19] + "%"),
+                )
+                return cur.rowcount > 0
+    except Exception as e:
+        log.debug(f"delete_history_record DB error: {e}")
         return False
 
 
 def clear_history(provider: Optional[str] = None) -> int:
-    """Delete all history records for a provider (or all if provider is None). Returns count deleted."""
-    d = _usage_dir()
-    files = [d / f"{provider}.jsonl"] if provider else list(d.glob("*.jsonl"))
-    total = 0
-    for fpath in files:
-        if fpath.exists():
-            lines = [l for l in fpath.read_text(encoding="utf-8").splitlines() if l.strip()]
-            total += len(lines)
-            fpath.write_text("", encoding="utf-8")
-    return total
+    """Delete all history records for a provider (or all). Returns count deleted."""
+    from data.database import db
+    if not db.is_available():
+        return 0
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                if provider:
+                    source = "local_recalc" if provider == "local_recalculate" else "api_fetch"
+                    cur.execute(
+                        "DELETE FROM mng_usage_logs WHERE provider=%s AND source=%s",
+                        (provider, source),
+                    )
+                else:
+                    cur.execute(
+                        "DELETE FROM mng_usage_logs WHERE source IN ('api_fetch','local_recalc')"
+                    )
+                return cur.rowcount
+    except Exception as e:
+        log.debug(f"clear_history DB error: {e}")
+        return 0
 
 
 def load_usage_history(provider: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """Load the last N fetch records (newest first)."""
-    d = _usage_dir()
-    files = [d / f"{provider}.jsonl"] if provider else sorted(d.glob("*.jsonl"))
-    results: list[dict] = []
-    for fpath in files:
-        if not fpath.exists():
-            continue
-        prov = fpath.stem
-        try:
-            lines = [l.strip() for l in fpath.read_text(encoding="utf-8").splitlines() if l.strip()]
-            for line in reversed(lines[-limit:]):
-                try:
-                    r = json.loads(line)
-                    r.setdefault("provider", prov)
-                    results.append(r)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-    results.sort(key=lambda r: r.get("fetched_at", ""), reverse=True)
-    return results[:limit]
+    """Load the last N fetch records (newest first) from mng_usage_logs."""
+    from data.database import db
+    if not db.is_available():
+        return []
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                if provider:
+                    source = "local_recalc" if provider == "local_recalculate" else "api_fetch"
+                    cur.execute(
+                        """SELECT provider, source, metadata, period_start, period_end, created_at
+                           FROM mng_usage_logs
+                           WHERE source=%s AND provider=%s
+                           ORDER BY created_at DESC LIMIT %s""",
+                        (source, provider, limit),
+                    )
+                else:
+                    cur.execute(
+                        """SELECT provider, source, metadata, period_start, period_end, created_at
+                           FROM mng_usage_logs
+                           WHERE source IN ('api_fetch','local_recalc')
+                           ORDER BY created_at DESC LIMIT %s""",
+                        (limit,),
+                    )
+                results = []
+                for row in cur.fetchall():
+                    entry = dict(row[2]) if row[2] else {}
+                    entry["provider"]   = row[0]
+                    entry["source"]     = row[1]
+                    entry["fetched_at"] = row[5].isoformat() if row[5] else None
+                    results.append(entry)
+                return results
+    except Exception as e:
+        log.debug(f"load_usage_history DB error: {e}")
+        return []
 
 
 # ── HTTP helpers ───────────────────────────────────────────────────────────────

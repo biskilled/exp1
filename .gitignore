@@ -33,10 +33,7 @@ credentials/
 # ── Backend data (API keys, billing, user accounts) ───────────
 ui/backend/data/
 old/ui/backend/data/
-backend/data/api_keys.json
-backend/data/coupons.json
-backend/data/provider_balances.json
-backend/data/provider_usage/
+data/api_keys.json
 
 # ── Old CLI runtime data (migrated to ui/backend/data/) ──────
 .aicli/

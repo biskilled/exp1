@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:27 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:38 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -30,7 +30,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
-- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json, data/pricing.json, data/coupons.json
+- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json (file-based); pricing, coupons, user_logs (migrating to SQL tables)
 
 ## Key Decisions
 
@@ -48,12 +48,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data; API keys in data/api_keys.json; pricing/coupon config in data/
+- Database schema consolidation: api_keys.json stays as file in aicli/data/; pricing, coupons, and user logs migrate to managed SQL tables instead of separate JSON files
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] Is there is a reason to have tools under mcp as well ?
 - [2026-03-21] Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - currently there is o
 - [2026-03-21] I do see provider files unde data , I do see also provider_usage folder under data (which might make sense) and do see s
 - [2026-03-21] What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty
 - [2026-03-21] The backend is used for code only, it wont have any read permissions... any file data will be updated and used as data h
+- [2026-03-21] Can you recheck what is database schema, I dont think it is required to add 5 new table, but possible to merge that mng_
