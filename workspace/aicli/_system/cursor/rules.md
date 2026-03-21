@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:10 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:27 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -52,8 +52,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen
 - [2026-03-21] Is there is a reason to have tools under mcp as well ?
 - [2026-03-21] Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - currently there is o
 - [2026-03-21] I do see provider files unde data , I do see also provider_usage folder under data (which might make sense) and do see s
 - [2026-03-21] What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty
+- [2026-03-21] The backend is used for code only, it wont have any read permissions... any file data will be updated and used as data h

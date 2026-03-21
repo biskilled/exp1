@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 23:10 UTC by aicli /memory_
+_Generated: 2026-03-21 23:27 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform that integrates with Claude CLI and other LLM platforms, combining FastAPI backend with PostgreSQL+pgvector for semantic search, Electron UI with xterm.js/Monaco editor, and an async DAG workflow engine. The system manages per-project hierarchical tags, memory synthesis via Claude Haiku, and MCP server integration for work item management. Currently in active development with 13 active features and 7 active doc types; recent work has focused on provider storage consolidation, backend module reorganization, and resolving project visibility and data persistence bugs.
 
 ## Project Facts
 
@@ -206,7 +202,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-21]** `Development` — Consolidated provider storage: anthropic.jsonl, openai.jsonl, and local_recalculate.jsonl confirmed as local-only, gitignored runtime files in data/provider_usage/; no action needed. **[2026-03-21]** `Refactor` — Completed tool naming convention with agents/tools/tool_*.py prefix; verified import chains resolve cleanly after relocation from deprecated structure. **[2026-03-21]** `Architecture` — Validated backend module reorganization: agents/tools/ and agents/mcp/ import paths functional; cleaned up empty mcp/tools/ directory. **[2026-03-18]** `Bug Fixes` — Fixed AttributeError in main.py (removed stale `db.ensure_project_schema()` call); fixed CLAUDE.md memory endpoint template with properly scoped `code_dir` variable at line 1120; improved backend startup retry logic to handle empty project list edge case. **[2026-03-14]** `Known Issues` — Project visibility bug: AiCli appears in Recent but missing from main project list (suspected initialization race condition); data persistence issue: tags disappear on session switch (root cause unclear: UI rendering vs. DB save failure). **[2026-03-10]** `Performance` — Implemented load-once-on-access pattern for tags/workflows to reduce redundant SQL calls; design approved for nested tag hierarchy beyond 2-level structure with login as first-level only.

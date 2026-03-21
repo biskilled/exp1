@@ -108,7 +108,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-21T23:10:30Z",
+  "last_memory_run": "2026-03-21T23:27:27Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state",

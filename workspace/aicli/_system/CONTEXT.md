@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 23:10 UTC — do not edit manually.
+> Auto-generated 2026-03-21 23:27 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 201
-- **Last active**: 2026-03-21T23:10:07Z
+- **Sessions**: 202
+- **Last active**: 2026-03-21T23:27:01Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -156,6 +156,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 23:25]** `claude_cli/claude`  
+→ The backend is used for code only, it wont have any read permissions... any file data will be updated and used as data h
+← _`backend/data/provider_usage/` is already gitignored — the empty files just exist locally and will never be committed. Nothing to change._
+
 **[2026-03-21 23:09]** `claude_cli/claude`  
 → What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty 
 ← _`backend/data/provider_usage/` is already gitignored — the empty files just exist locally and will never be committed. Nothing to change._
@@ -210,7 +214,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 21:11]** `claude_cli/claude`  
 → looks better. now I dont see any automated commits also mcp server is not configured well. I do see that aiCli.yaml is u
 ← _Here's a summary of what was fixed:  ---  **1. MCP Server — wrong path (all 3 configs updated)** - `aicli.yaml`: `ui/mcp_server.py` → `backend/tools/mcp/server.py` - `.cursor/mcp.json`: same path fix _
-
-**[2026-03-21 21:03]** `claude_cli/claude`  
-→ Now Ui is failing to load - Javascriot error at main process - child_process:483:16
-← _Now verify the final path values are correct:_
