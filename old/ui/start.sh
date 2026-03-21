@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKEND_DIR="$SCRIPT_DIR/backend"
+BACKEND_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)/backend"  # new location: aicli/backend/
 
 cd "$BACKEND_DIR"
 echo "Starting aicli backend at http://localhost:8000"

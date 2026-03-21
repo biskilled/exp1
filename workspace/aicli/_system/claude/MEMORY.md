@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-20 22:15 UTC by aicli /memory_
+_Generated: 2026-03-21 21:17 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron-based frontend for collaborative development workflows. It integrates with multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok), uses PostgreSQL with pgvector for semantic search, and provides async DAG workflow execution with approval-based negotiation, tagging hierarchies, and MCP integration for project state management.
+aicli is a shared AI memory platform built on FastAPI + PostgreSQL + Electron, enabling multi-user project collaboration with semantic memory synthesis, DAG-based workflow automation, and LLM provider agnostic integration. Currently at v2.2.0, the project is in active development with focus on fixing backend path resolution, MCP server configuration, and optimizing SQL query performance for production readiness.
 
 ## Project Facts
 
@@ -62,7 +62,7 @@ Reviewer: ```json
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **memory_synthesis**: Claude Haiku for dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- **mcp**: Stdio MCP server with 12+ tools
+- **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
@@ -70,7 +70,7 @@ Reviewer: ```json
 
 ## Key Decisions
 
-- Engine/workspace separation: aicli/ contains code only; workspace/ stores per-project content; _system/ holds project state
+- Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state
 - Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
@@ -81,29 +81,29 @@ Reviewer: ```json
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
-- MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
-- Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
-- 2-pane approval chat workflow for requirement negotiation before work_item save
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
+- Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
+- Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
 
 ## In Progress
 
-- Work item pipeline role integration (2026-03-20) — Fixed hardcoded Haiku/Anthropic; now queries mng_agent_roles and respects configured LLM provider per role
+- MCP server path and configuration alignment (2026-03-21) — Fixed path references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched to env vars instead of hardcoded arguments; created missing .claude/mcp.json
+- Electron backend path resolution (2026-03-21) — Fixed BACKEND_DIR path pointing to old/ui/backend instead of correct aicli/backend; verified all project lookup endpoints work correctly
+- Automated commit hooks configuration (2026-03-21) — Ensured all hooks configured without hardcoded strings; using backend_url environment variable; hooks not yet fully operational
+- Project visibility bug investigation (2026-03-21) — AiCli project appearing in Recent but not in main project list; suspected race condition in Electron initialization; partial fix applied
 - SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
-- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion
-- Pipeline approval workflow rendering (2026-03-20) — Old MD displayed instead of current output/progress logs; requires chat panel state management fix
-- Backend startup race condition handling (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; fixed retry logic to handle empty project list
-- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
+- Pipeline approval workflow rendering (2026-03-20) — Old MD displayed instead of current output/progress logs in approval panel; requires chat panel state management fix
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(43 events, 38 commits)`
+- **hooks** `(45 events, 40 commits)`
 
 ### Doc_type
 
-- **Test** `(26 events, 25 commits)`
+- **Test** `(28 events, 27 commits)`
 - **low-level-design** `(1 events)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -111,12 +111,12 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(41 events, 35 commits)`
-- **shared-memory** `(40 events, 35 commits)`
-- **auth** `(39 events, 36 commits)`
-- **graph-workflow** `(28 events, 25 commits)`
-- **workflow-runner** `(27 events, 25 commits)`
-- **embeddings** `(26 events, 25 commits)`
+- **UI** `(43 events, 37 commits)`
+- **shared-memory** `(42 events, 37 commits)`
+- **auth** `(41 events, 38 commits)`
+- **graph-workflow** `(31 events, 27 commits)`
+- **workflow-runner** `(29 events, 27 commits)`
+- **embeddings** `(28 events, 27 commits)`
 - **tagging**
 - **billing**
 - **mcp**
@@ -126,14 +126,14 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(37 events, 35 commits)`
-- **development** `(29 events, 26 commits)`
+- **discovery** `(39 events, 37 commits)`
+- **development** `(31 events, 28 commits)`
 - **prod**
 
 ### Task
 
-- **memory** `(39 events, 35 commits)`
-- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(26 events, 25 commits)`
+- **memory** `(41 events, 37 commits)`
+- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
 
 ## Recent Memory
 
@@ -205,4 +205,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-20]** `work_item_pipeline.py` — Fixed hardcoded Haiku/Anthropic by refactoring to query mng_agent_roles table; work item pipeline now respects configured LLM provider and model per role instead of ignoring configuration. **[2026-03-20]** `event_migration, memory_synthesis` — Identified SQL performance bottlenecks: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination for optimization. **[2026-03-20]** `workflow_approval_panel` — Chat panel rendering outdated MD instead of current output/progress logs; state management fix needed in approval workflow UI. **[2026-03-19]** `pipeline_run_queries` — UUID validation error (psycopg2 InvalidTextRepresentation) when string 'recent' passed to UUID field; requires conversion to UUID objects in query layer. **[2026-03-18]** `backend_startup` — Fixed race condition where projects loaded successfully but returned empty list; retry logic in _continueToApp() now handles edge case preventing false "project not found" errors. **[2026-03-10]** `memory_architecture` — Implemented load-once-on-access pattern: tags/workflows/runs cached in memory on project load, DB updates only on explicit save to reduce redundant SQL calls.
+**[2026-03-21]** `claude_cli` — MCP server path references corrected across aicli.yaml, .cursor/mcp.json, and .claude/mcp.json; switched from hardcoded arguments to environment variables (BACKEND_URL, ACTIVE_PROJECT) for robust configuration. **[2026-03-21]** `claude_cli` — Fixed critical Electron backend path resolution: BACKEND_DIR was pointing to old/ui/backend instead of aicli/backend, causing all project lookups to fail; verified all three endpoints now work correctly. **[2026-03-21]** `claude_cli` — Automated commit hooks require finalization; infrastructure now supports environment-based configuration to eliminate hardcoded backend URLs. **[2026-03-21]** `claude_cli` — Project visibility race condition identified: AiCli appearing in Recent but absent from main project list; partially addressed through Electron initialization fixes. **[2026-03-20]** `synthesis` — Work item pipeline refactored to query mng_agent_roles table and respect per-role LLM provider configuration instead of hardcoded Haiku/Anthropic. **[2026-03-20]** `synthesis` — Identified SQL optimization requirements: row-by-row INSERT operations and unbounded fetchall() in memory synthesis need batch refactoring and pagination. **[2026-03-18]** `synthesis` — Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call; corrected memory endpoint template variable scoping for code_dir. **[2026-03-10]** `synthesis` — Implemented load-once-on-access caching pattern: tags/workflows/runs cached in memory on project access, updates committed to DB only on explicit save to reduce redundant SQL. **[2026-03-10]** `synthesis` — Approved nested tag hierarchy expansion beyond 2-level structure; confirmed login as first-level-only designation. **[2026-03-10]** `synthesis` — Identified data persistence bug where UI-saved tags disappear on session switch; root cause investigation pending.

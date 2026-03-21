@@ -21,7 +21,7 @@ const fs = require("fs");
 
 const ENGINE_ROOT = path.resolve(__dirname, "../..");
 const UI_ROOT = path.resolve(__dirname, "..");
-const BACKEND_DIR = path.join(UI_ROOT, "backend");
+const BACKEND_DIR = path.join(ENGINE_ROOT, "backend");  // new location: aicli/backend/
 const FRONTEND_DIR = path.join(UI_ROOT, "frontend");
 
 let mainWindow = null;

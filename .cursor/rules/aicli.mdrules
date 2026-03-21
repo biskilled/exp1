@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 22:15 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 21:17 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **memory_synthesis**: Claude Haiku for dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- **mcp**: Stdio MCP server with 12+ tools
+- **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
@@ -30,7 +30,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Key Decisions
 
-- Engine/workspace separation: aicli/ contains code only; workspace/ stores per-project content; _system/ holds project state
+- Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state
 - Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
@@ -41,15 +41,15 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
-- MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
-- Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
-- 2-pane approval chat workflow for requirement negotiation before work_item save
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
+- Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
+- Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-20] I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
-- [2026-03-20] Work Item pieplien suppose to use the existing roles - PM - project manage, architect - Sr architect. can you optimize t
-- [2026-03-20] I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w
-- [2026-03-20] can you run /memory , also can you check why running workflow is so slow. each steps takes a while, and once step is app
-- [2026-03-20] Why work Item pipeline is not using the pre defined roles ?
+- [2026-03-21] What is the cli folder is used for ?
+- [2026-03-21] Let me check that all went well. when I try to open aiCli - it mention that it cannot find the project. also there is st
+- [2026-03-21] I till see the rror - Project did not found aiCli. also I do not see any project loaded. the project aiCli is under the 
+- [2026-03-21] Now Ui is failing to load - Javascriot error at main process - child_process:483:16
+- [2026-03-21] looks better. now I dont see any automated commits also mcp server is not configured well. I do see that aiCli.yaml is u

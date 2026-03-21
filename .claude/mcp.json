@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "aicli_project": {
+      "command": "python3.12",
+      "args": [
+        "/Users/user/Documents/gdrive_cellqlick/2026/aicli/backend/tools/mcp/server.py"
+      ],
+      "env": {
+        "BACKEND_URL": "http://localhost:8000",
+        "ACTIVE_PROJECT": "aicli"
+      }
+    }
+  }
+}

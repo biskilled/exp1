@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-20 22:16 UTC — do not edit manually.
+> Auto-generated 2026-03-21 21:19 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 181
-- **Last active**: 2026-03-20T22:15:47Z
+- **Sessions**: 189
+- **Last active**: 2026-03-21T21:17:28Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -27,7 +27,7 @@
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **memory_synthesis**: Claude Haiku for dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-- **mcp**: Stdio MCP server with 12+ tools
+- **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings
@@ -35,16 +35,16 @@
 
 ## In Progress
 
-- Work item pipeline role integration (2026-03-20) — Fixed hardcoded Haiku/Anthropic; now queries mng_agent_roles and respects configured LLM provider per role
+- MCP server path and configuration alignment (2026-03-21) — Fixed path references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched to env vars instead of hardcoded arguments; created missing .claude/mcp.json
+- Electron backend path resolution (2026-03-21) — Fixed BACKEND_DIR path pointing to old/ui/backend instead of correct aicli/backend; verified all project lookup endpoints work correctly
+- Automated commit hooks configuration (2026-03-21) — Ensured all hooks configured without hardcoded strings; using backend_url environment variable; hooks not yet fully operational
+- Project visibility bug investigation (2026-03-21) — AiCli project appearing in Recent but not in main project list; suspected race condition in Electron initialization; partial fix applied
 - SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
-- UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion
-- Pipeline approval workflow rendering (2026-03-20) — Old MD displayed instead of current output/progress logs; requires chat panel state management fix
-- Backend startup race condition handling (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; fixed retry logic to handle empty project list
-- Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
+- Pipeline approval workflow rendering (2026-03-20) — Old MD displayed instead of current output/progress logs in approval panel; requires chat panel state management fix
 
 ## Key Decisions
 
-- Engine/workspace separation: aicli/ contains code only; workspace/ stores per-project content; _system/ holds project state
+- Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state
 - Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector for semantic search and per-project indexed tables
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
@@ -55,10 +55,10 @@
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
-- MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
-- Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
-- 2-pane approval chat workflow for requirement negotiation before work_item save
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
+- Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
+- Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
 
 ---
 
@@ -152,6 +152,33 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 21:11]** `claude_cli/claude`  
+→ looks better. now I dont see any automated commits also mcp server is not configured well. I do see that aiCli.yaml is u
+← _Here's a summary of what was fixed:  ---  **1. MCP Server — wrong path (all 3 configs updated)** - `aicli.yaml`: `ui/mcp_server.py` → `backend/tools/mcp/server.py` - `.cursor/mcp.json`: same path fix _
+
+**[2026-03-21 21:03]** `claude_cli/claude`  
+→ Now Ui is failing to load - Javascriot error at main process - child_process:483:16
+← _Now verify the final path values are correct:_
+
+**[2026-03-21 20:58]** `claude_cli/claude`  
+→ I till see the rror - Project did not found aiCli. also I do not see any project loaded. the project aiCli is under the 
+← _All three endpoints work correctly. The summary of what was happening and what to do:  ---  ## Root cause  The Electron app (`old/ui/electron/main.js`) was launching the backend with: ```js BACKEND_DI_
+
+**[2026-03-21 20:47]** `claude_cli/claude`  
+→ Let me check that all went well. when I try to open aiCli - it mention that it cannot find the project. also there is st
+← _Project list returns correctly. Let me kill those test instances and confirm the Electron fix is the only change needed:_
+
+**[2026-03-21 14:25]** `claude_cli/claude`  
+→ What is the cli folder is used for ?
+← _The `cli/` folder is the **new HTTP-only CLI client** — a terminal REPL that talks to the backend exclusively via HTTP, with no direct LLM provider code of its own.  **What it does:** - Runs a `prompt_
+
+**[2026-03-21 10:46]** `claude_cli/claude`  
+→ I think there is bit of confusation , and that is why roles are not defined well. I would like to restrucure the code fo
+
+**[2026-03-20 22:22]** `claude_cli/claude`  
+→ I am not sure what the developer did. dont see any output , and not sure there was any commit/push laos reviewer mention
+← _Good. Let me also quickly verify that `_apply_code_and_commit` in `graph_runner.py` commits with the right message format for work items:_
+
 **[2026-03-20 22:09]** `claude_cli/claude`  
 → Why work Item pipeline is not using the pre defined roles ? 
 ← _Up. Here's the complete answer to the question:  ---  ## Why the work item pipeline wasn't using predefined roles  **Root cause (before today's fixes):** The original `work_item_pipeline.py` had all p_
@@ -183,31 +210,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-20 16:29]** `claude_cli/claude`  
 → Projects only loading when I press to prject tab. as Project  loaded as default page, it should load when app is starter
 ← _Here's a summary of all 8 fixes applied:  ---  **1. Projects not loading on startup** (`main.js`) - Added a re-render of `renderHome(view)` in `_continueToApp`'s `.then()` callback when still on the h_
-
-**[2026-03-20 00:15]** `claude_cli/claude`  
-→ Currently  memory_items (compressed knowledge) is based on prompt/responses, commit, workflows node results.  I would li
-← _Now let me verify all changes are consistent by doing a quick sanity check:_
-
-**[2026-03-19 23:54]** `claude_cli/claude`  
-→ I did reciave the following message : No JSON array found in response ... Also I still dont see project loading when app
-← _Now fix the startup project loading:_
-
-**[2026-03-19 23:22]** `claude_cli/claude`  
-→ Do you understand what is this app is about ? can you summerise that and let me know who are direct competitors?
-← _## What aicli Is  **aicli is a shared AI memory platform for software development teams.**  The core problem it solves: every time you switch between Claude CLI, Cursor, the web UI, or any other AI to_
-
-**[2026-03-19 23:04]** `claude_cli/claude`  
-→ Looks better. I would like to have an option to chat as well in order to chance to requirement. once it is agreed, user 
-← _The implementation looks correct. Here's what was done:  **Changes made:**  1. **`graph_workflow.js` — module state** (line 43): Added `let _approvalChatHistory = [];`  2. **`graph_workflow.js` — `_sh_
-
-**[2026-03-19 22:05]** `claude_cli/claude`  
-→ Can you explain what the run pipeline is doing when it start running from the the planer/feature. I have tried to test t
-← _All roles are correctly matched now: - PM → Product Manager ✓ - Architect → Sr. Architect ✓   - Developer → **Backend Developer** ✓ (not Web Developer) - Reviewer → Code Reviewer ✓  Let me do a quick _
-
-**[2026-03-19 20:55]** `claude_cli/claude`  
-→ There are some UI improvement - I do see that GET /projects/ take some time to load and that is why I dont see projects 
-← _All changes are confirmed in place. Here's a summary of everything done:  **prompts.js (background agent completed):** - Agent Roles on top with `flex:1` for proper spacing - System Roles at bottom wi_
-
-**[2026-03-19 16:47]** `claude_cli/claude`  
-→ it looks better, but workflow complated after 2 seconds. I do not see any outcomes in my Documents, not even something m
-← _Now restart the backend to pick up all the fixes:_
