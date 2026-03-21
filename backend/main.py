@@ -103,7 +103,7 @@ async def startup():
     _migrate_server_data()
 
     # Ensure monetization data files exist on first start
-    from core.pricing import load_pricing
+    from agents.providers.pr_pricing import load_pricing
     from core.api_keys import load_keys, save_keys, _env_key, _PROVIDERS
     from routers.admin import _load_coupons
     load_pricing(); _load_coupons()

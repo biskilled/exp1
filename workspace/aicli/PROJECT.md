@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup
-- Backend code organization refactor — Consolidation of memory management classes under core module; clarification of model usage patterns required
-- MCP server path and configuration alignment — Fixed env var references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched from hardcoded arguments
-- Electron backend path resolution — Corrected BACKEND_DIR path from old/ui/backend to aicli/backend; verified project lookup endpoints functional
-- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; suspected race condition in Electron initialization
-- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
+- Backend module organization audit (2026-03-21) — Clarified that routers/ handles API endpoints and models/ handles data structures; work_item_pipeline.py and embedding.py logically belong in workflow/memory subsystems respectively; verified no orphaned references remain after refactoring
+- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup validation
+- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
+- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+- Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
+- memory_items and project_facts table population — Per specification, these tables should be populated to enable improved memory/context mechanism; update logic not yet implemented

@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 21:39 UTC by aicli /memory_
+_Generated: 2026-03-21 21:49 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling Claude CLI and other LLM platforms to persist development context, manage complex workflows via DAG execution, and synthesize insights across sessions. Built on Python FastAPI backend, PostgreSQL with pgvector embeddings, Electron UI with Vanilla JS, it supports multi-user authentication, nested tagging hierarchies, and configurable LLM provider integration. Currently in active development with ongoing fixes to commit hooks, SQL performance, project visibility bugs, and memory table population.
+aicli is a shared AI memory platform that enables Claude CLI, Cursor, and other LLM clients to maintain persistent, searchable project context across sessions. It combines JSONL-based local storage with PostgreSQL+pgvector for semantic search, features JWT-authenticated multi-user support, async DAG-based workflow execution with Cytoscape visualization, and integrates an MCP server for AI-driven work item management. Currently in active development with focus on backend module organization, query optimization, and resolving data persistence issues.
 
 ## Project Facts
 
@@ -84,22 +84,22 @@ Reviewer: ```json
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
 - Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
-- Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
+- Backend module organization: routers/ for API endpoints, models/ for data structures; workflow logic centralized (not scattered across modules)
 
 ## In Progress
 
-- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup
-- Backend code organization refactor — Consolidation of memory management classes under core module; clarification of model usage patterns required
-- MCP server path and configuration alignment — Fixed env var references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched from hardcoded arguments
-- Electron backend path resolution — Corrected BACKEND_DIR path from old/ui/backend to aicli/backend; verified project lookup endpoints functional
-- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; suspected race condition in Electron initialization
-- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
+- Backend module organization audit (2026-03-21) — Clarified that routers/ handles API endpoints and models/ handles data structures; work_item_pipeline.py and embedding.py logically belong in workflow/memory subsystems respectively; verified no orphaned references remain after refactoring
+- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup validation
+- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
+- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+- Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
+- memory_items and project_facts table population — Per specification, these tables should be populated to enable improved memory/context mechanism; update logic not yet implemented
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(45 events, 40 commits)`
+- **hooks** `(46 events, 40 commits)`
 
 ### Doc_type
 
@@ -127,7 +127,7 @@ Reviewer: ```json
 ### Phase
 
 - **discovery** `(39 events, 37 commits)`
-- **development** `(32 events, 28 commits)`
+- **development** `(36 events, 32 commits)`
 - **prod**
 
 ### Task
@@ -205,4 +205,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-21]** `claude_cli` — User confirmed hooks configuration not yet operational; requires verification of execution logic and environment bindings. **[2026-03-21]** `backend refactor` — Code organization scattered across memory management classes; consolidation under core module pending. **[2026-03-21]** `mcp configuration` — Unified env var approach across .cursor/mcp.json and .claude/mcp.json; removed hardcoded argument patterns. **[2026-03-21]** `electron paths` — Corrected BACKEND_DIR reference from old/ui/backend to aicli/backend; project lookup endpoints verified functional. **[2026-03-21]** `project visibility` — AiCli appearing in Recent projects but missing from main list; race condition in Electron initialization suspected. **[2026-03-20]** `sql optimization` — Identified inefficient row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; batch refactor required. **[2026-03-18]** `bug fixes` — Removed stale db.ensure_project_schema() call; fixed memory endpoint code_dir variable scoping; improved backend startup retry logic for empty project lists. **[2026-03-10]** `tag hierarchy` — Approved unlimited nested tag depth via parent_id FK; confirmed login as first-level hierarchy. **[2026-03-10]** `data persistence` — Tags saved in UI disappear on session switch; root cause unclear (rendering vs database save). **[2026-03-14]** `project state` — 14 active features/tasks tracked (UI, shared-memory, auth, graph-workflow, workflow-runner, embeddings, tagging, billing, mcp, dropbox, pagination); discovery/development phases active with 39/32 events respectively.
+**[2026-03-21]** `claude_cli` — Backend module organization clarified: routers/ handles API endpoints, models/ holds data structures; work_item_pipeline.py and embedding.py logically belong in workflow/memory subsystems; verified clean refactoring with no orphaned references. **[2026-03-21]** `reported_issue` — Automated commit hooks not executing; requires verification of hook environment setup and trigger logic. **[2026-03-18]** `code_fix` — Fixed AttributeError in main.py by removing stale `db.ensure_project_schema()` call; replaced with correct `_ensure_shared_schema()` method. **[2026-03-18]** `code_fix` — Memory endpoint CLAUDE.md template error resolved; undefined `code_dir` variable now properly scoped from config at line 1120. **[2026-03-18]** `architecture_fix` — Backend startup race condition mitigated with enhanced retry logic in `_continueToApp()` to handle empty project list on first load. **[2026-03-14]** `bug_open` — Project visibility issue: AiCli appears in Recent but not as active in main view; timing issue during backend initialization suspected. **[2026-03-10]** `performance_issue` — Database redundancy identified; implemented load-once-on-access pattern with explicit DB save to reduce SQL calls. **[2026-03-10]** `data_persistence_bug` — Tags saved in UI disappear when switching sessions; unclear if UI rendering or database save failure. **[2026-03-10]** `optimization_needed` — Row-by-row INSERT and unbounded fetchall() in event migration and memory synthesis require batch refactoring and pagination. **[TBD]** `pending_implementation` — memory_items and project_facts tables not being populated per specification; logic implementation required.

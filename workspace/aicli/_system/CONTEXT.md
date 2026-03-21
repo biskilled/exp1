@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 21:40 UTC — do not edit manually.
+> Auto-generated 2026-03-21 21:50 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 191
-- **Last active**: 2026-03-21T21:39:43Z
+- **Sessions**: 192
+- **Last active**: 2026-03-21T21:49:42Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,12 +35,12 @@
 
 ## In Progress
 
-- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup
-- Backend code organization refactor — Consolidation of memory management classes under core module; clarification of model usage patterns required
-- MCP server path and configuration alignment — Fixed env var references in aicli.yaml, .cursor/mcp.json, .claude/mcp.json; switched from hardcoded arguments
-- Electron backend path resolution — Corrected BACKEND_DIR path from old/ui/backend to aicli/backend; verified project lookup endpoints functional
-- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; suspected race condition in Electron initialization
-- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
+- Backend module organization audit (2026-03-21) — Clarified that routers/ handles API endpoints and models/ handles data structures; work_item_pipeline.py and embedding.py logically belong in workflow/memory subsystems respectively; verified no orphaned references remain after refactoring
+- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup validation
+- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
+- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+- Data persistence issue with tags — Tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation and fix
+- memory_items and project_facts table population — Per specification, these tables should be populated to enable improved memory/context mechanism; update logic not yet implemented
 
 ## Key Decisions
 
@@ -58,7 +58,7 @@
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
 - Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
-- Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
+- Backend module organization: routers/ for API endpoints, models/ for data structures; workflow logic centralized (not scattered across modules)
 
 ---
 
@@ -152,6 +152,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 21:46]** `claude_cli/claude`  
+→ WHy there is model and routers folder, shoud thay all be under routers? also I do see some files like work_item_pipeline
+← _All clean. Now verify no remaining references to the deleted modules:_
+
 **[2026-03-21 21:35]** `claude_cli/claude`  
 → test prompt from manual run
 
@@ -205,7 +209,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-20 21:32]** `claude_cli/claude`  
 → Work Item pieplien suppose to use the existing roles - PM - project manage, architect - Sr architect. can you optimize t
 ← _All 4 pipeline roles load correctly with their system role content appended. Let me update the tasks:_
-
-**[2026-03-20 19:46]** `claude_cli/claude`  
-→ I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
-← _But `_loadTab` refetches if no cache. The real fix is that `_render()` reattaches to container and `_loadTab` uses the cached data. Let me check how the HistoryView handles this — when `_histData` is _

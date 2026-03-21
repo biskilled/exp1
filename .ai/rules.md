@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 21:39 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 21:49 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -44,12 +44,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
 - Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
 - Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
-- Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
+- Backend module organization: routers/ for API endpoints, models/ for data structures; workflow logic centralized (not scattered across modules)
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] Now Ui is failing to load - Javascriot error at main process - child_process:483:16
 - [2026-03-21] looks better. now I dont see any automated commits also mcp server is not configured well. I do see that aiCli.yaml is u
 - [2026-03-21] I would like to make sure backend is witten properly - I do see storage folder who is only managing session, which I don
 - [2026-03-21] I do not see hooks runing yet.
 - [2026-03-21] test prompt from manual run
+- [2026-03-21] WHy there is model and routers folder, shoud thay all be under routers? also I do see some files like work_item_pipeline

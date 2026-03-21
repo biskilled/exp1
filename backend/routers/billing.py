@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.auth import get_current_user
-from core.pricing import load_pricing
+from agents.providers.pr_pricing import load_pricing
 from data.user import find_by_id, update_user
 
 router = APIRouter()

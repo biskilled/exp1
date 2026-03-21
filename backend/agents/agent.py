@@ -175,7 +175,7 @@ class Agent:
         4. Repeat until "end_turn" or max tool calls exceeded
         """
         from core.api_keys import get_key
-        from core.provider_costs import estimate_cost
+        from agents.providers.pr_costs import estimate_cost
 
         if api_key is None:
             api_key = get_key(self.provider) or get_key("claude")

@@ -21,7 +21,7 @@ from core.config import settings
 from core.auth import get_optional_user
 from core.api_keys import get_key
 from data.database import db
-from core.pricing import load_pricing, calculate_cost, can_user_access
+from agents.providers.pr_pricing import load_pricing, calculate_cost, can_user_access
 from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
 from routers.usage import log_usage
 from memory.sessions import SessionStore

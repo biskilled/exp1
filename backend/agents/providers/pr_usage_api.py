@@ -399,7 +399,7 @@ async def recalculate_local_costs(start_date: str, end_date: str) -> dict:
     using the current provider_costs.json pricing.
     Returns a summary and updates estimated_cost_usd in records.
     """
-    from core.provider_costs import estimate_cost
+    from agents.providers.pr_costs import estimate_cost
     from data.database import db
 
     result: dict = {

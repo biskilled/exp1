@@ -31,7 +31,7 @@ from pydantic import BaseModel
 from core.config import settings
 from core.auth import get_current_user
 from data.database import db
-from core.pricing import load_pricing, save_pricing
+from agents.providers.pr_pricing import load_pricing, save_pricing
 from core.api_keys import load_keys, save_keys, masked_keys
 from data.user import find_by_id, list_users, update_user, delete_user
 
@@ -331,7 +331,7 @@ async def put_api_keys(body: dict, _: dict = Depends(_require_admin)):
 @router.get("/api-balances")
 async def get_api_balances(_: dict = Depends(_require_admin)):
     """Return live balance from each provider's API (where supported)."""
-    from core.api_balances import get_all_balances
+    from agents.providers.pr_api_balances import get_all_balances
     return await get_all_balances()
 
 
@@ -345,7 +345,7 @@ async def get_usage_table(_: dict = Depends(_require_admin)):
     Reads from PostgreSQL when DATABASE_URL is set; falls back to JSONL files.
     Also returns 'system_rows' with live API balances per provider.
     """
-    from core.api_balances import get_all_balances
+    from agents.providers.pr_api_balances import get_all_balances
 
     users    = list_users()
     user_map = {u["id"]: u for u in users}
@@ -521,7 +521,7 @@ async def get_usage_table(_: dict = Depends(_require_admin)):
 @router.get("/provider-costs")
 async def get_provider_costs(_: dict = Depends(_require_admin)):
     """Return provider_costs.json — per-token pricing used for cost estimation."""
-    from core.provider_costs import load_costs, get_model_list
+    from agents.providers.pr_costs import load_costs, get_model_list
     cfg = load_costs()
     return {**cfg, "model_list": get_model_list()}
 
@@ -529,7 +529,7 @@ async def get_provider_costs(_: dict = Depends(_require_admin)):
 @router.put("/provider-costs")
 async def put_provider_costs(body: dict, admin: dict = Depends(_require_admin)):
     """Save updated provider_costs.json."""
-    from core.provider_costs import save_costs
+    from agents.providers.pr_costs import save_costs
     admin_email = admin.get("email", "admin")
     save_costs(body, updated_by=admin_email)
     return {"ok": True}
@@ -554,7 +554,7 @@ async def fetch_provider_usage_endpoint(
     Fetch actual usage data from the provider's billing API.
     Results are stored and returned immediately.
     """
-    from core.provider_usage_api import fetch_provider_usage
+    from agents.providers.pr_usage_api import fetch_provider_usage
     result = await fetch_provider_usage(
         provider=body.provider,
         start_date=body.start_date,
@@ -572,7 +572,7 @@ async def get_provider_usage_history(
     _: dict = Depends(_require_admin),
 ):
     """Return last N provider usage fetch results (from JSONL history)."""
-    from core.provider_usage_api import load_usage_history
+    from agents.providers.pr_usage_api import load_usage_history
     return {"records": load_usage_history(provider=provider, limit=limit)}
 
 
@@ -583,7 +583,7 @@ async def delete_provider_usage_history(
     _: dict = Depends(_require_admin),
 ):
     """Delete a single record (by fetched_at) or all records for a provider."""
-    from core.provider_usage_api import delete_history_record, clear_history
+    from agents.providers.pr_usage_api import delete_history_record, clear_history
     if fetched_at:
         ok = delete_history_record(provider, fetched_at)
         return {"ok": ok, "deleted": 1 if ok else 0}
@@ -596,14 +596,14 @@ async def delete_provider_usage_history(
 @router.get("/provider-balances")
 async def get_provider_balances(_: dict = Depends(_require_admin)):
     """Return manually-entered provider balances (from provider_balances.json)."""
-    from core.provider_balances import load_balances
+    from agents.providers.pr_balances import load_balances
     return load_balances()
 
 
 @router.put("/provider-balances")
 async def put_provider_balances(body: dict, admin: dict = Depends(_require_admin)):
     """Save manually-entered provider balances."""
-    from core.provider_balances import save_balances
+    from agents.providers.pr_balances import save_balances
     admin_email = admin.get("email", "admin")
     data = save_balances(body, updated_by=admin_email)
     return {"ok": True, "balances": data}
