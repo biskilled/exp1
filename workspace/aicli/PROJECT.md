@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); agents/mcp/ assessed for single-instance architecture; cleaned up empty mcp/tools/ directory
-- Backend module restructure validation (2026-03-21) — Verified agents/tools/ and agents/mcp/ imports resolve cleanly after relocation from tools/ folder; fixed stray auth.py import references
-- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic for empty project lists but root cause unresolved
+- Provider storage consolidation (2026-03-21) — Resolved ambiguous storage layout: moved all provider runtime data to data/provider_usage/; API keys and billing config remain in data/ root; clarified billing data organization under provider_usage/
+- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); verified imports resolve cleanly after relocation
+- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional post-relocation; cleaned up empty mcp/tools/ directory
+- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause of visibility gap unresolved
 - SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
-- Memory items and project_facts table population (pending) — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
-- Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure causing data loss
+- Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure

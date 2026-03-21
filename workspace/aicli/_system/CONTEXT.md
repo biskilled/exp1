@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 23:03 UTC — do not edit manually.
+> Auto-generated 2026-03-21 23:07 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 199
-- **Last active**: 2026-03-21T23:03:01Z
+- **Sessions**: 200
+- **Last active**: 2026-03-21T23:07:24Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -35,15 +35,16 @@
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json, data/pricing.json, data/coupons.json
 
 ## In Progress
 
-- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); agents/mcp/ assessed for single-instance architecture; cleaned up empty mcp/tools/ directory
-- Backend module restructure validation (2026-03-21) — Verified agents/tools/ and agents/mcp/ imports resolve cleanly after relocation from tools/ folder; fixed stray auth.py import references
-- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic for empty project lists but root cause unresolved
+- Provider storage consolidation (2026-03-21) — Resolved ambiguous storage layout: moved all provider runtime data to data/provider_usage/; API keys and billing config remain in data/ root; clarified billing data organization under provider_usage/
+- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); verified imports resolve cleanly after relocation
+- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional post-relocation; cleaned up empty mcp/tools/ directory
+- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause of visibility gap unresolved
 - SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
-- Memory items and project_facts table population (pending) — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
-- Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure causing data loss
+- Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
 
 ## Key Decisions
 
@@ -61,7 +62,7 @@
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Config.py centralizes externalized settings: backend_url, haiku_model, db_pool_max, MCP settings, agent role providers
+- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data (provider_costs.json, provider_bala...); API keys in data/api_keys.json; pricing/coupon config in data/
 
 ---
 
@@ -155,6 +156,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 23:06]** `claude_cli/claude`  
+→ I do see provider files unde data , I do see also provider_usage folder under data (which might make sense) and do see s
+← _Done. Final layout:  ``` data/ ├── api_keys.json          ← server secrets (config) ├── coupons.json           ← billing config ├── pricing.json           ← markup/tier config ├── database.py         _
+
 **[2026-03-21 23:02]** `claude_cli/claude`  
 → Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - currently there is o
 ← _Summary of changes: - `tool_git.py`, `tool_file.py` (renamed from `git_tool.py`, `file_tool.py`) - `agents/mcp/tools/` deleted (was empty)_
@@ -209,7 +214,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 20:58]** `claude_cli/claude`  
 → I till see the rror - Project did not found aiCli. also I do not see any project loaded. the project aiCli is under the 
 ← _All three endpoints work correctly. The summary of what was happening and what to do:  ---  ## Root cause  The Electron app (`old/ui/electron/main.js`) was launching the backend with: ```js BACKEND_DI_
-
-**[2026-03-21 20:47]** `claude_cli/claude`  
-→ Let me check that all went well. when I try to open aiCli - it mention that it cannot find the project. also there is st
-← _Project list returns correctly. Let me kill those test instances and confirm the Electron fix is the only change needed:_

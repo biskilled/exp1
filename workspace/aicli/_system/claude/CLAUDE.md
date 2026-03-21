@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Config.py centralizes externalized settings: backend_url, haiku_model, db_pool_max, MCP settings, agent role providers
+- Provider data storage: data/provider_usage/ centralized for all runtime billing/cost data (provider_costs.json, provider_bala...); API keys in data/api_keys.json; pricing/coupon config in data/
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-21] `claude_cli`: I do see there is gitops and git_tool under agent_tools, is both needed ?
 - [2026-03-21] `claude_cli`: If pipeline engine use that, it is not better to add that under workflows - also, can you rename tha
 - [2026-03-21] `claude_cli`: There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee ag
 - [2026-03-21] `claude_cli`: Is there is a reason to have tools under mcp as well ?  
 - [2026-03-21] `claude_cli`: Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - 
+- [2026-03-21] `claude_cli`: I do see provider files unde data , I do see also provider_usage folder under data (which might make
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
