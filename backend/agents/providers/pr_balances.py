@@ -19,7 +19,7 @@ _EMPTY_ENTRY: dict = {"balance_usd": None, "updated_at": None, "updated_by": Non
 
 
 def _path() -> Path:
-    p = Path(settings.data_dir) / "provider_balances.json"
+    p = Path(settings.data_dir) / "provider_usage" / "provider_balances.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 

@@ -359,7 +359,7 @@ def _calc_cost(provider: str, input_tok: int, output_tok: int) -> float:
         "grok":     (5.0, 15.0),
     }
     try:
-        cost_path = Path(settings.data_dir) / "provider_costs.json"
+        cost_path = Path(settings.data_dir) / "provider_usage" / "provider_costs.json"
         if cost_path.exists():
             costs = json.loads(cost_path.read_text())
             if provider in costs:

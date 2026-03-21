@@ -36,12 +36,12 @@
     "Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL",
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization",
     "Memory synthesis: Claude Haiku for dual-layer output (raw JSONL \u2192 interaction_tags \u2192 5 files); smart chunking per language/section",
-    "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
     "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)",
-    "Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings",
-    "Pipelines centralized under workflows/ with pipeline_ prefix; respects configured LLM provider/model per role via mng_agent_roles table",
+    "Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix; respects configured LLM provider/model per role",
+    "Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling",
+    "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
     "Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes",
-    "Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling"
+    "Config.py centralizes externalized settings: backend_url, haiku_model, db_pool_max, MCP settings, agent role providers"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -70,12 +70,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Backend module restructure completion (2026-03-21) \u2014 Moved agents/tools/ and agents/mcp/ from tools/ folder; verified all imports resolve cleanly; fixed stray auth.py import",
+    "Tool naming convention completion (2026-03-21) \u2014 Renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); agents/mcp/ assessed for single-instance architecture; cleaned up empty mcp/tools/ directory",
+    "Backend module restructure validation (2026-03-21) \u2014 Verified agents/tools/ and agents/mcp/ imports resolve cleanly after relocation from tools/ folder; fixed stray auth.py import references",
+    "Project visibility bug investigation (ongoing) \u2014 AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic for empty project lists but root cause unresolved",
     "SQL query optimization backlog \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load",
-    "Project visibility bug investigation \u2014 AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis",
-    "Memory items and project_facts table population \u2014 Tables defined but update logic not yet implemented; required for improved memory/context mechanism",
-    "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure",
-    "Backend port binding stability \u2014 Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing"
+    "Memory items and project_facts table population (pending) \u2014 Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism",
+    "Data persistence issue triage (pending) \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure causing data loss"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -107,7 +107,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-21T23:00:31Z",
+  "last_memory_run": "2026-03-21T23:03:24Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state",
@@ -119,20 +119,20 @@
       "Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL",
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization",
       "Memory synthesis: Claude Haiku for dual-layer output (raw JSONL \u2192 interaction_tags \u2192 5 files); smart chunking per language/section",
-      "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
       "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)",
-      "Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings",
-      "Pipelines centralized under workflows/ with pipeline_ prefix; respects configured LLM provider/model per role via mng_agent_roles table",
+      "Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix; respects configured LLM provider/model per role",
+      "Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling",
+      "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
       "Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes",
-      "Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling"
+      "Config.py centralizes externalized settings: backend_url, haiku_model, db_pool_max, MCP settings, agent role providers"
     ],
     "in_progress": [
-      "Backend module restructure completion (2026-03-21) \u2014 Moved agents/tools/ and agents/mcp/ from tools/ folder; verified all imports resolve cleanly; fixed stray auth.py import",
+      "Tool naming convention completion (2026-03-21) \u2014 Renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); agents/mcp/ assessed for single-instance architecture; cleaned up empty mcp/tools/ directory",
+      "Backend module restructure validation (2026-03-21) \u2014 Verified agents/tools/ and agents/mcp/ imports resolve cleanly after relocation from tools/ folder; fixed stray auth.py import references",
+      "Project visibility bug investigation (ongoing) \u2014 AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic for empty project lists but root cause unresolved",
       "SQL query optimization backlog \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load",
-      "Project visibility bug investigation \u2014 AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis",
-      "Memory items and project_facts table population \u2014 Tables defined but update logic not yet implemented; required for improved memory/context mechanism",
-      "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure",
-      "Backend port binding stability \u2014 Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing"
+      "Memory items and project_facts table population (pending) \u2014 Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism",
+      "Data persistence issue triage (pending) \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure causing data loss"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -147,10 +147,9 @@
       "memory_synthesis": "Claude Haiku for dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
       "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)",
-      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
-      "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for pipeline definitions"
+      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder"
     },
-    "project_summary": "aicli is a shared AI memory platform built on FastAPI/PostgreSQL backend with Electron/Vanilla JS frontend, enabling AI agents to manage development workflows across projects with semantic search, nested tagging, workflow automation, and MCP integration. The system supports multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with role-based access control, dual JSONL+pgvector storage for hybrid retrieval, and DAG-based async workflow execution with visual graph representation. Current focus is on backend module reorganization, SQL query optimization, and resolving edge cases in project visibility and data persistence.",
-    "memory_digest": "**[2026-03-21]** `claude_cli` \u2014 Backend module restructure verified complete: agents/tools/ and agents/mcp/ moved from tools/ folder with all imports resolving; fixed stray import in routers/auth.py from models to data. **[2026-03-21]** `in_progress` \u2014 Pipeline engine refactoring underway to consolidate under workflows/ with pipeline_ prefix for consistency; agent tool separation clarified (apply_code_and_commit vs git_tool are distinct handlers). **[2026-03-18]** `memory_summaries` \u2014 Fixed AttributeError in main.py removing stale db.ensure_project_schema() call; corrected memory endpoint CLAUDE.md template undefined code_dir variable; improved backend startup retry logic for empty project list edge case. **[2026-03-18]** `memory_summaries` \u2014 Identified unresolved project visibility bug where AiCli appears in Recent but not main project view; memory_items and project_facts tables defined but update logic not implemented. **[2026-03-10]** `memory_summaries` \u2014 Implemented load-once-on-access caching strategy to eliminate redundant SQL calls; approved nested tag hierarchy beyond 2-level structure with login as first-level only; identified tag persistence bug where UI-saved tags disappear on session switch. **[2026-03-10]** `memory_summaries` \u2014 UI/UX improvements prioritized: increased visibility of action options via 3-dot menu, added ability to unarchive items, made /memory AI suggestions more visible with session context and GitHub commit links; identified intermittent port binding conflicts during app restart."
+    "project_summary": "aicli is a shared AI memory platform enabling multi-LLM workflows with persistent tagging, semantic embeddings, and project-scoped data management. Built with FastAPI backend, Electron frontend, and PostgreSQL with pgvector for semantic search, it supports async DAG workflow execution, nested tag hierarchies, and MCP integration for extensible tooling. Currently in active development with focus on backend stability, data persistence fixes, and memory synthesis optimization.",
+    "memory_digest": "**[2026-03-21]** `aicli` \u2014 Completed tool naming refactor: renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); assessed agents/mcp/ for single-instance design; cleaned empty directory structure. **[2026-03-21]** `aicli` \u2014 Validated backend module restructure with agents/tools/ and agents/mcp/ imports resolving cleanly after relocation; fixed stray auth.py references. **[2026-03-18]** `aicli` \u2014 Fixed AttributeError in main.py (removed stale db.ensure_project_schema call); resolved memory endpoint template error (code_dir variable scoping at line 1120). **[2026-03-18]** `aicli` \u2014 Enhanced backend startup race condition handling with retry logic for empty project lists on first load; prevents false \"project not found\" errors. **[2026-03-10]** `aicli` \u2014 Implemented load-once-on-access pattern: cache tags/workflows in memory, update DB only on explicit save to reduce redundant SQL calls. **[2026-03-10]** `aicli` \u2014 Approved nested tag hierarchy expansion beyond 2-level structure; login confirmed as first-level only. **[2026-03-10]** `aicli` \u2014 Identified data persistence bug: tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save). **[2026-03-10]** `aicli` \u2014 Diagnosed port 127.0.0.1:8000 binding conflicts causing intermittent app restart failures; implemented freePort() mitigation. **[Pending]** `aicli` \u2014 memory_items and project_facts tables remain unpopulated; implementation required for improved memory/context mechanism. **[Pending]** `aicli` \u2014 SQL optimization backlog: batch refactor row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis to reduce database load."
   }
 }

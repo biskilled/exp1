@@ -58,7 +58,7 @@ _DEFAULT_CONFIG: dict = {
 # ── File helpers ───────────────────────────────────────────────────────────────
 
 def _costs_path() -> Path:
-    p = Path(settings.data_dir) / "provider_costs.json"
+    p = Path(settings.data_dir) / "provider_usage" / "provider_costs.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 

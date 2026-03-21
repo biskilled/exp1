@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Backend module restructure completion (2026-03-21) — Moved agents/tools/ and agents/mcp/ from tools/ folder; verified all imports resolve cleanly; fixed stray auth.py import
+- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix (tool_git.py, tool_file.py); agents/mcp/ assessed for single-instance architecture; cleaned up empty mcp/tools/ directory
+- Backend module restructure validation (2026-03-21) — Verified agents/tools/ and agents/mcp/ imports resolve cleanly after relocation from tools/ folder; fixed stray auth.py import references
+- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic for empty project lists but root cause unresolved
 - SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
-- Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
-- Memory items and project_facts table population — Tables defined but update logic not yet implemented; required for improved memory/context mechanism
-- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure
-- Backend port binding stability — Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing
+- Memory items and project_facts table population (pending) — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
+- Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure causing data loss

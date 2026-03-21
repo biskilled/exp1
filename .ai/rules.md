@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:00 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:03 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -42,17 +42,17 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
-- Pipelines centralized under workflows/ with pipeline_ prefix; respects configured LLM provider/model per role via mng_agent_roles table
-- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
+- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix; respects configured LLM provider/model per role
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
+- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
+- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
+- Config.py centralizes externalized settings: backend_url, haiku_model, db_pool_max, MCP settings, agent role providers
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] can you rename all files under providers to start with pr_  also the one under memory - start with mem_ . I do have yaml
 - [2026-03-21] I do see there is gitops and git_tool under agent_tools, is both needed ?
 - [2026-03-21] If pipeline engine use that, it is not better to add that under workflows - also, can you rename that to pipelines for c
 - [2026-03-21] There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen
 - [2026-03-21] Is there is a reason to have tools under mcp as well ?
+- [2026-03-21] Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - currently there is o
