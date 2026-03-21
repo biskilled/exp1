@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 22:20 UTC — do not edit manually.
+> Auto-generated 2026-03-21 22:23 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 193
-- **Last active**: 2026-03-21T22:20:28Z
+- **Sessions**: 194
+- **Last active**: 2026-03-21T22:23:15Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -30,14 +30,14 @@
 - **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for workflow definitions
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 
 ## In Progress
 
-- Agent providers file reorganization (2026-03-21) — Relocated pricing.py and provider-related files to agents/providers/ with pr_ prefix; clarified config.py role in centralizing externalized backend settings
-- Automated commit hooks configuration (2026-03-21) — User reported hooks not yet running; requires verification of hook execution logic and environment setup validation
+- File naming convention refactor (2026-03-21) — Renamed provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified dual use of yaml config and config.py (config.py is primary for externalized backend settings)
+- Agent providers file reorganization (2026-03-21) — Relocated pricing.py and provider implementations to agents/providers/ with pr_ prefix; config.py role clarified as centralizing backend_url, haiku_model, db_pool_max, MCP settings
 - Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized; no orphaned references remain
 - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
 - SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
@@ -57,9 +57,9 @@
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
-- Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
+- Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
+- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table instead of hardcoded Haiku
 - Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
-- Agent providers organized in agents/providers/ with pr_ prefix; config.py centralizes externalized settings (backend_url, haiku_model, db_pool_max, MCP settings)
 
 ---
 
@@ -153,6 +153,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 22:22]** `claude_cli/claude`  
+→ can you rename all files under providers to start with pr_  also the one under memory - start with mem_ . I do have yaml
+← _**Verify everything loads:**_
+
 **[2026-03-21 22:18]** `claude_cli/claude`  
 → All 4 files - pricing and the one start with provider are realted to agents providers. can you add thos files over there
 ← _Now update `agents/providers/__init__.py` to also surface these:_
@@ -206,7 +210,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-20 21:55]** `claude_cli/claude`  
 → can you run /memory , also can you check why running workflow is so slow. each steps takes a while, and once step is app
 ← _Now let me save a note to memory about this fix:_
-
-**[2026-03-20 21:48]** `claude_cli/claude`  
-→ I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w
-← _## Performance Analysis Results  I found significant issues in both areas. Here's the breakdown:  ---  ### SQL Query Issues (by priority)  | Priority | Issue | Location | Impact | |----------|-------|_

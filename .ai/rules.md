@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 22:20 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 22:23 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -25,7 +25,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for workflow definitions
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 
@@ -43,14 +43,14 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
-- Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
+- Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
+- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table instead of hardcoded Haiku
 - Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
-- Agent providers organized in agents/providers/ with pr_ prefix; config.py centralizes externalized settings (backend_url, haiku_model, db_pool_max, MCP settings)
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] I would like to make sure backend is witten properly - I do see storage folder who is only managing session, which I don
 - [2026-03-21] I do not see hooks runing yet.
 - [2026-03-21] test prompt from manual run
 - [2026-03-21] WHy there is model and routers folder, shoud thay all be under routers? also I do see some files like work_item_pipeline
 - [2026-03-21] All 4 files - pricing and the one start with provider are realted to agents providers. can you add thos files over there
+- [2026-03-21] can you rename all files under providers to start with pr_  also the one under memory - start with mem_ . I do have yaml

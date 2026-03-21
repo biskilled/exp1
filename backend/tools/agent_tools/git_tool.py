@@ -1,13 +1,15 @@
 """
-git_tool.py — Agent-callable git tools.
+git_tool.py — Agent-callable git tools (Claude tool_use format).
 
-Provides tool definitions (Claude tool_use format) and handlers
-that delegate to gitops/git.py.
+Tool definitions and handlers the LLM can invoke during an agentic loop
+(git_status, git_diff, git_commit, git_push).
+
+Commit/push delegate to gitops/git.py to avoid duplicating subprocess logic.
+Status/diff are thin wrappers here since gitops has no equivalent read-only helpers.
 """
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 
 # ── Tool definitions (Claude tool_use JSON schema format) ─────────────────────

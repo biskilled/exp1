@@ -38,9 +38,9 @@ You are a senior Python software architect with deep expertise in:
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Features linked to work_items with sequence numbering (10000+) for memory and workflow status tracking
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT) in .cursor/mcp.json and .claude/mcp.json
-- Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
+- Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
+- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table instead of hardcoded Haiku
 - Graph runner commits via `_apply_code_and_commit` with standardized message format for work item traceability
-- Agent providers organized in agents/providers/ with pr_ prefix; config.py centralizes externalized settings (backend_url, haiku_model, db_pool_max, MCP settings)
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-21] `claude_cli`: I would like to make sure backend is witten properly - I do see storage folder who is only managing 
 - [2026-03-21] `claude_cli`: I do not see hooks runing yet. 
 - [2026-03-21] `claude_cli`: test prompt from manual run
 - [2026-03-21] `claude_cli`: WHy there is model and routers folder, shoud thay all be under routers? also I do see some files lik
 - [2026-03-21] `claude_cli`: All 4 files - pricing and the one start with provider are realted to agents providers. can you add t
+- [2026-03-21] `claude_cli`: can you rename all files under providers to start with pr_  also the one under memory - start with m
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
