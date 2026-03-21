@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 22:52 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:00 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -45,14 +45,14 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
-- Pipelines (formerly workflow engine) centralized under workflows/ with pipeline_ prefix for consistency and visibility
-- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table
+- Pipelines centralized under workflows/ with pipeline_ prefix; respects configured LLM provider/model per role via mng_agent_roles table
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
+- Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] All 4 files - pricing and the one start with provider are realted to agents providers. can you add thos files over there
 - [2026-03-21] can you rename all files under providers to start with pr_  also the one under memory - start with mem_ . I do have yaml
 - [2026-03-21] I do see there is gitops and git_tool under agent_tools, is both needed ?
 - [2026-03-21] If pipeline engine use that, it is not better to add that under workflows - also, can you rename that to pipelines for c
 - [2026-03-21] There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen
+- [2026-03-21] Is there is a reason to have tools under mcp as well ?

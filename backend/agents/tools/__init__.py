@@ -6,8 +6,8 @@ invoke_tool(name, args) dispatches a tool call and returns a string result.
 """
 from __future__ import annotations
 
-from agents.tools.git_tool import GIT_TOOL_DEFS, GIT_HANDLERS
-from agents.tools.file_tool import FILE_TOOL_DEFS, FILE_HANDLERS
+from agents.tools.tool_git import GIT_TOOL_DEFS, GIT_HANDLERS
+from agents.tools.tool_file import FILE_TOOL_DEFS, FILE_HANDLERS
 
 # Master registry
 AGENT_TOOLS: dict[str, dict] = {}

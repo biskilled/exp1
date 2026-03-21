@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 22:53 UTC — do not edit manually.
+> Auto-generated 2026-03-21 23:00 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 197
-- **Last active**: 2026-03-21T22:52:55Z
+- **Sessions**: 198
+- **Last active**: 2026-03-21T23:00:08Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -38,12 +38,12 @@
 
 ## In Progress
 
-- Pipeline engine refactoring (2026-03-21) — Consolidate pipeline engine under workflows/ with pipeline_ prefix on all files for consistency and better visibility; verify zero stale imports across all modules
-- File naming convention refactor (2026-03-21) — Completed rename of provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified config.py as primary for externalized backend settings
-- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points; former writes files then commits, latter commits existing working tree changes
-- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized
-- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+- Backend module restructure completion (2026-03-21) — Moved agents/tools/ and agents/mcp/ from tools/ folder; verified all imports resolve cleanly; fixed stray auth.py import
+- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
 - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
+- Memory items and project_facts table population — Tables defined but update logic not yet implemented; required for improved memory/context mechanism
+- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure
+- Backend port binding stability — Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing
 
 ## Key Decisions
 
@@ -59,9 +59,9 @@
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
-- Pipelines (formerly workflow engine) centralized under workflows/ with pipeline_ prefix for consistency and visibility
-- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table
+- Pipelines centralized under workflows/ with pipeline_ prefix; respects configured LLM provider/model per role via mng_agent_roles table
 - Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
+- Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
 
 ---
 
@@ -155,6 +155,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 22:59]** `claude_cli/claude`  
+→ Is there is a reason to have tools under mcp as well ?  
+← _All imports clean. The backend restructure is complete and verified:  - `agents/tools/` (moved from `tools/agent_tools/`) - `agents/mcp/` (moved from `tools/mcp/`) - `tools/` folder deleted - `routers_
+
 **[2026-03-21 22:48]** `claude_cli/claude`  
 → There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen
 ← _All imports clean. The backend restructure is complete and verified:  - `agents/tools/` (moved from `tools/agent_tools/`) - `agents/mcp/` (moved from `tools/mcp/`) - `tools/` folder deleted - `routers_
@@ -209,6 +213,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 14:25]** `claude_cli/claude`  
 → What is the cli folder is used for ?
 ← _The `cli/` folder is the **new HTTP-only CLI client** — a terminal REPL that talks to the backend exclusively via HTTP, with no direct LLM provider code of its own.  **What it does:** - Runs a `prompt_
-
-**[2026-03-21 10:46]** `claude_cli/claude`  
-→ I think there is bit of confusation , and that is why roles are not defined well. I would like to restrucure the code fo

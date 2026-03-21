@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Pipeline engine refactoring (2026-03-21) — Consolidate pipeline engine under workflows/ with pipeline_ prefix on all files for consistency and better visibility; verify zero stale imports across all modules
-- File naming convention refactor (2026-03-21) — Completed rename of provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified config.py as primary for externalized backend settings
-- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points; former writes files then commits, latter commits existing working tree changes
-- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized
-- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+- Backend module restructure completion (2026-03-21) — Moved agents/tools/ and agents/mcp/ from tools/ folder; verified all imports resolve cleanly; fixed stray auth.py import
+- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
 - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
+- Memory items and project_facts table population — Tables defined but update logic not yet implemented; required for improved memory/context mechanism
+- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure
+- Backend port binding stability — Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing
