@@ -30,7 +30,7 @@ from pydantic import BaseModel
 from core.auth import get_current_user
 from data.database import db
 from agents.providers.pr_pricing import load_pricing, save_pricing
-from core.api_keys import load_keys, save_keys, masked_keys
+from core.api_keys import masked_keys, save_server_key
 from data.user import find_by_id, list_users, update_user, delete_user
 
 router = APIRouter()
@@ -328,12 +328,10 @@ async def get_api_keys(_: dict = Depends(_require_admin)):
 
 @router.put("/api-keys")
 async def put_api_keys(body: dict, _: dict = Depends(_require_admin)):
-    """Save full API keys (only non-empty values are written)."""
-    current = load_keys()
+    """Save server-level API keys (encrypted in DB). Only non-empty values are written."""
     for provider, key in body.items():
         if key is not None:
-            current[provider] = str(key).strip()
-    save_keys(current)
+            save_server_key(provider, str(key))
     return {"ok": True, "keys": masked_keys()}
 
 

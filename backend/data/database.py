@@ -47,13 +47,15 @@ CREATE TABLE IF NOT EXISTS mng_clients (
     name             VARCHAR(255) NOT NULL DEFAULT '',
     plan             VARCHAR(20)  NOT NULL DEFAULT 'free',
     created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    pricing_config   JSONB        DEFAULT NULL,
-    provider_costs   JSONB        DEFAULT NULL,
-    provider_balances JSONB       DEFAULT NULL
+    pricing_config    JSONB        DEFAULT NULL,
+    provider_costs    JSONB        DEFAULT NULL,
+    provider_balances JSONB        DEFAULT NULL,
+    server_api_keys   JSONB        DEFAULT NULL
 );
 ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS pricing_config    JSONB DEFAULT NULL;
 ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS provider_costs    JSONB DEFAULT NULL;
 ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS provider_balances JSONB DEFAULT NULL;
+ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS server_api_keys   JSONB DEFAULT NULL;
 """
 
 # ─── DDL: mng_users / usage_logs / transactions ───────────────────────────────
@@ -117,6 +119,20 @@ CREATE TABLE IF NOT EXISTS mng_transactions (
 CREATE INDEX IF NOT EXISTS idx_tx_user_id    ON mng_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_tx_created_at ON mng_transactions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tx_type       ON mng_transactions(type);
+"""
+
+# ─── DDL: mng_user_api_keys ──────────────────────────────────────────────────
+
+_DDL_USER_API_KEYS = """
+CREATE TABLE IF NOT EXISTS mng_user_api_keys (
+    id         SERIAL      PRIMARY KEY,
+    user_id    VARCHAR(36) NOT NULL REFERENCES mng_users(id) ON DELETE CASCADE,
+    provider   VARCHAR(50) NOT NULL,
+    key_enc    TEXT        NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, provider)
+);
+CREATE INDEX IF NOT EXISTS idx_muak_user ON mng_user_api_keys(user_id);
 """
 
 # ─── DDL: mng_coupons ────────────────────────────────────────────────────────
@@ -660,6 +676,7 @@ class _Database:
         for label, sql in [
             ("mng_clients", _DDL_CLIENTS),
             ("mng_core (users/usage/tx)", _DDL_CORE),
+            ("mng_user_api_keys", _DDL_USER_API_KEYS),
             ("mng_coupons", _DDL_COUPONS),
             ("mng_entity+session+role tables", _DDL_MNG_TABLES),
         ]:

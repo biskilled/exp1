@@ -35,7 +35,7 @@ def _migrate_server_data():
     if migrated:
         print(f"✅ Migrated server_data to ui/backend/data/: {', '.join(migrated)}")
 from data.database import db
-from routers import auth, chat, history, usage, workflows, prompts, files, projects, config_sync, admin, git, billing, search, entities, graph_workflows, work_items, agent_roles, system_roles, documents
+from routers import auth, chat, history, usage, workflows, prompts, files, projects, config_sync, admin, git, billing, search, entities, graph_workflows, work_items, agent_roles, system_roles, documents, user_api_keys
 from pwa_router import router as pwa_router
 
 
@@ -77,6 +77,7 @@ app.include_router(work_items.router,     prefix="/work-items",   tags=["work_it
 app.include_router(agent_roles.router,    prefix="/agent-roles",   tags=["agent_roles"])
 app.include_router(system_roles.router,   prefix="/system-roles",  tags=["system_roles"])
 app.include_router(documents.router,      prefix="/documents",     tags=["documents"])
+app.include_router(user_api_keys.router,  prefix="/user/api-keys", tags=["user_api_keys"])
 
 # Static files
 STATIC_DIR = Path(__file__).parent / "static"

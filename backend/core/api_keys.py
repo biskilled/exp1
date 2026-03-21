@@ -1,20 +1,24 @@
 """
-Server-side API key store — reads/writes {DATA_DIR}/api_keys.json.
+API key store — server keys in mng_clients.server_api_keys (encrypted),
+per-user keys in mng_user_api_keys (encrypted).
 
-Admin sets keys once via the Admin panel. All LLM calls use these server keys.
-Falls back to settings env vars when a key is empty in the JSON file.
+Priority for get_key(provider, user_id):
+  1. User's own key (mng_user_api_keys) — if user_id provided
+  2. Server key (mng_clients.server_api_keys)
+  3. Env var (settings.*_api_key)
+
+All values are Fernet-encrypted at rest. Never stored in plain text or files.
 """
 
 import json
-from pathlib import Path
+import logging
+from typing import Optional
 
-from core.config import settings
+log = logging.getLogger(__name__)
 
 _PROVIDERS = ("claude", "openai", "deepseek", "gemini", "grok")
-_DEFAULT_KEYS = {p: "" for p in _PROVIDERS}
 
-# Map provider name → settings attribute for env var fallback
-_ENV_FALLBACKS = {
+_ENV_ATTRS = {
     "claude":   "anthropic_api_key",
     "openai":   "openai_api_key",
     "deepseek": "deepseek_api_key",
@@ -23,52 +27,152 @@ _ENV_FALLBACKS = {
 }
 
 
-def _keys_path() -> Path:
-    p = Path(settings.secrets_dir) / "api_keys.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    return p
-
+# ── Internal helpers ───────────────────────────────────────────────────────────
 
 def _env_key(provider: str) -> str:
-    """Return the env-var value for a provider (empty string if not set)."""
-    attr = _ENV_FALLBACKS.get(provider, "")
+    from core.config import settings
+    attr = _ENV_ATTRS.get(provider, "")
     return getattr(settings, attr, "").strip() if attr else ""
 
 
-def load_keys() -> dict:
-    """Read api_keys.json; on first creation seeds from current env vars."""
-    path = _keys_path()
-    if not path.exists():
-        # Seed from env vars so admin sees existing keys immediately
-        initial = {p: _env_key(p) for p in _PROVIDERS}
-        save_keys(initial)
-        return dict(initial)
+def _load_server_keys() -> dict[str, str]:
+    """Return {provider: encrypted_key} from mng_clients. Empty dict if unavailable."""
+    from data.database import db
+    if not db.is_available():
+        return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        # Ensure all providers present
-        for p in _PROVIDERS:
-            data.setdefault(p, "")
-        return data
-    except Exception:
-        return dict(_DEFAULT_KEYS)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT server_api_keys FROM mng_clients WHERE id=1")
+                row = cur.fetchone()
+                if row and row[0]:
+                    return dict(row[0])
+    except Exception as e:
+        log.debug(f"_load_server_keys DB error: {e}")
+    return {}
 
 
-def save_keys(keys: dict) -> None:
-    _keys_path().write_text(json.dumps(keys, indent=2), encoding="utf-8")
+# ── Public API ─────────────────────────────────────────────────────────────────
 
-
-def get_key(provider: str, fallback: str = "") -> str:
+def get_key(provider: str, user_id: Optional[str] = None, fallback: str = "") -> str:
     """
-    Return the server key for a provider.
-    Priority: api_keys.json → settings env var → fallback argument.
+    Return a plain-text API key for a provider.
+    Priority: user DB key → server DB key → env var → fallback.
     """
-    keys = load_keys()
-    key = keys.get(provider, "").strip()
-    if key:
-        return key
-    env_attr = _ENV_FALLBACKS.get(provider, "")
-    env_key = getattr(settings, env_attr, "").strip() if env_attr else ""
-    return env_key or fallback
+    from core.encryption import decrypt
+
+    # 1. Per-user key
+    if user_id:
+        from data.database import db
+        if db.is_available():
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT key_enc FROM mng_user_api_keys WHERE user_id=%s AND provider=%s",
+                            (user_id, provider),
+                        )
+                        row = cur.fetchone()
+                        if row and row[0]:
+                            return decrypt(row[0])
+            except Exception as e:
+                log.debug(f"get_key user lookup error: {e}")
+
+    # 2. Server DB key
+    server_keys = _load_server_keys()
+    enc = server_keys.get(provider, "").strip()
+    if enc:
+        try:
+            return decrypt(enc)
+        except ValueError:
+            log.warning(f"get_key: server key for '{provider}' failed to decrypt")
+
+    # 3. Env var
+    return _env_key(provider) or fallback
+
+
+def save_server_key(provider: str, plaintext_key: str) -> None:
+    """Encrypt and save a server-level API key to mng_clients."""
+    from data.database import db
+    from core.encryption import encrypt
+    if not db.is_available():
+        log.warning("save_server_key: DB not available")
+        return
+    try:
+        keys = _load_server_keys()
+        if plaintext_key.strip():
+            keys[provider] = encrypt(plaintext_key.strip())
+        else:
+            keys.pop(provider, None)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE mng_clients SET server_api_keys=%s WHERE id=1",
+                    (json.dumps(keys),),
+                )
+    except Exception as e:
+        log.warning(f"save_server_key DB error: {e}")
+
+
+def save_user_key(user_id: str, provider: str, plaintext_key: str) -> None:
+    """Encrypt and upsert a per-user API key."""
+    from data.database import db
+    from core.encryption import encrypt
+    if not db.is_available():
+        raise RuntimeError("Database not available")
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO mng_user_api_keys (user_id, provider, key_enc, updated_at)
+                   VALUES (%s, %s, %s, NOW())
+                   ON CONFLICT (user_id, provider)
+                   DO UPDATE SET key_enc=EXCLUDED.key_enc, updated_at=NOW()""",
+                (user_id, provider, encrypt(plaintext_key.strip())),
+            )
+
+
+def delete_user_key(user_id: str, provider: str) -> bool:
+    """Remove a per-user API key. Returns True if a row was deleted."""
+    from data.database import db
+    if not db.is_available():
+        return False
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM mng_user_api_keys WHERE user_id=%s AND provider=%s",
+                (user_id, provider),
+            )
+            return cur.rowcount > 0
+
+
+def list_user_keys(user_id: str) -> list[dict]:
+    """Return masked key info for all providers the user has saved."""
+    from data.database import db
+    from core.encryption import decrypt
+    if not db.is_available():
+        return []
+    result = []
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT provider, key_enc, updated_at FROM mng_user_api_keys WHERE user_id=%s",
+                    (user_id,),
+                )
+                for row in cur.fetchall():
+                    try:
+                        plain = decrypt(row[1])
+                        masked = ("*" * (len(plain) - 4) + plain[-4:]) if len(plain) > 4 else "****"
+                    except ValueError:
+                        masked = "****"
+                    result.append({
+                        "provider":   row[0],
+                        "masked":     masked,
+                        "updated_at": row[2].isoformat() if row[2] else None,
+                    })
+    except Exception as e:
+        log.debug(f"list_user_keys DB error: {e}")
+    return result
 
 
 def _mask(k: str) -> str:
@@ -80,22 +184,24 @@ def _mask(k: str) -> str:
 
 def masked_keys() -> dict:
     """
-    Return per-provider info: masked key + source ('saved' | 'env' | 'unset').
-
-    'saved' — key stored in api_keys.json
-    'env'   — json key empty, but env var is set (shown so admin knows it's active)
-    'unset' — nowhere configured
+    Server-level key status for admin panel.
+    Source: 'db' (server DB key set), 'env' (only env var), 'unset'.
     """
-    keys = load_keys()
+    from core.encryption import decrypt
+    server_keys = _load_server_keys()
     result = {}
     for p in _PROVIDERS:
-        saved = keys.get(p, "").strip()
-        if saved:
-            result[p] = {"masked": _mask(saved), "source": "saved"}
+        enc = server_keys.get(p, "").strip()
+        if enc:
+            try:
+                plain = decrypt(enc)
+                result[p] = {"masked": _mask(plain), "source": "db"}
+                continue
+            except ValueError:
+                pass
+        env = _env_key(p)
+        if env:
+            result[p] = {"masked": _mask(env), "source": "env"}
         else:
-            env = _env_key(p)
-            if env:
-                result[p] = {"masked": _mask(env), "source": "env"}
-            else:
-                result[p] = {"masked": "", "source": "unset"}
+            result[p] = {"masked": "", "source": "unset"}
     return result

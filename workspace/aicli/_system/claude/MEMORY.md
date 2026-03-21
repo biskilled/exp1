@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 23:38 UTC by aicli /memory_
+_Generated: 2026-03-21 23:46 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling users to manage development projects, workflows, and task tracking with Claude and other LLM providers. It combines a Python FastAPI backend with PostgreSQL semantic search (pgvector), a desktop Electron UI with xterm.js terminal and Monaco editor, and an MCP server for tool integration. Currently in active development with 14 feature areas tracked; recent work focused on database schema consolidation, provider billing data organization, and debugging project visibility and data persistence issues.
+aicli is a shared AI memory platform combining Claude CLI, LLM integrations, and workflow automation with semantic search and tagging. It features a PostgreSQL+pgvector backend (FastAPI), Electron desktop UI (Vanilla JS + xterm.js + Monaco), and async DAG workflow execution with MCP tool integration. Current development focuses on database schema consolidation, fixing data persistence bugs, and validating module restructuring post-tool naming convention updates.
 
 ## Project Facts
 
@@ -85,17 +85,17 @@ Reviewer: ```json
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix
-- Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
+- Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-- Database schema consolidation: api_keys.json stays as file in aicli/data/; pricing, coupons, and user logs migrate to managed SQL tables instead of separate JSON files
+- Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
+- Database schema consolidation: api_keys.json stays as file; pricing, coupons, user logs migrate to SQL tables
 
 ## In Progress
 
-- Database schema consolidation (2026-03-21) — Identified that pricing.json and coupon data should migrate from JSON files to SQL tables; api_keys.json remains as file (needed pre-DB connection); mng_users and mng_users_logs can be merged into single table
-- Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files (anthropic.jsonl, openai.jsonl, local_recalculate.jsonl) are gitignored and local-only
 - Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation
 - Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories
+- Database schema consolidation (2026-03-21) — Pricing.json and coupon data migrating from JSON files to SQL tables; api_keys.json remains as file (pre-DB connection requirement)
+- Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files are gitignored and local-only
 - Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved
 - Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
 
@@ -103,26 +103,26 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(62 events, 55 commits)`
+- **hooks** `(63 events, 56 commits)`
 
 ### Doc_type
 
 - **Test** `(28 events, 27 commits)`
+- **low-level-design** `(2 events)`
 - **high-level-design** `(1 events)`
-- **low-level-design** `(1 events)`
 - **customer-meeting** — dsds
 - **retrospective**
 
 ### Feature
 
-- **graph-workflow** `(48 events, 42 commits)`
-- **workflow-runner** `(45 events, 42 commits)`
+- **graph-workflow** `(49 events, 43 commits)`
+- **workflow-runner** `(46 events, 43 commits)`
 - **UI** `(43 events, 37 commits)`
 - **shared-memory** `(42 events, 37 commits)`
 - **auth** `(41 events, 38 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **mcp** `(16 events, 15 commits)`
-- **billing** `(16 events, 15 commits)`
+- **mcp** `(17 events, 16 commits)`
+- **billing** `(17 events, 16 commits)`
 - **tagging**
 - **test-picker-feature**
 - **dropbox**
@@ -130,8 +130,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(55 events, 52 commits)`
-- **development** `(48 events, 43 commits)`
+- **discovery** `(56 events, 53 commits)`
+- **development** `(49 events, 44 commits)`
 - **prod**
 
 ### Task
@@ -209,4 +209,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-21]** `session_analysis` — Database schema rationalization identified: pricing.json and coupons should migrate to SQL tables; mng_users and mng_users_logs can merge into single table; api_keys.json remains file-based (required pre-DB initialization). **[2026-03-21]** `refactoring` — Completed provider storage consolidation to data/provider_usage/ with gitignored local JSON files; validated tool naming convention (tool_ prefix) and backend module imports functional post-relocation. **[2026-03-21]** `infrastructure` — Tool naming and module organization validated; cleaned up empty directories and confirmed agents/tools/ and agents/mcp/ import paths operational. **[2026-03-18]** `bug_fixes` — Fixed AttributeError in main.py (removed stale ensure_project_schema call); resolved memory endpoint CLAUDE.md template variable scoping issue (code_dir now properly scoped at line 1120); improved backend startup race condition handling for empty project list on first load. **[2026-03-10]** `architecture` — Implemented load-once-on-access pattern for tags/workflows to reduce redundant SQL; approved nested tag hierarchy expansion; identified data persistence bug (tags disappearing on session switch) requiring further triage. **[2026-03-10]** `performance` — Diagnosed multiple redundant SQL calls; designed strategy to cache data in memory and update DB only on explicit save; identified port binding conflicts on app restart requiring port cleanup logic.
+**[2026-03-21]** `tool_naming` — Completed tool prefix convention migration in agents/tools/; all import paths verified functional across backend module structure. **[2026-03-21]** `database_consolidation` — Identified pricing.json and coupon data for SQL migration; api_keys.json remains file-based due to pre-DB initialization requirements; provider runtime data consolidated under data/provider_usage/. **[2026-03-21]** `backend_validation` — Confirmed agents/tools/ and agents/mcp/ module organization; cleaned up empty directories after restructuring. **[2026-03-18]** `startup_race_condition` — Fixed AttributeError in main.py removing stale ensure_project_schema() call; improved _continueToApp() retry logic to handle empty project list on first backend load. **[2026-03-18]** `memory_endpoint_fix` — Resolved undefined code_dir template variable at line 1120 in CLAUDE.md memory endpoint by proper scoping from config. **[2026-03-18]** `pending_implementation` — Identified memory_items and project_facts table population logic not yet implemented; requires update mechanism to enable improved memory/context system. **[2026-03-10]** `db_optimization` — Implemented load-once-on-access pattern for tags/workflows to reduce redundant SQL calls; only update DB on explicit save. **[2026-03-10]** `tag_hierarchy` — Approved unlimited nested tag depth via parent_id FK with login as first-level-only entry point. **[2026-03-10]** `data_persistence_bug` — Discovered tags saved in UI disappearing on session switch; root cause unclear (rendering vs. DB save). **[2026-03-10]** `ongoing_issue` — Project visibility bug: AiCli appears in Recent but not main project list; backend startup timing suspected.

@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Database schema consolidation (2026-03-21) — Identified that pricing.json and coupon data should migrate from JSON files to SQL tables; api_keys.json remains as file (needed pre-DB connection); mng_users and mng_users_logs can be merged into single table
-- Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files (anthropic.jsonl, openai.jsonl, local_recalculate.jsonl) are gitignored and local-only
 - Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation
 - Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories
+- Database schema consolidation (2026-03-21) — Pricing.json and coupon data migrating from JSON files to SQL tables; api_keys.json remains as file (pre-DB connection requirement)
+- Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files are gitignored and local-only
 - Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved
 - Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
