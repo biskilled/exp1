@@ -118,12 +118,18 @@ export function renderEntities(container) {
 // ── Init: use cache if warm, otherwise load ──────────────────────────────────
 
 async function _initPlanner(project) {
-  if (!isCacheLoaded() || getCacheProject() !== project) {
+  const hasFallback = getCacheCategories().some(c => c.id === null);
+  if (!isCacheLoaded() || getCacheProject() !== project || hasFallback) {
     document.getElementById('planner-cat-list').innerHTML =
       '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">Loading…</div>';
-    await loadTagCache(project);
+    await loadTagCache(project, hasFallback);
   }
   _renderCategoryList();
+  // Auto-select first category so right pane is populated on open
+  const cats = getCacheCategories();
+  if (!_plannerState.selectedCat && cats.length > 0 && cats[0].id != null) {
+    await _plannerSelectCat(cats[0].id, cats[0].name);
+  }
 }
 
 // ── Category list ─────────────────────────────────────────────────────────────
@@ -150,6 +156,16 @@ function _renderCategoryList() {
 }
 
 async function _plannerSelectCat(catId, catName) {
+  // Fallback categories have null IDs — reload cache and resolve real ID by name
+  if (catId === null || catId === undefined) {
+    const pane = document.getElementById('planner-tags-pane');
+    if (pane) pane.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:16px">Loading…</div>';
+    await loadTagCache(_plannerState.project, true);
+    const real = getCacheCategories().find(c => c.name === catName && c.id != null);
+    if (real) return _plannerSelectCat(real.id, real.name);
+    if (pane) pane.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:16px">Database not ready yet — try again shortly</div>';
+    return;
+  }
   _plannerState.selectedCat = catId;
   _plannerState.selectedCatName = catName;
   const cat = getCacheCategories().find(c => c.id === catId) || {};

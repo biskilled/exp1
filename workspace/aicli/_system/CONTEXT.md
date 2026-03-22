@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 02:31 UTC — do not edit manually.
+> Auto-generated 2026-03-22 02:38 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 239
-- **Last active**: 2026-03-22T02:30:34Z
+- **Sessions**: 240
+- **Last active**: 2026-03-22T02:37:58Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -159,6 +159,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 02:34]** `claude_cli/claude`  
+→ I do see categroeis uploaded in Planner tab, but I do not see all the tags in each categroy. Also I do got an error when
+← _Now restart the backend and verify both fixes:_
+
 **[2026-03-22 02:07]** `claude_cli/claude`  
 → PostgreSql is up and running, why do you build a workaround. it looks like router mappig not query the proper tables
 ← _DB is connected — roles have real IDs (`id: 10`, no fallback). Let me verify all the previously-failing endpoints:_
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:50]** `claude_cli/claude`  
 → So I prefer to store all data layer classes in data folder and have prefix dl_ about database.py - this is not a data la
 ← _Done. The structure is now:  ``` core/      → infrastructure: database.py, auth.py, config.py, encryption.py, seq.py data/      → data layer:     dl_user.py, dl_api_keys.py  (+ future dl_events.py, dl_
-
-**[2026-03-22 00:47]** `claude_cli/claude`  
-→ Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
-← _All 5 agents are done. Here's the complete summary of what was applied across all 23 files:  ---  **SQL constants extracted:** ~150 queries named `_SQL_VERB_ENTITY`, all placed in a `# ── SQL ──` bloc_

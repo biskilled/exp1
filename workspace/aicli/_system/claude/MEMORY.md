@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 02:30 UTC by aicli /memory_
+_Generated: 2026-03-22 02:37 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform that aggregates development history, embeddings, and project state across multiple LLM interfaces (Claude CLI, platforms). It combines JSONL event logs with PostgreSQL semantic search (pgvector), provides authenticated multi-user access with role-based billing, and implements async DAG workflows for AI-assisted task planning and code analysis. Current focus is stabilizing backend endpoints, fixing tag persistence race conditions, and optimizing UI performance.
 
 ## Project Facts
 
@@ -209,7 +205,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-22]** `claude_cli` — Verified PostgreSQL agent roles are properly initialized with real IDs; confirmed router endpoints query correct per-project tables; eliminated speculation about missing workarounds. **[2026-03-22]** `code audit` — Fixed UI XSS vulnerabilities in markdown.js; added 30s API timeout; documented JSDoc for 12 view files; cleaned setInterval leaks in graph_workflow.js. **[2026-03-21-22]** `backend refactor` — Completed modular restructuring: moved agents/tools and agents/mcp under agents/; renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted all SQL queries to module-level constants with _SQL_VERB_ENTITY pattern; implemented build_update() for dynamic query building. **[2026-03-21-22]** `data layer` — Created dl_api_keys.py with encryption; consolidated provider_usage tracking to data/provider_usage/; removed redundant core/encryption.py; implemented user-scoped encrypted API key storage. **[2026-03-18-22]** `tags persistence bug` — Identified race condition: tags saved in UI disappear on session switch; suspected timing issue between render and database save; AiCli project appears in Recent but not as active—continues investigation. **[2026-03-18]** `startup fixes` — Removed stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md code_dir variable scoping (line 1120); added retry logic to handle empty project list on first load.

@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: I have created pyproject.toml manualy. can you update that file again ? also I do see error in stop 
 - [2026-03-22] `claude_cli`: I do see that backend is failing to start (it also take quite a while to load ) 
 - [2026-03-22] `claude_cli`: looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent 
 - [2026-03-22] `claude_cli`: I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading 
 - [2026-03-22] `claude_cli`: PostgreSql is up and running, why do you build a workaround. it looks like router mappig not query t
+- [2026-03-22] `claude_cli`: I do see categroeis uploaded in Planner tab, but I do not see all the tags in each categroy. Also I 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
