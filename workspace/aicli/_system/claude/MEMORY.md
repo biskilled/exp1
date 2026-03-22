@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 01:02 UTC by aicli /memory_
+_Generated: 2026-03-22 01:03 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform enabling collaborative development across Claude CLI and LLM platforms with semantic search, workflow automation, and multi-user project management. Currently in active development with dual JSONL/PostgreSQL storage, JWT authentication, and DAG-based workflow execution; recent work focused on data layer refactoring, encryption migration, and resolving startup race conditions and tag persistence bugs.
 
 ## Project Facts
 
@@ -104,11 +100,11 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(87 events, 77 commits)`
+- **hooks** `(88 events, 78 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(39 events, 37 commits)`
+- **low-level-design** `(40 events, 38 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -116,13 +112,13 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(81 events, 74 commits)`
-- **auth** `(80 events, 75 commits)`
-- **graph-workflow** `(71 events, 64 commits)`
-- **workflow-runner** `(67 events, 64 commits)`
+- **UI** `(82 events, 75 commits)`
+- **auth** `(81 events, 76 commits)`
+- **graph-workflow** `(72 events, 65 commits)`
+- **workflow-runner** `(68 events, 65 commits)`
 - **shared-memory** `(42 events, 37 commits)`
-- **billing** `(38 events, 37 commits)`
-- **mcp** `(38 events, 37 commits)`
+- **billing** `(39 events, 38 commits)`
+- **mcp** `(39 events, 38 commits)`
 - **embeddings** `(28 events, 27 commits)`
 - **tagging**
 - **test-picker-feature**
@@ -131,8 +127,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(78 events, 74 commits)`
-- **development** `(72 events, 65 commits)`
+- **discovery** `(79 events, 75 commits)`
+- **development** `(73 events, 66 commits)`
 - **prod**
 
 ### Task
@@ -207,7 +203,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-22]** `claude_cli` — Completed encryption migration: deleted core/encryption.py and merged all encryption logic into dl_api_keys.py; verified no remaining references across backend. **[2026-03-22]** `internal` — Applied dynamic query templating across 23 backend files with ~150 SQL constants named _SQL_VERB_ENTITY; 5 agents complete with build_update() pattern for dynamic UPDATEs. **[2026-03-22]** `internal` — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into dedicated data layer files (dl_user.py, dl_api_keys.py, dl_seq.py); core/ now purely infrastructure. **[2026-03-21]** `internal` — Modified backend startup retry logic to handle edge case where projects list returns empty on first load; identified but unresolved project visibility timing issue affecting AiCli in Recent vs. main list. **[2026-03-18]** `internal` — Removed stale ensure_project_schema() call in main.py and fixed memory endpoint template variable scoping; memory_items and project_facts tables created but update logic not yet implemented. **[2026-03-10]** `internal` — Approved nested tag hierarchy via parent_id FK allowing unlimited depth; identified data persistence bug where tags disappear on session switch (root cause unclear); implemented load-once-on-access pattern to reduce redundant SQL calls.

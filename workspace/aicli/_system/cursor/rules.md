@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 01:02 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 01:03 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -53,8 +53,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] So I prefer to store all data layer classes in data folder and have prefix dl_ about database.py - this is not a data la
 - [2026-03-22] I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 files ?
 - [2026-03-22] ok. option B
 - [2026-03-22] For what encryption is used for ? also auth - is is looks like a general auth , it is not part of route ?
 - [2026-03-22] Ok. ,erge encryption to dl_api_keys
+- [2026-03-22] Is it worth to change core to shared (folder name) ?

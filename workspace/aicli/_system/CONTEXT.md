@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 01:02 UTC — do not edit manually.
+> Auto-generated 2026-03-22 01:04 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 225
-- **Last active**: 2026-03-22T01:02:06Z
+- **Sessions**: 226
+- **Last active**: 2026-03-22T01:03:17Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -157,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 01:03]** `claude_cli/claude`  
+→ Is it worth to change core to shared (folder name) ? 
+← _Not really worth it. `core/` is the standard Python/FastAPI convention for foundational infrastructure — config, auth, DB pool. `shared/` is more of a frontend/JS pattern and is vaguer ("shared by who_
+
 **[2026-03-22 00:59]** `claude_cli/claude`  
 → Ok. ,erge encryption to dl_api_keys 
 ← _Done. `core/encryption.py` deleted, and no remaining references to it anywhere in the backend._
@@ -212,7 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:00]** `claude_cli/claude`  
 → I do see the api_keys.json under backend\data folder. also when it removed - there are only 2 files remain, maybe it wil
 ← _Stale file + 35 import sites to update. Doing it all at once:_
-
-**[2026-03-21 23:55]** `claude_cli/claude`  
-→ I do api_keys.json under data which is not suppose to be at all (sensitive data). main app api keys are stored in my .en
-← _**8 — Verify**_
