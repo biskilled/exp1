@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:21 UTC by aicli /memory_
+_Generated: 2026-03-22 00:25 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining Claude CLI with a FastAPI backend, PostgreSQL semantic storage (pgvector), and Electron desktop UI. It provides nested tagging, multi-LLM provider support, workflow DAG execution with Cytoscape visualization, encrypted per-user API key management, and MCP integration for work item management. Currently stabilizing encrypted key storage, fixing data persistence across sessions, and completing tool naming conventions while building out memory synthesis and project facts capabilities.
 
 ## Project Facts
 
@@ -67,6 +71,7 @@ Reviewer: ```json
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
+- **backend_modules**: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 
 ## Key Decisions
 
@@ -99,26 +104,26 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(70 events, 61 commits)`
+- **hooks** `(72 events, 62 commits)`
 
 ### Doc_type
 
 - **Test** `(28 events, 27 commits)`
-- **low-level-design** `(23 events, 21 commits)`
+- **low-level-design** `(24 events, 22 commits)`
 - **high-level-design** `(1 events)`
 - **customer-meeting** — dsds
 - **retrospective**
 
 ### Feature
 
-- **graph-workflow** `(54 events, 48 commits)`
-- **workflow-runner** `(51 events, 48 commits)`
-- **UI** `(44 events, 37 commits)`
+- **UI** `(66 events, 59 commits)`
+- **graph-workflow** `(55 events, 49 commits)`
+- **workflow-runner** `(52 events, 49 commits)`
+- **auth** `(42 events, 38 commits)`
 - **shared-memory** `(42 events, 37 commits)`
-- **auth** `(41 events, 38 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **mcp** `(22 events, 21 commits)`
-- **billing** `(22 events, 21 commits)`
+- **billing** `(23 events, 22 commits)`
+- **mcp** `(23 events, 22 commits)`
 - **tagging**
 - **test-picker-feature**
 - **dropbox**
@@ -126,8 +131,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(61 events, 58 commits)`
-- **development** `(55 events, 49 commits)`
+- **discovery** `(62 events, 59 commits)`
+- **development** `(56 events, 50 commits)`
 - **prod**
 
 ### Task
@@ -202,3 +207,7 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-22]** `claude_cli` — Confirmed separation of concerns between `core/auth.py` (shared JWT/bcrypt library) and `routers/route_auth.py` (HTTP endpoints); no duplication. **[2026-03-21]** `in_progress` — Per-user encrypted API key system fully implemented in database; 35+ import sites validated for removal of legacy api_keys.json file storage. **[2026-03-21]** `in_progress` — Backend startup race condition fixed via retry logic handling empty project list on first load; AiCli project visibility timing issue remains under investigation. **[2026-03-21]** `in_progress` — agents/tools/ files renamed to tool_ prefix convention; import paths validated post-relocation. **[2026-03-21]** `in_progress` — Data persistence bug identified: tags saved in UI disappear on session switch; root cause still unclear (UI rendering vs. database save). **[2026-03-18]** `memory_summaries` — Fixed AttributeError in main.py by removing stale `db.ensure_project_schema()` call; corrected memory endpoint CLAUDE.md template variable scoping for `code_dir`. **[2026-03-14]** `PROJECT.md` — Project confirmed active with 15 feature/task entities; hierarchical data model verified (clients contain multiple users); load-once-on-access pattern established to reduce redundant SQL. **[2026-03-10]** `memory_summaries` — Identified database performance issues (redundant SQL calls); approved nested tag hierarchy beyond 2-level structure; discovered tags vanish across session switches (persistence bug). **[pending]** `in_progress` — memory_items and project_facts tables created but update logic not implemented; blocks improved memory/context mechanism.

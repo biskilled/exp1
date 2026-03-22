@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:22 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:25 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 209
-- **Last active**: 2026-03-22T00:21:52Z
+- **Sessions**: 210
+- **Last active**: 2026-03-22T00:25:22Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -36,6 +36,7 @@
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
+- **backend_modules**: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 
 ## In Progress
 
@@ -156,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 00:25]** `claude_cli/claude`  
+→ Basicly all files under route can use db quesries. Is there is any other place that using db queries ?
+← _They serve different purposes — no duplication:  - **`core/auth.py`** — shared library: JWT encode/decode, `hash_password`, `verify_password`, `get_current_user` / `get_optional_user` FastAPI dependen_
+
 **[2026-03-22 00:21]** `claude_cli/claude`  
 → I still see duplicate - under core I do see auth.py and under route - raute_auth.py why there are 2 files ?
 ← _They serve different purposes — no duplication:  - **`core/auth.py`** — shared library: JWT encode/decode, `hash_password`, `verify_password`, `get_current_user` / `get_optional_user` FastAPI dependen_
@@ -211,7 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 22:31]** `claude_cli/claude`  
 → If pipeline engine use that, it is not better to add that under workflows - also, can you rename that to pipelines for c
 ← _Verify zero stale imports and all modules load:_
-
-**[2026-03-21 22:27]** `claude_cli/claude`  
-→ I do see there is gitops and git_tool under agent_tools, is both needed ?
-← _Actually `apply_code_and_commit` requires file changes to write — it returns empty if nothing to write. The handlers have genuinely different entry points (one writes files then commits, the other com_
