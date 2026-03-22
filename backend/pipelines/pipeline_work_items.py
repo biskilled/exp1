@@ -18,7 +18,7 @@ import json
 import logging
 
 from core.config import settings
-from data.database import db
+from core.database import db
 
 log = logging.getLogger(__name__)
 

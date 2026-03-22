@@ -31,7 +31,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 
 from core.config import settings
-from data.database import db
+from core.database import db
 from core.seq import next_seq
 
 router = APIRouter()

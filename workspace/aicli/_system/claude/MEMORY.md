@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-21 23:46 UTC by aicli /memory_
+_Generated: 2026-03-21 23:57 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining Claude CLI, LLM integrations, and workflow automation with semantic search and tagging. It features a PostgreSQL+pgvector backend (FastAPI), Electron desktop UI (Vanilla JS + xterm.js + Monaco), and async DAG workflow execution with MCP tool integration. Current development focuses on database schema consolidation, fixing data persistence bugs, and validating module restructuring post-tool naming convention updates.
+aicli is a shared AI memory platform enabling multi-user AI collaboration with semantic search, workflow execution, and tagging. Currently implementing per-user encrypted API key management, resolving data persistence issues with tags disappearing across sessions, and addressing backend startup race conditions affecting project visibility. The system uses FastAPI backend with PostgreSQL+pgvector for semantic embeddings, Electron+Vanilla JS frontend with xterm.js terminal, and Claude Haiku for memory synthesis.
 
 ## Project Facts
 
@@ -55,8 +55,8 @@ Reviewer: ```json
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; per-user encrypted API keys in database
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
@@ -70,7 +70,7 @@ Reviewer: ```json
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
-- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json (file-based); pricing, coupons, user_logs (migrating to SQL tables)
+- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
 
 ## Key Decisions
 
@@ -86,43 +86,43 @@ Reviewer: ```json
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations
+- Per-user encrypted API key storage in database (replacing api_keys.json); main app keys remain in .env; user keys encrypted at rest
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
-- Database schema consolidation: api_keys.json stays as file; pricing, coupons, user logs migrate to SQL tables
 
 ## In Progress
 
-- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation
-- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories
-- Database schema consolidation (2026-03-21) — Pricing.json and coupon data migrating from JSON files to SQL tables; api_keys.json remains as file (pre-DB connection requirement)
-- Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files are gitignored and local-only
-- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved
-- Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
+- User API key encryption system (2026-03-21) — Replace api_keys.json file storage with database-backed encrypted per-user keys; .env still holds main app credentials
+- Data persistence issue triage (2026-03-21) — Tags saved in UI disappearing on session switch; investigate UI rendering vs. database save failure root cause
+- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main list; backend startup race condition partially fixed with retry logic
+- Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
+- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned empty directories
+- Memory items and project facts population (pending) — Tables created but update logic not implemented; blocks improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(63 events, 56 commits)`
+- **hooks** `(64 events, 57 commits)`
 
 ### Doc_type
 
 - **Test** `(28 events, 27 commits)`
-- **low-level-design** `(2 events)`
+- **low-level-design** `(19 events, 17 commits)`
 - **high-level-design** `(1 events)`
 - **customer-meeting** — dsds
 - **retrospective**
 
 ### Feature
 
-- **graph-workflow** `(49 events, 43 commits)`
-- **workflow-runner** `(46 events, 43 commits)`
+- **graph-workflow** `(50 events, 44 commits)`
+- **workflow-runner** `(47 events, 44 commits)`
 - **UI** `(43 events, 37 commits)`
 - **shared-memory** `(42 events, 37 commits)`
 - **auth** `(41 events, 38 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **mcp** `(17 events, 16 commits)`
-- **billing** `(17 events, 16 commits)`
+- **mcp** `(18 events, 17 commits)`
+- **billing** `(18 events, 17 commits)`
 - **tagging**
 - **test-picker-feature**
 - **dropbox**
@@ -130,8 +130,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(56 events, 53 commits)`
-- **development** `(49 events, 44 commits)`
+- **discovery** `(57 events, 54 commits)`
+- **development** `(50 events, 45 commits)`
 - **prod**
 
 ### Task
@@ -209,4 +209,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-21]** `tool_naming` — Completed tool prefix convention migration in agents/tools/; all import paths verified functional across backend module structure. **[2026-03-21]** `database_consolidation` — Identified pricing.json and coupon data for SQL migration; api_keys.json remains file-based due to pre-DB initialization requirements; provider runtime data consolidated under data/provider_usage/. **[2026-03-21]** `backend_validation` — Confirmed agents/tools/ and agents/mcp/ module organization; cleaned up empty directories after restructuring. **[2026-03-18]** `startup_race_condition` — Fixed AttributeError in main.py removing stale ensure_project_schema() call; improved _continueToApp() retry logic to handle empty project list on first backend load. **[2026-03-18]** `memory_endpoint_fix` — Resolved undefined code_dir template variable at line 1120 in CLAUDE.md memory endpoint by proper scoping from config. **[2026-03-18]** `pending_implementation` — Identified memory_items and project_facts table population logic not yet implemented; requires update mechanism to enable improved memory/context system. **[2026-03-10]** `db_optimization` — Implemented load-once-on-access pattern for tags/workflows to reduce redundant SQL calls; only update DB on explicit save. **[2026-03-10]** `tag_hierarchy` — Approved unlimited nested tag depth via parent_id FK with login as first-level-only entry point. **[2026-03-10]** `data_persistence_bug` — Discovered tags saved in UI disappearing on session switch; root cause unclear (rendering vs. DB save). **[2026-03-10]** `ongoing_issue` — Project visibility bug: AiCli appears in Recent but not main project list; backend startup timing suspected.
+**[2026-03-21]** `config` — User API key encryption system approved to replace api_keys.json file storage; per-user keys now database-backed with encryption at rest while main app credentials remain in .env. **[2026-03-21]** `core` — Tool naming convention validated (agents/tools/ → tool_ prefix) and import paths confirmed functional across restructured backend modules. **[2026-03-21]** `config` — Provider runtime data consolidated to data/provider_usage/; pricing and coupon migration from JSON to SQL tables completed. **[2026-03-21]** `bugs` — Backend startup race condition partially fixed with retry logic handling empty project list on first load; AiCli project visibility bug (appears in Recent but not main list) remains unresolved pending deeper investigation. **[2026-03-18]** `core` — Fixed AttributeError in main.py (removed stale ensure_project_schema call), memory endpoint CLAUDE.md template error (undefined code_dir variable scoped), and improved startup robustness. **[2026-03-14]** `pending` — memory_items and project_facts tables created but update logic not implemented; blocks improved memory/context mechanism. **[2026-03-10]** `database` — Implemented load-once-on-access pattern to eliminate redundant SQL calls; tags now cached in memory and only updated on explicit save. **[2026-03-10]** `ui` — Data persistence bug identified where tags saved in UI disappear on session switch; root cause (UI rendering vs. database save failure) not yet determined. **[2026-03-10]** `features` — Nested tag hierarchy approved for unlimited depth beyond current 2-level structure; login established as first-level entity. **[2026-03-10]** `infrastructure` — Port binding conflicts during app restart resolved via freePort() stale uvicorn cleanup; Electron cleanup via process.exit() stabilized.

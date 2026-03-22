@@ -21,7 +21,7 @@ from typing import Optional
 
 from core.config import settings
 from core.auth import hash_password, verify_password
-from data.database import db
+from core.database import db
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

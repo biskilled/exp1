@@ -65,7 +65,7 @@ class Agent:
         Falls back to a sensible default when the DB is unavailable or the
         role is not found.
         """
-        from data.database import db
+        from core.database import db
         from core.config import settings
 
         system_prompt = f"You are a {role_name}."

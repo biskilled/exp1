@@ -13,9 +13,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from core.auth import get_current_user
-from data.database import db
+from core.database import db
 from agents.providers.pr_pricing import load_pricing
-from data.user import find_by_id, update_user
+from core.user import find_by_id, update_user
 
 router = APIRouter()
 

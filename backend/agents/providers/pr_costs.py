@@ -56,7 +56,7 @@ _DEFAULT_CONFIG: dict = {
 
 def load_costs() -> dict:
     """Read provider costs from mng_clients; returns defaults if unavailable."""
-    from data.database import db
+    from core.database import db
     if db.is_available():
         try:
             with db.conn() as conn:
@@ -81,7 +81,7 @@ def load_costs() -> dict:
 
 def save_costs(cfg: dict, updated_by: Optional[str] = None) -> None:
     """Persist provider costs to mng_clients."""
-    from data.database import db
+    from core.database import db
     cfg["updated_at"] = datetime.now(timezone.utc).isoformat()
     if updated_by:
         cfg["updated_by"] = updated_by

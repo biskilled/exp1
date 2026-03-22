@@ -34,7 +34,7 @@ except ImportError:
 
 def _save_result(provider: str, result: dict) -> None:
     """Insert a fetch result into mng_usage_logs."""
-    from data.database import db
+    from core.database import db
     if not db.is_available():
         return
     try:
@@ -65,7 +65,7 @@ def _save_result(provider: str, result: dict) -> None:
 
 def delete_history_record(provider: str, fetched_at: str) -> bool:
     """Remove a single record from mng_usage_logs by created_at timestamp."""
-    from data.database import db
+    from core.database import db
     if not db.is_available():
         return False
     try:
@@ -86,7 +86,7 @@ def delete_history_record(provider: str, fetched_at: str) -> bool:
 
 def clear_history(provider: Optional[str] = None) -> int:
     """Delete all history records for a provider (or all). Returns count deleted."""
-    from data.database import db
+    from core.database import db
     if not db.is_available():
         return 0
     try:
@@ -110,7 +110,7 @@ def clear_history(provider: Optional[str] = None) -> int:
 
 def load_usage_history(provider: Optional[str] = None, limit: int = 20) -> list[dict]:
     """Load the last N fetch records (newest first) from mng_usage_logs."""
-    from data.database import db
+    from core.database import db
     if not db.is_available():
         return []
     try:
@@ -438,7 +438,7 @@ async def recalculate_local_costs(start_date: str, end_date: str) -> dict:
     Returns a summary and updates estimated_cost_usd in records.
     """
     from agents.providers.pr_costs import estimate_cost
-    from data.database import db
+    from core.database import db
 
     result: dict = {
         "mode": "local_recalculate",

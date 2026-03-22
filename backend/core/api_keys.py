@@ -37,7 +37,7 @@ def _env_key(provider: str) -> str:
 
 def _load_server_keys() -> dict[str, str]:
     """Return {provider: encrypted_key} from mng_clients. Empty dict if unavailable."""
-    from data.database import db
+    from core.database import db
     if not db.is_available():
         return {}
     try:
@@ -63,7 +63,7 @@ def get_key(provider: str, user_id: Optional[str] = None, fallback: str = "") ->
 
     # 1. Per-user key
     if user_id:
-        from data.database import db
+        from core.database import db
         if db.is_available():
             try:
                 with db.conn() as conn:
@@ -93,7 +93,7 @@ def get_key(provider: str, user_id: Optional[str] = None, fallback: str = "") ->
 
 def save_server_key(provider: str, plaintext_key: str) -> None:
     """Encrypt and save a server-level API key to mng_clients."""
-    from data.database import db
+    from core.database import db
     from core.encryption import encrypt
     if not db.is_available():
         log.warning("save_server_key: DB not available")
@@ -116,7 +116,7 @@ def save_server_key(provider: str, plaintext_key: str) -> None:
 
 def save_user_key(user_id: str, provider: str, plaintext_key: str) -> None:
     """Encrypt and upsert a per-user API key."""
-    from data.database import db
+    from core.database import db
     from core.encryption import encrypt
     if not db.is_available():
         raise RuntimeError("Database not available")
@@ -133,7 +133,7 @@ def save_user_key(user_id: str, provider: str, plaintext_key: str) -> None:
 
 def delete_user_key(user_id: str, provider: str) -> bool:
     """Remove a per-user API key. Returns True if a row was deleted."""
-    from data.database import db
+    from core.database import db
     if not db.is_available():
         return False
     with db.conn() as conn:
@@ -147,7 +147,7 @@ def delete_user_key(user_id: str, provider: str) -> bool:
 
 def list_user_keys(user_id: str) -> list[dict]:
     """Return masked key info for all providers the user has saved."""
-    from data.database import db
+    from core.database import db
     from core.encryption import decrypt
     if not db.is_available():
         return []

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-21 23:46 UTC — do not edit manually.
+> Auto-generated 2026-03-21 23:58 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 204
-- **Last active**: 2026-03-21T23:46:08Z
+- **Sessions**: 205
+- **Last active**: 2026-03-21T23:57:41Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -20,8 +20,8 @@
 - **ui_components**: xterm.js (embedded terminal) + Monaco editor + Cytoscape.js (graph flows) + cytoscape-dagre
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; per-user encrypted API keys in database
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
@@ -35,16 +35,16 @@
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
-- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); data/api_keys.json (file-based); pricing, coupons, user_logs (migrating to SQL tables)
+- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
 
 ## In Progress
 
-- Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation
-- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories
-- Database schema consolidation (2026-03-21) — Pricing.json and coupon data migrating from JSON files to SQL tables; api_keys.json remains as file (pre-DB connection requirement)
-- Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files are gitignored and local-only
-- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved
-- Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
+- User API key encryption system (2026-03-21) — Replace api_keys.json file storage with database-backed encrypted per-user keys; .env still holds main app credentials
+- Data persistence issue triage (2026-03-21) — Tags saved in UI disappearing on session switch; investigate UI rendering vs. database save failure root cause
+- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main list; backend startup race condition partially fixed with retry logic
+- Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
+- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned empty directories
+- Memory items and project facts population (pending) — Tables created but update logic not implemented; blocks improved memory/context mechanism
 
 ## Key Decisions
 
@@ -60,9 +60,9 @@
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix
 - Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations
+- Per-user encrypted API key storage in database (replacing api_keys.json); main app keys remain in .env; user keys encrypted at rest
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
-- Database schema consolidation: api_keys.json stays as file; pricing, coupons, user logs migrate to SQL tables
 
 ---
 
@@ -156,6 +156,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-21 23:55]** `claude_cli/claude`  
+→ I do api_keys.json under data which is not suppose to be at all (sensitive data). main app api keys are stored in my .en
+← _**8 — Verify**_
+
 **[2026-03-21 23:39]** `claude_cli/claude`  
 → yes please 
 ← _**Step 9 — Verify everything imports cleanly**_
@@ -210,7 +214,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-21 21:35]** `claude_cli/claude`  
 → test prompt from manual run
-
-**[2026-03-21 21:34]** `claude_cli/claude`  
-→ I do not see hooks runing yet. 
-← _Clean. Now commit and push:_

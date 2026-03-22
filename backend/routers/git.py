@@ -17,7 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 
 from core.config import settings
-from data.database import db
+from core.database import db
 from agents.providers import call_claude
 
 log = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
     if not db.is_available():
         return
     try:
-        from data.database import db as _db
+        from core.database import db as _db
 
         with _db.conn() as conn:
             with conn.cursor() as cur:

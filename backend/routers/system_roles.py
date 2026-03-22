@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from core.auth import get_optional_user
-from data.database import db
+from core.database import db
 
 router = APIRouter()
 

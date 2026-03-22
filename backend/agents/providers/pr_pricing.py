@@ -59,7 +59,7 @@ _DEFAULT_PRICING: dict = {
 
 def load_pricing() -> dict:
     """Read pricing config from mng_clients; falls back to defaults."""
-    from data.database import db
+    from core.database import db
     if db.is_available():
         try:
             with db.conn() as conn:
@@ -79,7 +79,7 @@ def load_pricing() -> dict:
 
 def save_pricing(cfg: dict) -> None:
     """Persist pricing config to mng_clients."""
-    from data.database import db
+    from core.database import db
     if not db.is_available():
         log.warning("save_pricing: DB not available")
         return

@@ -34,7 +34,7 @@ def _migrate_server_data():
             migrated.append(item.name)
     if migrated:
         print(f"✅ Migrated server_data to ui/backend/data/: {', '.join(migrated)}")
-from data.database import db
+from core.database import db
 from routers import auth, chat, history, usage, workflows, prompts, files, projects, config_sync, admin, git, billing, search, entities, graph_workflows, work_items, agent_roles, system_roles, documents, user_api_keys
 from pwa_router import router as pwa_router
 

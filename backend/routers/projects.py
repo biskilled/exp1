@@ -15,7 +15,7 @@ from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
 from core.config import settings
-from data.database import db
+from core.database import db
 
 router = APIRouter()
 log = logging.getLogger(__name__)

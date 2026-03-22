@@ -19,7 +19,7 @@ _EMPTY_ENTRY: dict = {"balance_usd": None, "updated_at": None, "updated_by": Non
 
 def load_balances() -> dict:
     """Return manual balances for all providers from mng_clients."""
-    from data.database import db
+    from core.database import db
     if db.is_available():
         try:
             with db.conn() as conn:
@@ -42,7 +42,7 @@ def save_balances(updates: dict, updated_by: str = "admin") -> dict:
     `updates` is a dict of {provider: balance_usd (float or None)}.
     Returns the full updated store.
     """
-    from data.database import db
+    from core.database import db
     data = load_balances()
     now = datetime.now(timezone.utc).isoformat()
     for provider, balance_usd in updates.items():

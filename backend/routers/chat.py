@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from core.config import settings
 from core.auth import get_optional_user
 from core.api_keys import get_key
-from data.database import db
+from core.database import db
 from agents.providers.pr_pricing import load_pricing, calculate_cost, can_user_access
 from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
 from routers.usage import log_usage
@@ -220,7 +220,7 @@ async def _call_provider(provider: str, messages: list[dict], system: str) -> di
 def _debit_user(user_id: str, provider: str, model: str, input_tokens: int, output_tokens: int) -> None:
     """Log usage, deduct cost from user balance, append transaction."""
     try:
-        from data.user import find_by_id, update_user
+        from core.user import find_by_id, update_user
         pricing      = load_pricing()
         markup       = pricing.get("providers", {}).get(provider, {}).get("markup_percent", 0)
         real_cost    = calculate_cost(provider, model, input_tokens, output_tokens, 0)
@@ -498,7 +498,7 @@ async def chat_stream(
     """SSE streaming chat endpoint."""
     # Balance / access check
     if current_user and current_user.get("id") != "dev-admin":
-        from data.user import find_by_id
+        from core.user import find_by_id
         full_user = find_by_id(current_user["sub"]) if "sub" in current_user else current_user
         model = settings.claude_model  # default; real model resolved in _call_provider
         ok, reason = can_user_access(full_user or current_user, req.provider, model)
@@ -550,7 +550,7 @@ async def chat(
     """Non-streaming chat endpoint."""
     # Balance / access check
     if current_user and current_user.get("id") != "dev-admin":
-        from data.user import find_by_id
+        from core.user import find_by_id
         full_user = find_by_id(current_user.get("sub") or current_user.get("id")) or current_user
         model = settings.claude_model
         ok, reason = can_user_access(full_user, req.provider, model)
