@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 00:19 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 00:21 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -52,8 +52,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-21] yes please
 - [2026-03-21] I do api_keys.json under data which is not suppose to be at all (sensitive data). main app api keys are stored in my .en
 - [2026-03-22] I do see the api_keys.json under backend\data folder. also when it removed - there are only 2 files remain, maybe it wil
 - [2026-03-22] Is there is a problen to remove data\api_keys.json
 - [2026-03-22] Can you make sure UI contain only client interface and backend manage all backend activity , as I would like to package 
+- [2026-03-22] I still see duplicate - under core I do see auth.py and under route - raute_auth.py why there are 2 files ?

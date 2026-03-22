@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:19 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:22 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 208
-- **Last active**: 2026-03-22T00:19:30Z
+- **Sessions**: 209
+- **Last active**: 2026-03-22T00:21:52Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -156,6 +156,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 00:21]** `claude_cli/claude`  
+→ I still see duplicate - under core I do see auth.py and under route - raute_auth.py why there are 2 files ?
+← _They serve different purposes — no duplication:  - **`core/auth.py`** — shared library: JWT encode/decode, `hash_password`, `verify_password`, `get_current_user` / `get_optional_user` FastAPI dependen_
+
 **[2026-03-22 00:12]** `claude_cli/claude`  
 → Can you make sure UI contain only client interface and backend manage all backend activity , as I would like to package 
 ← _Done. Here's what was implemented:  **`ui/electron/main.js`** - Added `loadSettings()` / `saveSettings()` backed by `Electron userData/settings.json` - `getServerUrl()` returns saved URL or `http://12_
@@ -211,7 +215,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 22:27]** `claude_cli/claude`  
 → I do see there is gitops and git_tool under agent_tools, is both needed ?
 ← _Actually `apply_code_and_commit` requires file changes to write — it returns empty if nothing to write. The handlers have genuinely different entry points (one writes files then commits, the other com_
-
-**[2026-03-21 22:22]** `claude_cli/claude`  
-→ can you rename all files under providers to start with pr_  also the one under memory - start with mem_ . I do have yaml
-← _**Verify everything loads:**_

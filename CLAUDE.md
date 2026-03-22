@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-21] `claude_cli`: yes please 
 - [2026-03-21] `claude_cli`: I do api_keys.json under data which is not suppose to be at all (sensitive data). main app api keys 
 - [2026-03-22] `claude_cli`: I do see the api_keys.json under backend\data folder. also when it removed - there are only 2 files 
 - [2026-03-22] `claude_cli`: Is there is a problen to remove data\api_keys.json 
 - [2026-03-22] `claude_cli`: Can you make sure UI contain only client interface and backend manage all backend activity , as I wo
+- [2026-03-22] `claude_cli`: I still see duplicate - under core I do see auth.py and under route - raute_auth.py why there are 2 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
