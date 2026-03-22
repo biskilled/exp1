@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:02 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:06 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -54,8 +54,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] Can you add the pyproject.toml (can be pushed to git as well)
 - [2026-03-22] Now, code looks more optimised. can you do the same for the ui code- make sure all code is well defined, documented, the
 - [2026-03-22] I have created pyproject.toml manualy. can you update that file again ? also I do see error in stop hook which preventin
 - [2026-03-22] I do see that backend is failing to start (it also take quite a while to load )
 - [2026-03-22] looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent roles) Also Pipeline
+- [2026-03-22] I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading

@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 02:02 UTC by aicli /memory_
+_Generated: 2026-03-22 02:06 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform with a FastAPI backend, PostgreSQL semantic storage, and Electron/Vanilla JS frontend. It provides multi-provider LLM integration (Claude, OpenAI, etc.), async DAG workflow execution, encrypted per-user API key management, and dual-layer memory synthesis. Currently optimizing backend startup performance, consolidating data layer architecture with consistent dl_ prefixes, and cleaning UI code with JSDoc documentation and memory leak fixes.
 
 ## Tech Stack
 
@@ -61,6 +57,44 @@ aicli is a shared AI memory platform with a FastAPI backend, PostgreSQL semantic
 - Configuration and authentication cleanup (2026-03-21-22) — Removed stale api_keys.json; externalized sensitive data to .env; implemented user-scoped encrypted API key storage in database; added PyProject.toml for IDE support
 - Tags persistence and project visibility debugging (2026-03-18-22) — Tags saved in UI disappearing on session switch; AiCli appearing in Recent but not as active project; race condition fixes in initialization; continue investigating rendering vs. database save timing
 
-## AI Synthesis
+## Recent Work (last 10 exchanges)
 
-**[2026-03-22]** `backend optimization` — Fixed slow backend startup; verified Planner, Pipeline, History/Runs endpoints working; PostgreSQL agent roles configuration still required. **[2026-03-22]** `UI code cleanup` — Completed dead code removal (explorer.js, workflow.js, Cytoscape CDN); added XSS fixes (markdown.js), 30s timeout (api.js), JSDoc for 12 view files, setInterval cleanup (graph_workflow.js) to fix memory leaks. **[2026-03-21-22]** `backend restructure` — Reorganized agents/tools and agents/mcp under agents/; implemented consistent file prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted 150+ SQL queries as module-level constants; implemented build_update() for safe dynamic UPDATE statements. **[2026-03-21-22]** `data layer consolidation` — Created dl_user.py, dl_api_keys.py (with encryption), dl_seq.py; removed core/encryption.py and stale api_keys.json; moved provider_usage to data/provider_usage/; all sensitive data now in .env. **[2026-03-21-22]** `configuration & IDE support` — Added PyProject.toml and VS Code launch.json for proper IDE debugging; fixed absolute import paths (sys.path via backend/ as Sources Root in PyCharm); externalized config to config.py. **[2026-03-18-22]** `session & visibility bugs` — Investigated tags disappearing on session switch (UI save vs DB persistence timing); AiCli appearing in Recent but not as active project; fixed race conditions in startup initialization; continues investigation needed.
+**[2026-03-22 02:04]** `claude_cli/claude`
+Q: I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading
+A: Good — `source-tags` already has the fallback. Now restart and test all four:
+
+**[2026-03-22 01:55]** `claude_cli/claude`
+Q: looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent roles) Also Pipeline and History/Runs is loading well
+A: Now restart the backend and verify both endpoints:
+
+**[2026-03-22 01:35]** `claude_cli/claude`
+Q: I do see that backend is failing to start (it also take quite a while to load )
+A: Now verify the backend starts immediately:
+
+**[2026-03-22 01:26]** `claude_cli/claude`
+Q: I have created pyproject.toml manualy. can you update that file again ? also I do see error in stop hook which preventing to push the new updates
+A: Push succeeded — no force needed since the rewritten commits built on the same base. Now fix `pyproject.toml`:
+
+**[2026-03-22 01:13]** `claude_cli/claude`
+Q: Now, code looks more optimised. can you do the same for the ui code- make sure all code is well defined, documented, there are not old or unsued code, and make sure to code is clean, and optimized fro
+A: 4 agents running in parallel:  1. **Dead code removal** — deleting `explorer.js`, `workflow.js`, removing Cytoscape CDN from `index.html` 2. **Utils cleanup** — fixing XSS in `markdown.js`, adding 30s timeout to `api.js`, adding module docs to all 7 utils 3. **View docs** — adding JSDoc comments to 
+
+**[2026-03-22 01:10]** `claude_cli/claude`
+Q: Can you add the pyproject.toml (can be pushed to git as well)
+A: Also add the VS Code config (safe to commit, no secrets):
+
+**[2026-03-22 01:07]** `claude_cli/claude`
+Q: I do see that when you use import you are using relative import for example from core.config import settings. which are not support when I am working in Pycharm ide. (only long one such from aicli.bac
+A: These are not relative imports — they're **absolute imports that assume `backend/` is on `sys.path`**. They work when you `cd backend && uvicorn main:app` because Python adds the CWD to `sys.path`. The IDE just doesn't know that.  ## Fix for both IDEs  **Option A — Simplest (PyCharm only)**  Right-c
+
+**[2026-03-22 01:03]** `claude_cli/claude`
+Q: Is it worth to change core to shared (folder name) ?
+A: Not really worth it. `core/` is the standard Python/FastAPI convention for foundational infrastructure — config, auth, DB pool. `shared/` is more of a frontend/JS pattern and is vaguer ("shared by whom?").  The contents you have (`config.py`, `auth.py`, `database.py`) are genuinely *core infrastruct
+
+**[2026-03-22 00:59]** `claude_cli/claude`
+Q: Ok. ,erge encryption to dl_api_keys
+A: Done. `core/encryption.py` deleted, and no remaining references to it anywhere in the backend.
+
+**[2026-03-22 00:57]** `claude_cli/claude`
+Q: For what encryption is used for ? also auth - is is looks like a general auth , it is not part of route ?
+A: Done. `data/` layer now has three files:  ``` data/   dl_user.py      — user CRUD   dl_api_keys.py  — encrypted key storage     dl_seq.py       — atomic sequential ID allocation ```  `core/` is now pure infrastructure: `database.py`, `auth.py`, `config.py`, `encryption.py`.

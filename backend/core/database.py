@@ -606,16 +606,19 @@ class _Database:
             log.info("DATABASE_URL not set — using file-based storage")
             return
         try:
-            import socket as _socket
-            # socket.setdefaulttimeout covers TCP + SSL + PostgreSQL handshake.
-            # connect_timeout only covers the TCP SYN, so we need both.
-            _old_timeout = _socket.getdefaulttimeout()
-            _socket.setdefaulttimeout(10.0)
-            try:
-                self._pool = psycopg2.pool.ThreadedConnectionPool(1, settings.db_pool_max, url)
-            finally:
-                _socket.setdefaulttimeout(_old_timeout)
+            self._pool = psycopg2.pool.ThreadedConnectionPool(
+                1, settings.db_pool_max, url,
+                connect_timeout=10,
+            )
             with self.conn() as conn:
+                # lock_timeout: ALTER TABLE fails fast instead of hanging when another
+                # session holds a table lock (e.g. from a previous crash mid-migration).
+                # idle_in_transaction_session_timeout: auto-kills this session if it
+                # goes idle mid-transaction (e.g. on kill -9), preventing zombie locks.
+                with conn.cursor() as cur:
+                    cur.execute("SET lock_timeout = '5s'")
+                    cur.execute("SET idle_in_transaction_session_timeout = '30s'")
+                conn.commit()
                 self._rename_legacy_tables(conn)
                 self._ensure_schema(conn)
                 self._ensure_shared_schema(conn)
@@ -657,25 +660,35 @@ class _Database:
 
     @staticmethod
     def _run_ddl_statements(conn, sql: str, label: str) -> None:
-        """Run each semicolon-separated SQL statement individually.
+        """Run the entire DDL block in a single server round trip.
 
-        This prevents a single failed statement (e.g. CREATE INDEX on a column
-        that doesn't exist yet) from rolling back an entire DDL block.
+        All statements are sent as one string, processed server-side in one
+        transaction. One COMMIT at the end. If the batch fails (rare — only on
+        a fresh install with a DDL ordering bug), fall back to statement-by-statement
+        so the error is isolated and progress is saved.
         """
-        for stmt in sql.split(";"):
-            stmt = stmt.strip()
-            if not stmt or stmt.startswith("--"):
-                continue
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(stmt)
-                conn.commit()
-            except Exception as e:
-                conn.rollback()
-                msg = str(e).strip()
-                # Silence noise for expected "already exists" situations
-                if "already exists" not in msg.lower():
-                    log.debug(f"{label} stmt skipped: {msg[:120]}")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        except Exception:
+            # Batch failed — fall back to individual statements so we don't
+            # lose all progress. Per-statement commits are slow over remote DB
+            # but this path is only hit on schema conflicts, not normal operation.
+            conn.rollback()
+            for stmt in sql.split(";"):
+                stmt = stmt.strip()
+                if not stmt or stmt.startswith("--"):
+                    continue
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(stmt)
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    msg = str(e).strip()
+                    if "already exists" not in msg.lower():
+                        log.debug(f"{label} stmt skipped: {msg[:120]}")
 
     @staticmethod
     def _ensure_schema(conn) -> None:
@@ -1215,13 +1228,14 @@ class _Database:
         renamed = 0
         try:
             with conn.cursor() as cur:
+                # Batch all phase-1 renames into one query (IF EXISTS = no-op if missing)
                 for old, new in _RENAMES:
                     try:
                         cur.execute(f"ALTER TABLE IF EXISTS {old} RENAME TO {new}")
-                        conn.commit()
                         renamed += 1
                     except Exception:
-                        conn.rollback()
+                        pass
+                conn.commit()
 
                 for base in _PROJECT_BASES:
                     try:
@@ -1231,18 +1245,17 @@ class _Database:
                             (f"{base}_%",),
                         )
                         rows = cur.fetchall()
-                        conn.commit()
                         for (tname,) in rows:
                             suffix = tname[len(base) + 1:]
                             new_name = f"pr_local_{suffix}_{base}"
                             try:
                                 cur.execute(f"ALTER TABLE {tname} RENAME TO {new_name}")
-                                conn.commit()
                                 renamed += 1
                             except Exception:
                                 conn.rollback()
                     except Exception:
                         conn.rollback()
+                conn.commit()
 
             if renamed:
                 log.info(f"✅ Legacy renames: {renamed} tables → mng_/pr_ convention")
@@ -1421,35 +1434,33 @@ class _Database:
         )
 
         try:
+            from psycopg2.extras import execute_values
             with conn.cursor() as cur:
-                for name, desc, prompt, provider, model, role_type, auto_commit in _ROLES:
-                    cur.execute(
-                        """INSERT INTO mng_agent_roles
-                               (client_id, project, name, description, system_prompt,
-                                provider, model, role_type, auto_commit)
-                           VALUES (1, '_global', %s, %s, %s, %s, %s, %s, %s)
-                           ON CONFLICT (client_id, project, name) DO UPDATE SET
-                               description   = EXCLUDED.description,
-                               system_prompt = EXCLUDED.system_prompt,
-                               provider      = EXCLUDED.provider,
-                               model         = EXCLUDED.model,
-                               role_type     = EXCLUDED.role_type,
-                               auto_commit   = EXCLUDED.auto_commit""",
-                        (name, desc, prompt, provider, model, role_type, auto_commit),
-                    )
-                # Seed the internal fact-extraction prompt (role_type='internal')
-                cur.execute(
+                # Batch all roles into one INSERT (single round trip)
+                rows = [
+                    (1, "_global", name, desc, prompt, provider, model, role_type, auto_commit)
+                    for name, desc, prompt, provider, model, role_type, auto_commit in _ROLES
+                ]
+                # Append internal fact-extraction role
+                rows.append((
+                    1, "_global", "internal_project_fact",
+                    "Internal: extracts durable architectural facts from memory summaries.",
+                    _INTERNAL_FACT_PROMPT, "claude", "claude-haiku-4-5-20251001", "internal", False,
+                ))
+                execute_values(
+                    cur,
                     """INSERT INTO mng_agent_roles
                            (client_id, project, name, description, system_prompt,
-                            provider, model, role_type)
-                       VALUES (1, '_global',
-                               'internal_project_fact',
-                               'Internal: extracts durable architectural facts from memory summaries. '
-                               'Used automatically by /memory, session-end, and workflow-end triggers.',
-                               %s, 'claude', 'claude-haiku-4-5-20251001', 'internal')
+                            provider, model, role_type, auto_commit)
+                       VALUES %s
                        ON CONFLICT (client_id, project, name) DO UPDATE SET
-                           system_prompt = EXCLUDED.system_prompt""",
-                    (_INTERNAL_FACT_PROMPT,),
+                           description   = EXCLUDED.description,
+                           system_prompt = EXCLUDED.system_prompt,
+                           provider      = EXCLUDED.provider,
+                           model         = EXCLUDED.model,
+                           role_type     = EXCLUDED.role_type,
+                           auto_commit   = EXCLUDED.auto_commit""",
+                    rows,
                 )
             conn.commit()
             log.debug("✅ Agent roles seeded")
@@ -1574,18 +1585,20 @@ class _Database:
             ),
         ]
         try:
+            from psycopg2.extras import execute_values
             with conn.cursor() as cur:
-                for name, category, description, content in _DEFAULT_SYSTEM_ROLES:
-                    cur.execute(
-                        """INSERT INTO mng_system_roles
-                               (client_id, name, category, description, content)
-                           VALUES (1, %s, %s, %s, %s)
-                           ON CONFLICT (client_id, name) DO UPDATE SET
-                               category    = EXCLUDED.category,
-                               description = EXCLUDED.description,
-                               content     = EXCLUDED.content""",
-                        (name, category, description, content),
-                    )
+                execute_values(
+                    cur,
+                    """INSERT INTO mng_system_roles
+                           (client_id, name, category, description, content)
+                       VALUES %s
+                       ON CONFLICT (client_id, name) DO UPDATE SET
+                           category    = EXCLUDED.category,
+                           description = EXCLUDED.description,
+                           content     = EXCLUDED.content""",
+                    [(1, name, category, description, content)
+                     for name, category, description, content in _DEFAULT_SYSTEM_ROLES],
+                )
             conn.commit()
             log.debug("✅ System roles seeded")
         except Exception as e:
@@ -1624,17 +1637,24 @@ class _Database:
             ("Security Reviewer",    "security_principles",    1),
         ]
         try:
+            from psycopg2.extras import execute_values
             with conn.cursor() as cur:
-                for agent_name, system_name, order_idx in _LINKS:
-                    cur.execute(
-                        """INSERT INTO mng_role_system_links
-                               (role_id, system_role_id, order_index)
-                           SELECT ar.id, sr.id, %s
-                           FROM   mng_agent_roles  ar
-                           JOIN   mng_system_roles sr ON sr.name = %s AND sr.client_id = 1
-                           WHERE  ar.name = %s AND ar.client_id = 1
-                           ON CONFLICT DO NOTHING""",
-                        (order_idx, system_name, agent_name),
+                # Resolve all IDs in two queries, then batch-insert links in one
+                cur.execute("SELECT name, id FROM mng_agent_roles  WHERE client_id=1")
+                ar_ids = {r[0]: r[1] for r in cur.fetchall()}
+                cur.execute("SELECT name, id FROM mng_system_roles WHERE client_id=1")
+                sr_ids = {r[0]: r[1] for r in cur.fetchall()}
+                rows = [
+                    (ar_ids[a], sr_ids[s], idx)
+                    for a, s, idx in _LINKS
+                    if a in ar_ids and s in sr_ids
+                ]
+                if rows:
+                    execute_values(
+                        cur,
+                        """INSERT INTO mng_role_system_links (role_id, system_role_id, order_index)
+                           VALUES %s ON CONFLICT DO NOTHING""",
+                        rows,
                     )
             conn.commit()
             log.debug("✅ Role-system links seeded")

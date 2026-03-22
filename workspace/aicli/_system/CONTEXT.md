@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 02:03 UTC — do not edit manually.
+> Auto-generated 2026-03-22 02:07 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 236
-- **Last active**: 2026-03-22T02:02:49Z
+- **Sessions**: 237
+- **Last active**: 2026-03-22T02:06:58Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -158,6 +158,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 02:04]** `claude_cli/claude`  
+→ I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading 
+← _Good — `source-tags` already has the fallback. Now restart and test all four:_
+
 **[2026-03-22 01:55]** `claude_cli/claude`  
 → looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent roles) Also Pipeline
 ← _Now restart the backend and verify both endpoints:_
@@ -213,7 +217,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:41]** `claude_cli/claude`  
 → What about core/user , this is not suppose to be as a router ? I do do see router_user_api_key as well - it is not the s
 ← _Good question — same pattern as `core/auth.py` vs `routers/route_auth.py`:  **`core/user.py`** — data access library. Contains `create_user()`, `find_by_id()`, `authenticate()`, `list_users()`, `updat_
-
-**[2026-03-22 00:30]** `claude_cli/claude`  
-→ scope - apply to all files, Dynamic - try to use tamplate (maybe add that into database.py file). also please review eac
-← _Let me launch the remaining router file groups in parallel while the first two agents run._
