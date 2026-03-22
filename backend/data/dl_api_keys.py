@@ -7,12 +7,18 @@ Priority for get_key(provider, user_id):
   2. Server key (mng_clients.server_api_keys)
   3. Env var (settings.*_api_key)
 
-All values are Fernet-encrypted at rest. Never stored in plain text or files.
+All values are Fernet-encrypted at rest (AES-128-CBC + HMAC-SHA256)
+with a key derived from settings.secret_key. If secret_key changes, all
+encrypted values become unreadable.
 """
 
+import base64
+import hashlib
 import json
 import logging
 from typing import Optional
+
+from cryptography.fernet import Fernet, InvalidToken
 
 log = logging.getLogger(__name__)
 
@@ -26,31 +32,41 @@ _ENV_ATTRS = {
     "grok":     "grok_api_key",
 }
 
+# ── Encryption ────────────────────────────────────────────────────────────────
+
+def _fernet() -> Fernet:
+    from core.config import settings
+    key_bytes = hashlib.sha256(settings.secret_key.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key_bytes))
+
+
+def _encrypt(plaintext: str) -> str:
+    return _fernet().encrypt(plaintext.encode()).decode()
+
+
+def _decrypt(token: str) -> str:
+    try:
+        return _fernet().decrypt(token.encode()).decode()
+    except InvalidToken as e:
+        raise ValueError("Decryption failed — key may have changed") from e
+
+
 # ── SQL ───────────────────────────────────────────────────────────────────────
 
-_SQL_GET_SERVER_KEYS = "SELECT server_api_keys FROM mng_clients WHERE id=1"
-
+_SQL_GET_SERVER_KEYS    = "SELECT server_api_keys FROM mng_clients WHERE id=1"
 _SQL_UPDATE_SERVER_KEYS = "UPDATE mng_clients SET server_api_keys=%s WHERE id=1"
-
-_SQL_GET_USER_KEY = (
-    "SELECT key_enc FROM mng_user_api_keys WHERE user_id=%s AND provider=%s"
-)
-
-_SQL_UPSERT_USER_KEY = """INSERT INTO mng_user_api_keys (user_id, provider, key_enc, updated_at)
-                   VALUES (%s, %s, %s, NOW())
-                   ON CONFLICT (user_id, provider)
-                   DO UPDATE SET key_enc=EXCLUDED.key_enc, updated_at=NOW()"""
-
-_SQL_DELETE_USER_KEY = (
-    "DELETE FROM mng_user_api_keys WHERE user_id=%s AND provider=%s"
-)
-
-_SQL_LIST_USER_KEYS = (
-    "SELECT provider, key_enc, updated_at FROM mng_user_api_keys WHERE user_id=%s"
-)
+_SQL_GET_USER_KEY       = "SELECT key_enc FROM mng_user_api_keys WHERE user_id=%s AND provider=%s"
+_SQL_UPSERT_USER_KEY    = """
+    INSERT INTO mng_user_api_keys (user_id, provider, key_enc, updated_at)
+    VALUES (%s, %s, %s, NOW())
+    ON CONFLICT (user_id, provider)
+    DO UPDATE SET key_enc=EXCLUDED.key_enc, updated_at=NOW()
+"""
+_SQL_DELETE_USER_KEY    = "DELETE FROM mng_user_api_keys WHERE user_id=%s AND provider=%s"
+_SQL_LIST_USER_KEYS     = "SELECT provider, key_enc, updated_at FROM mng_user_api_keys WHERE user_id=%s"
 
 
-# ── Internal helpers ───────────────────────────────────────────────────────────
+# ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _env_key(provider: str) -> str:
     from core.config import settings
@@ -75,15 +91,17 @@ def _load_server_keys() -> dict[str, str]:
     return {}
 
 
-# ── Public API ─────────────────────────────────────────────────────────────────
+def _mask(k: str) -> str:
+    k = k.strip()
+    if not k:
+        return ""
+    return ("*" * (len(k) - 4) + k[-4:]) if len(k) > 4 else "****"
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
 
 def get_key(provider: str, user_id: Optional[str] = None, fallback: str = "") -> str:
-    """
-    Return a plain-text API key for a provider.
-    Priority: user DB key → server DB key → env var → fallback.
-    """
-    from core.encryption import decrypt
-
+    """Return a plain-text API key. Priority: user DB → server DB → env var → fallback."""
     # 1. Per-user key
     if user_id:
         from core.database import db
@@ -94,16 +112,15 @@ def get_key(provider: str, user_id: Optional[str] = None, fallback: str = "") ->
                         cur.execute(_SQL_GET_USER_KEY, (user_id, provider))
                         row = cur.fetchone()
                         if row and row[0]:
-                            return decrypt(row[0])
+                            return _decrypt(row[0])
             except Exception as e:
                 log.debug(f"get_key user lookup error: {e}")
 
     # 2. Server DB key
-    server_keys = _load_server_keys()
-    enc = server_keys.get(provider, "").strip()
+    enc = _load_server_keys().get(provider, "").strip()
     if enc:
         try:
-            return decrypt(enc)
+            return _decrypt(enc)
         except ValueError:
             log.warning(f"get_key: server key for '{provider}' failed to decrypt")
 
@@ -114,14 +131,13 @@ def get_key(provider: str, user_id: Optional[str] = None, fallback: str = "") ->
 def save_server_key(provider: str, plaintext_key: str) -> None:
     """Encrypt and save a server-level API key to mng_clients."""
     from core.database import db
-    from core.encryption import encrypt
     if not db.is_available():
         log.warning("save_server_key: DB not available")
         return
     try:
         keys = _load_server_keys()
         if plaintext_key.strip():
-            keys[provider] = encrypt(plaintext_key.strip())
+            keys[provider] = _encrypt(plaintext_key.strip())
         else:
             keys.pop(provider, None)
         with db.conn() as conn:
@@ -134,15 +150,11 @@ def save_server_key(provider: str, plaintext_key: str) -> None:
 def save_user_key(user_id: str, provider: str, plaintext_key: str) -> None:
     """Encrypt and upsert a per-user API key."""
     from core.database import db
-    from core.encryption import encrypt
     if not db.is_available():
         raise RuntimeError("Database not available")
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                _SQL_UPSERT_USER_KEY,
-                (user_id, provider, encrypt(plaintext_key.strip())),
-            )
+            cur.execute(_SQL_UPSERT_USER_KEY, (user_id, provider, _encrypt(plaintext_key.strip())))
 
 
 def delete_user_key(user_id: str, provider: str) -> bool:
@@ -159,7 +171,6 @@ def delete_user_key(user_id: str, provider: str) -> bool:
 def list_user_keys(user_id: str) -> list[dict]:
     """Return masked key info for all providers the user has saved."""
     from core.database import db
-    from core.encryption import decrypt
     if not db.is_available():
         return []
     result = []
@@ -169,8 +180,8 @@ def list_user_keys(user_id: str) -> list[dict]:
                 cur.execute(_SQL_LIST_USER_KEYS, (user_id,))
                 for row in cur.fetchall():
                     try:
-                        plain = decrypt(row[1])
-                        masked = ("*" * (len(plain) - 4) + plain[-4:]) if len(plain) > 4 else "****"
+                        plain = _decrypt(row[1])
+                        masked = _mask(plain)
                     except ValueError:
                         masked = "****"
                     result.append({
@@ -183,26 +194,15 @@ def list_user_keys(user_id: str) -> list[dict]:
     return result
 
 
-def _mask(k: str) -> str:
-    k = k.strip()
-    if not k:
-        return ""
-    return ("*" * (len(k) - 4) + k[-4:]) if len(k) > 4 else "****"
-
-
 def masked_keys() -> dict:
-    """
-    Server-level key status for admin panel.
-    Source: 'db' (server DB key set), 'env' (only env var), 'unset'.
-    """
-    from core.encryption import decrypt
+    """Server-level key status for admin panel. Source: 'db' | 'env' | 'unset'."""
     server_keys = _load_server_keys()
     result = {}
     for p in _PROVIDERS:
         enc = server_keys.get(p, "").strip()
         if enc:
             try:
-                plain = decrypt(enc)
+                plain = _decrypt(enc)
                 result[p] = {"masked": _mask(plain), "source": "db"}
                 continue
             except ValueError:

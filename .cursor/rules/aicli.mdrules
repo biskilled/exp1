@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 00:56 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 00:58 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -31,7 +31,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
-- **backend_modules**: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+- **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 
 ## Key Decisions
 
@@ -46,15 +46,15 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
-- Backend module organization: routers/ for API endpoints, core/ for data access, agents/tools/ for implementations (tool_ prefix)
+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ─── SQL ─── blocks; build_update() for dynamic UPDATEs
 - _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] What about core/user , this is not suppose to be as a router ? I do do see router_user_api_key as well - it is not the s
 - [2026-03-22] Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
 - [2026-03-22] So I prefer to store all data layer classes in data folder and have prefix dl_ about database.py - this is not a data la
 - [2026-03-22] I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 files ?
 - [2026-03-22] ok. option B
+- [2026-03-22] For what encryption is used for ? also auth - is is looks like a general auth , it is not part of route ?

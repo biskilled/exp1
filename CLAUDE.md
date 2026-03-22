@@ -37,7 +37,7 @@ You are a senior Python software architect with deep expertise in:
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
-- Backend module organization: routers/ for API endpoints, core/ for data access, agents/tools/ for implementations (tool_ prefix)
+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ─── SQL ─── blocks; build_update() for dynamic UPDATEs
 - _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: What about core/user , this is not suppose to be as a router ? I do do see router_user_api_key as we
 - [2026-03-22] `claude_cli`: Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
 - [2026-03-22] `claude_cli`: So I prefer to store all data layer classes in data folder and have prefix dl_ about database.py - t
 - [2026-03-22] `claude_cli`: I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 fi
 - [2026-03-22] `claude_cli`: ok. option B 
+- [2026-03-22] `claude_cli`: For what encryption is used for ? also auth - is is looks like a general auth , it is not part of ro
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
