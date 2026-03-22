@@ -178,7 +178,22 @@ def _require_admin(user):
         raise HTTPException(403, "Admin access required")
 
 
-def _row_to_role(row, include_prompt: bool = True) -> dict:
+def _row_to_role(row, admin: bool = False) -> dict:
+    """Serialize a DB row to a role dict.
+
+    Non-admin users receive ONLY id / name / description — the full definition
+    (system_prompt, provider, model, tools, react settings, IO schema) is
+    admin-only so customers cannot reverse-engineer proprietary role logic.
+    """
+    r = {
+        "id":          row[0],
+        "name":        row[2],
+        "description": row[3],
+        "is_active":   row[8],
+    }
+    if not admin:
+        return r
+
     import json as _json
     _tools_raw = row[16] if len(row) > 16 else []
     if isinstance(_tools_raw, str):
@@ -186,15 +201,13 @@ def _row_to_role(row, include_prompt: bool = True) -> dict:
             _tools_raw = _json.loads(_tools_raw)
         except Exception:
             _tools_raw = []
-    r = {
-        "id":             row[0],
+
+    r.update({
         "project":        row[1],
-        "name":           row[2],
-        "description":    row[3],
+        "system_prompt":  row[4],
         "provider":       row[5],
         "model":          row[6],
         "tags":           row[7] or [],
-        "is_active":      row[8],
         "created_at":     row[9].isoformat()  if row[9]  else None,
         "updated_at":     row[10].isoformat() if row[10] else None,
         "inputs":         row[11] if len(row) > 11 and row[11] is not None else [],
@@ -205,9 +218,7 @@ def _row_to_role(row, include_prompt: bool = True) -> dict:
         "tools":          _tools_raw if isinstance(_tools_raw, list) else [],
         "react":          bool(row[17]) if len(row) > 17 else True,
         "max_iterations": int(row[18]) if len(row) > 18 else 10,
-    }
-    if include_prompt:
-        r["system_prompt"] = row[4]
+    })
     return r
 
 
@@ -220,13 +231,19 @@ async def list_roles(
 ):
     admin = _is_admin(user)
     if not db.is_available():
-        return {"roles": _BUILTIN_ROLES, "is_admin": admin, "fallback": True}
+        # Non-admins get name/description only even from fallback list
+        visible = (
+            _BUILTIN_ROLES if admin
+            else [{"id": r["id"], "name": r["name"], "description": r["description"],
+                   "is_active": r.get("is_active", True)} for r in _BUILTIN_ROLES]
+        )
+        return {"roles": visible, "is_admin": admin, "fallback": True}
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(_SQL_LIST_ROLES, (project,))
             rows = cur.fetchall()
     return {
-        "roles": [_row_to_role(r, include_prompt=admin) for r in rows],
+        "roles": [_row_to_role(r, admin=admin) for r in rows],
         "is_admin": admin,
     }
 
@@ -269,7 +286,7 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
                  _json.dumps(body.tools), body.react, body.max_iterations),
             )
             row = cur.fetchone()
-    return _row_to_role(row, include_prompt=True)
+    return _row_to_role(row, admin=True)
 
 
 # ── Update (auto-versions on prompt/model/provider change) ────────────────────
@@ -362,7 +379,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
             )
             cur.execute(_SQL_GET_ROLE_BY_ID, (role_id,))
             row = cur.fetchone()
-    return _row_to_role(row, include_prompt=True)
+    return _row_to_role(row, admin=True)
 
 
 # ── Soft delete ───────────────────────────────────────────────────────────────
@@ -539,8 +556,9 @@ async def sync_yaml(body: SyncYamlBody, user=Depends(get_optional_user)):
 
 @router.get("/{role_id}/export-yaml")
 async def export_yaml(role_id: int, user=Depends(get_optional_user)):
-    """Serialize a DB role to YAML string."""
+    """Serialize a DB role to YAML string. Admin only — exposes full role definition."""
     _require_db()
+    _require_admin(user)
     from fastapi.responses import PlainTextResponse
     import json as _json
     with db.conn() as conn:
@@ -549,7 +567,7 @@ async def export_yaml(role_id: int, user=Depends(get_optional_user)):
             row = cur.fetchone()
     if not row:
         raise HTTPException(404, "Role not found")
-    role = _row_to_role(row, include_prompt=True)
+    role = _row_to_role(row, admin=True)
 
     try:
         import yaml as _yaml
