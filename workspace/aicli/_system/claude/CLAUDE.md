@@ -36,11 +36,11 @@ You are a senior Python software architect with deep expertise in:
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Pipelines centralized under workflows/ with pipeline_ prefix; agent tools in agents/tools/ with tool_ prefix
-- Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations
 - Per-user encrypted API key storage in database (replacing api_keys.json); main app keys remain in .env; user keys encrypted at rest
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
+- Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations, agents/mcp/ for MCP server
+- Data persistence requirement: tags saved in UI must persist across session switches; investigate UI rendering vs. database save root cause
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-21] `claude_cli`: What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty 
 - [2026-03-21] `claude_cli`: The backend is used for code only, it wont have any read permissions... any file data will be update
 - [2026-03-21] `claude_cli`: Can you recheck what is database schema, I dont think it is required to add 5 new table, but possibl
 - [2026-03-21] `claude_cli`: yes please 
 - [2026-03-21] `claude_cli`: I do api_keys.json under data which is not suppose to be at all (sensitive data). main app api keys 
+- [2026-03-22] `claude_cli`: I do see the api_keys.json under backend\data folder. also when it removed - there are only 2 files 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

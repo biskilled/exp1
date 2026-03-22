@@ -1,7 +1,7 @@
 """
 Chat router with SSE streaming support.
 
-Server mode: API keys are stored server-side (api_keys.json) — no client X-*-Key headers.
+Server mode: API keys stored encrypted in DB (mng_clients.server_api_keys / mng_user_api_keys).
 Balance is checked before every LLM call and debited after.
 When REQUIRE_AUTH=True (or DEV_MODE=True), a valid Bearer token is required.
 """

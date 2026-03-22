@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- User API key encryption system (2026-03-21) — Replace api_keys.json file storage with database-backed encrypted per-user keys; .env still holds main app credentials
-- Data persistence issue triage (2026-03-21) — Tags saved in UI disappearing on session switch; investigate UI rendering vs. database save failure root cause
-- Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main list; backend startup race condition partially fixed with retry logic
+- API keys.json file relocation (2026-03-22) — Moving stale api_keys.json from backend/data to core folder; 35+ import sites require updating for unified key storage
+- Per-user encrypted API key system (2026-03-21) — Replace api_keys.json file storage with database-backed encrypted keys; .env holds main app credentials
+- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
+- Backend startup race condition (partial fix 2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation
 - Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
-- Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned empty directories
-- Memory items and project facts population (pending) — Tables created but update logic not implemented; blocks improved memory/context mechanism
+- Memory items/project facts table population (pending) — Tables created but update logic not implemented; blocks improved memory/context mechanism

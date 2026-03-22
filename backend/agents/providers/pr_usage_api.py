@@ -194,7 +194,7 @@ def _date_range(start: str, end: str) -> list[str]:
 # Two paths:
 #   1. Regular API key → iterate day-by-day: GET /v1/usage?date=YYYY-MM-DD
 #   2. Admin API key   → date range:         GET /v1/organization/usage/completions
-#      (Admin key looks like: sk-proj-admin-... or can be set in api_keys.json as "openai_admin")
+#      (Admin key: sk-proj-admin-... — set via admin panel, stored encrypted in DB)
 #
 # The /v1/dashboard/billing/* endpoints require browser session cookies — they
 # CANNOT be called with API keys (always return 403). We no longer attempt them.
