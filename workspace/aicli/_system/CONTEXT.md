@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 23:24 UTC — do not edit manually.
+> Auto-generated 2026-03-22 23:57 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 253
-- **Last active**: 2026-03-22T23:24:11Z
+- **Sessions**: 254
+- **Last active**: 2026-03-22T23:37:31Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -22,7 +22,7 @@
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok — each with defined system roles, prompts, input/output schemas, and ReAct execution mode
+- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
@@ -42,12 +42,12 @@
 
 ## In Progress
 
-- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination across all providers; Sr. Architect role testing from Auth feature history
-- Tags loading and cache invalidation (2026-03-22) — User reports no DB API calls for tags on planner load; identified _plannerState.project fallback category issue causing null IDs; implementing force-reload logic with cache validation
-- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to resolve display issues
+- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing from Auth feature history
+- Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle empty projects list on first load; project visibility bug investigation (AiCli not displaying as current in main project view)
-- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per original specification
+- Embeddings feature and workflow test validation (2026-03-22) — Testing full workflow from feature panel; Auth feature description/remarks needed for Sr. Architect understanding
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
 
 ## Key Decisions
 
@@ -59,13 +59,13 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage tables
-- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
+- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes; no hallucination tolerance
+- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes
 
 ---
 
@@ -159,6 +159,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 23:48]** `claude_cli/claude`  
+→ Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
+
+**[2026-03-22 23:35]** `claude_cli/claude`  
+→ please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 
+← _Good data. Here's the complete picture — what actually exists in memory for Auth, and what the Architect would do with it.  ---  ## Input to Sr. Architect  In the `standard` pipeline, the Architect re_
+
 **[2026-03-22 23:21]** `claude_cli/claude`  
 → I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
 ← _The skill loaded an old cached version — let me run this directly and also pull the auth history to give you a complete picture:_
@@ -209,11 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 02:34]** `claude_cli/claude`  
 → I do see categroeis uploaded in Planner tab, but I do not see all the tags in each categroy. Also I do got an error when
 ← _Now restart the backend and verify both fixes:_
-
-**[2026-03-22 02:07]** `claude_cli/claude`  
-→ PostgreSql is up and running, why do you build a workaround. it looks like router mappig not query the proper tables
-← _DB is connected — roles have real IDs (`id: 10`, no fallback). Let me verify all the previously-failing endpoints:_
-
-**[2026-03-22 02:04]** `claude_cli/claude`  
-→ I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading 
-← _Good — `source-tags` already has the fallback. Now restart and test all four:_

@@ -406,8 +406,13 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
                        cursor:pointer;user-select:none">${lc}</span>
         </td>
         <td style="padding:0.5rem 0.4rem;white-space:nowrap">
-          <span style="font-size:0.6rem;color:${sc};background:${sc}22;
-                       padding:0.12rem 0.4rem;border-radius:10px">${_esc(wi.status || 'active')}</span>
+          ${(!wi.description || !wi.description.trim())
+            ? `<span style="font-size:0.6rem;color:#e74c3c;background:#e74c3c22;
+                           padding:0.12rem 0.4rem;border-radius:10px;cursor:pointer"
+                    title="Add a description to enable the pipeline"
+                    onclick="event.stopPropagation();window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(catName)}','${_esc(project)}')">⚠ Add info</span>`
+            : `<span style="font-size:0.6rem;color:${sc};background:${sc}22;
+                           padding:0.12rem 0.4rem;border-radius:10px">${_esc(wi.status || 'active')}</span>`}
         </td>
         <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem;
                    max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
@@ -510,10 +515,11 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                       letter-spacing:.06em;margin-bottom:0.3rem">Description</div>
           <textarea id="wi-desc-ta" rows="3"
-            style="width:100%;background:var(--bg);border:1px solid var(--border);
+            style="width:100%;background:var(--bg);border:1px solid ${wi.description && wi.description.trim() ? 'var(--border)' : '#e74c3c'};
                    color:var(--text);font-family:var(--font);font-size:0.68rem;
                    padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                    resize:vertical;box-sizing:border-box;line-height:1.5"
+            oninput="(()=>{const v=this.value.trim();this.style.borderColor=v?'var(--border)':'#e74c3c';const b=document.getElementById('wi-drawer-run-btn');if(b){b.disabled=!v;b.style.opacity=v?'1':'0.45';b.style.cursor=v?'pointer':'not-allowed';b.title=v?'Run pipeline':'Add a description first';}})()"
             onblur="api.workItems.patch('${id}','${project}',{description:this.value}).catch(e=>toast(e.message,'error'))"
           >${_esc(wi.description || '')}</textarea>
         </div>
@@ -579,8 +585,12 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
         <div style="border-top:1px solid var(--border);padding-top:0.75rem">
           <button id="wi-drawer-run-btn"
             onclick="window._wiRunPipeline('${id}','${project}')"
+            title="${wi.description && wi.description.trim() ? 'Run pipeline' : 'Add a description first'}"
+            ${wi.description && wi.description.trim() ? '' : 'disabled'}
             style="background:var(--accent);border:none;color:#fff;font-size:0.68rem;
-                   padding:0.3rem 0.75rem;border-radius:var(--radius);cursor:pointer;
+                   padding:0.3rem 0.75rem;border-radius:var(--radius);
+                   cursor:${wi.description && wi.description.trim() ? 'pointer' : 'not-allowed'};
+                   opacity:${wi.description && wi.description.trim() ? '1' : '0.45'};
                    font-family:var(--font);outline:none;width:100%">▶ Run Pipeline</button>
           <div style="font-size:0.58rem;color:var(--muted);margin-top:0.35rem;line-height:1.4">
             PM → Architect → Developer → Reviewer

@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 23:24 UTC by aicli /memory_
+_Generated: 2026-03-22 23:37 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling Claude CLI, desktop (Electron), and LLM platforms to access persistent, semantically-searchable project context across multiple users and clients. It combines dual-layer storage (JSONL history + PostgreSQL with pgvector embeddings), pluggable LLM provider adapters (Claude, OpenAI, DeepSeek, Gemini, Grok), async DAG-based workflow orchestration with visual approval panels, and an MCP server for work item management. Current state: 18 active features/bugs in development (auth, UI, shared-memory, graph-workflow, billing, mcp, tagging maturity 52/94 events); two critical issues blocking release—tag cache invalidation on session switches and unresolved project visibility timing bug during backend initialization.
+aicli is a shared AI memory platform enabling Claude CLI and other LLMs to maintain persistent project context across sessions via dual-layer storage (JSONL + PostgreSQL with pgvector). Currently in active development with 11 features, 2 bugs, and 3 document types in progress. Core architecture includes async DAG workflow execution, hierarchical user/client data model, per-project semantic embeddings, and MCP integration for work item management.
 
 ## Project Facts
 
@@ -57,7 +57,7 @@ Reviewer: ```json
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok — each with defined system roles, prompts, input/output schemas, and ReAct execution mode
+- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
@@ -85,22 +85,22 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage tables
-- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
+- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes; no hallucination tolerance
+- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes
 
 ## In Progress
 
-- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination across all providers; Sr. Architect role testing from Auth feature history
-- Tags loading and cache invalidation (2026-03-22) — User reports no DB API calls for tags on planner load; identified _plannerState.project fallback category issue causing null IDs; implementing force-reload logic with cache validation
-- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to resolve display issues
+- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing from Auth feature history
+- Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle empty projects list on first load; project visibility bug investigation (AiCli not displaying as current in main project view)
-- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per original specification
+- Embeddings feature and workflow test validation (2026-03-22) — Testing full workflow from feature panel; Auth feature description/remarks needed for Sr. Architect understanding
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
 
@@ -118,9 +118,9 @@ Reviewer: ```json
 
 ### Feature
 
-- **auth** `(98 events, 91 commits)`
+- **auth** `(99 events, 92 commits)`
+- **shared-memory** `(98 events, 91 commits)`
 - **UI** `(95 events, 87 commits)`
-- **shared-memory** `(94 events, 87 commits)`
 - **graph-workflow** `(84 events, 77 commits)`
 - **workflow-runner** `(80 events, 77 commits)`
 - **tagging** `(52 events, 50 commits)`
@@ -133,8 +133,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **development** `(94 events, 82 commits)`
-- **discovery** `(92 events, 87 commits)`
+- **development** `(95 events, 83 commits)`
+- **discovery** `(93 events, 87 commits)`
 - **prod**
 
 ### Task
@@ -212,4 +212,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `agent-role-testing` — Sr. Architect role initiated to test per-agent system role implementation with Auth feature history; goal is to define input (prompts, commits from Auth feature), learnable context (historical patterns), and expected output for standardized agent behavior without hallucination. **[2026-03-22]** `tag-system` — Cache invalidation framework identified as critical: tags load once on project access but _plannerState.project fallback is causing null category IDs; implementing force-reload logic and cache validation to fix tag visibility in tag picker. **[2026-03-22]** `frontend-optimization` — Ongoing XSS hardening in markdown.js, 30s API timeout in api.js, JSDoc documentation, and setInterval cleanup in graph_workflow.js to improve stability and maintainability. **[2026-03-18]** `backend-startup` — Fixed race condition in _continueToApp() retry logic where empty projects list on first load triggered false "project not found" errors; identified unresolved project visibility bug where AiCli appears in Recent but not as current active project. **[2026-03-14]** `memory-population` — memory_items and project_facts table schemas created but update logic remains unimplemented; required for dual-layer synthesis per original specification; blocking improved memory/context mechanism. **[2026-03-10]** `data-persistence` — Diagnosed that tags saved in UI disappear on session switch; determined to be database save failure or rendering issue requiring investigation; also identified database performance bottleneck with redundant SQL calls—strategy approved to load data once on project access and update only on explicit save.
+**2026-03-22** `embedding-fix` — Agent role standardization in progress; per-agent system roles and ReAct mode execution being implemented to eliminate hallucination across all LLM providers; Sr. Architect role testing from Auth feature history. **2026-03-22** `ui-fix` — Tags loading and cache invalidation identified as root cause of planner UI tag picker visibility issues; force-reload logic with cache validation and null ID handling being implemented. **2026-03-22** `frontend-optimization` — Frontend code audit completed; XSS fixes for markdown.js, 30s timeout in api.js, JSDoc documentation standardization, and setInterval cleanup in graph_workflow.js in progress. **2026-03-22** `workflow-testing` — Full workflow testing from feature panel initiated; Auth feature description/remarks needed for Sr. Architect understanding in pipeline. **2026-03-18** `backend-race-condition` — Startup race condition fixed; _continueToApp() retry logic now handles empty projects list on first load; project visibility bug (AiCli not displaying as current) still pending investigation. **2026-03-10** `db-performance` — Tags loading strategy changed to load-once-on-access pattern to reduce redundant SQL calls; data persistence bug identified where tags disappear on session switch requiring investigation. **pending** `memory-population` — memory_items and project_facts tables exist in schema but update logic not yet implemented despite being required for improved memory/context mechanism per specification.

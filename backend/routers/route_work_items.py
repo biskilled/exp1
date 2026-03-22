@@ -24,7 +24,7 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Optional
+from typing import Any, Optional
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
@@ -150,6 +150,10 @@ _SQL_UPDATE_WORK_ITEM_LIFECYCLE_DONE = (
     """UPDATE pr_work_items
        SET lifecycle_status='done', updated_at=NOW()
        WHERE id=%s::uuid AND lifecycle_status != 'done'"""
+)
+
+_SQL_UPDATE_WORK_ITEM_LIFECYCLE = (
+    "UPDATE pr_work_items SET lifecycle_status=%s, updated_at=NOW() WHERE id=%s::uuid"
 )
 
 _SQL_EXPIRE_PIPELINE_FACT = (
@@ -491,12 +495,11 @@ async def migrate_from_tags(project: str | None = Query(None)):
 
 @router.post("/{item_id}/run-pipeline")
 async def run_pipeline(item_id: str, project: str | None = Query(None)):
-    """Start the 4-agent PM→Architect→Developer→Reviewer pipeline for a work item.
+    """Start the ReAct PM→Architect→Developer→Reviewer pipeline for a work item.
 
-    Finds or creates the '_work_item_pipeline' graph workflow for this project,
-    then runs it via the graph_runner so the run is visible in the Workflow tab.
-    Falls back to the standalone pipeline if graph_runner fails.
-    f"""
+    Requires a non-empty description. Runs AgentWorkflow in background and writes
+    structured outputs (AC, implementation_plan, lifecycle_status) back to the item.
+    """
     _require_db()
     p = _project(project)
     with db.conn() as conn:
@@ -507,69 +510,31 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
         raise HTTPException(404, "Work item not found")
 
     name, desc, existing_ac = row
+    if not desc or not desc.strip():
+        raise HTTPException(400, "Add a description before running the pipeline")
 
-    # ── Ensure the pipeline graph workflow exists ─────────────────────────────
+    # Build rich task context (tagged interactions + commits + memory items)
+    task = _build_pipeline_context(p, item_id, name, desc, existing_ac)
+
+    # Create a run record so "View last run" link in UI works
     workflow_id = await _ensure_pipeline_workflow(p)
-    run_id = None
-
-    if workflow_id:
-        # Build user_input: work item + all tagged context (interactions + commits)
-        user_input = _build_pipeline_context(p, item_id, name, desc, existing_ac)
-        try:
-            run_id_str = str(uuid.uuid4())
+    run_id = str(uuid.uuid4())
+    try:
+        if workflow_id:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_INSERT_PIPELINE_RUN, (run_id_str, p, workflow_id, user_input))
+                    cur.execute(_SQL_INSERT_PIPELINE_RUN, (run_id, p, workflow_id, task[:2000]))
+    except Exception as e:
+        log.debug(f"Could not create pipeline run record: {e}")
 
-            # Mark work item running — use run_id_str directly (it's the UUID we just inserted)
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_UPDATE_WORK_ITEM_RUNNING, (run_id_str, item_id))
-
-            # Run in background via graph_runner
-            from pipelines.pipeline_graph_runner import run_graph_workflow
-
-            async def _run_graph():
-                try:
-                    ctx = await run_graph_workflow(str(workflow_id), user_input, run_id_str, p,
-                                                   work_item_id=item_id)
-                    # If paused at an approval gate, don't finalize yet — wait for user approval
-                    if ctx.get("_waiting"):
-                        log.info(f"Pipeline {run_id_str} paused for approval at "
-                                 f"'{ctx['_waiting'].get('node_name')}' — awaiting user decision")
-                        return
-                    # Pipeline completed all stages — finalize the work item
-                    _finalize_work_item_pipeline(p, item_id, run_id_str, name, ctx)
-                except Exception as exc:
-                    log.error(f"run_pipeline graph failed for {item_id}: {exc}", exc_info=True)
-                    # Mark work item as error so it doesn't stay stuck at 'running'
-                    try:
-                        with db.conn() as conn_err:
-                            with conn_err.cursor() as cur_err:
-                                cur_err.execute(_SQL_UPDATE_WORK_ITEM_ERROR, (item_id,))
-                    except Exception:
-                        pass
-                    # Fallback: standalone pipeline
-                    try:
-                        from pipelines.pipeline_work_items import trigger_work_item_pipeline
-                        await trigger_work_item_pipeline(item_id, p, name, desc, existing_ac)
-                    except Exception as fb_exc:
-                        log.error(f"Standalone fallback also failed: {fb_exc}")
-
-            asyncio.create_task(_run_graph())
-            return {"status": "pipeline started", "work_item_id": item_id,
-                    "workflow_id": str(workflow_id), "run_id": run_id_str, "project": p}
-
-        except Exception as e:
-            log.warning(f"Graph pipeline setup failed ({e}), falling back to standalone")
-
-    # Fallback: standalone pipeline (no DB graph)
+    # Mark work item as running + advance lifecycle to development
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_UPDATE_WORK_ITEM_AGENT_RUNNING, (item_id,))
-    from pipelines.pipeline_work_items import trigger_work_item_pipeline
-    asyncio.create_task(trigger_work_item_pipeline(item_id, p, name, desc, existing_ac))
-    return {"status": "pipeline started", "work_item_id": item_id, "project": p}
+            cur.execute(_SQL_UPDATE_WORK_ITEM_RUNNING, (run_id, item_id))
+            cur.execute(_SQL_UPDATE_WORK_ITEM_LIFECYCLE, ("development", item_id))
+
+    asyncio.create_task(_run_react_pipeline(item_id, p, task, name, run_id))
+    return {"status": "pipeline started", "work_item_id": item_id, "run_id": run_id, "project": p}
 
 
 def _build_pipeline_context(
@@ -761,6 +726,91 @@ def _finalize_work_item_pipeline(
 
     if rev:
         _maybe_close_feature(project, item_id, rev)
+
+
+# ── ReAct pipeline helpers ────────────────────────────────────────────────────
+
+async def _run_react_pipeline(
+    item_id: str, project: str, task: str, item_name: str, run_id: str
+) -> None:
+    """Background: run the ReAct orchestrator pipeline for a work item."""
+    from agents.orchestrator import AgentWorkflow
+    try:
+        wf = await AgentWorkflow(pipeline="standard", project=project).run(task=task)
+        _finalize_react_pipeline(project, item_id, run_id, item_name, wf)
+    except Exception as exc:
+        log.error(f"ReAct pipeline failed for item {item_id}: {exc}", exc_info=True)
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_UPDATE_WORK_ITEM_ERROR, (item_id,))
+        except Exception:
+            pass
+
+
+def _finalize_react_pipeline(
+    project: str, item_id: str, run_id: str, item_name: str, wf: Any
+) -> None:
+    """Write ReAct pipeline structured outputs back to the work item."""
+    # AC from PM structured output
+    ac = ""
+    pm = wf.results.get("project_manager")
+    if pm and pm.structured_output:
+        raw = pm.structured_output.get("acceptance_criteria", "")
+        ac = "\n".join(f"- {x}" for x in raw) if isinstance(raw, list) else str(raw)
+
+    # Implementation plan from Architect + Developer
+    impl_parts: list[str] = []
+    arch = wf.results.get("architect")
+    if arch and arch.structured_output:
+        so = arch.structured_output
+        if so.get("approach"):
+            impl_parts.append(f"## Architecture Approach\n{so['approach']}")
+        files = so.get("files_to_touch", [])
+        if files:
+            files_str = "\n".join(f"- {f}" for f in files) if isinstance(files, list) else str(files)
+            impl_parts.append(f"## Files to Touch\n{files_str}")
+
+    dev = wf.results.get("developer")
+    if dev and dev.structured_output:
+        so = dev.structured_output
+        changes = so.get("changes_made", [])
+        issues = so.get("issues_encountered", [])
+        if changes:
+            impl_parts.append("## Changes Made\n" + (
+                "\n".join(f"- {c}" for c in changes) if isinstance(changes, list) else str(changes)))
+        if issues:
+            impl_parts.append("## Issues\n" + (
+                "\n".join(f"- {i}" for i in issues) if isinstance(issues, list) else str(issues)))
+
+    impl = "\n\n".join(impl_parts)
+
+    # Lifecycle from reviewer verdict
+    verdict = ""
+    rev = wf.results.get("reviewer")
+    if rev and rev.structured_output:
+        verdict = rev.structured_output.get("verdict", "")
+    new_lifecycle = "review" if wf.final_verdict == "approved" else "development"
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_UPDATE_WORK_ITEM_DONE, (ac, impl, item_id))
+                cur.execute(_SQL_UPDATE_WORK_ITEM_LIFECYCLE, (new_lifecycle, item_id))
+    except Exception as e:
+        log.error(f"Could not update work item {item_id} after ReAct pipeline: {e}")
+
+    if ac:
+        _upsert_pipeline_fact(project, item_name, ac, verdict or wf.final_verdict)
+
+    _save_pipeline_interaction(project, item_id, run_id, item_name, ac, verdict or wf.final_verdict)
+
+    try:
+        from routers.route_projects import _summarize_feature_memory, _extract_project_facts
+        asyncio.create_task(_summarize_feature_memory(project, item_id))
+        asyncio.create_task(_extract_project_facts(project))
+    except Exception as _me:
+        log.debug(f"Memory synthesis skipped: {_me}")
 
 
 async def _ensure_pipeline_workflow(project: str) -> int | None:
