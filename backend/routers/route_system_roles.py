@@ -70,6 +70,25 @@ _SQL_DELETE_ROLE_SYSTEM_LINK = (
 
 router = APIRouter()
 
+# Built-in fallback system roles — returned when PostgreSQL is unavailable.
+# Mirrors the 7 roles seeded by database._seed_system_roles().
+_BUILTIN_SYSTEM_ROLES = [
+    {"id": None, "name": "coding_standards",     "category": "quality",      "is_active": True, "created_at": None, "updated_at": None,
+     "description": "Clean code conventions, OOP, type hints, docstrings, DRY/SOLID principles."},
+    {"id": None, "name": "output_format",        "category": "output",       "is_active": True, "created_at": None, "updated_at": None,
+     "description": "Save all outputs to output/[feature]_YYMMDD_HHMMSS.md."},
+    {"id": None, "name": "security_principles",  "category": "security",     "is_active": True, "created_at": None, "updated_at": None,
+     "description": "OWASP Top 10, parameterised SQL, no hardcoded secrets."},
+    {"id": None, "name": "reviewer_standards",   "category": "review",       "is_active": True, "created_at": None, "updated_at": None,
+     "description": "Verify all ACs, list tested items, score 1-10, return JSON."},
+    {"id": None, "name": "doc_output_format",    "category": "output",       "is_active": True, "created_at": None, "updated_at": None,
+     "description": "Keep docs short, use bullets, include Task/Description/AC or Plan headings."},
+    {"id": None, "name": "dev_code_format",      "category": "development",  "is_active": True, "created_at": None, "updated_at": None,
+     "description": "Output complete files using ### File: path\\n```lang blocks; add Summary."},
+    {"id": None, "name": "dev_naming_conventions","category": "development", "is_active": True, "created_at": None, "updated_at": None,
+     "description": "mng_ global tables, pr_ project tables, snake_case, no abbreviations."},
+]
+
 
 def _require_db():
     if not db.is_available():
@@ -104,8 +123,9 @@ def _row_to_dict(row, include_content: bool = True) -> dict:
 
 @router.get("/")
 async def list_system_roles(user=Depends(get_optional_user)):
-    _require_db()
     admin = _is_admin(user)
+    if not db.is_available():
+        return {"system_roles": _BUILTIN_SYSTEM_ROLES, "is_admin": admin, "fallback": True}
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(_SQL_LIST_SYSTEM_ROLES)

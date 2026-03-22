@@ -88,6 +88,71 @@ _SQL_RESTORE_ROLE = (
 
 router = APIRouter()
 
+# Built-in fallback roles — returned when PostgreSQL is unavailable.
+# Mirrors the 10 roles seeded by database._seed_agent_roles().
+_BUILTIN_ROLES = [
+    {"id": None, "project": "_global", "name": "Product Manager",
+     "description": "Produces a concise task spec with acceptance criteria.",
+     "provider": "claude", "model": "claude-haiku-4-5-20251001",
+     "role_type": "agent", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "created_at": None, "updated_at": None},
+    {"id": None, "project": "_global", "name": "Sr. Architect",
+     "description": "Produces a concise numbered implementation plan with file paths.",
+     "provider": "claude", "model": "claude-sonnet-4-6",
+     "role_type": "system_designer", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "created_at": None, "updated_at": None},
+    {"id": None, "project": "_global", "name": "Web Developer",
+     "description": "Implements full-stack features; outputs complete files ready to commit.",
+     "provider": "claude", "model": "claude-sonnet-4-6",
+     "role_type": "developer", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "created_at": None, "updated_at": None},
+    {"id": None, "project": "_global", "name": "Backend Developer",
+     "description": "Writes server-side code: APIs, DB schemas, business logic; auto-commits.",
+     "provider": "deepseek", "model": "deepseek-chat",
+     "role_type": "developer", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "created_at": None, "updated_at": None},
+    {"id": None, "project": "_global", "name": "Frontend Developer",
+     "description": "Writes client-side code: UI components, styles, interactions; auto-commits.",
+     "provider": "openai", "model": "gpt-4o",
+     "role_type": "developer", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "created_at": None, "updated_at": None},
+    {"id": None, "project": "_global", "name": "DevOps Engineer",
+     "description": "Writes CI/CD configs, Dockerfiles, deployment infrastructure; auto-commits.",
+     "provider": "claude", "model": "claude-haiku-4-5-20251001",
+     "role_type": "developer", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "created_at": None, "updated_at": None},
+    {"id": None, "project": "_global", "name": "Code Reviewer",
+     "description": "Reviews code quality; returns score + issues as JSON.",
+     "provider": "claude", "model": "claude-sonnet-4-6",
+     "role_type": "reviewer", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "created_at": None, "updated_at": None},
+    {"id": None, "project": "_global", "name": "Security Reviewer",
+     "description": "Audits code for OWASP Top 10 vulnerabilities; returns JSON.",
+     "provider": "claude", "model": "claude-haiku-4-5-20251001",
+     "role_type": "reviewer", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "created_at": None, "updated_at": None},
+    {"id": None, "project": "_global", "name": "QA Engineer",
+     "description": "Writes comprehensive test cases including edge cases.",
+     "provider": "openai", "model": "gpt-4o",
+     "role_type": "agent", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "created_at": None, "updated_at": None},
+    {"id": None, "project": "_global", "name": "AWS Architect",
+     "description": "Designs AWS infrastructure using CDK/CloudFormation.",
+     "provider": "claude", "model": "claude-sonnet-4-6",
+     "role_type": "developer", "tags": [], "is_active": True,
+     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "created_at": None, "updated_at": None},
+]
+
 
 def _require_db():
     if not db.is_available():
@@ -133,8 +198,9 @@ async def list_roles(
     project: str = Query("_global"),
     user=Depends(get_optional_user),
 ):
-    _require_db()
     admin = _is_admin(user)
+    if not db.is_available():
+        return {"roles": _BUILTIN_ROLES, "is_admin": admin, "fallback": True}
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(_SQL_LIST_ROLES, (project,))

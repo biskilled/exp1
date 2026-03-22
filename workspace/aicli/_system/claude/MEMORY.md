@@ -1,51 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 01:21 UTC by aicli /memory_
+_Generated: 2026-03-22 01:52 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform providing semantic search, workflow automation, and MCP integration across Claude CLI and other LLM platforms. Built with Python FastAPI backend, PostgreSQL with pgvector, and Electron UI with xterm.js/Monaco/Cytoscape.js, it manages per-project event tracking, embeddings, memory synthesis via Claude Haiku, and role-based access control. Currently stabilizing critical bug fixes (data persistence, startup race conditions, project visibility) while refactoring frontend code and completing memory table population logic.
-
-## Project Facts
-
-- **auth_pattern**: login_as_first_level_hierarchy
-- **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
-- **data_model_hierarchy**: clients_contain_multiple_users
-- **data_persistence_issue**: tags_disappear_on_session_switch
-- **db_engine**: SQL
-- **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
-- **deployment_target**: Claude_CLI_and_LLM_platforms
-- **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
-- **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
-- **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
-- **memory_management_pattern**: load_once_on_access_update_on_save
-- **pending_implementation**: memory_items_and_project_facts_table_population
-- **pending_issues**: project_visibility_bug_active_project_not_displaying
-- **performance_optimization**: redundant_SQL_calls_eliminated
-- **pipeline/auth**: Acceptance criteria:
-# PM Analysis: Email Verification Feature
-
----
-
-## Context Summary
-
-The tagged context reveals this work item is an **incremental enhancement** to an existing authentication system. Sign In and Create Account forms are already live and functional. The prior PM analysis identified email verification as the missing layer—the system currently accepts any email without confirming ownership. The analys
-
-Reviewer: ```json
-{
-  "passed": false,
-  "score": 4,
-  "issues": [
-    "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
-- **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
-- **stale_code_removed**: db_ensure_project_schema_call_replaced_with_ensure_shared_schema
-- **tagging_system**: nested_hierarchy_beyond_2_levels
-- **tagging_system_hierarchy**: nested_hierarchy_beyond_2_levels_approved
-- **ui_action_menu_pattern**: 3_dot_menu_for_action_visibility
-- **ui_library**: 3_dot_menu_pattern
-- **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
-- **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
 
 ## Tech Stack
 
@@ -100,114 +56,44 @@ Reviewer: ```json
 - Project visibility bug resolution — AiCli appears in Recent projects but not displaying as current active project in main view; suspected initialization timing issue requiring further investigation
 - Memory items and project_facts table population — Tables exist but update logic not implemented; required for improved memory/context mechanism
 
-## Active Features / Bugs / Tasks
+## Recent Work (last 10 exchanges)
 
-### Bug
+**[2026-03-22 01:35]** `claude_cli/claude`
+Q: I do see that backend is failing to start (it also take quite a while to load )
+A: Now verify the backend starts immediately:
 
-- **hooks** `(92 events, 82 commits)`
+**[2026-03-22 01:26]** `claude_cli/claude`
+Q: I have created pyproject.toml manualy. can you update that file again ? also I do see error in stop hook which preventing to push the new updates
+A: Push succeeded — no force needed since the rewritten commits built on the same base. Now fix `pyproject.toml`:
 
-### Doc_type
+**[2026-03-22 01:13]** `claude_cli/claude`
+Q: Now, code looks more optimised. can you do the same for the ui code- make sure all code is well defined, documented, there are not old or unsued code, and make sure to code is clean, and optimized fro
+A: 4 agents running in parallel:  1. **Dead code removal** — deleting `explorer.js`, `workflow.js`, removing Cytoscape CDN from `index.html` 2. **Utils cleanup** — fixing XSS in `markdown.js`, adding 30s timeout to `api.js`, adding module docs to all 7 utils 3. **View docs** — adding JSDoc comments to 
 
-- **low-level-design** `(44 events, 42 commits)`
-- **Test** `(28 events, 27 commits)`
-- **high-level-design** `(1 events)`
-- **retrospective**
-- **customer-meeting** — dsds
+**[2026-03-22 01:10]** `claude_cli/claude`
+Q: Can you add the pyproject.toml (can be pushed to git as well)
+A: Also add the VS Code config (safe to commit, no secrets):
 
-### Feature
+**[2026-03-22 01:07]** `claude_cli/claude`
+Q: I do see that when you use import you are using relative import for example from core.config import settings. which are not support when I am working in Pycharm ide. (only long one such from aicli.bac
+A: These are not relative imports — they're **absolute imports that assume `backend/` is on `sys.path`**. They work when you `cd backend && uvicorn main:app` because Python adds the CWD to `sys.path`. The IDE just doesn't know that.  ## Fix for both IDEs  **Option A — Simplest (PyCharm only)**  Right-c
 
-- **auth** `(86 events, 80 commits)`
-- **UI** `(86 events, 79 commits)`
-- **shared-memory** `(85 events, 79 commits)`
-- **graph-workflow** `(76 events, 69 commits)`
-- **workflow-runner** `(72 events, 69 commits)`
-- **billing** `(43 events, 42 commits)`
-- **mcp** `(43 events, 42 commits)`
-- **embeddings** `(28 events, 27 commits)`
-- **tagging**
-- **test-picker-feature**
-- **dropbox**
-- **pagination**
+**[2026-03-22 01:03]** `claude_cli/claude`
+Q: Is it worth to change core to shared (folder name) ?
+A: Not really worth it. `core/` is the standard Python/FastAPI convention for foundational infrastructure — config, auth, DB pool. `shared/` is more of a frontend/JS pattern and is vaguer ("shared by whom?").  The contents you have (`config.py`, `auth.py`, `database.py`) are genuinely *core infrastruct
 
-### Phase
+**[2026-03-22 00:59]** `claude_cli/claude`
+Q: Ok. ,erge encryption to dl_api_keys
+A: Done. `core/encryption.py` deleted, and no remaining references to it anywhere in the backend.
 
-- **discovery** `(84 events, 79 commits)`
-- **development** `(77 events, 70 commits)`
-- **prod**
+**[2026-03-22 00:57]** `claude_cli/claude`
+Q: For what encryption is used for ? also auth - is is looks like a general auth , it is not part of route ?
+A: Done. `data/` layer now has three files:  ``` data/   dl_user.py      — user CRUD   dl_api_keys.py  — encrypted key storage     dl_seq.py       — atomic sequential ID allocation ```  `core/` is now pure infrastructure: `database.py`, `auth.py`, `config.py`, `encryption.py`.
 
-### Task
+**[2026-03-22 00:54]** `claude_cli/claude`
+Q: ok. option B
+A: That's just a stale comment in `dl_seq.py` itself — the docstring example still says `from core.seq`. Fix it:
 
-- **memory** `(41 events, 37 commits)`
-- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
-
-## Recent Memory
-
-> Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
-
-### `session: 5b19c863-f99a-439c-b595-b415d0d342ed` — 2026-03-16
-
-# Development Session Summary
-
-**Session Focus**: Architecture audit and capability assessment of memory management, tagging system, and MCP integration
-
-**Actions Completed**:
-• Executed `/memory` command to audit data storage layers and tagging system functionality
-• Reviewed how MCP integrates with memory layer for embedding and data retrieval
-• Validated tag system implementation for data organization across Claude CLI and other LLMs
-
-**Key Questions Addressed**:
-• Refactor impact on tag usage and memory efficiency from new summarization process
-• MCP's capability to answer work item management queries and generate workflows
-• Whether improved architecture enables better complex project delivery
-• Real-time MCP functionality and data retrieval accuracy within session
-
-**Findings/Outcomes**: [INCOMPLETE - Session summary ends mid-question; actual results, performance metrics, identified issues, and recommendations not documented]
-
-**Follow-up Needed**: Clarify final question intent and document concrete findings from /memory audit and MCP capability test
-
-### `session: 03f774e9-ad60-4cf3-8c0c-0191ba9a78d0` — 2026-03-16
-
-# Development Session Summary (2026-03-10)
-
-• **Database Performance Issue**: Identified multiple redundant SQL calls slowing the system; implemented strategy to load data once on project access (e.g., tags into memory) and only update DB on explicit save actions
-
-• **Tag Hierarchy Enhancement**: Approved nested tags feature to expand beyond current 2-level hierarchy (category → tag); confirmed login will be first-level only
-
-• **UI/UX Improvements for Planner**:
-  - Increased visibility of action options (currently too small)
-  - Replaced small action buttons with 3-dot menu button to improve clarity
-  - Added ability to unarchive archived items
-
-• **Data Persistence Bug**: Discovered tags saved in UI disappear when switching sessions—unclear if UI rendering issue or database save failure; requires investigation
-
-• **AI Suggestions UI**: Need to make `/memory` suggestions more visible and clearly labeled as "AI suggestions requiring approval," including which session they apply to and direct GitHub commit links
-
-• **Backend Stability**: Intermittent app restart failures due to port 127.0.0.1:8000 binding conflicts
-
-### `session: 8f29a8d3-13a3-42ed-9219-de7bfe53e3d2` — 2026-03-18
-
-# Development Session Summary (2026-03-18)
-
-## Issues Fixed
-
-• **AttributeError in `main.py`** — Removed stale `db.ensure_project_schema(settings.active_project)` call (method doesn't exist; should use `_ensure_shared_schema` instead)
-
-• **Memory endpoint CLAUDE.md template error** — Undefined `code_dir` variable at line 1120 causing runtime failure; variable now properly scoped/defined from config
-
-• **Backend startup race condition** — Modified `_continueToApp()` retry logic to handle edge case where projects load succeeds but returns empty list (prevents false "project not found" errors on first load)
-
-## Issues Identified but Unresolved
-
-• **Project visibility bug** — AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization; **PENDING: Further investigation**
-
-## Design Gaps Requiring Implementation
-
-• **memory_items and project_facts tables not updating** — Per original specification, these tables should be populated to enable improved memory/context mechanism, but update logic not implemented; **PENDING: Implementation and testing**
-
-## Data Model Clarification
-
-• Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**2026-03-22** `in_progress` — Dead code removal underway (explorer.js, workflow.js, Cytoscape CDN); utils refactoring with XSS fixes and 30s timeout; JSDoc documentation for all 12 view files; memory leak fixes in graph_workflow.js setInterval cleanup. **2026-03-18** `bug fix` — AttributeError in main.py resolved by removing stale db.ensure_project_schema() call; backend startup race condition fixed by handling empty project list on first load in _continueToApp() retry logic. **2026-03-18** `bug fix` — CLAUDE.md memory endpoint template error: code_dir variable now properly scoped from config at line 1120. **2026-03 (unresolved)** `bug` — Project visibility timing issue: AiCli appears in Recent but not as active project in main view; requires further investigation. **2026-03-10** `architecture` — Load-once-on-access pattern approved to cache tags/workflows in memory and update DB only on explicit save; redundant SQL calls eliminated. **2026-03-10** `feature` — Nested tag hierarchy expanded beyond 2-level (category → tag) with unlimited depth via parent_id FK; login remains first-level only. **2026-03-10** `data model` — Hierarchical structure clarified: Clients contain multiple Users. **2026-03 (pending)** `implementation` — memory_items and project_facts tables exist but update logic not implemented; required for improved memory/context mechanism.
+**[2026-03-22 00:54]** `claude_cli/claude`
+Q: I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 files ?
+A: Done. The structure is now:  ``` core/      → infrastructure: database.py, auth.py, config.py, encryption.py, seq.py data/      → data layer:     dl_user.py, dl_api_keys.py  (+ future dl_events.py, dl_work_items.py …) routers/   → HTTP layer agents/    → business logic pipelines/ → business logic ``

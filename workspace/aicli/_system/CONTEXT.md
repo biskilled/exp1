@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 01:22 UTC — do not edit manually.
+> Auto-generated 2026-03-22 01:53 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 232
-- **Last active**: 2026-03-22T01:21:25Z
+- **Sessions**: 235
+- **Last active**: 2026-03-22T01:52:26Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -157,6 +157,14 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 01:35]** `claude_cli/claude`  
+→ I do see that backend is failing to start (it also take quite a while to load ) 
+← _Now verify the backend starts immediately:_
+
+**[2026-03-22 01:26]** `claude_cli/claude`  
+→ I have created pyproject.toml manualy. can you update that file again ? also I do see error in stop hook which preventin
+← _Push succeeded — no force needed since the rewritten commits built on the same base. Now fix `pyproject.toml`:_
+
 **[2026-03-22 01:13]** `claude_cli/claude`  
 → Now, code looks more optimised. can you do the same for the ui code- make sure all code is well defined, documented, the
 ← _4 agents running in parallel:  1. **Dead code removal** — deleting `explorer.js`, `workflow.js`, removing Cytoscape CDN from `index.html` 2. **Utils cleanup** — fixing XSS in `markdown.js`, adding 30s_
@@ -208,11 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:27]** `claude_cli/claude`  
 → is there is a way to manage the queries better, maybe to define quesried at the begining of each file ? 
 ← _Let me look at a couple of files to understand the current pattern first._
-
-**[2026-03-22 00:25]** `claude_cli/claude`  
-→ Basicly all files under route can use db quesries. Is there is any other place that using db queries ?
-← _They serve different purposes — no duplication:  - **`core/auth.py`** — shared library: JWT encode/decode, `hash_password`, `verify_password`, `get_current_user` / `get_optional_user` FastAPI dependen_
-
-**[2026-03-22 00:21]** `claude_cli/claude`  
-→ I still see duplicate - under core I do see auth.py and under route - raute_auth.py why there are 2 files ?
-← _They serve different purposes — no duplication:  - **`core/auth.py`** — shared library: JWT encode/decode, `hash_password`, `verify_password`, `get_current_user` / `get_optional_user` FastAPI dependen_

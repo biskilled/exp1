@@ -56,6 +56,8 @@ ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS pricing_config    JSONB DEFAULT
 ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS provider_costs    JSONB DEFAULT NULL;
 ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS provider_balances JSONB DEFAULT NULL;
 ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS server_api_keys   JSONB DEFAULT NULL;
+INSERT INTO mng_clients (id, slug, name, plan) VALUES (1, 'local', 'Local Install', 'free')
+    ON CONFLICT (slug) DO NOTHING;
 """
 
 # ─── DDL: mng_users / usage_logs / transactions ───────────────────────────────
@@ -604,11 +606,15 @@ class _Database:
             log.info("DATABASE_URL not set — using file-based storage")
             return
         try:
-            # connect_timeout limits the TCP+auth phase; options=-c sets statement_timeout
-            # so runaway DDL migrations also time out eventually.
-            sep = "&" if "?" in url else "?"
-            conn_url = url + sep + "connect_timeout=10&options=-c%20statement_timeout%3D30000"
-            self._pool = psycopg2.pool.ThreadedConnectionPool(1, settings.db_pool_max, conn_url)
+            import socket as _socket
+            # socket.setdefaulttimeout covers TCP + SSL + PostgreSQL handshake.
+            # connect_timeout only covers the TCP SYN, so we need both.
+            _old_timeout = _socket.getdefaulttimeout()
+            _socket.setdefaulttimeout(10.0)
+            try:
+                self._pool = psycopg2.pool.ThreadedConnectionPool(1, settings.db_pool_max, url)
+            finally:
+                _socket.setdefaulttimeout(_old_timeout)
             with self.conn() as conn:
                 self._rename_legacy_tables(conn)
                 self._ensure_schema(conn)
