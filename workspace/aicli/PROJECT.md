@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- PostgreSQL agent roles initialization verification (2026-03-22) — Confirmed DB is up, roles have real IDs (id: 10+), and router endpoints query proper tables; investigation of why workarounds appeared in previous code
-- Backend endpoint validation (2026-03-22) — Planner, Pipeline, History/Runs endpoints verified working; confirmed query paths are correct; removed stale fallback logic
+- Tags persistence debugging (2026-03-22) — Planner tag loading issue identified: _plannerState.project fallback categories (null IDs) not triggering cache reload; fix implements force-reload logic in _initPlanner with auto-select of first real category
+- Planner UI tag display (2026-03-22) — Categories loading but all tags not visible; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch
+- Backend module restructuring finalization (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; completed agents/ reorganization; removed stale core/encryption.py
+- Database initialization race condition resolution (2026-03-22) — Verified PostgreSQL agent roles have real IDs (10+), router endpoints query proper tables; removed stale fallback workarounds from planner initialization
 - UI code optimization and dead code removal (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup for memory leaks in graph_workflow.js
-- Tags persistence debugging (2026-03-18-22) — Tags saved in UI disappearing on session switch; investigating render timing vs. database save failures; race condition in initialization suspected
-- Backend module restructuring finalization (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; completed agents/ reorganization
-- Data layer consolidation and encryption (2026-03-21-22) — Created dl_api_keys.py with encryption; moved provider_usage files to data/provider_usage/; removed stale core/encryption.py
+- Memory items and project_facts table population (pending) — Per specification, these tables should be updated to enable improved memory/context mechanism; logic not yet implemented

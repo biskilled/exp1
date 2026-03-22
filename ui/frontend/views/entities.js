@@ -118,11 +118,17 @@ export function renderEntities(container) {
 // ── Init: use cache if warm, otherwise load ──────────────────────────────────
 
 async function _initPlanner(project) {
-  const hasFallback = getCacheCategories().some(c => c.id === null);
-  if (!isCacheLoaded() || getCacheProject() !== project || hasFallback) {
+  const cats0 = getCacheCategories();
+  // Force reload if: not loaded, wrong project, has fallback null-IDs,
+  // or values are empty for all categories that claim to have items (stale fallback load).
+  const hasFallback  = cats0.some(c => c.id === null);
+  const hasStaleVals = isCacheLoaded() && cats0.length > 0 &&
+    cats0.every(c => (c.value_count || 0) > 0 && getCacheValues(c.id).length === 0);
+
+  if (!isCacheLoaded() || getCacheProject() !== project || hasFallback || hasStaleVals) {
     document.getElementById('planner-cat-list').innerHTML =
       '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">Loading…</div>';
-    await loadTagCache(project, hasFallback);
+    await loadTagCache(project, true);
   }
   _renderCategoryList();
   // Auto-select first category so right pane is populated on open

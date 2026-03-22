@@ -33,7 +33,7 @@ You are a senior Python software architect with deep expertise in:
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Backend modular organization: core/ for infrastructure, data/ for data access (dl_ prefix), routers/ for HTTP endpoints, agents/ for business logic
+- Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: I do see that backend is failing to start (it also take quite a while to load ) 
 - [2026-03-22] `claude_cli`: looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent 
 - [2026-03-22] `claude_cli`: I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading 
 - [2026-03-22] `claude_cli`: PostgreSql is up and running, why do you build a workaround. it looks like router mappig not query t
 - [2026-03-22] `claude_cli`: I do see categroeis uploaded in Planner tab, but I do not see all the tags in each categroy. Also I 
+- [2026-03-22] `claude_cli`: Planner still dont load all tags , all I see is ctegories
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
