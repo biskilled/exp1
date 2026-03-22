@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:54 UTC by aicli /memory_
+_Generated: 2026-03-22 00:56 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform enabling Claude CLI and other LLM interfaces to access persistent, semantically-searchable project context via PostgreSQL + pgvector embeddings. It provides dual-layer memory synthesis (raw JSONL → interaction tags → 5 structured files), async DAG workflow execution, and MCP integration for work item management. Current focus: resolving data persistence bugs, completing memory table population, and stabilizing backend startup race conditions.
 
 ## Project Facts
 
@@ -83,28 +87,28 @@ Reviewer: ```json
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Backend module organization: routers/ for API endpoints, core/ for data access, agents/tools/ for implementations (tool_ prefix)
-- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ── SQL ── blocks; build_update() for dynamic UPDATEs
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ─── SQL ─── blocks; build_update() for dynamic UPDATEs
 - _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
+- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied to dynamic UPDATEs in core/user.py and pipeline files
-- API keys.json file removal (2026-03-22) — Verified no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified as data layer exposing database services
-- Core module organization (2026-03-22) — Distinguishing core/user.py (data access library) from routers/route_auth.py (API endpoints); confirmed core modules function as data layers exposing database services to routers
+- Query organization refactoring (2026-03-22) — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied to dynamic UPDATEs
+- API keys.json file removal (2026-03-22) — Verified no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py patterns clarified as data layer
+- Core module organization clarification (2026-03-22) — Distinguishing core/user.py (data access library) from routers/route_auth.py (API endpoints); confirmed core modules as data layers exposing database services
 - Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing
-- Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still investigating
+- Backend startup race condition resolution (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
 - Memory items and project_facts table population (2026-03-18) — Tables created but update logic not yet implemented; blocking improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(84 events, 74 commits)`
+- **hooks** `(85 events, 75 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(36 events, 34 commits)`
+- **low-level-design** `(37 events, 35 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -112,13 +116,13 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(78 events, 71 commits)`
-- **auth** `(76 events, 72 commits)`
-- **graph-workflow** `(68 events, 61 commits)`
-- **workflow-runner** `(64 events, 61 commits)`
+- **UI** `(79 events, 72 commits)`
+- **auth** `(77 events, 73 commits)`
+- **graph-workflow** `(69 events, 62 commits)`
+- **workflow-runner** `(65 events, 62 commits)`
 - **shared-memory** `(42 events, 37 commits)`
-- **billing** `(35 events, 34 commits)`
-- **mcp** `(35 events, 34 commits)`
+- **billing** `(36 events, 35 commits)`
+- **mcp** `(36 events, 35 commits)`
 - **embeddings** `(28 events, 27 commits)`
 - **tagging**
 - **test-picker-feature**
@@ -127,8 +131,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(75 events, 71 commits)`
-- **development** `(69 events, 62 commits)`
+- **discovery** `(76 events, 72 commits)`
+- **development** `(70 events, 63 commits)`
 - **prod**
 
 ### Task
@@ -203,3 +207,7 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-22]** `claude_cli` — Completed query organization refactoring with 150+ SQL constants (_SQL_VERB_ENTITY pattern) across 23 files and build_update() for dynamic UPDATEs; verified API keys.json removal with 35+ import sites validated; clarified core modules as data access layer exposing database services to routers. **[2026-03-22]** `core_module_organization` — Confirmed distinction between core/user.py (data access library) and routers/route_auth.py (API endpoints); core modules function as data layers, not endpoint handlers. **[2026-03-21]** `backend_startup` — Modified retry logic to handle empty project list edge case on first load; AiCli visibility timing issue in Recent vs. main project list remains under investigation. **[2026-03-21]** `data_persistence_bug` — Tags saved in UI disappear on session switch; root cause unconfirmed (UI rendering vs. database save failure); blocking further progress on session stability. **[2026-03-18]** `memory_items_population` — Identified that memory_items_{p} and project_facts_{p} tables created but update logic not implemented; blocking improved memory/context mechanism adoption. **[2026-03-18]** `main_py_refactor` — Removed stale db.ensure_project_schema() call (replaced with _ensure_shared_schema pattern); fixed memory endpoint CLAUDE.md template variable scoping for code_dir at line 1120.

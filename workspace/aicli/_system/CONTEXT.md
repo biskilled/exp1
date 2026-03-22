@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:54 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:56 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 222
-- **Last active**: 2026-03-22T00:54:17Z
+- **Sessions**: 223
+- **Last active**: 2026-03-22T00:55:07Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,11 +40,11 @@
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied to dynamic UPDATEs in core/user.py and pipeline files
-- API keys.json file removal (2026-03-22) — Verified no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified as data layer exposing database services
-- Core module organization (2026-03-22) — Distinguishing core/user.py (data access library) from routers/route_auth.py (API endpoints); confirmed core modules function as data layers exposing database services to routers
+- Query organization refactoring (2026-03-22) — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied to dynamic UPDATEs
+- API keys.json file removal (2026-03-22) — Verified no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py patterns clarified as data layer
+- Core module organization clarification (2026-03-22) — Distinguishing core/user.py (data access library) from routers/route_auth.py (API endpoints); confirmed core modules as data layers exposing database services
 - Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing
-- Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still investigating
+- Backend startup race condition resolution (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
 - Memory items and project_facts table population (2026-03-18) — Tables created but update logic not yet implemented; blocking improved memory/context mechanism
 
 ## Key Decisions
@@ -61,9 +61,9 @@
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Backend module organization: routers/ for API endpoints, core/ for data access, agents/tools/ for implementations (tool_ prefix)
-- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ── SQL ── blocks; build_update() for dynamic UPDATEs
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ─── SQL ─── blocks; build_update() for dynamic UPDATEs
 - _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
+- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 
 ---
 
@@ -158,6 +158,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 ## Recent Development History
 
 **[2026-03-22 00:54]** `claude_cli/claude`  
+→ ok. option B 
+← _That's just a stale comment in `dl_seq.py` itself — the docstring example still says `from core.seq`. Fix it:_
+
+**[2026-03-22 00:54]** `claude_cli/claude`  
 → I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 files ?
 ← _Done. The structure is now:  ``` core/      → infrastructure: database.py, auth.py, config.py, encryption.py, seq.py data/      → data layer:     dl_user.py, dl_api_keys.py  (+ future dl_events.py, dl_
 
@@ -212,7 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 23:37]** `claude_cli/claude`  
 → Can you recheck what is database schema, I dont think it is required to add 5 new table, but possible to merge that mng_
 ← _Now I have the full picture. Here's my analysis:  **`api_keys.json`** — stays as a file, but moved **outside** `backend/` to `aicli/data/`. It's server secrets; can't go in DB (you need it to connect _
-
-**[2026-03-21 23:25]** `claude_cli/claude`  
-→ The backend is used for code only, it wont have any read permissions... any file data will be updated and used as data h
-← _`backend/data/provider_usage/` is already gitignored — the empty files just exist locally and will never be committed. Nothing to change._

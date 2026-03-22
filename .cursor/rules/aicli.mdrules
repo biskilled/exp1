@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 00:54 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 00:56 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -47,14 +47,14 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Backend module organization: routers/ for API endpoints, core/ for data access, agents/tools/ for implementations (tool_ prefix)
-- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ── SQL ── blocks; build_update() for dynamic UPDATEs
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ─── SQL ─── blocks; build_update() for dynamic UPDATEs
 - _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
+- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] scope - apply to all files, Dynamic - try to use tamplate (maybe add that into database.py file). also please review eac
 - [2026-03-22] What about core/user , this is not suppose to be as a router ? I do do see router_user_api_key as well - it is not the s
 - [2026-03-22] Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
 - [2026-03-22] So I prefer to store all data layer classes in data folder and have prefix dl_ about database.py - this is not a data la
 - [2026-03-22] I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 files ?
+- [2026-03-22] ok. option B
