@@ -23,7 +23,7 @@ from core.api_keys import get_key
 from core.database import db
 from agents.providers.pr_pricing import load_pricing, calculate_cost, can_user_access
 from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
-from routers.usage import log_usage
+from routers.route_usage import log_usage
 from memory.mem_sessions import SessionStore
 
 router = APIRouter()
@@ -297,7 +297,7 @@ async def _stream_response(
             ))
             # Auto-tag suggestions for the event we just created
             if db.is_available():
-                from routers.entities import _auto_suggest_tags
+                from routers.route_entities import _auto_suggest_tags
                 asyncio.create_task(_auto_suggest_tags_for_event(_ts, project, message))
                 # Proactive feature auto-detection (first prompt in new session only)
                 asyncio.create_task(
@@ -327,7 +327,7 @@ async def _auto_suggest_tags_for_event(ts: str, project: str, user_msg: str) -> 
                 )
                 row = cur.fetchone()
         if row:
-            from routers.entities import _auto_suggest_tags
+            from routers.route_entities import _auto_suggest_tags
             await _auto_suggest_tags(row[0], project, user_msg)
     except Exception:
         pass

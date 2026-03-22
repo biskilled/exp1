@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:01 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:05 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 206
-- **Last active**: 2026-03-22T00:01:19Z
+- **Sessions**: 207
+- **Last active**: 2026-03-22T00:05:00Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -39,10 +39,10 @@
 
 ## In Progress
 
-- API keys.json file relocation (2026-03-22) — Moving stale api_keys.json from backend/data to core folder; 35+ import sites require updating for unified key storage
-- Per-user encrypted API key system (2026-03-21) — Replace api_keys.json file storage with database-backed encrypted keys; .env holds main app credentials
+- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated
+- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only
 - Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
-- Backend startup race condition (partial fix 2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation
+- Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation
 - Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
 - Memory items/project facts table population (pending) — Tables created but update logic not implemented; blocks improved memory/context mechanism
 
@@ -57,11 +57,11 @@
 - Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-user encrypted API key storage in database (replacing api_keys.json); main app keys remain in .env; user keys encrypted at rest
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
 - Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations, agents/mcp/ for MCP server
+- Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
 - Data persistence requirement: tags saved in UI must persist across session switches; investigate UI rendering vs. database save root cause
 
 ---
@@ -156,6 +156,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 00:02]** `claude_cli/claude`  
+→ Is there is a problen to remove data\api_keys.json 
+← _Now verify nothing still writes `api_keys.json`:_
+
 **[2026-03-22 00:00]** `claude_cli/claude`  
 → I do see the api_keys.json under backend\data folder. also when it removed - there are only 2 files remain, maybe it wil
 ← _Stale file + 35 import sites to update. Doing it all at once:_
@@ -211,7 +215,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 22:18]** `claude_cli/claude`  
 → All 4 files - pricing and the one start with provider are realted to agents providers. can you add thos files over there
 ← _Now update `agents/providers/__init__.py` to also surface these:_
-
-**[2026-03-21 21:46]** `claude_cli/claude`  
-→ WHy there is model and routers folder, shoud thay all be under routers? also I do see some files like work_item_pipeline
-← _All clean. Now verify no remaining references to the deleted modules:_

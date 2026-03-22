@@ -226,7 +226,7 @@ async def patch_user(user_id: str, body: UserPatch, admin: dict = Depends(_requi
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         # Append transaction record
-        from routers.chat import _append_transaction
+        from routers.route_chat import _append_transaction
         _append_transaction(user_id, "admin_credit", body.credit_usd,
                             f"Manual credit by admin", "admin")
         fields["balance_added_usd"] = round(user.get("balance_added_usd", 0.0) + body.credit_usd, 6)

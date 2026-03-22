@@ -216,7 +216,7 @@ async def patch_work_item(
 
     # When lifecycle → done, synthesize feature memory in background
     if body.lifecycle_status == "done":
-        from routers.projects import _summarize_feature_memory
+        from routers.route_projects import _summarize_feature_memory
         try:
             asyncio.create_task(_summarize_feature_memory(p, item_id))
         except Exception:
@@ -643,14 +643,14 @@ def _finalize_work_item_pipeline(
         _upsert_pipeline_fact(project, item_name, ac, rev)
 
     try:
-        from routers.projects import _summarize_feature_memory
+        from routers.route_projects import _summarize_feature_memory
         asyncio.create_task(_summarize_feature_memory(project, item_id))
     except Exception as _me:
         log.debug(f"Memory synthesis skipped: {_me}")
 
     # Run fact extraction in background after feature memory is synthesized
     try:
-        from routers.projects import _extract_project_facts
+        from routers.route_projects import _extract_project_facts
         asyncio.create_task(_extract_project_facts(project))
     except Exception as _fe:
         log.debug(f"Fact extraction skipped: {_fe}")

@@ -1953,7 +1953,7 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
     """
     _log = logging.getLogger(__name__)
     try:
-        from routers.entities import _do_sync_events
+        from routers.route_entities import _do_sync_events
         _do_sync_events(project)
     except Exception as e:
         _log.debug(f"_sync_and_autotag sync failed: {e}")

@@ -3,8 +3,9 @@
  *
  * Responsibilities:
  * - Create the BrowserWindow
- * - Spawn the FastAPI backend (python3.12 -m uvicorn backend.main:app)
- * - IPC handlers: fs read/write, shell open, dialog
+ * - Spawn the FastAPI backend when using a local server (python3.12 -m uvicorn main:app)
+ * - Support remote backend server (skip local spawn when serverUrl is not localhost)
+ * - IPC handlers: fs read/write, shell open, dialog, settings
  * - Gracefully kill backend on quit
  */
 
@@ -27,6 +28,44 @@ const FRONTEND_DIR = path.join(UI_ROOT, "frontend");
 let mainWindow = null;
 let backendProcess = null;
 const BACKEND_PORT = 8000;
+
+// ------------------------------------------------------------------
+// Settings (persisted to Electron userData/settings.json)
+// ------------------------------------------------------------------
+
+let _settingsCache = null;
+
+function getSettingsPath() {
+  return path.join(app.getPath("userData"), "settings.json");
+}
+
+function loadSettings() {
+  if (_settingsCache) return _settingsCache;
+  try {
+    _settingsCache = JSON.parse(fs.readFileSync(getSettingsPath(), "utf-8"));
+  } catch {
+    _settingsCache = {};
+  }
+  return _settingsCache;
+}
+
+function saveSettings(updates) {
+  _settingsCache = { ...loadSettings(), ...updates };
+  try {
+    fs.writeFileSync(getSettingsPath(), JSON.stringify(_settingsCache, null, 2), "utf-8");
+  } catch (e) {
+    console.error("[settings] Failed to save:", e.message);
+  }
+}
+
+function getServerUrl() {
+  const { serverUrl } = loadSettings();
+  return (serverUrl && serverUrl.trim()) || `http://127.0.0.1:${BACKEND_PORT}`;
+}
+
+function isLocalServer(url) {
+  return url.includes("127.0.0.1") || url.includes("localhost");
+}
 
 // ------------------------------------------------------------------
 // Backend lifecycle
@@ -119,14 +158,13 @@ function stopBackend() {
 // Wait for backend to be ready
 // ------------------------------------------------------------------
 
-async function waitForBackend(maxWaitMs = 15000) {
+async function waitForBackend(serverUrl, maxWaitMs = 15000) {
   const http = require("http");
+  const healthUrl = `${serverUrl}/health`;
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     const ok = await new Promise((resolve) => {
-      const req = http.get(`http://127.0.0.1:${BACKEND_PORT}/health`, (res) => {
-        resolve(res.statusCode === 200);
-      });
+      const req = http.get(healthUrl, (res) => resolve(res.statusCode === 200));
       req.on("error", () => resolve(false));
       req.end();
     });
@@ -140,7 +178,7 @@ async function waitForBackend(maxWaitMs = 15000) {
 // Window
 // ------------------------------------------------------------------
 
-async function createWindow() {
+async function createWindow(serverUrl) {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -154,10 +192,10 @@ async function createWindow() {
     },
   });
 
-  // Wait for backend before loading
-  const ready = await waitForBackend();
+  // Wait for backend before loading (local: already spawned; remote: may need a moment)
+  const ready = await waitForBackend(serverUrl);
   if (!ready) {
-    console.error("Backend failed to start");
+    console.error(`[main] Backend not reachable at ${serverUrl}`);
   }
 
   // In development, load Vite dev server; in production, load built index.html
@@ -273,20 +311,44 @@ ipcMain.handle("shell:openExternal", async (_, url) => {
 
 ipcMain.handle("app:getEnginePath", () => ENGINE_ROOT);
 
+// Settings IPC — synchronous variant for preload bootstrapping
+ipcMain.on("settings:getServerUrl", (event) => {
+  event.returnValue = getServerUrl();
+});
+
+// Settings IPC — async variants for renderer use
+ipcMain.handle("settings:getServerUrl", async () => getServerUrl());
+ipcMain.handle("settings:setServerUrl", async (_, url) => {
+  const trimmed = (url || "").trim();
+  saveSettings({ serverUrl: trimmed });
+  return { success: true, serverUrl: trimmed || `http://127.0.0.1:${BACKEND_PORT}` };
+});
+
 // ------------------------------------------------------------------
 // App lifecycle
 // ------------------------------------------------------------------
 
 app.whenReady().then(async () => {
   buildAppMenu();
-  _stopCalled = false;         // reset guard for this app lifetime
-  await freePort(BACKEND_PORT); // kill any stale backend before spawning
-  startBackend();
-  createWindow();
+  _stopCalled = false;
+
+  const serverUrl = getServerUrl();
+
+  if (isLocalServer(serverUrl)) {
+    // Local mode: kill stale process on port, then spawn fresh backend
+    await freePort(BACKEND_PORT);
+    startBackend();
+    console.log(`[main] Local backend starting at ${serverUrl}`);
+  } else {
+    // Remote mode: skip backend spawn entirely
+    console.log(`[main] Connecting to remote server: ${serverUrl}`);
+  }
+
+  createWindow(serverUrl);
 
   app.on("activate", () => {
     // macOS: re-open window when clicking dock icon with no windows open
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(getServerUrl());
   });
 });
 

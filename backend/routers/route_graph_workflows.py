@@ -750,7 +750,7 @@ async def make_run_decision(
             work_item = final_ctx.get("_work_item")
             if not work_item:
                 return
-            from routers.work_items import _finalize_work_item_pipeline
+            from routers.route_work_items import _finalize_work_item_pipeline
             _finalize_work_item_pipeline(
                 project, str(work_item["id"]), run_id,
                 work_item.get("name", ""), final_ctx,

@@ -35,7 +35,13 @@ def _migrate_server_data():
     if migrated:
         print(f"✅ Migrated server_data to ui/backend/data/: {', '.join(migrated)}")
 from core.database import db
-from routers import auth, chat, history, usage, workflows, prompts, files, projects, config_sync, admin, git, billing, search, entities, graph_workflows, work_items, agent_roles, system_roles, documents, user_api_keys
+from routers import (
+    route_auth, route_chat, route_history, route_usage, route_workflows,
+    route_prompts, route_files, route_projects, route_config_sync, route_admin,
+    route_git, route_billing, route_search, route_entities, route_graph_workflows,
+    route_work_items, route_agent_roles, route_system_roles, route_documents,
+    route_user_api_keys,
+)
 from pwa_router import router as pwa_router
 
 
@@ -58,26 +64,26 @@ app.add_middleware(
 app.include_router(pwa_router, tags=["pwa"])
 
 # API routes
-app.include_router(auth.router,        prefix="/auth",        tags=["auth"])
-app.include_router(usage.router,       prefix="/usage",       tags=["usage"])
-app.include_router(chat.router,        prefix="/chat",        tags=["chat"])
-app.include_router(history.router,     prefix="/history",     tags=["history"])
-app.include_router(workflows.router,   prefix="/workflows",   tags=["workflows"])
-app.include_router(prompts.router,     prefix="/prompts",     tags=["prompts"])
-app.include_router(files.router,       prefix="/files",       tags=["files"])
-app.include_router(projects.router,    prefix="/projects",    tags=["projects"])
-app.include_router(config_sync.router, prefix="/config",      tags=["config"])
-app.include_router(admin.router,       prefix="/admin",        tags=["admin"])
-app.include_router(git.router,         prefix="/git",           tags=["git"])
-app.include_router(billing.router,         prefix="/billing",          tags=["billing"])
-app.include_router(search.router,          prefix="/search",    tags=["search"])
-app.include_router(entities.router,        prefix="/entities",  tags=["entities"])
-app.include_router(graph_workflows.router, prefix="/graph",      tags=["graph_workflows"])
-app.include_router(work_items.router,     prefix="/work-items",   tags=["work_items"])
-app.include_router(agent_roles.router,    prefix="/agent-roles",   tags=["agent_roles"])
-app.include_router(system_roles.router,   prefix="/system-roles",  tags=["system_roles"])
-app.include_router(documents.router,      prefix="/documents",     tags=["documents"])
-app.include_router(user_api_keys.router,  prefix="/user/api-keys", tags=["user_api_keys"])
+app.include_router(route_auth.router,           prefix="/auth",           tags=["auth"])
+app.include_router(route_usage.router,          prefix="/usage",          tags=["usage"])
+app.include_router(route_chat.router,           prefix="/chat",           tags=["chat"])
+app.include_router(route_history.router,        prefix="/history",        tags=["history"])
+app.include_router(route_workflows.router,      prefix="/workflows",      tags=["workflows"])
+app.include_router(route_prompts.router,        prefix="/prompts",        tags=["prompts"])
+app.include_router(route_files.router,          prefix="/files",          tags=["files"])
+app.include_router(route_projects.router,       prefix="/projects",       tags=["projects"])
+app.include_router(route_config_sync.router,    prefix="/config",         tags=["config"])
+app.include_router(route_admin.router,          prefix="/admin",          tags=["admin"])
+app.include_router(route_git.router,            prefix="/git",            tags=["git"])
+app.include_router(route_billing.router,        prefix="/billing",        tags=["billing"])
+app.include_router(route_search.router,         prefix="/search",         tags=["search"])
+app.include_router(route_entities.router,       prefix="/entities",       tags=["entities"])
+app.include_router(route_graph_workflows.router,prefix="/graph",          tags=["graph_workflows"])
+app.include_router(route_work_items.router,     prefix="/work-items",     tags=["work_items"])
+app.include_router(route_agent_roles.router,    prefix="/agent-roles",    tags=["agent_roles"])
+app.include_router(route_system_roles.router,   prefix="/system-roles",   tags=["system_roles"])
+app.include_router(route_documents.router,      prefix="/documents",      tags=["documents"])
+app.include_router(route_user_api_keys.router,  prefix="/user/api-keys",  tags=["user_api_keys"])
 
 # Static files
 STATIC_DIR = Path(__file__).parent / "static"
@@ -105,7 +111,7 @@ async def startup():
 
     # Warm up DB-backed config (seeds defaults if not yet stored)
     from agents.providers.pr_pricing import load_pricing
-    from routers.admin import _load_coupons
+    from routers.route_admin import _load_coupons
     load_pricing(); _load_coupons()
     print(f"✅ aicli backend ready — {settings.backend_url}")
     print(f"   workspace: {settings.workspace_dir}")
