@@ -1,3 +1,12 @@
+/**
+ * settings.js — Application and project settings view.
+ *
+ * Renders a sidebar-nav settings panel with sections for Project, API Keys, Models,
+ * Backend, Billing, Security, and Agent Roles; persists changes to the backend and
+ * updates local state for the active project.
+ * Rendered via: renderSettings() called from main.js navigateTo().
+ */
+
 import { state, setState } from '../stores/state.js';
 import { invoke } from '../utils/tauri.js';
 import { api } from '../utils/api.js';

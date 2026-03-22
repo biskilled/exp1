@@ -37,10 +37,10 @@ You are a senior Python software architect with deep expertise in:
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
-- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/ for implementations
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update()
 - _ensure_shared_schema pattern for shared database initialization
-- Data layer owns encrypted API key storage; all encryption logic merged into dl_api_keys.py
+- Data layer owns encrypted API key storage; all encryption logic in dl_api_keys.py
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: For what encryption is used for ? also auth - is is looks like a general auth , it is not part of ro
 - [2026-03-22] `claude_cli`: Ok. ,erge encryption to dl_api_keys 
 - [2026-03-22] `claude_cli`: Is it worth to change core to shared (folder name) ? 
 - [2026-03-22] `claude_cli`: I do see that when you use import you are using relative import for example from core.config import 
 - [2026-03-22] `claude_cli`: Can you add the pyproject.toml (can be pushed to git as well) 
+- [2026-03-22] `claude_cli`: Now, code looks more optimised. can you do the same for the ui code- make sure all code is well defi
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

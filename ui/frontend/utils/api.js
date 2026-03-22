@@ -1,9 +1,11 @@
 /**
- * Backend API layer — wraps fetch() with auth headers.
+ * api.js — Backend API layer
  *
- * API keys are now stored server-side (admin sets them in Admin panel).
- * Client only sends the JWT Bearer token — no X-*-Key headers.
- * JWT token is stored in localStorage as "aicli_token".
+ * Wraps fetch() with JWT auth headers, a 30-second AbortController timeout,
+ * and structured error propagation. API keys live server-side; the client
+ * sends only a Bearer token stored in localStorage as "aicli_token".
+ * Exports the `api` namespace object plus `loadApiKeys` (deprecated shim) and
+ * project-recency helpers `addRecentProject` / `getRecentProjects`.
  */
 
 import { state } from '../stores/state.js';
@@ -20,27 +22,51 @@ function _headers(extra = {}) {
 }
 
 async function _get(path) {
-  const r = await fetch(_base() + path, { headers: _headers() });
-  if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
-  return r.json();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  try {
+    const r = await fetch(_base() + path, { headers: _headers(), signal: ctrl.signal });
+    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
+    return r.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function _post(path, body = {}) {
-  const r = await fetch(_base() + path, { method: 'POST', headers: _headers(), body: JSON.stringify(body) });
-  if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
-  return r.json();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  try {
+    const r = await fetch(_base() + path, { method: 'POST', headers: _headers(), body: JSON.stringify(body), signal: ctrl.signal });
+    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
+    return r.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function _put(path, body = {}) {
-  const r = await fetch(_base() + path, { method: 'PUT', headers: _headers(), body: JSON.stringify(body) });
-  if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
-  return r.json();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  try {
+    const r = await fetch(_base() + path, { method: 'PUT', headers: _headers(), body: JSON.stringify(body), signal: ctrl.signal });
+    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
+    return r.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function _del(path) {
-  const r = await fetch(_base() + path, { method: 'DELETE', headers: _headers() });
-  if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
-  return r.json();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  try {
+    const r = await fetch(_base() + path, { method: 'DELETE', headers: _headers(), signal: ctrl.signal });
+    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
+    return r.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ── API surface ───────────────────────────────────────────────────────────────

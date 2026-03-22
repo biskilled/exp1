@@ -1,3 +1,12 @@
+/**
+ * chat.js — Multi-provider AI chat view.
+ *
+ * Renders the main chat interface with session management, provider/model selection,
+ * phase tagging, entity tag picker, streaming message display, and slash-command support
+ * (including /memory, /run, and /help). Entry point is renderChat().
+ * Rendered via: renderChat() called from main.js navigateTo().
+ */
+
 import { state, setState } from '../stores/state.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';

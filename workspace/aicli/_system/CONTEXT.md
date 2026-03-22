@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 01:12 UTC — do not edit manually.
+> Auto-generated 2026-03-22 01:18 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 228
-- **Last active**: 2026-03-22T01:11:01Z
+- **Sessions**: 230
+- **Last active**: 2026-03-22T01:18:48Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,12 +40,12 @@
 
 ## In Progress
 
-- Project configuration management — Add pyproject.toml and VS Code config files (.vscode/) to support local development; ensure safe to commit with no secrets
-- Data persistence bug investigation — Tags saved in UI disappear on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
-- Memory items and project_facts population — Tables exist but update logic not implemented; required for improved memory/context mechanism
-- Backend startup race condition — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
-- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries) across 23 files; 5 agents complete with build_update() applied
-- Data layer refactoring — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files; core/ now pure infrastructure
+- UI code optimization (2026-03-22) — Dead code removal, utils cleanup with XSS fixes, JSDoc documentation across 12 view files, memory leak fixes in graph_workflow.js setInterval handlers
+- Backend startup race condition handling — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent list vs. main project view timing issue under investigation
+- Data persistence debugging — Tags saved in UI disappear on session switch; unclear if rendering or database save failure; project visibility timing still pending resolution
+- Memory items and project_facts population — Tables exist but update logic not implemented; required for memory/context mechanism to function
+- Query organization refactoring — Applied dynamic query templating and SQL constants extraction across 23 files; 5 agents complete with build_update() applied
+- Project configuration management — pyproject.toml and VS Code config files (.vscode/) added for local development; ensuring safe to commit with no secrets
 
 ## Key Decisions
 
@@ -60,10 +60,10 @@
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
-- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/ for implementations
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update()
 - _ensure_shared_schema pattern for shared database initialization
-- Data layer owns encrypted API key storage; all encryption logic merged into dl_api_keys.py
+- Data layer owns encrypted API key storage; all encryption logic in dl_api_keys.py
 
 ---
 
@@ -157,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 01:13]** `claude_cli/claude`  
+→ Now, code looks more optimised. can you do the same for the ui code- make sure all code is well defined, documented, the
+← _4 agents running in parallel:  1. **Dead code removal** — deleting `explorer.js`, `workflow.js`, removing Cytoscape CDN from `index.html` 2. **Utils cleanup** — fixing XSS in `markdown.js`, adding 30s_
+
 **[2026-03-22 01:10]** `claude_cli/claude`  
 → Can you add the pyproject.toml (can be pushed to git as well) 
 ← _Also add the VS Code config (safe to commit, no secrets):_
@@ -212,7 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:21]** `claude_cli/claude`  
 → I still see duplicate - under core I do see auth.py and under route - raute_auth.py why there are 2 files ?
 ← _They serve different purposes — no duplication:  - **`core/auth.py`** — shared library: JWT encode/decode, `hash_password`, `verify_password`, `get_current_user` / `get_optional_user` FastAPI dependen_
-
-**[2026-03-22 00:12]** `claude_cli/claude`  
-→ Can you make sure UI contain only client interface and backend manage all backend activity , as I would like to package 
-← _Done. Here's what was implemented:  **`ui/electron/main.js`** - Added `loadSettings()` / `saveSettings()` backed by `Electron userData/settings.json` - `getServerUrl()` returns saved URL or `http://12_

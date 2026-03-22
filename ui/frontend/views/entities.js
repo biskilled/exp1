@@ -1,12 +1,10 @@
 /**
  * entities.js — Planner: Unified Tag Manager.
  *
- * 2-pane layout: left = category list (160px), right = tag table.
- * Reads from the shared tagCache — zero DB calls on navigation. Mutations
- * update the cache synchronously (instant UI feedback) then fire the DB
- * call in the background.
- *
- * Requires PostgreSQL (shows 503 notice when unavailable).
+ * Two-pane layout (category list left, tag table right) for creating and managing entity
+ * values (features, bugs, tasks, etc.) with lifecycle status, due dates, nested tags, and
+ * dependency links; uses tagCache for zero-latency navigation and lazy DB writes.
+ * Rendered via: renderEntities() called from main.js navigateTo().
  */
 
 import { state } from '../stores/state.js';

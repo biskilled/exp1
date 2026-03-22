@@ -1,6 +1,10 @@
 /**
- * Admin panel — 4-tab layout: Users / Pricing / Coupons / API Keys
- * Only accessible to users with role === 'admin' or is_admin === true.
+ * admin.js — Admin panel: multi-tab user and billing management.
+ *
+ * Renders a 6-tab admin panel (Users, Pricing, Coupons, API Keys, Usage, Billing) for
+ * managing multi-user accounts, LLM provider keys, coupon codes, and usage analytics;
+ * restricted to users with role === 'admin' or is_admin === true.
+ * Rendered via: renderAdmin() called from main.js navigateTo().
  */
 
 import { api } from '../utils/api.js';

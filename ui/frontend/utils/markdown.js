@@ -1,7 +1,25 @@
 /**
- * Shared markdown renderer — used by summary.js and prompts.js.
- * Pure JS, no external libraries.
+ * markdown.js — Lightweight Markdown + YAML renderer
+ *
+ * Provides `renderMd` (safe HTML from Markdown), `escapeHtml` (XSS-safe entity
+ * escaping), `highlightYaml` (token-coloured YAML HTML), and `validateYaml`
+ * (structural lint). No external dependencies; used by summary.js and prompts.js.
  */
+
+/**
+ * Escape HTML special characters to prevent XSS.
+ * Handles &, <, >, ", and ' — safe for use inside both element content and attributes.
+ * @param {*} str - Value to escape (coerced to string).
+ * @returns {string}
+ */
+export function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 export function renderMd(text) {
   if (!text) return '';
