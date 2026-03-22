@@ -104,7 +104,10 @@ async def health():
 
 @app.on_event("startup")
 async def startup():
-    db.init()   # connect to PostgreSQL if DATABASE_URL is set; no-op otherwise
+    import asyncio
+    # Fire-and-forget: DB init runs in a thread so the server starts immediately.
+    # Routes check db.is_available() and fall back to file storage until DB connects.
+    asyncio.get_event_loop().run_in_executor(None, db.init)
 
     # Migrate server_data from old .aicli/server_data/ path to ui/backend/data/
     _migrate_server_data()

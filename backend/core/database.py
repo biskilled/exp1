@@ -521,7 +521,6 @@ ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS order_index      INT     NOT
 ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS max_retry        INT     NOT NULL DEFAULT 3;
 ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS continue_on_fail BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS auto_commit      BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE pr_graph_runs  ADD COLUMN IF NOT EXISTS current_node     TEXT    DEFAULT NULL;
 
 -- Graph edges (scoped via workflow FK)
 CREATE TABLE IF NOT EXISTS pr_graph_edges (
@@ -552,6 +551,7 @@ CREATE TABLE IF NOT EXISTS pr_graph_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_pr_gr_cp       ON pr_graph_runs(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_pr_gr_workflow ON pr_graph_runs(workflow_id);
+ALTER TABLE pr_graph_runs ADD COLUMN IF NOT EXISTS current_node TEXT DEFAULT NULL;
 
 -- Node results per run (scoped via run FK)
 CREATE TABLE IF NOT EXISTS pr_graph_node_results (
@@ -604,7 +604,11 @@ class _Database:
             log.info("DATABASE_URL not set — using file-based storage")
             return
         try:
-            self._pool = psycopg2.pool.ThreadedConnectionPool(1, settings.db_pool_max, url)
+            # connect_timeout limits the TCP+auth phase; options=-c sets statement_timeout
+            # so runaway DDL migrations also time out eventually.
+            sep = "&" if "?" in url else "?"
+            conn_url = url + sep + "connect_timeout=10&options=-c%20statement_timeout%3D30000"
+            self._pool = psycopg2.pool.ThreadedConnectionPool(1, settings.db_pool_max, conn_url)
             with self.conn() as conn:
                 self._rename_legacy_tables(conn)
                 self._ensure_schema(conn)
@@ -645,7 +649,6 @@ class _Database:
 
     # ── Schema creation ────────────────────────────────────────────────────────
 
-    @staticmethod
     @staticmethod
     def _run_ddl_statements(conn, sql: str, label: str) -> None:
         """Run each semicolon-separated SQL statement individually.
@@ -689,18 +692,16 @@ class _Database:
         _Database._seed_role_system_links(conn)
 
     def _ensure_shared_schema(self, conn) -> None:
-        """Create all 15 pr_* flat tables. Runs once per process lifetime."""
+        """Create all 15 pr_* flat tables. Runs once per process lifetime.
+
+        Uses statement-by-statement execution so one failed ALTER TABLE
+        (e.g. on an already-migrated DB) doesn't roll back all table creation.
+        """
         if self._shared_schema_ready:
             return
-        try:
-            with conn.cursor() as cur:
-                cur.execute(_DDL_PR_TABLES)
-            conn.commit()
-            self._shared_schema_ready = True
-            log.info("✅ pr_* flat tables ready")
-        except Exception as e:
-            conn.rollback()
-            log.warning(f"_ensure_shared_schema failed: {e}")
+        _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "pr_* flat tables")
+        self._shared_schema_ready = True
+        log.info("✅ pr_* flat tables ready")
 
     # ── One-time data migration ────────────────────────────────────────────────
 
