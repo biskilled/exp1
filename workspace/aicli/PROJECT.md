@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- API keys encryption migration — Deleted core/encryption.py and merged all encryption logic into dl_api_keys.py; encrypted key storage now fully owned by data layer; verified no remaining references
-- Data layer refactoring — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files (dl_user.py, dl_api_keys.py, dl_seq.py); core/ now pure infrastructure
-- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied
-- Data persistence bug investigation — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing with project visibility timing issues
-- Backend startup race condition resolution — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
-- IDE import path compatibility — PyCharm absolute imports (from core.config import settings) require Sources Root marking or PYTHONPATH configuration; debugging setup documented
+- Project configuration management — Add pyproject.toml and VS Code config files (.vscode/) to support local development; ensure safe to commit with no secrets
+- Data persistence bug investigation — Tags saved in UI disappear on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
+- Memory items and project_facts population — Tables exist but update logic not implemented; required for improved memory/context mechanism
+- Backend startup race condition — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
+- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries) across 23 files; 5 agents complete with build_update() applied
+- Data layer refactoring — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files; core/ now pure infrastructure

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 01:08 UTC — do not edit manually.
+> Auto-generated 2026-03-22 01:12 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 227
-- **Last active**: 2026-03-22T01:08:06Z
+- **Sessions**: 228
+- **Last active**: 2026-03-22T01:11:01Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -30,7 +30,7 @@
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for pipeline definitions
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml and VS Code config for dev environment
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
@@ -40,12 +40,12 @@
 
 ## In Progress
 
-- API keys encryption migration — Deleted core/encryption.py and merged all encryption logic into dl_api_keys.py; encrypted key storage now fully owned by data layer; verified no remaining references
-- Data layer refactoring — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files (dl_user.py, dl_api_keys.py, dl_seq.py); core/ now pure infrastructure
-- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied
-- Data persistence bug investigation — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing with project visibility timing issues
-- Backend startup race condition resolution — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
-- IDE import path compatibility — PyCharm absolute imports (from core.config import settings) require Sources Root marking or PYTHONPATH configuration; debugging setup documented
+- Project configuration management — Add pyproject.toml and VS Code config files (.vscode/) to support local development; ensure safe to commit with no secrets
+- Data persistence bug investigation — Tags saved in UI disappear on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
+- Memory items and project_facts population — Tables exist but update logic not implemented; required for improved memory/context mechanism
+- Backend startup race condition — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
+- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries) across 23 files; 5 agents complete with build_update() applied
+- Data layer refactoring — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files; core/ now pure infrastructure
 
 ## Key Decisions
 
@@ -63,7 +63,7 @@
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update()
 - _ensure_shared_schema pattern for shared database initialization
-- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
+- Data layer owns encrypted API key storage; all encryption logic merged into dl_api_keys.py
 
 ---
 
@@ -157,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 01:10]** `claude_cli/claude`  
+→ Can you add the pyproject.toml (can be pushed to git as well) 
+← _Also add the VS Code config (safe to commit, no secrets):_
+
 **[2026-03-22 01:07]** `claude_cli/claude`  
 → I do see that when you use import you are using relative import for example from core.config import settings. which are 
 ← _These are not relative imports — they're **absolute imports that assume `backend/` is on `sys.path`**. They work when you `cd backend && uvicorn main:app` because Python adds the CWD to `sys.path`. Th_
@@ -212,7 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:12]** `claude_cli/claude`  
 → Can you make sure UI contain only client interface and backend manage all backend activity , as I would like to package 
 ← _Done. Here's what was implemented:  **`ui/electron/main.js`** - Added `loadSettings()` / `saveSettings()` backed by `Electron userData/settings.json` - `getServerUrl()` returns saved URL or `http://12_
-
-**[2026-03-22 00:02]** `claude_cli/claude`  
-→ Is there is a problen to remove data\api_keys.json 
-← _Now verify nothing still writes `api_keys.json`:_

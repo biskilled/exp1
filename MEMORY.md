@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 01:08 UTC by aicli /memory_
+_Generated: 2026-03-22 01:11 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAPI + PostgreSQL + pgvector), Electron desktop UI (Vanilla JS + xterm.js + Monaco + Cytoscape), and MCP integration enabling Claude and other LLMs to access work item history, tag hierarchies, and workflow DAGs. It provides dual-layer memory synthesis via Claude Haiku, semantic search via embeddings, encrypted per-user API key management, and complex multi-project workflow execution with real-time graph visualization.
+aicli is a shared AI memory platform that integrates with Claude CLI and other LLM platforms, enabling intelligent project management through a dual-storage architecture (JSONL + PostgreSQL with pgvector). It provides a desktop Electron UI with real-time workflow visualization, semantic search via embeddings, and role-based access control, while maintaining a modular backend with independent LLM provider adapters and an MCP server for external integrations. The project is in active development with focus on resolving data persistence bugs, implementing memory synthesis, and stabilizing backend startup behavior.
 
 ## Project Facts
 
@@ -65,7 +65,7 @@ Reviewer: ```json
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for pipeline definitions
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml and VS Code config for dev environment
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
@@ -89,26 +89,26 @@ Reviewer: ```json
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update()
 - _ensure_shared_schema pattern for shared database initialization
-- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
+- Data layer owns encrypted API key storage; all encryption logic merged into dl_api_keys.py
 
 ## In Progress
 
-- API keys encryption migration — Deleted core/encryption.py and merged all encryption logic into dl_api_keys.py; encrypted key storage now fully owned by data layer; verified no remaining references
-- Data layer refactoring — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files (dl_user.py, dl_api_keys.py, dl_seq.py); core/ now pure infrastructure
-- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied
-- Data persistence bug investigation — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing with project visibility timing issues
-- Backend startup race condition resolution — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
-- IDE import path compatibility — PyCharm absolute imports (from core.config import settings) require Sources Root marking or PYTHONPATH configuration; debugging setup documented
+- Project configuration management — Add pyproject.toml and VS Code config files (.vscode/) to support local development; ensure safe to commit with no secrets
+- Data persistence bug investigation — Tags saved in UI disappear on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
+- Memory items and project_facts population — Tables exist but update logic not implemented; required for improved memory/context mechanism
+- Backend startup race condition — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
+- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries) across 23 files; 5 agents complete with build_update() applied
+- Data layer refactoring — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files; core/ now pure infrastructure
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(89 events, 79 commits)`
+- **hooks** `(90 events, 80 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(41 events, 39 commits)`
+- **low-level-design** `(42 events, 40 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -116,13 +116,13 @@ Reviewer: ```json
 
 ### Feature
 
-- **auth** `(83 events, 77 commits)`
-- **UI** `(83 events, 76 commits)`
-- **graph-workflow** `(73 events, 66 commits)`
-- **workflow-runner** `(69 events, 66 commits)`
-- **shared-memory** `(43 events, 37 commits)`
-- **billing** `(40 events, 39 commits)`
-- **mcp** `(40 events, 39 commits)`
+- **auth** `(84 events, 78 commits)`
+- **UI** `(84 events, 77 commits)`
+- **shared-memory** `(83 events, 77 commits)`
+- **graph-workflow** `(74 events, 67 commits)`
+- **workflow-runner** `(70 events, 67 commits)`
+- **billing** `(41 events, 40 commits)`
+- **mcp** `(41 events, 40 commits)`
 - **embeddings** `(28 events, 27 commits)`
 - **tagging**
 - **test-picker-feature**
@@ -131,8 +131,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(81 events, 76 commits)`
-- **development** `(74 events, 67 commits)`
+- **discovery** `(82 events, 77 commits)`
+- **development** `(75 events, 68 commits)`
 - **prod**
 
 ### Task
@@ -210,4 +210,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `development_session` — Completed API keys encryption migration by deleting core/encryption.py and consolidating all encryption logic into dl_api_keys.py; verified no remaining references across backend; encrypted key storage now fully owned by data layer. **[2026-03-22]** `development_session` — Executed comprehensive data layer refactoring extracting user CRUD, encrypted API key storage, and atomic ID allocation into dedicated data/ layer files (dl_user.py, dl_api_keys.py, dl_seq.py); core/ is now pure infrastructure. **[2026-03-22]** `development_session` — Applied dynamic query templating and SQL constants extraction as _SQL_VERB_ENTITY pattern across 23 backend files (~150 queries); implemented build_update() for dynamic UPDATE statements; 5 agents complete. **[2026-03-21]** `development_session` — Investigated backend startup race condition where empty project list on first load caused false "project not found" errors; modified retry logic in _continueToApp() to handle this edge case; identified AiCli visibility issue (appears in Recent but not main list). **[2026-03-18]** `development_session` — Fixed AttributeError in main.py (removed stale db.ensure_project_schema call); resolved memory endpoint template variable scoping error (code_dir undefined at line 1120); identified that memory_items and project_facts tables created but update logic not yet implemented. **[2026-03-10]** `development_session` — Approved nested tag hierarchy feature enabling unlimited depth via parent_id FK (login remains first-level only); implemented load-once-on-access pattern to cache tags/workflows/runs in memory and update DB only on explicit save; discovered data persistence bug where tags disappear on session switch.
+**[2026-03-22]** `claude_cli` — Requested addition of pyproject.toml and VS Code configuration files (.vscode/) to support standardized local development; these files can be safely committed to git without exposing secrets. **[2026-03-18]** `main.py` — Fixed AttributeError by removing stale `db.ensure_project_schema()` call and correcting to use `_ensure_shared_schema` pattern instead. **[2026-03-18]** `memory_endpoint` — Resolved undefined `code_dir` variable at line 1120 in CLAUDE.md template; variable now properly scoped from config. **[2026-03-18]** `startup_race_condition` — Modified retry logic in `_continueToApp()` to handle edge case where project list loads but returns empty (prevents false "project not found" on first load). **[2026-03-10]** `database_performance` — Implemented load-once-on-access pattern for tags/workflows; cache in memory and update DB only on explicit save. **[2026-03-10]** `tag_hierarchy` — Approved nested tag feature expansion beyond 2-level hierarchy; login remains first-level only. **[2026-03-10]** `ui_improvements` — Enhanced planner action visibility with 3-dot menu buttons; added unarchive capability for archived items. **[pending]** `data_persistence_bug` — Tags disappear when switching sessions; root cause unclear (UI rendering vs. database save failure); investigation ongoing. **[pending]** `memory_items_population` — memory_items and project_facts tables exist but update logic not implemented; required for improved context mechanism. **[pending]** `api_keys_encryption` — Deleted core/encryption.py and consolidated all encryption logic into dl_api_keys.py; data layer now fully owns encrypted key storage.
