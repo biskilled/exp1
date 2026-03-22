@@ -16,6 +16,12 @@ log = logging.getLogger(__name__)
 _PROVIDERS = ("claude", "openai", "deepseek", "gemini", "grok")
 _EMPTY_ENTRY: dict = {"balance_usd": None, "updated_at": None, "updated_by": None}
 
+# ── SQL ───────────────────────────────────────────────────────────────────────
+
+_SQL_GET_BALANCES = "SELECT provider_balances FROM mng_clients WHERE id=1"
+
+_SQL_UPDATE_BALANCES = "UPDATE mng_clients SET provider_balances=%s WHERE id=1"
+
 
 def load_balances() -> dict:
     """Return manual balances for all providers from mng_clients."""
@@ -24,7 +30,7 @@ def load_balances() -> dict:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT provider_balances FROM mng_clients WHERE id=1")
+                    cur.execute(_SQL_GET_BALANCES)
                     row = cur.fetchone()
                     if row and row[0]:
                         data = row[0]
@@ -59,10 +65,7 @@ def save_balances(updates: dict, updated_by: str = "admin") -> dict:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE mng_clients SET provider_balances=%s WHERE id=1",
-                    (json.dumps(data),),
-                )
+                cur.execute(_SQL_UPDATE_BALANCES, (json.dumps(data),))
     except Exception as e:
         log.warning(f"save_balances DB error: {e}")
     return data

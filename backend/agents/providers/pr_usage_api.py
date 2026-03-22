@@ -29,6 +29,42 @@ try:
 except ImportError:
     _httpx = None  # type: ignore
 
+# ── SQL ───────────────────────────────────────────────────────────────────────
+
+_SQL_INSERT_USAGE_LOG = """INSERT INTO mng_usage_logs
+                       (provider, input_tokens, output_tokens, cost_usd,
+                        source, metadata, period_start, period_end)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
+
+_SQL_DELETE_HISTORY_RECORD = """DELETE FROM mng_usage_logs
+                       WHERE provider=%s AND source=%s
+                       AND created_at::text LIKE %s"""
+
+_SQL_CLEAR_HISTORY_BY_PROVIDER = (
+    "DELETE FROM mng_usage_logs WHERE provider=%s AND source=%s"
+)
+
+_SQL_CLEAR_ALL_HISTORY = (
+    "DELETE FROM mng_usage_logs WHERE source IN ('api_fetch','local_recalc')"
+)
+
+_SQL_LOAD_HISTORY_BY_PROVIDER = """SELECT provider, source, metadata, period_start, period_end, created_at
+                           FROM mng_usage_logs
+                           WHERE source=%s AND provider=%s
+                           ORDER BY created_at DESC LIMIT %s"""
+
+_SQL_LOAD_ALL_HISTORY = """SELECT provider, source, metadata, period_start, period_end, created_at
+                           FROM mng_usage_logs
+                           WHERE source IN ('api_fetch','local_recalc')
+                           ORDER BY created_at DESC LIMIT %s"""
+
+# Optimization: uses created_at >= %s AND created_at < %s to leverage idx_usage_created_at
+# rather than DATE() casting which prevents index use.
+_SQL_LOCAL_RECALC_ROWS = """SELECT user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd
+                        FROM mng_usage_logs
+                        WHERE created_at >= %s AND created_at < %s
+                          AND user_id IS NOT NULL"""
+
 
 # ── Storage helpers ────────────────────────────────────────────────────────────
 
@@ -44,10 +80,7 @@ def _save_result(provider: str, result: dict) -> None:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO mng_usage_logs
-                       (provider, input_tokens, output_tokens, cost_usd,
-                        source, metadata, period_start, period_end)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    _SQL_INSERT_USAGE_LOG,
                     (
                         provider,
                         result.get("total_input_tokens", 0),
@@ -73,9 +106,7 @@ def delete_history_record(provider: str, fetched_at: str) -> bool:
             with conn.cursor() as cur:
                 source = "local_recalc" if provider == "local_recalculate" else "api_fetch"
                 cur.execute(
-                    """DELETE FROM mng_usage_logs
-                       WHERE provider=%s AND source=%s
-                       AND created_at::text LIKE %s""",
+                    _SQL_DELETE_HISTORY_RECORD,
                     (provider, source, fetched_at[:19] + "%"),
                 )
                 return cur.rowcount > 0
@@ -94,14 +125,9 @@ def clear_history(provider: Optional[str] = None) -> int:
             with conn.cursor() as cur:
                 if provider:
                     source = "local_recalc" if provider == "local_recalculate" else "api_fetch"
-                    cur.execute(
-                        "DELETE FROM mng_usage_logs WHERE provider=%s AND source=%s",
-                        (provider, source),
-                    )
+                    cur.execute(_SQL_CLEAR_HISTORY_BY_PROVIDER, (provider, source))
                 else:
-                    cur.execute(
-                        "DELETE FROM mng_usage_logs WHERE source IN ('api_fetch','local_recalc')"
-                    )
+                    cur.execute(_SQL_CLEAR_ALL_HISTORY)
                 return cur.rowcount
     except Exception as e:
         log.debug(f"clear_history DB error: {e}")
@@ -118,21 +144,9 @@ def load_usage_history(provider: Optional[str] = None, limit: int = 20) -> list[
             with conn.cursor() as cur:
                 if provider:
                     source = "local_recalc" if provider == "local_recalculate" else "api_fetch"
-                    cur.execute(
-                        """SELECT provider, source, metadata, period_start, period_end, created_at
-                           FROM mng_usage_logs
-                           WHERE source=%s AND provider=%s
-                           ORDER BY created_at DESC LIMIT %s""",
-                        (source, provider, limit),
-                    )
+                    cur.execute(_SQL_LOAD_HISTORY_BY_PROVIDER, (source, provider, limit))
                 else:
-                    cur.execute(
-                        """SELECT provider, source, metadata, period_start, period_end, created_at
-                           FROM mng_usage_logs
-                           WHERE source IN ('api_fetch','local_recalc')
-                           ORDER BY created_at DESC LIMIT %s""",
-                        (limit,),
-                    )
+                    cur.execute(_SQL_LOAD_ALL_HISTORY, (limit,))
                 results = []
                 for row in cur.fetchall():
                     entry = dict(row[2]) if row[2] else {}
@@ -457,14 +471,16 @@ async def recalculate_local_costs(start_date: str, end_date: str) -> dict:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    # Use range comparison (>= / <) instead of DATE() casting
+                    # so the query can use the idx_usage_created_at index.
+                    range_start = f"{start_date}T00:00:00+00:00"
+                    range_end   = f"{end_date}T00:00:00+00:00"
+                    # Advance end by one day to include the full end_date
+                    end_dt = _date.fromisoformat(end_date) + timedelta(days=1)
+                    range_end = f"{end_dt.isoformat()}T00:00:00+00:00"
                     cur.execute(
-                        """
-                        SELECT user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd
-                        FROM mng_usage_logs
-                        WHERE DATE(created_at) BETWEEN %s AND %s
-                          AND user_id IS NOT NULL
-                        """,
-                        (start_date, end_date),
+                        _SQL_LOCAL_RECALC_ROWS,
+                        (range_start, range_end),
                     )
                     for r in cur.fetchall():
                         rows.append({
@@ -476,6 +492,8 @@ async def recalculate_local_costs(start_date: str, end_date: str) -> dict:
             result["errors"].append(f"DB error: {e}")
     else:
         # Read from JSONL files
+        from pathlib import Path
+        from core.config import settings
         usage_dir = Path(settings.data_dir) / "usage"
         if usage_dir.exists():
             for uf in usage_dir.glob("*.jsonl"):

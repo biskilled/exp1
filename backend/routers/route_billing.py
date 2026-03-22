@@ -17,6 +17,35 @@ from core.database import db
 from agents.providers.pr_pricing import load_pricing
 from core.user import find_by_id, update_user
 
+# ── SQL ────────────────────────────────────────────────────────────────────────
+
+_SQL_INSERT_TRANSACTION = """
+    INSERT INTO mng_transactions (user_id, type, amount_usd, description, ref)
+    VALUES (%s, %s, %s, %s, %s)
+"""
+
+# LIMIT 50 is intentional for the UI history view.
+# TODO: parameterise LIMIT if server-side pagination is needed in future.
+_SQL_LIST_TRANSACTIONS = """
+    SELECT type, amount_usd, description, ref, created_at
+    FROM mng_transactions WHERE user_id=%s
+    ORDER BY created_at DESC LIMIT 50
+"""
+
+_SQL_GET_COUPON = """
+    SELECT code,amount_usd,max_uses,used_count,used_by,expires_at
+    FROM mng_coupons WHERE client_id=1 AND code=%s
+"""
+
+_SQL_UPDATE_COUPON_USED = """
+    UPDATE mng_coupons
+    SET used_count = used_count + 1,
+        used_by    = used_by || %s::jsonb
+    WHERE client_id=1 AND code=%s
+"""
+
+# ── Router definition ─────────────────────────────────────────────────────────
+
 router = APIRouter()
 
 
@@ -29,8 +58,7 @@ def _append_transaction(user_id: str, tx_type: str, amount_usd: float, descripti
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO mng_transactions (user_id, type, amount_usd, description, ref)
-                       VALUES (%s, %s, %s, %s, %s)""",
+                    _SQL_INSERT_TRANSACTION,
                     (user_id, tx_type, amount_usd, description, ref),
                 )
     except Exception:
@@ -43,12 +71,7 @@ def _load_transactions(user_id: str) -> list[dict]:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT type, amount_usd, description, ref, created_at
-                       FROM mng_transactions WHERE user_id=%s
-                       ORDER BY created_at DESC LIMIT 50""",
-                    (user_id,),
-                )
+                cur.execute(_SQL_LIST_TRANSACTIONS, (user_id,))
                 return [
                     {
                         "type":        r[0],
@@ -71,11 +94,7 @@ def _get_coupon(code: str) -> dict | None:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT code,amount_usd,max_uses,used_count,used_by,expires_at
-                       FROM mng_coupons WHERE client_id=1 AND code=%s""",
-                    (code,),
-                )
+                cur.execute(_SQL_GET_COUPON, (code,))
                 r = cur.fetchone()
                 if not r:
                     return None
@@ -98,10 +117,7 @@ def _mark_coupon_used(code: str, user_id: str) -> None:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """UPDATE mng_coupons
-                       SET used_count = used_count + 1,
-                           used_by    = used_by || %s::jsonb
-                       WHERE client_id=1 AND code=%s""",
+                    _SQL_UPDATE_COUPON_USED,
                     (f'["{user_id}"]', code),
                 )
     except Exception:

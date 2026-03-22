@@ -1,6 +1,6 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:35 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:36 UTC — do not edit manually.
 
 ## Quick Stats
 
@@ -40,12 +40,12 @@
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Evaluating centralized SQL query definition approach; applying to all router files with template pattern; reviewing optimization opportunities per query
-- API keys.json file removal (2026-03-22) — Completing validation that no remaining code paths write to data/api_keys.json after full migration to encrypted database storage
-- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys fully deployed; .env holds main app credentials only; all import sites validated
-- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause still unclear (UI rendering vs. database save failure)
+- Query organization refactoring (2026-03-22) — Applying dynamic query templating and optimization review across all router files; evaluating database.py for centralized query management
+- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated
+- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only
+- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
 - Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation
-- Memory items and project_facts table population (2026-03-18) — Tables defined in schema but update logic not yet implemented; blocks improved memory/context mechanism
+- Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
 
 ## Key Decisions
 
@@ -58,7 +58,7 @@
 - Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Per-user encrypted API key storage in database; main app keys remain in .env
+- Per-user encrypted API key storage in database (replacing api_keys.json); main app keys remain in .env
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server

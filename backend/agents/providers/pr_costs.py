@@ -53,6 +53,12 @@ _DEFAULT_CONFIG: dict = {
     "providers": _DEFAULTS,
 }
 
+# ── SQL ───────────────────────────────────────────────────────────────────────
+
+_SQL_GET_COSTS = "SELECT provider_costs FROM mng_clients WHERE id=1"
+
+_SQL_UPDATE_COSTS = "UPDATE mng_clients SET provider_costs=%s WHERE id=1"
+
 
 def load_costs() -> dict:
     """Read provider costs from mng_clients; returns defaults if unavailable."""
@@ -61,7 +67,7 @@ def load_costs() -> dict:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT provider_costs FROM mng_clients WHERE id=1")
+                    cur.execute(_SQL_GET_COSTS)
                     row = cur.fetchone()
                     if row and row[0]:
                         data = row[0]
@@ -91,10 +97,7 @@ def save_costs(cfg: dict, updated_by: Optional[str] = None) -> None:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE mng_clients SET provider_costs=%s WHERE id=1",
-                    (json.dumps(cfg),),
-                )
+                cur.execute(_SQL_UPDATE_COSTS, (json.dumps(cfg),))
     except Exception as e:
         log.warning(f"save_costs DB error: {e}")
 

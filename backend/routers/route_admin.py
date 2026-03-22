@@ -33,6 +33,101 @@ from agents.providers.pr_pricing import load_pricing, save_pricing
 from core.api_keys import masked_keys, save_server_key
 from core.user import find_by_id, list_users, update_user, delete_user
 
+# ── SQL ────────────────────────────────────────────────────────────────────────
+
+_SQL_USAGE_SUMMARY_PER_USER = """
+    SELECT COUNT(*), COALESCE(SUM(input_tokens+output_tokens),0),
+           COALESCE(SUM(cost_usd),0)
+    FROM mng_usage_logs WHERE user_id=%s AND source='request'
+"""
+
+_SQL_LIST_COUPONS = (
+    "SELECT code,amount_usd,max_uses,used_count,used_by,description,"
+    "expires_at,created_by,created_at FROM mng_coupons WHERE client_id=1"
+)
+
+_SQL_INSERT_COUPON_SEED = """
+    INSERT INTO mng_coupons
+       (client_id,code,amount_usd,max_uses,description,created_by,created_at)
+       VALUES (1,'AICLI',10.0,999,'Test coupon — $10 credit','system',NOW())
+       ON CONFLICT DO NOTHING
+"""
+
+_SQL_INSERT_COUPON = """
+    INSERT INTO mng_coupons
+       (client_id,code,amount_usd,max_uses,description,expires_at,created_by)
+       VALUES (1,%s,%s,%s,%s,%s,%s)
+       RETURNING code,amount_usd,max_uses,used_count,used_by,
+                 description,expires_at,created_by,created_at
+"""
+
+_SQL_DELETE_COUPON = "DELETE FROM mng_coupons WHERE client_id=1 AND code=%s"
+
+_SQL_PROVIDER_MARGINS = """
+    SELECT
+        SPLIT_PART(description, ' ', 1) AS provider,
+        SUM(amount_usd)::float           AS charged,
+        SUM(COALESCE(base_cost_usd, amount_usd))::float AS real_cost,
+        COUNT(*)::int                    AS calls
+    FROM mng_transactions
+    WHERE type = 'usage_debit'
+    GROUP BY SPLIT_PART(description, ' ', 1)
+"""
+
+# Grain: (date, user_id, provider) — source filter omitted intentionally here
+# because this query backs the usage-table endpoint which shows all records.
+_SQL_USAGE_BY_DATE = """
+    SELECT
+        DATE(created_at)::text        AS date,
+        user_id,
+        COALESCE(provider, 'unknown') AS provider,
+        SUM(input_tokens)::int        AS tokens_input,
+        SUM(output_tokens)::int       AS tokens_output,
+        SUM(cost_usd)::float          AS cost,
+        SUM(charged_usd)::float       AS revenue
+    FROM mng_usage_logs
+    WHERE user_id IS NOT NULL
+      AND source='request'
+    GROUP BY DATE(created_at), user_id, provider
+    ORDER BY DATE(created_at) DESC, user_id, provider
+"""
+
+_SQL_TRANSACTIONS_BY_DATE = """
+    SELECT
+        DATE(created_at)::text AS date,
+        user_id,
+        type,
+        SUM(amount_usd)::float AS total_amount,
+        COUNT(*)::int          AS cnt
+    FROM mng_transactions
+    WHERE type IN ('coupon_credit', 'admin_credit', 'stripe_payment')
+      AND user_id IS NOT NULL
+    GROUP BY DATE(created_at), user_id, type
+"""
+
+_SQL_MIGRATE_CHECK_TABLE = (
+    "SELECT 1 FROM information_schema.tables "
+    "WHERE table_schema='public' AND table_name=%s"
+)
+
+_SQL_INSERT_CATEGORY = """
+    INSERT INTO mng_entity_categories (client_id, name, color, icon)
+    VALUES (1, %s, %s, %s)
+    ON CONFLICT (client_id, name) DO NOTHING
+    RETURNING id
+"""
+
+_SQL_UPSERT_ENTITY_VALUE = """
+    INSERT INTO mng_entity_values
+        (client_id, category_id, name, description, lifecycle_status, created_at)
+    VALUES (1, %s, %s, %s, 'active', NOW())
+    ON CONFLICT (client_id, category_id, name) DO UPDATE
+        SET description = EXCLUDED.description
+    RETURNING id
+"""
+
+# ── Router definition ─────────────────────────────────────────────────────────
+
 router = APIRouter()
 
 
@@ -58,12 +153,7 @@ def _usage_summary(user_id: str) -> dict:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT COUNT(*), COALESCE(SUM(input_tokens+output_tokens),0),
-                              COALESCE(SUM(cost_usd),0)
-                       FROM mng_usage_logs WHERE user_id=%s AND source='request'""",
-                    (user_id,),
-                )
+                cur.execute(_SQL_USAGE_SUMMARY_PER_USER, (user_id,))
                 row = cur.fetchone()
                 return {
                     "total_calls":    int(row[0]) if row else 0,
@@ -83,19 +173,11 @@ def _load_coupons() -> list[dict]:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT code,amount_usd,max_uses,used_count,used_by,description,"
-                    "expires_at,created_by,created_at FROM mng_coupons WHERE client_id=1"
-                )
+                cur.execute(_SQL_LIST_COUPONS)
                 rows = cur.fetchall()
                 if not rows:
                     # Seed default coupon
-                    cur.execute(
-                        """INSERT INTO mng_coupons
-                           (client_id,code,amount_usd,max_uses,description,created_by,created_at)
-                           VALUES (1,'AICLI',10.0,999,'Test coupon — $10 credit','system',NOW())
-                           ON CONFLICT DO NOTHING"""
-                    )
+                    cur.execute(_SQL_INSERT_COUPON_SEED)
                     return _load_coupons()
                 return [
                     {
@@ -132,16 +214,7 @@ async def get_stats(_: dict = Depends(_require_admin)):
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT
-                            SPLIT_PART(description, ' ', 1) AS provider,
-                            SUM(amount_usd)::float           AS charged,
-                            SUM(COALESCE(base_cost_usd, amount_usd))::float AS real_cost,
-                            COUNT(*)::int                    AS calls
-                        FROM mng_transactions
-                        WHERE type = 'usage_debit'
-                        GROUP BY SPLIT_PART(description, ' ', 1)
-                    """)
+                    cur.execute(_SQL_PROVIDER_MARGINS)
                     for row in cur.fetchall():
                         prov, charged, real_cost, calls = row
                         prov = prov or "unknown"
@@ -286,11 +359,7 @@ async def create_coupon(body: CouponCreate, admin: dict = Depends(_require_admin
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO mng_coupons
-                       (client_id,code,amount_usd,max_uses,description,expires_at,created_by)
-                       VALUES (1,%s,%s,%s,%s,%s,%s)
-                       RETURNING code,amount_usd,max_uses,used_count,used_by,
-                                 description,expires_at,created_by,created_at""",
+                    _SQL_INSERT_COUPON,
                     (code, body.amount_usd, body.max_uses, body.description,
                      body.expires_at, admin_email),
                 )
@@ -312,7 +381,7 @@ async def delete_coupon(code: str, _: dict = Depends(_require_admin)):
     code = code.upper().strip()
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM mng_coupons WHERE client_id=1 AND code=%s", (code,))
+            cur.execute(_SQL_DELETE_COUPON, (code,))
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail=f"Coupon '{code}' not found")
     return {"deleted": code}
@@ -391,34 +460,10 @@ async def get_usage_table(_: dict = Depends(_require_admin)):
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT
-                            DATE(created_at)::text        AS date,
-                            user_id,
-                            COALESCE(provider, 'unknown') AS provider,
-                            SUM(input_tokens)::int        AS tokens_input,
-                            SUM(output_tokens)::int       AS tokens_output,
-                            SUM(cost_usd)::float          AS cost,
-                            SUM(charged_usd)::float       AS revenue
-                        FROM mng_usage_logs
-                        WHERE user_id IS NOT NULL
-                        GROUP BY DATE(created_at), user_id, provider
-                        ORDER BY DATE(created_at) DESC, user_id, provider
-                    """)
+                    cur.execute(_SQL_USAGE_BY_DATE)
                     usage_rows = cur.fetchall()
 
-                    cur.execute("""
-                        SELECT
-                            DATE(created_at)::text AS date,
-                            user_id,
-                            type,
-                            SUM(amount_usd)::float AS total_amount,
-                            COUNT(*)::int          AS cnt
-                        FROM mng_transactions
-                        WHERE type IN ('coupon_credit', 'admin_credit', 'stripe_payment')
-                          AND user_id IS NOT NULL
-                        GROUP BY DATE(created_at), user_id, type
-                    """)
+                    cur.execute(_SQL_TRANSACTIONS_BY_DATE)
                     tx_rows = cur.fetchall()
 
             # Build topups lookup: (date, user_id) → bucket
@@ -634,11 +679,7 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
     migrated: dict[str, dict[str, int]] = {}
 
     def _table_exists(cur, table: str) -> bool:
-        cur.execute(
-            "SELECT 1 FROM information_schema.tables "
-            "WHERE table_schema='public' AND table_name=%s",
-            (table,),
-        )
+        cur.execute(_SQL_MIGRATE_CHECK_TABLE, (table,))
         return cur.fetchone() is not None
 
     with db.conn() as conn:

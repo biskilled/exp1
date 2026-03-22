@@ -56,6 +56,12 @@ _DEFAULT_PRICING: dict = {
     },
 }
 
+# ── SQL ───────────────────────────────────────────────────────────────────────
+
+_SQL_GET_PRICING = "SELECT pricing_config FROM mng_clients WHERE id=1"
+
+_SQL_UPDATE_PRICING = "UPDATE mng_clients SET pricing_config=%s WHERE id=1"
+
 
 def load_pricing() -> dict:
     """Read pricing config from mng_clients; falls back to defaults."""
@@ -64,7 +70,7 @@ def load_pricing() -> dict:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT pricing_config FROM mng_clients WHERE id=1")
+                    cur.execute(_SQL_GET_PRICING)
                     row = cur.fetchone()
                     if row and row[0]:
                         data = row[0]
@@ -86,10 +92,7 @@ def save_pricing(cfg: dict) -> None:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE mng_clients SET pricing_config=%s WHERE id=1",
-                    (json.dumps(cfg),),
-                )
+                cur.execute(_SQL_UPDATE_PRICING, (json.dumps(cfg),))
     except Exception as e:
         log.warning(f"save_pricing DB error: {e}")
 

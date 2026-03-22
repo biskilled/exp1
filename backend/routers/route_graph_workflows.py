@@ -41,9 +41,157 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.auth import get_optional_user
-from core.database import db
+from core.database import db, build_update
 
 log = logging.getLogger(__name__)
+
+# ── SQL ──────────────────────────────────────────────────────────────────────
+
+_SQL_LIST_WORKFLOWS = (
+    "SELECT id, project, name, description, max_iterations, created_at, log_directory "
+    "FROM pr_graph_workflows WHERE client_id=1 AND project=%s ORDER BY created_at DESC"
+)
+
+_SQL_INSERT_WORKFLOW = (
+    """INSERT INTO pr_graph_workflows (id, client_id, project, name, description, max_iterations, log_directory)
+       VALUES (%s, 1, %s, %s, %s, %s, %s)
+       ON CONFLICT (client_id, project, name) DO NOTHING
+       RETURNING id, project, name, description, max_iterations, created_at, log_directory"""
+)
+
+_SQL_LIST_RUNS = (
+    """SELECT r.id, r.workflow_id, r.status, r.user_input,
+              r.started_at, r.finished_at, r.total_cost_usd, r.error,
+              w.name AS workflow_name
+       FROM pr_graph_runs r
+       LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
+       WHERE r.client_id=1 AND r.project=%s
+       ORDER BY r.started_at DESC LIMIT 50"""
+)
+
+_SQL_GET_RUN_BASIC = (
+    "SELECT r.id, w.name FROM pr_graph_runs r "
+    "LEFT JOIN pr_graph_workflows w ON w.id=r.workflow_id WHERE r.id=%s"
+)
+
+_SQL_GET_RUN_DETAIL = (
+    "SELECT id, workflow_id, project, status, user_input, context, "
+    "started_at, finished_at, total_cost_usd, error, current_node "
+    "FROM pr_graph_runs WHERE id=%s"
+)
+
+_SQL_GET_NODE_RESULTS = (
+    """SELECT id, node_id, node_name, status, output, structured,
+              input_tokens, output_tokens, cost_usd, started_at, finished_at, iteration
+       FROM pr_graph_node_results WHERE run_id=%s ORDER BY id"""
+)
+
+_SQL_CANCEL_RUN = (
+    "UPDATE pr_graph_runs SET status='cancelled', finished_at=NOW() WHERE id=%s AND status='running'"
+)
+
+_SQL_GET_WORKFLOW_BY_ID = (
+    "SELECT id, project, name, description, max_iterations, created_at, log_directory "
+    "FROM pr_graph_workflows WHERE id=%s"
+)
+
+_SQL_GET_WORKFLOW_NODES = (
+    """SELECT id, workflow_id, name, role_file, role_prompt, provider, model,
+              output_schema, inject_context, position_x, position_y, created_at,
+              require_approval, approval_msg, role_id,
+              inputs, outputs, stateless, retry_config, success_criteria,
+              order_index, max_retry, continue_on_fail
+       FROM pr_graph_nodes WHERE workflow_id=%s ORDER BY order_index, created_at"""
+)
+
+_SQL_GET_WORKFLOW_EDGES = (
+    """SELECT id, workflow_id, source_node_id, target_node_id, condition, label, created_at
+       FROM pr_graph_edges WHERE workflow_id=%s ORDER BY created_at"""
+)
+
+_SQL_DELETE_WORKFLOW = "DELETE FROM pr_graph_workflows WHERE id=%s"
+
+_SQL_INSERT_NODE = (
+    """INSERT INTO pr_graph_nodes
+       (id, workflow_id, name, role_id, role_file, role_prompt, provider, model,
+        output_schema, inject_context, require_approval, approval_msg,
+        position_x, position_y,
+        inputs, outputs, stateless, retry_config, success_criteria,
+        order_index, max_retry, continue_on_fail, auto_commit)
+       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+       RETURNING id, workflow_id, name, role_file, role_prompt, provider, model,
+                 output_schema, inject_context, position_x, position_y, created_at,
+                 require_approval, approval_msg, role_id,
+                 inputs, outputs, stateless, retry_config, success_criteria,
+                 order_index, max_retry, continue_on_fail, auto_commit"""
+)
+
+_SQL_DELETE_NODE = "DELETE FROM pr_graph_nodes WHERE id=%s AND workflow_id=%s"
+
+_SQL_INSERT_EDGE = (
+    """INSERT INTO pr_graph_edges
+       (id, workflow_id, source_node_id, target_node_id, condition, label)
+       VALUES (%s,%s,%s,%s,%s,%s)
+       RETURNING id, workflow_id, source_node_id, target_node_id, condition, label, created_at"""
+)
+
+_SQL_DELETE_EDGE = "DELETE FROM pr_graph_edges WHERE id=%s AND workflow_id=%s"
+
+_SQL_INSERT_RUN = (
+    """INSERT INTO pr_graph_runs (id, client_id, project, workflow_id, status, user_input)
+       VALUES (%s, 1, %s, %s, 'running', %s)"""
+)
+
+_SQL_GET_RUN_FOR_APPROVAL = (
+    "SELECT workflow_id, project, context, total_cost_usd FROM pr_graph_runs WHERE id=%s AND status='waiting_approval'"
+)
+
+_SQL_GET_WORKFLOW_NAME = "SELECT name FROM pr_graph_workflows WHERE id=%s"
+
+_SQL_UPDATE_RUN_STOP = (
+    "UPDATE pr_graph_runs SET status='stopped', finished_at=NOW() WHERE id=%s"
+)
+
+_SQL_UPDATE_RUN_RESUME = (
+    "UPDATE pr_graph_runs SET status='running' WHERE id=%s"
+)
+
+_SQL_UPDATE_RUN_CONTEXT = (
+    "UPDATE pr_graph_runs SET status='running', context=%s WHERE id=%s"
+)
+
+_SQL_UPDATE_RUN_DONE = (
+    "UPDATE pr_graph_runs SET status='done', context=%s, finished_at=NOW() WHERE id=%s"
+)
+
+_SQL_GET_APPROVAL_CONTEXT = (
+    """SELECT workflow_id, project, context
+       FROM pr_graph_runs WHERE id=%s AND status='waiting_approval'"""
+)
+
+_SQL_GET_NODE_ROLE_PROMPT = (
+    """SELECT n.role_prompt, n.role_id, r.system_prompt
+       FROM pr_graph_nodes n
+       LEFT JOIN mng_agent_roles r ON r.id = n.role_id
+       WHERE n.workflow_id=%s AND n.name=%s"""
+)
+
+_SQL_LIST_RUNS_FOR_WORKFLOW = (
+    """SELECT id, workflow_id, project, status, user_input,
+              started_at, finished_at, total_cost_usd, error
+       FROM pr_graph_runs WHERE client_id=1 AND project=%s AND workflow_id=%s
+       ORDER BY started_at DESC LIMIT 50"""
+)
+
+_SQL_UPDATE_RUN_ERROR = (
+    "UPDATE pr_graph_runs SET status='error', error=%s, finished_at=NOW() WHERE id=%s"
+)
+
+_SQL_UPDATE_RUN_CONTEXT_ONLY = (
+    "UPDATE pr_graph_runs SET context=%s WHERE id=%s"
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 router = APIRouter()
 
@@ -192,11 +340,7 @@ async def list_workflows(
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, project, name, description, max_iterations, created_at, log_directory "
-                "FROM pr_graph_workflows WHERE client_id=1 AND project=%s ORDER BY created_at DESC",
-                (p,),
-            )
+            cur.execute(_SQL_LIST_WORKFLOWS, (p,))
             rows = cur.fetchall()
     return {"workflows": [_row_to_workflow(r) for r in rows]}
 
@@ -209,10 +353,7 @@ async def create_workflow(body: WorkflowCreate, user=Depends(get_optional_user))
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO pr_graph_workflows (id, client_id, project, name, description, max_iterations, log_directory)
-                   VALUES (%s, 1, %s, %s, %s, %s, %s)
-                   ON CONFLICT (client_id, project, name) DO NOTHING
-                   RETURNING id, project, name, description, max_iterations, created_at, log_directory""",
+                _SQL_INSERT_WORKFLOW,
                 (wf_id, p, body.name, body.description, body.max_iterations, body.log_directory),
             )
             row = cur.fetchone()
@@ -230,16 +371,7 @@ async def list_recent_runs(
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT r.id, r.workflow_id, r.status, r.user_input,
-                          r.started_at, r.finished_at, r.total_cost_usd, r.error,
-                          w.name AS workflow_name
-                   FROM pr_graph_runs r
-                   LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
-                   WHERE r.client_id=1 AND r.project=%s
-                   ORDER BY r.started_at DESC LIMIT %s""",
-                (p, min(limit, 100)),
-            )
+            cur.execute(_SQL_LIST_RUNS, (p, min(limit, 100)))
             rows = cur.fetchall()
     return {"runs": [
         {
@@ -274,11 +406,7 @@ async def get_run_deliverables(
     # Get workflow name for path resolution
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT r.id, w.name FROM pr_graph_runs r "
-                "LEFT JOIN pr_graph_workflows w ON w.id=r.workflow_id WHERE r.id=%s",
-                (run_id,),
-            )
+            cur.execute(_SQL_GET_RUN_BASIC, (run_id,))
             row = cur.fetchone()
     if not row:
         raise HTTPException(404, "Run not found")
@@ -315,12 +443,7 @@ async def get_run(
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, workflow_id, project, status, user_input, context, "
-                "started_at, finished_at, total_cost_usd, error, current_node "
-                "FROM pr_graph_runs WHERE id=%s",
-                (run_id,),
-            )
+            cur.execute(_SQL_GET_RUN_DETAIL, (run_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(404, "Run not found")
@@ -333,12 +456,7 @@ async def get_run(
                 "error": row[9],
                 "current_node": row[10],
             }
-            cur.execute(
-                """SELECT id, node_id, node_name, status, output, structured,
-                          input_tokens, output_tokens, cost_usd, started_at, finished_at, iteration
-                   FROM pr_graph_node_results WHERE run_id=%s ORDER BY id""",
-                (run_id,),
-            )
+            cur.execute(_SQL_GET_NODE_RESULTS, (run_id,))
             node_results = []
             for r in cur.fetchall():
                 node_results.append({
@@ -363,10 +481,7 @@ async def cancel_run(
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE pr_graph_runs SET status='cancelled', finished_at=NOW() WHERE id=%s AND status='running'",
-                (run_id,),
-            )
+            cur.execute(_SQL_CANCEL_RUN, (run_id,))
     return {"status": "cancelled", "run_id": run_id}
 
 
@@ -380,32 +495,16 @@ async def get_workflow(
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, project, name, description, max_iterations, created_at, log_directory "
-                "FROM pr_graph_workflows WHERE id=%s",
-                (workflow_id,),
-            )
+            cur.execute(_SQL_GET_WORKFLOW_BY_ID, (workflow_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(404, "Workflow not found")
             wf = _row_to_workflow(row)
 
-            cur.execute(
-                """SELECT id, workflow_id, name, role_file, role_prompt, provider, model,
-                          output_schema, inject_context, position_x, position_y, created_at,
-                          require_approval, approval_msg, role_id,
-                          inputs, outputs, stateless, retry_config, success_criteria,
-                          order_index, max_retry, continue_on_fail
-                   FROM pr_graph_nodes WHERE workflow_id=%s ORDER BY order_index, created_at""",
-                (workflow_id,),
-            )
+            cur.execute(_SQL_GET_WORKFLOW_NODES, (workflow_id,))
             wf["nodes"] = [_row_to_node(r) for r in cur.fetchall()]
 
-            cur.execute(
-                """SELECT id, workflow_id, source_node_id, target_node_id, condition, label, created_at
-                   FROM pr_graph_edges WHERE workflow_id=%s ORDER BY created_at""",
-                (workflow_id,),
-            )
+            cur.execute(_SQL_GET_WORKFLOW_EDGES, (workflow_id,))
             wf["edges"] = [_row_to_edge(r) for r in cur.fetchall()]
 
     return wf
@@ -420,24 +519,20 @@ async def update_workflow(
 ):
     _require_db()
     p = _active_project(project)
-    fields = []
-    values: list[Any] = []
-    if body.name is not None:
-        fields.append("name=%s"); values.append(body.name)
-    if body.description is not None:
-        fields.append("description=%s"); values.append(body.description)
-    if body.max_iterations is not None:
-        fields.append("max_iterations=%s"); values.append(body.max_iterations)
-    if body.log_directory is not None:
-        fields.append("log_directory=%s"); values.append(body.log_directory)
-    if not fields:
+    update_fields = {k: v for k, v in {
+        "name": body.name,
+        "description": body.description,
+        "max_iterations": body.max_iterations,
+        "log_directory": body.log_directory,
+    }.items() if v is not None}
+    if not update_fields:
         raise HTTPException(400, "Nothing to update")
-    values.append(workflow_id)
+    set_clause, vals = build_update(update_fields)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE pr_graph_workflows SET {', '.join(fields)} WHERE id=%s",
-                values,
+                f"UPDATE pr_graph_workflows SET {set_clause}, updated_at=NOW() WHERE id=%s",
+                vals + [workflow_id],
             )
     return {"updated": True, "workflow_id": workflow_id}
 
@@ -452,7 +547,7 @@ async def delete_workflow(
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM pr_graph_workflows WHERE id=%s", (workflow_id,))
+            cur.execute(_SQL_DELETE_WORKFLOW, (workflow_id,))
     return {"deleted": True, "workflow_id": workflow_id}
 
 
@@ -471,18 +566,7 @@ async def create_node(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO pr_graph_nodes
-                   (id, workflow_id, name, role_id, role_file, role_prompt, provider, model,
-                    output_schema, inject_context, require_approval, approval_msg,
-                    position_x, position_y,
-                    inputs, outputs, stateless, retry_config, success_criteria,
-                    order_index, max_retry, continue_on_fail, auto_commit)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                   RETURNING id, workflow_id, name, role_file, role_prompt, provider, model,
-                             output_schema, inject_context, position_x, position_y, created_at,
-                             require_approval, approval_msg, role_id,
-                             inputs, outputs, stateless, retry_config, success_criteria,
-                             order_index, max_retry, continue_on_fail, auto_commit""",
+                _SQL_INSERT_NODE,
                 (
                     node_id, workflow_id, body.name, body.role_id, body.role_file,
                     body.role_prompt, body.provider, body.model,
@@ -564,10 +648,7 @@ async def delete_node(
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM pr_graph_nodes WHERE id=%s AND workflow_id=%s",
-                (node_id, workflow_id),
-            )
+            cur.execute(_SQL_DELETE_NODE, (node_id, workflow_id))
     return {"deleted": True, "node_id": node_id}
 
 
@@ -586,10 +667,7 @@ async def create_edge(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO pr_graph_edges
-                   (id, workflow_id, source_node_id, target_node_id, condition, label)
-                   VALUES (%s,%s,%s,%s,%s,%s)
-                   RETURNING id, workflow_id, source_node_id, target_node_id, condition, label, created_at""",
+                _SQL_INSERT_EDGE,
                 (
                     edge_id, workflow_id, body.source_node_id, body.target_node_id,
                     json.dumps(body.condition) if body.condition else None, body.label,
@@ -638,10 +716,7 @@ async def delete_edge(
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM pr_graph_edges WHERE id=%s AND workflow_id=%s",
-                (edge_id, workflow_id),
-            )
+            cur.execute(_SQL_DELETE_EDGE, (edge_id, workflow_id))
     return {"deleted": True, "edge_id": edge_id}
 
 
@@ -662,11 +737,7 @@ async def start_run(
     # Insert initial run record
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO pr_graph_runs (id, client_id, project, workflow_id, status, user_input)
-                   VALUES (%s, 1, %s, %s, 'running', %s)""",
-                (run_id, p, workflow_id, body.user_input),
-            )
+            cur.execute(_SQL_INSERT_RUN, (run_id, p, workflow_id, body.user_input))
 
     # Fire-and-forget background execution
     async def _run():
@@ -680,10 +751,7 @@ async def start_run(
                 try:
                     with db.conn() as conn:
                         with conn.cursor() as cur:
-                            cur.execute(
-                                "UPDATE pr_graph_runs SET status='error', error=%s, finished_at=NOW() WHERE id=%s",
-                                (str(e), run_id),
-                            )
+                            cur.execute(_SQL_UPDATE_RUN_ERROR, (str(e), run_id))
                 except Exception:
                     pass
 
@@ -718,10 +786,7 @@ async def make_run_decision(
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT workflow_id, project, context, total_cost_usd FROM pr_graph_runs WHERE id=%s AND status='waiting_approval'",
-                (run_id,),
-            )
+            cur.execute(_SQL_GET_RUN_FOR_APPROVAL, (run_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(404, "Run not found or not in waiting_approval state")
@@ -736,7 +801,7 @@ async def make_run_decision(
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT name FROM pr_graph_workflows WHERE id=%s", (workflow_id,))
+                cur.execute(_SQL_GET_WORKFLOW_NAME, (workflow_id,))
                 wf_row = cur.fetchone()
                 is_wi_pipeline = bool(wf_row and wf_row[0] == "_work_item_pipeline")
     except Exception:
@@ -762,17 +827,14 @@ async def make_run_decision(
         # Stop the run
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE pr_graph_runs SET status='stopped', finished_at=NOW() WHERE id=%s",
-                    (run_id,),
-                )
+                cur.execute(_SQL_UPDATE_RUN_STOP, (run_id,))
         return {"status": "stopped", "run_id": run_id}
 
     if body.retry and waiting_node_id:
         # Mark running immediately so frontend stops showing the approval panel
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("UPDATE pr_graph_runs SET status='running' WHERE id=%s", (run_id,))
+                cur.execute(_SQL_UPDATE_RUN_RESUME, (run_id,))
         asyncio.create_task(
             resume_graph_workflow(run_id, workflow_id, project, ctx,
                                   start_node_ids=[waiting_node_id],
@@ -802,20 +864,14 @@ async def make_run_decision(
         # No successors — pipeline fully done
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE pr_graph_runs SET status='done', context=%s, finished_at=NOW() WHERE id=%s",
-                    (json.dumps(ctx), run_id),
-                )
+                cur.execute(_SQL_UPDATE_RUN_DONE, (json.dumps(ctx), run_id))
         _try_finalize_wi(ctx)
         return {"status": "done", "run_id": run_id}
 
     # Mark as running immediately so the frontend stops showing the old approval panel
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE pr_graph_runs SET status='running', context=%s WHERE id=%s",
-                (json.dumps(ctx), run_id),
-            )
+            cur.execute(_SQL_UPDATE_RUN_CONTEXT, (json.dumps(ctx), run_id))
 
     async def _resume_and_finalize():
         final_ctx = await resume_graph_workflow(
@@ -853,11 +909,7 @@ async def approval_chat(
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT workflow_id, project, context
-                   FROM pr_graph_runs WHERE id=%s AND status='waiting_approval'""",
-                (run_id,),
-            )
+            cur.execute(_SQL_GET_APPROVAL_CONTEXT, (run_id,))
             row = cur.fetchone()
     if not row:
         raise HTTPException(404, "Run not found or not in waiting_approval state")
@@ -875,13 +927,7 @@ async def approval_chat(
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT n.role_prompt, n.role_id, r.system_prompt
-                       FROM pr_graph_nodes n
-                       LEFT JOIN mng_agent_roles r ON r.id = n.role_id
-                       WHERE n.workflow_id=%s AND n.name=%s""",
-                    (str(workflow_id), node_name),
-                )
+                cur.execute(_SQL_GET_NODE_ROLE_PROMPT, (str(workflow_id), node_name))
                 nrow = cur.fetchone()
                 if nrow:
                     role_prompt, role_id, role_sys = nrow
@@ -923,10 +969,7 @@ async def approval_chat(
     ctx["_waiting"] = {**waiting, "output": reply}
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE pr_graph_runs SET context=%s WHERE id=%s",
-                (json.dumps(ctx), run_id),
-            )
+            cur.execute(_SQL_UPDATE_RUN_CONTEXT_ONLY, (json.dumps(ctx), run_id))
 
     # ── Also update the in-memory LangGraph state so the next node sees the revised output ─
     try:
@@ -955,12 +998,7 @@ async def list_runs(
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT id, workflow_id, project, status, user_input,
-                          started_at, finished_at, total_cost_usd, error
-                   FROM pr_graph_runs WHERE client_id=1 AND project=%s AND workflow_id=%s ORDER BY started_at DESC LIMIT 50""",
-                (p, workflow_id),
-            )
+            cur.execute(_SQL_LIST_RUNS_FOR_WORKFLOW, (p, workflow_id))
             rows = cur.fetchall()
     runs = []
     for r in rows:
@@ -1095,6 +1133,3 @@ async def import_yaml(
         prev_id = created["id"]
 
     return await get_workflow(wf_id, project=p, user=user)
-
-
-

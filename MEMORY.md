@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:27 UTC by aicli /memory_
+_Generated: 2026-03-22 00:35 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling Claude CLI and LLM platforms to maintain persistent context across sessions through semantic embeddings, nested tagging, and workflow automation. Currently at version 2.2.0 with dual-layer storage (JSONL + PostgreSQL pgvector), JWT authentication, and MCP integration. Active development focuses on data persistence bugs, API key migration to encrypted database storage, and query management optimization.
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to manage project development workflows with semantic search via PostgreSQL+pgvector, DAG-based workflow execution, and multi-LLM provider support. Currently in active development with 17 features/bugs/tasks tracked; recent work focuses on query optimization, encrypted per-user API key migration, backend stability improvements, and resolving data persistence issues around tag synchronization across sessions.
 
 ## Project Facts
 
@@ -89,11 +89,11 @@ Reviewer: ```json
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
-- Query management: define SQL queries at file start as module-level constants or centralized query builders to improve maintainability
+- Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Evaluating approach to define queries at beginning of files for better maintainability and readability
+- Query organization refactoring (2026-03-22) — Applying dynamic query templating and optimization review across all router files; evaluating database.py for centralized query management
 - API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated
 - Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only
 - Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
@@ -104,26 +104,26 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(73 events, 63 commits)`
+- **hooks** `(74 events, 64 commits)`
 
 ### Doc_type
 
 - **Test** `(28 events, 27 commits)`
-- **low-level-design** `(25 events, 23 commits)`
+- **low-level-design** `(26 events, 24 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
 - **customer-meeting** — dsds
 
 ### Feature
 
-- **UI** `(67 events, 60 commits)`
-- **auth** `(65 events, 61 commits)`
-- **graph-workflow** `(56 events, 50 commits)`
-- **workflow-runner** `(53 events, 50 commits)`
+- **UI** `(68 events, 61 commits)`
+- **auth** `(66 events, 62 commits)`
+- **graph-workflow** `(57 events, 51 commits)`
+- **workflow-runner** `(54 events, 51 commits)`
 - **shared-memory** `(42 events, 37 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **billing** `(24 events, 23 commits)`
-- **mcp** `(24 events, 23 commits)`
+- **billing** `(25 events, 24 commits)`
+- **mcp** `(25 events, 24 commits)`
 - **tagging**
 - **test-picker-feature**
 - **dropbox**
@@ -131,8 +131,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(63 events, 60 commits)`
-- **development** `(58 events, 51 commits)`
+- **discovery** `(64 events, 61 commits)`
+- **development** `(59 events, 52 commits)`
 - **prod**
 
 ### Task
@@ -210,4 +210,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `claude_cli` — User inquired about query management strategy to define queries at file start for better maintainability; investigating centralized query definition approach. **[2026-03-22]** `code review` — Completed validation of 35+ import sites to ensure no remaining code writes to deprecated data/api_keys.json; migration to encrypted database storage on track. **[2026-03-21]** `feature` — Implemented per-user encrypted API key system in database replacing file-based storage; main app credentials remain in .env only. **[2026-03-21]** `bug fix` — Modified backend startup retry logic to handle edge case where project list returns empty on first load; prevents false "project not found" errors. **[2026-03-21]** `task` — Renamed agents/tools/ files to tool_ prefix convention and validated all import paths post-relocation. **[2026-03-18]** `bug fix` — Removed stale db.ensure_project_schema() call in main.py; corrected to use _ensure_shared_schema instead. **[2026-03-18]** `bug fix` — Fixed undefined code_dir variable in memory endpoint CLAUDE.md template (line 1120); now properly scoped from config. **[2026-03-10]** `architecture` — Implemented load-once-on-access pattern to cache tags/workflows in memory and update DB only on explicit save, eliminating redundant SQL calls. **[2026-03-10]** `bug identified` — Discovered tags saved in UI disappear on session switch; root cause unclear (UI rendering vs database save failure); requires investigation. **[2026-03-10]** `pending` — memory_items and project_facts tables created but update logic not implemented; blocks improved memory/context mechanism.
+**[2026-03-22]** `claude_cli` — Query optimization refactoring initiated: applying dynamic templating and reviewing optimization potential across all router files, considering centralized query builders in database.py. **[2026-03-22]** `claude_cli` — API keys.json removal validation nearly complete: confirmed 35+ import sites no longer reference file-based storage; per-user encrypted database storage now primary system. **[2026-03-21]** `claude_cli` — Backend startup race condition partially resolved: modified retry logic to handle empty project list edge case on first load; AiCli Recent/active project visibility discrepancy still requires investigation. **[2026-03-21]** `claude_cli` — Tool naming convention standardization completed: agents/tools/ files renamed to tool_ prefix with validated import paths post-relocation. **[2026-03-10]** `claude_cli` — Database performance optimization approved: implemented load-once-on-access pattern (tags cached in memory, DB updated only on explicit save) to eliminate redundant SQL calls. **[2026-03-10]** `claude_cli` — Tag hierarchy design approved: nested parent_id FK structure supports unlimited depth; login designated as first-level only category. **[2026-03-10]** `claude_cli` — Data persistence bug identified: tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure).

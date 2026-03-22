@@ -26,6 +26,73 @@ from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
 from routers.route_usage import log_usage
 from memory.mem_sessions import SessionStore
 
+# ── SQL ─────────────────────────────────────────────────────────────────────────
+
+_SQL_INSERT_PROMPT_EVENT = """
+    INSERT INTO pr_events
+           (client_id, project, event_type, source_id, title, content, metadata, created_at)
+       VALUES (1, %s, 'prompt', %s, %s, %s, %s::jsonb, %s::timestamptz)
+       ON CONFLICT (client_id, project, event_type, source_id) DO NOTHING
+"""
+
+_SQL_INSERT_INTERACTION = """
+    INSERT INTO pr_interactions
+           (client_id, project, session_id, llm_source, event_type, source_id,
+            prompt, response, phase, metadata, created_at)
+       VALUES (1, %s, %s, %s, 'prompt', %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+       ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
+"""
+
+_SQL_INSERT_TRANSACTION = """
+    INSERT INTO mng_transactions
+       (user_id, type, amount_usd, base_cost_usd, description, ref)
+       VALUES (%s, %s, %s, %s, %s, %s)
+"""
+
+_SQL_GET_EVENT_BY_SOURCE = """
+    SELECT id FROM pr_events
+    WHERE client_id=1 AND project=%s AND event_type='prompt' AND source_id=%s
+"""
+
+_SQL_GET_SESSION_FEATURE = """
+    SELECT feature FROM mng_session_tags WHERE client_id=1 AND project=%s
+"""
+
+_SQL_GET_ACTIVE_FEATURES = """
+    SELECT v.name FROM mng_entity_values v
+       JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+       WHERE v.client_id=1 AND v.project=%s AND c.name='feature' AND v.status='active'
+       ORDER BY v.name
+"""
+
+_SQL_UPSERT_SESSION_FEATURE = """
+    INSERT INTO mng_session_tags (client_id, project, feature)
+       VALUES (1, %s, %s)
+       ON CONFLICT (client_id, project) DO UPDATE SET feature=%s, updated_at=NOW()
+"""
+
+_SQL_GET_WORKFLOW_BY_NAME = """
+    SELECT id, name FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND name=%s
+"""
+
+_SQL_GET_WORKFLOW_FUZZY = """
+    SELECT id, name FROM pr_graph_workflows
+    WHERE client_id=1 AND project=%s AND lower(name) LIKE %s
+    LIMIT 1
+"""
+
+_SQL_INSERT_GRAPH_RUN = """
+    INSERT INTO pr_graph_runs (id, client_id, project, workflow_id, status, user_input)
+    VALUES (%s, 1, %s, %s, 'running', %s)
+"""
+
+_SQL_UPDATE_COMMIT_PHASE = """
+    UPDATE pr_commits SET phase=%s
+    WHERE client_id=1 AND project=%s AND session_id=%s
+"""
+
+# ────────────────────────────────────────────────────────────────────────────────
+
 router = APIRouter()
 
 
@@ -92,10 +159,7 @@ def _append_history(
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO pr_events
-                               (client_id, project, event_type, source_id, title, content, metadata, created_at)
-                           VALUES (1, %s, 'prompt', %s, %s, %s, %s::jsonb, %s::timestamptz)
-                           ON CONFLICT (client_id, project, event_type, source_id) DO NOTHING""",
+                        _SQL_INSERT_PROMPT_EVENT,
                         (project, ts, (user_msg or "")[:120],
                          (user_msg or "")[:2000], meta, ts),
                     )
@@ -108,11 +172,7 @@ def _append_history(
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO pr_interactions
-                               (client_id, project, session_id, llm_source, event_type, source_id,
-                                prompt, response, phase, metadata, created_at)
-                           VALUES (1, %s, %s, %s, 'prompt', %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
-                           ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING""",
+                        _SQL_INSERT_INTERACTION,
                         (
                             project, session_id, provider, ts,
                             (user_msg or "")[:4000], (response or "")[:8000],
@@ -171,9 +231,7 @@ def _append_transaction(
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            """INSERT INTO mng_transactions
-                               (user_id, type, amount_usd, base_cost_usd, description, ref)
-                               VALUES (%s, %s, %s, %s, %s, %s)""",
+                            _SQL_INSERT_TRANSACTION,
                             (user_id, tx_type, amount_usd, base_cost_usd, description, ref or ""),
                         )
             except Exception:
@@ -321,10 +379,7 @@ async def _auto_suggest_tags_for_event(ts: str, project: str, user_msg: str) -> 
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id FROM pr_events WHERE client_id=1 AND project=%s AND event_type='prompt' AND source_id=%s",
-                    (project, ts),
-                )
+                cur.execute(_SQL_GET_EVENT_BY_SOURCE, (project, ts))
                 row = cur.fetchone()
         if row:
             from routers.route_entities import _auto_suggest_tags
@@ -356,10 +411,7 @@ async def _auto_detect_session_feature(
         # Guard: skip if session already has a feature tag
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT feature FROM mng_session_tags WHERE client_id=1 AND project=%s",
-                    (project,),
-                )
+                cur.execute(_SQL_GET_SESSION_FEATURE, (project,))
                 row = cur.fetchone()
         if row and row[0]:
             return
@@ -372,13 +424,7 @@ async def _auto_detect_session_feature(
         # Load existing feature names
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT v.name FROM mng_entity_values v
-                       JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
-                       WHERE v.client_id=1 AND v.project=%s AND c.name='feature' AND v.status='active'
-                       ORDER BY v.name""",
-                    (project,),
-                )
+                cur.execute(_SQL_GET_ACTIVE_FEATURES, (project,))
                 features = [r[0] for r in cur.fetchall()]
 
         if not features:
@@ -413,12 +459,7 @@ async def _auto_detect_session_feature(
         # Apply feature to session_tags
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO mng_session_tags (client_id, project, feature)
-                       VALUES (1, %s, %s)
-                       ON CONFLICT (client_id, project) DO UPDATE SET feature=%s, updated_at=NOW()""",
-                    (project, feature_name, feature_name),
-                )
+                cur.execute(_SQL_UPSERT_SESSION_FEATURE, (project, feature_name, feature_name))
 
         # Also update the session JSON file's feature field
         store = SessionStore(
@@ -447,19 +488,13 @@ async def _handle_run_command(pipeline_name: str, project: str, session_id: str)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, name FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND name=%s",
-                    (project, pipeline_name),
-                )
+                cur.execute(_SQL_GET_WORKFLOW_BY_NAME, (project, pipeline_name))
                 row = cur.fetchone()
         if not row:
             # Try partial/case-insensitive match
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT id, name FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND lower(name) LIKE %s LIMIT 1",
-                        (project, f"%{pipeline_name.lower()}%"),
-                    )
+                    cur.execute(_SQL_GET_WORKFLOW_FUZZY, (project, f"%{pipeline_name.lower()}%"))
                     row = cur.fetchone()
         if not row:
             return f"⚠ No pipeline named **{pipeline_name}** found. Check the Pipelines tab for available flows."
@@ -470,7 +505,7 @@ async def _handle_run_command(pipeline_name: str, project: str, session_id: str)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO pr_graph_runs (id, client_id, project, workflow_id, status, user_input) VALUES (%s, 1, %s, %s, 'running', %s)",
+                    _SQL_INSERT_GRAPH_RUN,
                     (run_id, project, workflow_id, f"/run {pipeline_name}"),
                 )
 
@@ -677,10 +712,7 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE pr_commits SET phase=%s WHERE client_id=1 AND project=%s AND session_id=%s",
-                        (phase, project, session_id),
-                    )
+                    cur.execute(_SQL_UPDATE_COMMIT_PHASE, (phase, project, session_id))
                     c_rows = cur.rowcount
             _logger.info(
                 f"backfill_session_phase: project={project} session={session_id[:8]} "

@@ -35,7 +35,7 @@ You are a senior Python software architect with deep expertise in:
 - Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Per-user encrypted API key storage in database; main app keys remain in .env
+- Per-user encrypted API key storage in database (replacing api_keys.json); main app keys remain in .env
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server

@@ -48,6 +48,43 @@ _EXT_LANG: dict[str, str] = {
     ".md": "markdown", ".html": "html", ".css": "css",
 }
 
+# ── SQL ───────────────────────────────────────────────────────────────────────
+
+_SQL_UPSERT_EMBEDDING = """INSERT INTO pr_embeddings
+                           (client_id, project, source_type, source_id, chunk_index, content,
+                            embedding, chunk_type, doc_type, language, file_path, metadata)
+                       VALUES (1, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
+                       ON CONFLICT (client_id, project, source_type, source_id, chunk_index)
+                       DO UPDATE SET
+                           content=EXCLUDED.content,
+                           embedding=EXCLUDED.embedding,
+                           chunk_type=EXCLUDED.chunk_type,
+                           doc_type=EXCLUDED.doc_type,
+                           language=EXCLUDED.language,
+                           file_path=EXCLUDED.file_path,
+                           metadata=EXCLUDED.metadata,
+                           created_at=NOW()"""
+
+# Base search template — client_id=1 and project=%s are listed first to match
+# the (client_id, project, source_type) index. Dynamic WHERE filters are appended
+# at runtime; %s placeholders for query_vec and limit are appended by the caller.
+_SQL_SEARCH_EMBEDDINGS_TPL = """SELECT source_type, source_id, chunk_index, chunk_type,
+                               content, language, file_path, doc_type, metadata,
+                               1 - (embedding <=> %s::vector) AS score
+                        FROM pr_embeddings
+                        WHERE {where}
+                        ORDER BY embedding <=> %s::vector
+                        LIMIT %s"""
+
+_SQL_GET_COMMIT_META = (
+    "SELECT phase, feature, bug_ref "
+    "FROM pr_commits WHERE client_id=1 AND project=%s AND commit_hash=%s"
+)
+
+_SQL_GET_NODE_OUTPUTS = (
+    "SELECT node_id, node_name, output FROM pr_graph_node_results WHERE run_id=%s AND status='done'"
+)
+
 
 def _openai_key() -> str | None:
     try:
@@ -302,20 +339,7 @@ async def embed_and_store(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO pr_embeddings
-                           (client_id, project, source_type, source_id, chunk_index, content,
-                            embedding, chunk_type, doc_type, language, file_path, metadata)
-                       VALUES (1, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
-                       ON CONFLICT (client_id, project, source_type, source_id, chunk_index)
-                       DO UPDATE SET
-                           content=EXCLUDED.content,
-                           embedding=EXCLUDED.embedding,
-                           chunk_type=EXCLUDED.chunk_type,
-                           doc_type=EXCLUDED.doc_type,
-                           language=EXCLUDED.language,
-                           file_path=EXCLUDED.file_path,
-                           metadata=EXCLUDED.metadata,
-                           created_at=NOW()""",
+                    _SQL_UPSERT_EMBEDDING,
                     (
                         project, source_type, source_id, chunk_index,
                         content[:4000], str(vector), chunk_type,
@@ -383,6 +407,7 @@ async def semantic_search(
         response = await client.embeddings.create(model=_EMBEDDING_MODEL, input=query[:2000])
         query_vec = response.data[0].embedding
 
+        # client_id=1 and project=%s are first to leverage the composite index
         filters: list[str] = ["client_id=1", "project=%s", "embedding IS NOT NULL"]
         params: list = [project, str(query_vec)]
 
@@ -414,13 +439,7 @@ async def semantic_search(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""SELECT source_type, source_id, chunk_index, chunk_type,
-                               content, language, file_path, doc_type, metadata,
-                               1 - (embedding <=> %s::vector) AS score
-                        FROM pr_embeddings
-                        WHERE {where}
-                        ORDER BY embedding <=> %s::vector
-                        LIMIT %s""",
+                    _SQL_SEARCH_EMBEDDINGS_TPL.format(where=where),
                     params,
                 )
                 rows = cur.fetchall()
@@ -539,11 +558,7 @@ async def ingest_commit(project: str, commit_hash: str, code_dir: str) -> int:
             try:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute(
-                            "SELECT phase, feature, bug_ref "
-                            "FROM pr_commits WHERE client_id=1 AND project=%s AND commit_hash=%s",
-                            (project, commit_hash,),
-                        )
+                        cur.execute(_SQL_GET_COMMIT_META, (project, commit_hash))
                         row = cur.fetchone()
                         if row:
                             if row[0]: meta["phase"] = row[0]
@@ -610,10 +625,7 @@ async def embed_node_outputs(run_id: str, project: str) -> None:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT node_id, node_name, output FROM pr_graph_node_results WHERE run_id=%s AND status='done'",
-                    (run_id,),
-                )
+                cur.execute(_SQL_GET_NODE_OUTPUTS, (run_id,))
                 rows = cur.fetchall()
         for node_id, node_name, output in rows:
             if output:

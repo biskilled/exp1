@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from core.config import settings
-from core.database import db
+from core.database import db, build_update
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,89 @@ except ImportError:
     _LANGGRAPH_AVAILABLE = False
     log.warning("langgraph not installed — graph_runner will use legacy DAG mode")
 
+
+# ── SQL ────────────────────────────────────────────────────────────────────────
+
+_SQL_INSERT_NODE_RESULT = """
+    INSERT INTO pr_graph_node_results
+        (run_id, node_id, node_name, status, iteration)
+    VALUES (%s, %s, %s, 'running', %s)
+    RETURNING id
+"""
+
+# _SQL_UPDATE_NODE_RESULT — dynamic fields built via build_update(); WHERE clause:
+_SQL_UPDATE_NODE_RESULT_WHERE = (
+    "UPDATE pr_graph_node_results SET {set_clause}, finished_at=NOW() WHERE id=%s"
+)
+
+_SQL_GET_ACTIVE_FEATURES = """
+    SELECT ev.id, ev.name, ev.description, ev.lifecycle_status
+    FROM   mng_entity_values ev
+    JOIN   mng_entity_categories ec ON ec.id = ev.category_id
+    WHERE  ec.client_id = 1
+      AND  ec.name = 'feature'
+      AND  ev.status = 'active'
+    ORDER  BY ev.name
+"""
+
+_SQL_UPSERT_SESSION_TAG = """
+    INSERT INTO mng_session_tags (client_id, session_id, phase, feature, bug_ref)
+    VALUES (%s, %s, %s, %s, %s)
+    ON CONFLICT (client_id, session_id)
+    DO UPDATE SET phase = EXCLUDED.phase,
+                  feature = EXCLUDED.feature,
+                  bug_ref = EXCLUDED.bug_ref
+"""
+
+_SQL_GET_WORKFLOW = (
+    "SELECT id, project, name, max_iterations, log_directory "
+    "FROM pr_graph_workflows WHERE id=%s"
+)
+
+_SQL_GET_NODES = """
+    SELECT n.id, n.name, n.role_file, n.role_prompt, n.provider, n.model,
+           n.output_schema, n.inject_context, n.require_approval, n.approval_msg,
+           n.role_id, n.stateless, n.retry_config, n.success_criteria,
+           n.order_index, n.max_retry, n.continue_on_fail,
+           COALESCE(n.auto_commit, ar.auto_commit, FALSE) AS auto_commit,
+           COALESCE(NULLIF(n.role_prompt, ''), ar.system_prompt, '') AS effective_prompt,
+           COALESCE(NULLIF(n.provider, ''), ar.provider, '') AS effective_provider,
+           COALESCE(NULLIF(n.model, ''), ar.model, '') AS effective_model
+    FROM   pr_graph_nodes n
+    LEFT JOIN mng_agent_roles ar ON ar.id = n.role_id
+    WHERE  n.workflow_id=%s
+    ORDER  BY n.order_index, n.created_at
+"""
+
+_SQL_GET_EDGES = (
+    "SELECT id, source_node_id, target_node_id, condition, label "
+    "FROM pr_graph_edges WHERE workflow_id=%s"
+)
+
+# Terminal run update (done / stopped / error) — includes finished_at and error
+_SQL_UPDATE_RUN_STATUS = """
+    UPDATE pr_graph_runs
+       SET status=%s, context=%s, total_cost_usd=%s,
+           finished_at=NOW(), error=%s, current_node=NULL
+     WHERE id=%s
+"""
+
+# Non-terminal run update (running / waiting_approval) — no finished_at
+_SQL_UPDATE_RUN_PROGRESS = (
+    "UPDATE pr_graph_runs SET status=%s, context=%s, total_cost_usd=%s WHERE id=%s"
+)
+
+_SQL_UPDATE_RUN_CURRENT_NODE = (
+    "UPDATE pr_graph_runs SET current_node=%s WHERE id=%s"
+)
+
+_SQL_GET_WORK_ITEM_NAME = (
+    "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid"
+)
+
+_SQL_GET_RUN_RESUME = (
+    "SELECT workflow_id, context, total_cost_usd FROM pr_graph_runs WHERE id=%s"
+)
 
 # ── Condition evaluation ───────────────────────────────────────────────────────
 
@@ -143,9 +226,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO pr_graph_node_results
-                           (run_id, node_id, node_name, status, iteration)
-                           VALUES (%s, %s, %s, 'running', %s) RETURNING id""",
+                        _SQL_INSERT_NODE_RESULT,
                         (run_id, node_id, node_name, iteration),
                     )
                     result_id = cur.fetchone()[0]
@@ -220,23 +301,19 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
     # Update DB record
     if db.is_available() and result_id is not None:
         try:
+            set_clause, vals = build_update({
+                "status": status,
+                "output": output,
+                "structured": json.dumps(structured) if structured else None,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost_usd": cost_usd,
+            })
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """UPDATE pr_graph_node_results SET
-                           status=%s, output=%s, structured=%s,
-                           input_tokens=%s, output_tokens=%s, cost_usd=%s,
-                           finished_at=NOW()
-                           WHERE id=%s""",
-                        (
-                            status,
-                            output,
-                            json.dumps(structured) if structured else None,
-                            input_tokens,
-                            output_tokens,
-                            cost_usd,
-                            result_id,
-                        ),
+                        _SQL_UPDATE_NODE_RESULT_WHERE.format(set_clause=set_clause),
+                        vals + [result_id],
                     )
         except Exception as e:
             log.warning(f"Could not update node result: {e}")
@@ -428,7 +505,7 @@ def _make_node_fn(node: dict, run_id: str, project: str, log_dir: str = "", pipe
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "UPDATE pr_graph_runs SET current_node=%s WHERE id=%s",
+                            _SQL_UPDATE_RUN_CURRENT_NODE,
                             (node_copy["name"], run_id),
                         )
             except Exception as _ce:
@@ -596,10 +673,7 @@ def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], lis
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, project, name, max_iterations, log_directory FROM pr_graph_workflows WHERE id=%s",
-                (workflow_id,),
-            )
+            cur.execute(_SQL_GET_WORKFLOW, (workflow_id,))
             row = cur.fetchone()
             if not row:
                 raise ValueError(f"Workflow not found: {workflow_id}")
@@ -608,20 +682,7 @@ def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], lis
                 "max_iterations": row[3], "log_directory": row[4] if len(row) > 4 else "",
             }
 
-            cur.execute(
-                """SELECT n.id, n.name, n.role_file, n.role_prompt, n.provider, n.model,
-                          n.output_schema, n.inject_context, n.require_approval, n.approval_msg,
-                          n.role_id, n.stateless, n.retry_config, n.success_criteria,
-                          n.order_index, n.max_retry, n.continue_on_fail,
-                          COALESCE(n.auto_commit, ar.auto_commit, FALSE) AS auto_commit,
-                          COALESCE(NULLIF(n.role_prompt, ''), ar.system_prompt, '') AS effective_prompt,
-                          COALESCE(NULLIF(n.provider, ''), ar.provider, '') AS effective_provider,
-                          COALESCE(NULLIF(n.model, ''), ar.model, '') AS effective_model
-                   FROM   pr_graph_nodes n
-                   LEFT JOIN mng_agent_roles ar ON ar.id = n.role_id
-                   WHERE  n.workflow_id=%s ORDER BY n.order_index, n.created_at""",
-                (workflow_id,),
-            )
+            cur.execute(_SQL_GET_NODES, (workflow_id,))
             for r in cur.fetchall():
                 nodes[r[0]] = {
                     "id": r[0], "name": r[1], "role_file": r[2],
@@ -641,10 +702,7 @@ def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], lis
                     "auto_commit": r[17] if len(r) > 17 else False,
                 }
 
-            cur.execute(
-                "SELECT id, source_node_id, target_node_id, condition, label FROM pr_graph_edges WHERE workflow_id=%s",
-                (workflow_id,),
-            )
+            cur.execute(_SQL_GET_EDGES, (workflow_id,))
             for r in cur.fetchall():
                 edges.append({
                     "id": r[0], "source": r[1], "target": r[2],
@@ -663,14 +721,12 @@ def _update_run_db(run_id: str, status: str, ctx: dict | None = None,
             with conn.cursor() as cur:
                 if status in ("done", "stopped", "error"):
                     cur.execute(
-                        """UPDATE pr_graph_runs SET status=%s, context=%s,
-                           total_cost_usd=%s, finished_at=NOW(), error=%s,
-                           current_node=NULL WHERE id=%s""",
+                        _SQL_UPDATE_RUN_STATUS,
                         (status, json.dumps(ctx or {}), total_cost, error, run_id),
                     )
                 else:
                     cur.execute(
-                        "UPDATE pr_graph_runs SET status=%s, context=%s, total_cost_usd=%s WHERE id=%s",
+                        _SQL_UPDATE_RUN_PROGRESS,
                         (status, json.dumps(ctx or {}), total_cost, run_id),
                     )
     except Exception as e:
@@ -708,10 +764,7 @@ async def run_graph_workflow(
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid",
-                        (work_item_id,),
-                    )
+                    cur.execute(_SQL_GET_WORK_ITEM_NAME, (work_item_id,))
                     wi = cur.fetchone()
             if wi:
                 slug = re.sub(r"[^a-z0-9_]", "", wi[1].lower().replace(" ", "_"))
@@ -954,10 +1007,7 @@ async def _run_graph_workflow_legacy(
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid",
-                        (work_item_id,),
-                    )
+                    cur.execute(_SQL_GET_WORK_ITEM_NAME, (work_item_id,))
                     wi = cur.fetchone()
             if wi:
                 slug = re.sub(r"[^a-z0-9_]", "", wi[1].lower().replace(" ", "_"))
@@ -982,7 +1032,7 @@ async def _run_graph_workflow_legacy(
                 with db.conn() as _cn:
                     with _cn.cursor() as _cr:
                         _cr.execute(
-                            "UPDATE pr_graph_runs SET current_node=%s WHERE id=%s",
+                            _SQL_UPDATE_RUN_CURRENT_NODE,
                             (nodes[ready[0]]["name"], run_id),
                         )
             except Exception:
@@ -1061,10 +1111,7 @@ async def _resume_graph_workflow_legacy(
     """Legacy resume — called by decision endpoint when langgraph not installed."""
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT workflow_id, context, total_cost_usd FROM pr_graph_runs WHERE id=%s",
-                (run_id,),
-            )
+            cur.execute(_SQL_GET_RUN_RESUME, (run_id,))
             row = cur.fetchone()
             if not row:
                 raise ValueError(f"Run not found: {run_id}")
