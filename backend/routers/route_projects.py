@@ -859,7 +859,7 @@ async def _synthesize_with_llm(
     """
     try:
         import anthropic
-        from core.api_keys import get_key
+        from data.dl_api_keys import get_key
 
         key = get_key("claude")
         if not key:
@@ -960,7 +960,7 @@ async def _suggest_tags(
     """
     _log = logging.getLogger(__name__)
     try:
-        from core.api_keys import get_key
+        from data.dl_api_keys import get_key
         import anthropic
 
         key = get_key("claude") or get_key("anthropic")
@@ -1022,7 +1022,7 @@ async def _summarize_session_memory(project: str) -> int:
     if not db.is_available():
         return 0
     try:
-        from core.api_keys import get_key
+        from data.dl_api_keys import get_key
         import anthropic
 
         key = get_key("claude") or get_key("anthropic")
@@ -1130,7 +1130,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
     if not db.is_available():
         return None
     try:
-        from core.api_keys import get_key
+        from data.dl_api_keys import get_key
         import anthropic
 
         key = get_key("claude") or get_key("anthropic")
@@ -1235,7 +1235,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
     if not db.is_available():
         return 0
     try:
-        from core.api_keys import get_key
+        from data.dl_api_keys import get_key
         import anthropic
 
         # ── Load the internal role (system_prompt + model + provider) ─────────
@@ -2022,7 +2022,7 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
         return
 
     try:
-        from core.api_keys import get_key
+        from data.dl_api_keys import get_key
         key = get_key("claude") or get_key("anthropic")
         if not key:
             return
@@ -2151,7 +2151,7 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
                                 pass
 
         # Strategy 2: LLM-based relationship suggestion (only if Anthropic key available)
-        from core.api_keys import get_key
+        from data.dl_api_keys import get_key
         key = get_key("claude") or get_key("anthropic")
         if not key or len(new_events) < 2:
             return

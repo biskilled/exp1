@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:46 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:48 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 219
-- **Last active**: 2026-03-22T00:46:03Z
+- **Sessions**: 220
+- **Last active**: 2026-03-22T00:47:17Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,10 +40,10 @@
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Applying dynamic query templating across router files; evaluating database.py for centralized query management and SQL optimization
-- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified
-- Core module organization (2026-03-22) — Distinguishing core/user.py (data access library) from routers/route_auth.py (API endpoints); applying consistent patterns across related modules
-- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure)
+- Query organization refactoring (2026-03-22) — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied to dynamic UPDATEs in core/user.py and pipeline files
+- API keys.json file removal (2026-03-22) — Verified no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified as data layer exposing database services
+- Core module organization (2026-03-22) — Distinguishing core/user.py (data access library) from routers/route_auth.py (API endpoints); confirmed core modules function as data layers exposing database services to routers
+- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing
 - Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still investigating
 - Memory items and project_facts table population (2026-03-18) — Tables created but update logic not yet implemented; blocking improved memory/context mechanism
 
@@ -62,7 +62,7 @@
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Backend module organization: routers/ for API endpoints, core/ for data access, agents/tools/ for implementations (tool_ prefix)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Query management: define SQL as module-level constants or centralized builders for maintainability
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ── SQL ── blocks; build_update() for dynamic UPDATEs
 - _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
 
 ---
@@ -157,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 00:47]** `claude_cli/claude`  
+→ Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
+← _All 5 agents are done. Here's the complete summary of what was applied across all 23 files:  ---  **SQL constants extracted:** ~150 queries named `_SQL_VERB_ENTITY`, all placed in a `# ── SQL ──` bloc_
+
 **[2026-03-22 00:41]** `claude_cli/claude`  
 → What about core/user , this is not suppose to be as a router ? I do do see router_user_api_key as well - it is not the s
 ← _Good question — same pattern as `core/auth.py` vs `routers/route_auth.py`:  **`core/user.py`** — data access library. Contains `create_user()`, `find_by_id()`, `authenticate()`, `list_users()`, `updat_
@@ -212,7 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 23:06]** `claude_cli/claude`  
 → I do see provider files unde data , I do see also provider_usage folder under data (which might make sense) and do see s
 ← _Done. Final layout:  ``` data/ ├── api_keys.json          ← server secrets (config) ├── coupons.json           ← billing config ├── pricing.json           ← markup/tier config ├── database.py         _
-
-**[2026-03-21 23:02]** `claude_cli/claude`  
-→ Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - currently there is o
-← _Summary of changes: - `tool_git.py`, `tool_file.py` (renamed from `git_tool.py`, `file_tool.py`) - `agents/mcp/tools/` deleted (was empty)_

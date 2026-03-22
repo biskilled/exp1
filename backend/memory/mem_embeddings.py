@@ -88,7 +88,7 @@ _SQL_GET_NODE_OUTPUTS = (
 
 def _openai_key() -> str | None:
     try:
-        from core.api_keys import get_key
+        from data.dl_api_keys import get_key
         return get_key("openai") or None
     except Exception:
         return None

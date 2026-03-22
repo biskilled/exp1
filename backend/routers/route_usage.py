@@ -21,7 +21,7 @@ from core.config import settings
 from core.auth import get_current_user
 from core.database import db
 from agents.providers.pr_pricing import calculate_cost
-from core.user import find_by_id, list_users
+from data.dl_user import find_by_id, list_users
 
 # ── SQL ────────────────────────────────────────────────────────────────────────
 

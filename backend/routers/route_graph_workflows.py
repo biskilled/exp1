@@ -958,7 +958,7 @@ async def approval_chat(
     messages.append({"role": "user", "content": body.message})
 
     # ── Call LLM ─────────────────────────────────────────────────────────────
-    from core.api_keys import get_key
+    from data.dl_api_keys import get_key
     from agents.providers import call_claude
     api_key = get_key("claude")
     resp = await call_claude(messages, system=node_prompt, api_key=api_key)

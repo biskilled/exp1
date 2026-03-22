@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from core.auth import get_current_user
 from core.database import db
 from agents.providers.pr_pricing import load_pricing
-from core.user import find_by_id, update_user
+from data.dl_user import find_by_id, update_user
 
 # ── SQL ────────────────────────────────────────────────────────────────────────
 

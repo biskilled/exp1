@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:46 UTC by aicli /memory_
+_Generated: 2026-03-22 00:47 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform (v2.2.0) that provides semantic search, workflow automation, and multi-provider LLM integration via MCP. The system combines FastAPI backend with PostgreSQL/pgvector semantic storage, Electron desktop UI with xterm.js terminal, and async DAG workflow execution. Current focus is stabilizing backend startup, resolving data persistence bugs in the tagging system, and completing memory_items/project_facts table population to enable improved context management.
+aicli is a shared AI memory platform enabling development teams to synchronize context across Claude CLI, LLM platforms, and MCP integrations. Built with FastAPI (Python) backend, Electron + Vanilla JS frontend, and dual JSONL/PostgreSQL+pgvector storage, it provides semantic search, project-scoped tag hierarchies, async DAG workflow execution, and role-based billing. Currently in active development with focus on query optimization, data persistence reliability, and memory synthesis improvements.
 
 ## Project Facts
 
@@ -88,15 +88,15 @@ Reviewer: ```json
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Backend module organization: routers/ for API endpoints, core/ for data access, agents/tools/ for implementations (tool_ prefix)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Query management: define SQL as module-level constants or centralized builders for maintainability
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ── SQL ── blocks; build_update() for dynamic UPDATEs
 - _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Applying dynamic query templating across router files; evaluating database.py for centralized query management and SQL optimization
-- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified
-- Core module organization (2026-03-22) — Distinguishing core/user.py (data access library) from routers/route_auth.py (API endpoints); applying consistent patterns across related modules
-- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure)
+- Query organization refactoring (2026-03-22) — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied to dynamic UPDATEs in core/user.py and pipeline files
+- API keys.json file removal (2026-03-22) — Verified no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified as data layer exposing database services
+- Core module organization (2026-03-22) — Distinguishing core/user.py (data access library) from routers/route_auth.py (API endpoints); confirmed core modules function as data layers exposing database services to routers
+- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing
 - Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still investigating
 - Memory items and project_facts table population (2026-03-18) — Tables created but update logic not yet implemented; blocking improved memory/context mechanism
 
@@ -104,11 +104,11 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(80 events, 70 commits)`
+- **hooks** `(82 events, 72 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(32 events, 30 commits)`
+- **low-level-design** `(34 events, 32 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -116,13 +116,13 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(74 events, 67 commits)`
-- **auth** `(72 events, 68 commits)`
-- **graph-workflow** `(64 events, 57 commits)`
-- **workflow-runner** `(60 events, 57 commits)`
+- **UI** `(76 events, 69 commits)`
+- **auth** `(74 events, 70 commits)`
+- **graph-workflow** `(66 events, 59 commits)`
+- **workflow-runner** `(62 events, 59 commits)`
 - **shared-memory** `(42 events, 37 commits)`
-- **billing** `(31 events, 30 commits)`
-- **mcp** `(31 events, 30 commits)`
+- **billing** `(33 events, 32 commits)`
+- **mcp** `(33 events, 32 commits)`
 - **embeddings** `(28 events, 27 commits)`
 - **tagging**
 - **test-picker-feature**
@@ -131,8 +131,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(71 events, 67 commits)`
-- **development** `(65 events, 58 commits)`
+- **discovery** `(73 events, 69 commits)`
+- **development** `(67 events, 60 commits)`
 - **prod**
 
 ### Task
@@ -210,4 +210,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `refactoring` — Query organization refactoring underway: applying dynamic query templating across router files and evaluating centralized database.py for SQL optimization. **[2026-03-22]** `bug-fix` — API keys.json file removal verified; 35+ import sites validated; core/api_keys.py patterns clarified to prevent legacy storage writes. **[2026-03-22]** `architecture` — Core module organization standardized: core/ contains data access libraries (no APIRouter), routers/ contain API endpoints; consistent patterns applied across user.py and related modules. **[2026-03-21]** `bug-fix` — Backend startup race condition partially resolved by modifying retry logic to handle empty project list on first load; AiCli visibility between Recent and main project list still under investigation. **[2026-03-21]** `bug` — Data persistence issue identified: tags saved in UI disappear when switching sessions; root cause unclear (UI rendering vs. database save failure). **[2026-03-18]** `implementation-pending` — memory_items and project_facts tables created but update logic not implemented; blocking improved memory/context mechanism. **[2026-03-18]** `bug-fix` — AttributeError resolved by removing stale db.ensure_project_schema() call; corrected to _ensure_shared_schema pattern. **[2026-03-18]** `bug-fix` — Memory endpoint CLAUDE.md template error fixed; code_dir variable properly scoped at line 1120. **[2026-03-10]** `optimization` — Load-once-on-access pattern implemented: tags/workflows cached in memory on project access, database updates only on explicit save to reduce redundant SQL calls. **[2026-03-10]** `feature` — Nested tag hierarchy approved for unlimited depth via parent_id FK; login remains first-level category.
+**[2026-03-22]** `development-history` — Completed query organization refactoring: extracted ~150 SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) across 23 files in # ── SQL ── blocks; applied build_update() for dynamic UPDATEs in core/user.py and pipeline files (5 agents done). **[2026-03-22]** `development-history` — Clarified core module architecture: core/user.py and similar core modules function as data access libraries exposing database services to routers; confirmed no remaining references to removed data/api_keys.json file (35+ import sites validated). **[2026-03-21]** `memory-summaries` — Modified backend startup retry logic to handle edge case where project list returns empty on first load; identified but unresolved issue: AiCli appears in Recent projects but not in main project view (suspected timing issue during initialization). **[2026-03-18]** `memory-summaries` — Fixed AttributeError in main.py by removing stale ensure_project_schema() call and using _ensure_shared_schema instead; fixed memory endpoint CLAUDE.md template error (code_dir variable scoping at line 1120). **[2026-03-10]** `memory-summaries` — Implemented load-once-on-access caching strategy to eliminate redundant SQL calls; expanded tag hierarchy beyond 2-level limitation with nested parent_id FK support; identified data persistence bug where tags disappear on session switch (root cause under investigation). **[2026-03-10]** `memory-summaries` — UI/UX improvements approved for Planner: increased action option visibility, replaced small buttons with 3-dot menu, added unarchive capability; improved AI suggestions visibility in /memory output with session context and GitHub links.

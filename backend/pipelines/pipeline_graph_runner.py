@@ -171,7 +171,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
               "structured": dict|None, "cost_usd": float,
               "input_tokens": int, "output_tokens": int, "status": str}
     """
-    from core.api_keys import get_key
+    from data.dl_api_keys import get_key
     from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
     from agents.providers.pr_costs import estimate_cost
 

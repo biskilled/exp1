@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from core.auth import get_current_user
-from core.api_keys import list_user_keys, save_user_key, delete_user_key
+from data.dl_api_keys import list_user_keys, save_user_key, delete_user_key
 
 router = APIRouter()
 

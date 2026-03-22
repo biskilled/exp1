@@ -943,7 +943,7 @@ async def _auto_suggest_tags(event_id: int, project: str, content: str) -> None:
     if not db.is_available():
         return
     try:
-        from core.api_keys import get_key
+        from data.dl_api_keys import get_key
         key = get_key("claude") or get_key("anthropic")
 
         # Get all active entity values for this project

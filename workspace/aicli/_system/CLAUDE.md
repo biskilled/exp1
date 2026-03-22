@@ -39,7 +39,7 @@ You are a senior Python software architect with deep expertise in:
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Backend module organization: routers/ for API endpoints, core/ for data access, agents/tools/ for implementations (tool_ prefix)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Query management: define SQL as module-level constants or centralized builders for maintainability
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ── SQL ── blocks; build_update() for dynamic UPDATEs
 - _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
 
 ---
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: I still see duplicate - under core I do see auth.py and under route - raute_auth.py why there are 2 
 - [2026-03-22] `claude_cli`: Basicly all files under route can use db quesries. Is there is any other place that using db queries
 - [2026-03-22] `claude_cli`: is there is a way to manage the queries better, maybe to define quesried at the begining of each fil
 - [2026-03-22] `claude_cli`: scope - apply to all files, Dynamic - try to use tamplate (maybe add that into database.py file). al
 - [2026-03-22] `claude_cli`: What about core/user , this is not suppose to be as a router ? I do do see router_user_api_key as we
+- [2026-03-22] `claude_cli`: Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

@@ -15,7 +15,7 @@ import urllib.error
 import json as _json
 from typing import Optional
 
-from core.api_keys import get_key
+from data.dl_api_keys import get_key
 
 # httpx is preferred but optional — falls back to stdlib urllib
 try:
