@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 11:00 UTC — do not edit manually.
+> Auto-generated 2026-03-22 22:14 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 249
-- **Last active**: 2026-03-22T10:52:25Z
+- **Sessions**: 251
+- **Last active**: 2026-03-22T11:03:49Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -42,12 +42,12 @@
 
 ## In Progress
 
-- Tags not loading via API (2026-03-22) — User reports no DB API calls for tags, only categories visible; investigating cache invalidation and tag query logic in planner initialization
-- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic with cache validation
-- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
+- Tags loading and cache invalidation (2026-03-22) — User reports no DB API calls for tags on planner load; identified _plannerState.project fallback category issue causing null IDs; implementing force-reload logic with cache validation
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to resolve display issues
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
-- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load
+- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load, preventing false 'project not found' errors
+- Project visibility bug investigation (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization
+- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per original specification
 
 ## Key Decisions
 
@@ -63,9 +63,9 @@
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
 
 ---
 
@@ -161,6 +161,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-22 10:53]** `claude_cli/claude`  
 → Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla
+← _Now update the auto-memory MEMORY.md with logging system details:_
 
 **[2026-03-22 10:44]** `claude_cli/claude`  
 → OK .so when user update from ui / run role push (can run role [role_name] push or role push for all rules - there will b

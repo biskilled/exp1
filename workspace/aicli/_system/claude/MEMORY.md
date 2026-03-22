@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 11:00 UTC by aicli /memory_
+_Generated: 2026-03-22 11:03 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform with Python CLI + FastAPI backend + Electron/Vanilla JS frontend, enabling collaborative work tracking and AI-assisted project management across Claude, OpenAI, and other LLM providers. The system uses dual storage (JSONL + PostgreSQL with pgvector), async DAG workflow execution, and MCP integration for semantic work item retrieval. Current focus is resolving tag cache invalidation issues in the planner UI, optimizing frontend performance, and implementing memory_items/project_facts table population for enhanced context management.
 
 ## Project Facts
 
@@ -85,28 +89,28 @@ Reviewer: ```json
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
 
 ## In Progress
 
-- Tags not loading via API (2026-03-22) — User reports no DB API calls for tags, only categories visible; investigating cache invalidation and tag query logic in planner initialization
-- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic with cache validation
-- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
+- Tags loading and cache invalidation (2026-03-22) — User reports no DB API calls for tags on planner load; identified _plannerState.project fallback category issue causing null IDs; implementing force-reload logic with cache validation
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to resolve display issues
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
-- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load
+- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load, preventing false 'project not found' errors
+- Project visibility bug investigation (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization
+- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per original specification
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(101 events, 89 commits)`
+- **hooks** `(103 events, 90 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(51 events, 49 commits)`
+- **low-level-design** `(52 events, 50 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -114,14 +118,14 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(94 events, 86 commits)`
-- **auth** `(93 events, 87 commits)`
-- **shared-memory** `(92 events, 86 commits)`
-- **graph-workflow** `(83 events, 76 commits)`
-- **workflow-runner** `(79 events, 76 commits)`
-- **tagging** `(51 events, 49 commits)`
-- **billing** `(50 events, 49 commits)`
-- **mcp** `(50 events, 49 commits)`
+- **auth** `(95 events, 88 commits)`
+- **UI** `(95 events, 87 commits)`
+- **shared-memory** `(93 events, 87 commits)`
+- **graph-workflow** `(84 events, 77 commits)`
+- **workflow-runner** `(80 events, 77 commits)`
+- **tagging** `(52 events, 50 commits)`
+- **billing** `(51 events, 50 commits)`
+- **mcp** `(51 events, 50 commits)`
 - **embeddings** `(28 events, 27 commits)`
 - **pagination**
 - **test-picker-feature**
@@ -129,8 +133,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(91 events, 86 commits)`
-- **development** `(85 events, 78 commits)`
+- **discovery** `(92 events, 87 commits)`
+- **development** `(91 events, 79 commits)`
 - **prod**
 
 ### Task
@@ -205,3 +209,7 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-22]** `in_progress` — Tag loading and cache invalidation identified as critical blocker; _plannerState.project fallback causing null category IDs; force-reload logic with cache validation being implemented to resolve tag picker visibility issue. **[2026-03-22]** `in_progress` — Frontend code optimization underway: XSS fixes in markdown.js, 30s timeout in api.js, JSDoc documentation, and setInterval cleanup in graph_workflow.js. **[2026-03-18]** `fix` — Backend startup race condition resolved; modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load, preventing false 'project not found' errors. **[2026-03-18]** `bug` — AttributeError in main.py fixed by removing stale db.ensure_project_schema() call (method doesn't exist; should use _ensure_shared_schema instead). **[2026-03-18]** `bug` — Memory endpoint CLAUDE.md template error fixed; undefined code_dir variable at line 1120 now properly scoped/defined from config. **[2026-03-18]** `investigation` — Project visibility bug identified; AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization pending further investigation. **[2026-03-10]** `database` — Database performance issue identified with multiple redundant SQL calls; implemented strategy to load data once on project access (tags into memory) and only update DB on explicit save actions. **[2026-03-10]** `bug` — Data persistence issue discovered; tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation. **[pending]** `implementation` — memory_items and project_facts table population not yet implemented despite schema existence; required for improved memory/context mechanism per specification. **[2026-03-10]** `architecture` — Tag hierarchy enhancement approved to support nested tags beyond current 2-level hierarchy (category → tag); login confirmed as first-level only.

@@ -33,7 +33,7 @@ from routers import (
     route_prompts, route_files, route_projects, route_config_sync, route_admin,
     route_git, route_billing, route_search, route_entities, route_graph_workflows,
     route_work_items, route_agent_roles, route_system_roles, route_documents,
-    route_user_api_keys, route_logs,
+    route_user_api_keys, route_logs, route_agents,
 )
 from pwa_router import router as pwa_router
 
@@ -99,6 +99,7 @@ app.include_router(route_system_roles.router,   prefix="/system-roles",   tags=[
 app.include_router(route_documents.router,      prefix="/documents",      tags=["documents"])
 app.include_router(route_user_api_keys.router,  prefix="/user/api-keys",  tags=["user_api_keys"])
 app.include_router(route_logs.router,           prefix="/logs",           tags=["logs"])
+app.include_router(route_agents.router,         prefix="/agents",         tags=["agents"])
 
 # Static files
 STATIC_DIR = Path(__file__).parent / "static"

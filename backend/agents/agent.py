@@ -1,28 +1,67 @@
 """
 agents/agent.py — Unified Agent class combining DB role + provider + tools + agentic loop.
 
-Replaces the scattered _execute_node + _load_role + _call patterns across
-graph_runner.py and work_item_pipeline.py with a single, composable abstraction.
+Two run modes:
+  run()          — general-purpose loop (used by pipeline graph nodes, work-item pipeline, etc.)
+  run_pipeline() — ReAct-enforced loop for orchestrated pipelines:
+                    • Hallucination guard: requires Thought text before every tool call
+                    • Loop detection: aborts if the same tool is called 3× in a row
+                    • Structured handoff: extracts JSON output and passes it to the next agent
+                    • Memory save: persists every handoff to pr_interactions
 
 Usage:
+    # General use
     agent = await Agent.from_role("Product Manager")
     result = await agent.run("Write acceptance criteria for: ...")
 
-    # With tools enabled:
-    agent = await Agent.from_role("Web Developer", with_tools=True)
-    result = await agent.run("Implement the feature", context={"plan": "..."})
+    # Pipeline / orchestrated use
+    agent = await Agent.from_role("Web Developer")
+    result = await agent.run_pipeline(task="Implement X", handoff=pm_output, project="myproject")
 """
 from __future__ import annotations
 
 import json
-import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
-log = logging.getLogger(__name__)
+from core.logger import get_logger
+
+log = get_logger(__name__)
 
 _CTX_CAP = 3000  # chars per prior-node output injected into user message
 
+# ── ReAct base injected into EVERY pipeline agent system prompt ────────────────
+# Role-specific content (job, must-nots, output format) lives in each YAML.
+# This base is prepended by run_pipeline() automatically.
+_REACT_SYSTEM_BASE = """\
+You are an aicli AI agent. You operate in a strict ReAct loop.
+
+## ReAct Rules
+- ALWAYS write Thought: before any action
+- ONE action per step — never batch multiple tool calls
+- ALWAYS wait for the Observation before the next Thought
+- NEVER assume a tool result — wait for the actual observation
+- NEVER fabricate file contents, test results, or memory
+- If unsure, call a tool. Never guess.
+
+## Anti-Hallucination Rules
+- If you don't know something, say "I need to check this" and call a tool
+- Never describe code you haven't read this session
+- Never claim tests pass without running them or reading diff output
+- Never reference a past decision unless memory confirms it exists
+- If memory returns empty, say "no relevant memory found" — don't invent context
+- If a tool fails, reason about why before retrying
+
+## Handoff Rules
+- Your final output MUST be a structured JSON object (no markdown fences)
+- Never pass raw conversation — only structured, verified facts
+- Include "confidence" (0.0–1.0) reflecting how certain you are
+- Include "memory_references" citing exactly what memory returned
+- Include your "role" field so the next agent knows who produced this
+"""
+
+# ── Simpler suffix used for run() (non-pipeline) ──────────────────────────────
 _REACT_SUFFIX = """\
 ## Reasoning Format
 
@@ -53,15 +92,35 @@ _SQL_LOAD_ROLE = """SELECT ar.system_prompt, ar.provider, ar.model,
                              ar.tools, ar.react, ar.max_iterations
                    LIMIT 1"""
 
+_SQL_SAVE_INTERACTION = """INSERT INTO pr_interactions
+    (client_id, project, source, session_id, content, metadata, created_at)
+    VALUES (1, %s, %s, %s, %s, %s::jsonb, NOW())"""
+
+
+# ── Data classes ──────────────────────────────────────────────────────────────
+
+@dataclass
+class ReactStep:
+    """One Thought → Action → Observation cycle in the ReAct loop."""
+    step_num: int
+    thought: str                   # text the model wrote before the tool call
+    action_name: str               # tool name
+    action_args: dict              # tool input
+    observation: str               # tool result
+    hallucination_guard_fired: bool = False
+
 
 @dataclass
 class AgentResult:
-    output: str
+    output: str                                    # raw text output
+    structured_output: dict | None = None          # parsed JSON handoff (pipeline mode)
+    steps: list[ReactStep] = field(default_factory=list)  # ReAct trace
     tool_calls_made: list = field(default_factory=list)
     cost_usd: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
-    status: str = "done"  # "done" | "error"
+    status: str = "done"   # "done" | "loop_detected" | "max_steps_reached" | "error"
+    error: str | None = None
 
 
 class Agent:
@@ -95,8 +154,8 @@ class Agent:
     ) -> "Agent":
         """Load from mng_agent_roles + mng_system_roles JOIN.
 
-        Falls back to a sensible default when the DB is unavailable or the
-        role is not found.  Respects tools/react/max_iterations from the DB.
+        Falls back to a sensible default when DB is unavailable or role is not found.
+        Respects tools/react/max_iterations from the DB.
         """
         from core.database import db
         from core.config import settings
@@ -105,7 +164,7 @@ class Agent:
         provider       = "claude"
         model          = settings.haiku_model
         role_tool_names: list[str] = []
-        react          = False
+        react          = True
         max_iterations = 10
 
         if db.is_available():
@@ -115,18 +174,18 @@ class Agent:
                         cur.execute(_SQL_LOAD_ROLE, (role_name,))
                         row = cur.fetchone()
                         if row:
-                            base           = row[0] or ""
-                            provider       = row[1] or "claude"
-                            model          = row[2] or settings.haiku_model
-                            sys_content    = row[3] or ""
+                            base            = row[0] or ""
+                            provider        = row[1] or "claude"
+                            model           = row[2] or settings.haiku_model
+                            sys_content     = row[3] or ""
                             role_tool_names = row[4] or []
-                            react          = bool(row[5])
-                            max_iterations = int(row[6] or 10)
-                            system_prompt  = (
+                            react           = bool(row[5])
+                            max_iterations  = int(row[6] or 10)
+                            system_prompt   = (
                                 f"{base}\n\n{sys_content}".strip() if sys_content else base
                             )
             except Exception as e:
-                log.debug(f"Agent.from_role DB error for '{role_name}': {e}")
+                log.debug("Agent.from_role DB error for '%s': %s", role_name, e)
 
         # Build tool definitions filtered to this role's allowed tool list
         tools: list[dict] = []
@@ -151,6 +210,107 @@ class Agent:
             max_iterations=max_iterations,
         )
 
+    # ── Prompt construction ───────────────────────────────────────────────────
+
+    def build_prompt(
+        self,
+        task: str,
+        handoff: dict | None = None,
+    ) -> tuple[str, list[dict]]:
+        """Build (system_prompt, messages) for pipeline mode.
+
+        System = _REACT_SYSTEM_BASE + role-specific system_prompt.
+        Handoff from previous agent is injected as structured JSON in the user message.
+        """
+        system = f"{_REACT_SYSTEM_BASE}\n\n{self.system_prompt}".strip()
+
+        user_parts = [f"## Task\n{task}"]
+        if handoff:
+            user_parts.append(
+                f"## Input from previous agent\n```json\n{json.dumps(handoff, indent=2)}\n```"
+            )
+
+        messages = [{"role": "user", "content": "\n\n".join(user_parts)}]
+        return system, messages
+
+    # ── Response parsing helpers ───────────────────────────────────────────────
+
+    @staticmethod
+    def _extract_thought(content: str) -> str:
+        """Return the text portion of a response (before/between tool calls)."""
+        return (content or "").strip()
+
+    @staticmethod
+    def _parse_structured_output(content: str) -> dict | None:
+        """Try to extract a JSON handoff object from the final response text.
+
+        Handles both raw JSON and JSON wrapped in markdown fences.
+        Returns the dict only if it looks like a structured handoff
+        (has 'role' or 'confidence' or 'verdict' or 'work_items').
+        """
+        if not content:
+            return None
+        # Strip markdown fences
+        text = content.strip()
+        fence = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
+        if fence:
+            text = fence.group(1).strip()
+        # Find first { ... } block
+        start = text.find("{")
+        if start == -1:
+            return None
+        try:
+            data = json.loads(text[start:])
+            if isinstance(data, dict) and (
+                "role" in data or "confidence" in data
+                or "verdict" in data or "work_items" in data
+            ):
+                return data
+        except (json.JSONDecodeError, ValueError):
+            pass
+        return None
+
+    @staticmethod
+    def _detect_loop(steps: list[ReactStep]) -> bool:
+        """Return True if the same tool was called 3 times in a row."""
+        if len(steps) < 3:
+            return False
+        last_tools = [s.action_name for s in steps[-3:]]
+        return len(set(last_tools)) == 1
+
+    # ── Memory save ───────────────────────────────────────────────────────────
+
+    async def _save_to_memory(
+        self,
+        task: str,
+        output: dict,
+        project: str,
+    ) -> None:
+        """Persist the agent's structured handoff to pr_interactions."""
+        from core.database import db
+        import uuid
+        if not db.is_available():
+            return
+        try:
+            content = json.dumps(output)
+            metadata = json.dumps({
+                "task": task[:500],
+                "role": self.name,
+                "agent_handoff": True,
+                "tags": [self.name.lower().replace(" ", "_"), "handoff", "react-output"],
+            })
+            session_id = str(uuid.uuid4())
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        _SQL_SAVE_INTERACTION,
+                        (project, f"agent:{self.name}", session_id, content, metadata),
+                    )
+                conn.commit()
+            log.debug("Agent '%s' saved handoff to pr_interactions (project=%s)", self.name, project)
+        except Exception as e:
+            log.warning("Agent '%s' failed to save to memory: %s", self.name, e)
+
     # ── LLM dispatch ──────────────────────────────────────────────────────────
 
     async def _call_provider(
@@ -158,26 +318,29 @@ class Agent:
         messages: list[dict],
         max_tokens: int,
         api_key: str | None,
+        system_override: str | None = None,
     ) -> dict:
         """Dispatch to the correct provider and return a standard response dict."""
+        system = system_override if system_override is not None else self.system_prompt
+
         if self.provider in ("claude", "anthropic", ""):
             from agents.providers.pr_claude import call_claude
             return await call_claude(
-                messages, system=self.system_prompt,
+                messages, system=system,
                 model=self.model, tools=self.tools or None,
                 max_tokens=max_tokens, api_key=api_key,
             )
         elif self.provider == "openai":
             from agents.providers.pr_openai import call_openai
             return await call_openai(
-                messages, system=self.system_prompt,
+                messages, system=system,
                 model=self.model, tools=self.tools or None,
                 max_tokens=max_tokens, api_key=api_key,
             )
         elif self.provider == "deepseek":
             from agents.providers.pr_deepseek import call_deepseek
             return await call_deepseek(
-                messages, system=self.system_prompt,
+                messages, system=system,
                 tools=self.tools or None,
                 max_tokens=max_tokens, api_key=api_key,
             )
@@ -185,21 +348,22 @@ class Agent:
             from agents.providers.pr_gemini import call_gemini
             user_text = " ".join(
                 m["content"] for m in messages if m.get("role") == "user"
+                and isinstance(m.get("content"), str)
             )
             return await call_gemini(
-                user_text, system=self.system_prompt,
+                user_text, system=system,
                 model=self.model, api_key=api_key,
             )
         elif self.provider == "grok":
             from agents.providers.pr_grok import call_grok
             return await call_grok(
-                messages, system=self.system_prompt,
+                messages, system=system,
                 model=self.model, max_tokens=max_tokens, api_key=api_key,
             )
         else:
             raise ValueError(f"Unknown provider: {self.provider!r} for agent '{self.name}'")
 
-    # ── Agentic loop ──────────────────────────────────────────────────────────
+    # ── Standard agentic loop (used by graph nodes, work-item pipeline) ───────
 
     async def run(
         self,
@@ -210,11 +374,8 @@ class Agent:
     ) -> AgentResult:
         """Run the agent with an optional context dict.
 
-        Agentic loop:
-        1. Inject context into user message (each prior output capped at _CTX_CAP chars)
-        2. Call provider (with tools if configured)
-        3. If stop_reason == "tool_use": invoke tool handler → append result → re-call
-        4. Repeat until "end_turn" or max tool calls exceeded
+        Standard loop: context injection → provider call → tool dispatch → repeat.
+        Uses simple _REACT_SUFFIX (not the full _REACT_SYSTEM_BASE).
         """
         from data.dl_api_keys import get_key
         from agents.providers.pr_costs import estimate_cost
@@ -241,32 +402,27 @@ class Agent:
         full_user_msg = "\n".join(parts)
 
         messages: list[dict] = [{"role": "user", "content": full_user_msg}]
-
         tool_calls_made: list[dict] = []
         total_input = total_output = 0
 
-        # Inject ReAct reasoning format suffix into effective system prompt
+        # Inject ReAct reasoning suffix if configured
         effective_system = self.system_prompt
         if self.react and self.tools:
             effective_system = self.system_prompt + "\n\n" + _REACT_SUFFIX
 
-        # Temporarily override system_prompt for _call_provider
-        _saved_system = self.system_prompt
-        self.system_prompt = effective_system
-
         for _ in range(self.max_iterations + 1):
-            resp = await self._call_provider(messages, max_tokens, api_key)
-            total_input += resp.get("input_tokens", 0)
+            resp = await self._call_provider(messages, max_tokens, api_key,
+                                             system_override=effective_system)
+            total_input  += resp.get("input_tokens", 0)
             total_output += resp.get("output_tokens", 0)
 
-            tool_calls = resp.get("tool_calls", [])
+            tool_calls  = resp.get("tool_calls", [])
             stop_reason = resp.get("stop_reason", "end_turn")
 
             if stop_reason != "tool_use" or not tool_calls:
-                # Terminal turn — restore system prompt and return content
-                self.system_prompt = _saved_system
                 cost = 0.0
                 try:
+                    from agents.providers.pr_costs import estimate_cost
                     cost = estimate_cost(
                         self.provider, self.model or self.provider,
                         total_input, total_output,
@@ -279,20 +435,15 @@ class Agent:
                     cost_usd=cost,
                     input_tokens=total_input,
                     output_tokens=total_output,
-                    status="done",
                 )
 
-            # Tool use turn — invoke each tool and append results
             from agents.tools import invoke_tool
-
-            # Append assistant turn with tool calls
             messages.append({"role": "assistant", "content": resp.get("raw", resp)})
-
             tool_results: list[dict] = []
             for tc in tool_calls:
-                tool_name = getattr(tc, "name", None) or tc.get("name", "")
+                tool_name  = getattr(tc, "name", None) or tc.get("name", "")
                 tool_input = getattr(tc, "input", None) or tc.get("input", {})
-                tool_id = getattr(tc, "id", None) or tc.get("id", "")
+                tool_id    = getattr(tc, "id", None) or tc.get("id", "")
                 result_text = invoke_tool(tool_name, tool_input)
                 tool_calls_made.append({"name": tool_name, "input": tool_input})
                 tool_results.append({
@@ -300,16 +451,172 @@ class Agent:
                     "tool_use_id": tool_id,
                     "content": result_text,
                 })
-
             messages.append({"role": "user", "content": tool_results})
 
-        self.system_prompt = _saved_system
-        # Exceeded max iterations — return last content
         return AgentResult(
             output=resp.get("content", ""),
             tool_calls_made=tool_calls_made,
-            cost_usd=0.0,
             input_tokens=total_input,
             output_tokens=total_output,
-            status="done",
+            status="max_steps_reached",
+        )
+
+    # ── Pipeline ReAct loop ────────────────────────────────────────────────────
+
+    async def run_pipeline(
+        self,
+        task: str,
+        handoff: dict | None = None,
+        project: str = "aicli",
+        max_tokens: int = 4096,
+        api_key: str | None = None,
+    ) -> AgentResult:
+        """ReAct-enforced pipeline run with structured handoff.
+
+        Differences from run():
+        - Uses _REACT_SYSTEM_BASE + role prompt as system (full anti-hallucination rules)
+        - Tracks Thought/Action/Observation as ReactSteps
+        - Hallucination guard: injects a warning if model calls a tool without a Thought
+        - Loop detection: aborts if same tool called 3× in a row
+        - Parses final response as structured JSON handoff
+        - Saves structured output to pr_interactions (memory)
+        """
+        from data.dl_api_keys import get_key
+        from agents.tools import invoke_tool
+
+        if api_key is None:
+            api_key = get_key(self.provider) or get_key("claude")
+
+        system, messages = self.build_prompt(task, handoff)
+
+        steps: list[ReactStep] = []
+        tool_calls_made: list[dict] = []
+        total_input = total_output = 0
+        hallucination_guard_count = 0
+        _MAX_GUARD_RETRIES = 3
+        resp: dict = {}
+
+        log.info("Agent '%s' starting pipeline run (project=%s, max_iter=%d)",
+                 self.name, project, self.max_iterations)
+
+        for iteration in range(self.max_iterations + 1):
+            resp = await self._call_provider(messages, max_tokens, api_key,
+                                             system_override=system)
+            total_input  += resp.get("input_tokens", 0)
+            total_output += resp.get("output_tokens", 0)
+
+            tool_calls  = resp.get("tool_calls", [])
+            stop_reason = resp.get("stop_reason", "end_turn")
+            content     = resp.get("content", "")  # text portion of response
+
+            # ── Terminal turn ──────────────────────────────────────────────────
+            if stop_reason != "tool_use" or not tool_calls:
+                structured = self._parse_structured_output(content)
+                log.info(
+                    "Agent '%s' finished: %d steps, structured=%s, tokens=%d/%d",
+                    self.name, len(steps), bool(structured), total_input, total_output,
+                )
+                if structured:
+                    await self._save_to_memory(task, structured, project)
+
+                cost = 0.0
+                try:
+                    from agents.providers.pr_costs import estimate_cost
+                    cost = estimate_cost(
+                        self.provider, self.model or self.provider,
+                        total_input, total_output,
+                    )
+                except Exception:
+                    pass
+
+                return AgentResult(
+                    output=content,
+                    structured_output=structured,
+                    steps=steps,
+                    tool_calls_made=tool_calls_made,
+                    cost_usd=cost,
+                    input_tokens=total_input,
+                    output_tokens=total_output,
+                    status="done",
+                )
+
+            # ── Hallucination guard ────────────────────────────────────────────
+            # The model called a tool but wrote no reasoning text first.
+            if not content.strip() and hallucination_guard_count < _MAX_GUARD_RETRIES:
+                hallucination_guard_count += 1
+                log.warning(
+                    "Agent '%s' step %d: tool call without Thought — firing hallucination guard (%d/%d)",
+                    self.name, iteration, hallucination_guard_count, _MAX_GUARD_RETRIES,
+                )
+                # Append the assistant turn that has tool_use, then inject the guard
+                messages.append({"role": "assistant", "content": resp.get("raw", resp)})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "⚠️ You called a tool without writing 'Thought:' first. "
+                        "You MUST explain your reasoning before every tool call. "
+                        "Please write your Thought, then call the tool again."
+                    ),
+                })
+                continue  # re-call LLM — don't execute the tool yet
+
+            # ── Loop detection ─────────────────────────────────────────────────
+            if self._detect_loop(steps):
+                log.error(
+                    "Agent '%s' loop detected at step %d — aborting",
+                    self.name, iteration,
+                )
+                return AgentResult(
+                    output=content,
+                    steps=steps,
+                    tool_calls_made=tool_calls_made,
+                    input_tokens=total_input,
+                    output_tokens=total_output,
+                    status="loop_detected",
+                    error=f"Same tool called 3× in a row at step {iteration}",
+                )
+
+            # ── Execute tools ──────────────────────────────────────────────────
+            thought = self._extract_thought(content)
+            messages.append({"role": "assistant", "content": resp.get("raw", resp)})
+            tool_results: list[dict] = []
+
+            for tc in tool_calls:
+                tool_name  = getattr(tc, "name", None) or tc.get("name", "")
+                tool_input = getattr(tc, "input", None) or tc.get("input", {})
+                tool_id    = getattr(tc, "id", None) or tc.get("id", "")
+
+                log.debug("Agent '%s' step %d — tool: %s, args: %s",
+                          self.name, iteration, tool_name, json.dumps(tool_input)[:200])
+
+                observation = invoke_tool(tool_name, tool_input)
+                tool_calls_made.append({"name": tool_name, "input": tool_input})
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
+                    "content": observation,
+                })
+
+                steps.append(ReactStep(
+                    step_num=len(steps) + 1,
+                    thought=thought,
+                    action_name=tool_name,
+                    action_args=tool_input,
+                    observation=observation[:2000],  # cap for storage
+                    hallucination_guard_fired=(hallucination_guard_count > 0),
+                ))
+                thought = ""  # only first tool in batch gets the thought
+
+            messages.append({"role": "user", "content": tool_results})
+
+        # Max iterations exceeded
+        log.warning("Agent '%s' exceeded max_iterations=%d", self.name, self.max_iterations)
+        return AgentResult(
+            output=resp.get("content", ""),
+            steps=steps,
+            tool_calls_made=tool_calls_made,
+            input_tokens=total_input,
+            output_tokens=total_output,
+            status="max_steps_reached",
+            error=f"Exceeded {self.max_iterations} iterations",
         )
