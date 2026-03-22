@@ -17,6 +17,186 @@ from pydantic import BaseModel
 from core.config import settings
 from core.database import db
 
+# ── SQL ──────────────────────────────────────────────────────────────────────
+
+_SQL_GET_ENTITY_SUMMARY = (
+    """SELECT c.name AS category, c.icon,
+              v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
+              COUNT(DISTINCT et.event_id)                                          AS event_count,
+              COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
+       FROM mng_entity_categories c
+       JOIN mng_entity_values v ON v.category_id = c.id
+       LEFT JOIN pr_event_tags et ON et.entity_value_id = v.id
+       LEFT JOIN pr_events ev ON ev.id = et.event_id AND ev.client_id=1 AND ev.project=%s
+       WHERE c.client_id=1 AND v.project=%s AND v.status != 'archived'
+       GROUP BY c.name, c.icon, v.id, v.name, v.description, v.status, v.due_date, v.parent_id
+       ORDER BY c.name, v.status, COUNT(DISTINCT et.event_id) DESC"""
+)
+
+_SQL_GET_SESSIONS_UNSUMMARIZED = (
+    """SELECT i.session_id, COUNT(*) AS cnt,
+              ARRAY_AGG(i.id ORDER BY i.created_at) AS ids,
+              STRING_AGG(
+                  '[' || LEFT(i.created_at::text, 16) || '] Q: '
+                  || LEFT(COALESCE(i.prompt,''),300)
+                  || CASE WHEN i.response != '' THEN E'\n A: ' || LEFT(i.response,200) ELSE '' END,
+                  E'\n\n' ORDER BY i.created_at
+              ) AS history_text
+       FROM pr_interactions i
+       WHERE i.client_id=1 AND i.project=%s
+         AND i.event_type='prompt'
+         AND i.session_id IS NOT NULL
+         AND NOT EXISTS (
+             SELECT 1 FROM pr_memory_items m
+             WHERE m.client_id=1 AND m.project=i.project
+               AND m.scope='session'
+               AND m.scope_ref=i.session_id
+         )
+       GROUP BY i.session_id
+       HAVING COUNT(*) >= 3
+       LIMIT 10"""
+)
+
+_SQL_INSERT_MEMORY_ITEM_SESSION = (
+    """INSERT INTO pr_memory_items
+           (client_id, project, scope, scope_ref, content, source_ids,
+            reviewer_score, reviewer_critique)
+       VALUES (1, %s,'session',%s,%s,%s::uuid[],%s,%s)
+       ON CONFLICT DO NOTHING
+       RETURNING id"""
+)
+
+_SQL_GET_WORK_ITEM_FOR_FEATURE_MEMORY = (
+    "SELECT name, description FROM pr_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s"
+)
+
+_SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
+    """SELECT m.content
+       FROM pr_memory_items m
+       WHERE m.client_id=1 AND m.project=%s AND m.scope='session'
+         AND EXISTS (
+             SELECT 1 FROM pr_interaction_tags it
+             WHERE it.work_item_id=%s::uuid
+               AND it.interaction_id = ANY(m.source_ids)
+         )
+       ORDER BY m.created_at
+       LIMIT 10"""
+)
+
+_SQL_INSERT_MEMORY_ITEM_FEATURE = (
+    """INSERT INTO pr_memory_items
+           (client_id, project, scope, scope_ref, content, reviewer_score, reviewer_critique)
+       VALUES (1, %s,'feature',%s,%s,%s,%s)
+       RETURNING id"""
+)
+
+_SQL_GET_FACT_EXTRACTOR_ROLE = (
+    """SELECT system_prompt, model, provider FROM mng_agent_roles
+       WHERE client_id=1 AND project='_global'
+         AND name='internal_project_fact' AND is_active=TRUE
+       LIMIT 1"""
+)
+
+_SQL_GET_RECENT_MEMORY_ITEMS = (
+    """SELECT id::text, content FROM pr_memory_items
+       WHERE client_id=1 AND project=%s
+       ORDER BY created_at DESC LIMIT 6"""
+)
+
+_SQL_GET_CURRENT_FACTS = (
+    """SELECT fact_key, fact_value FROM pr_project_facts
+       WHERE client_id=1 AND project=%s AND valid_until IS NULL
+       ORDER BY fact_key"""
+)
+
+_SQL_EXPIRE_OLD_FACT = (
+    """UPDATE pr_project_facts SET valid_until=NOW()
+       WHERE client_id=1 AND project=%s
+         AND fact_key=%s AND valid_until IS NULL
+         AND fact_value != %s"""
+)
+
+_SQL_INSERT_NEW_FACT = (
+    """INSERT INTO pr_project_facts
+           (client_id, project, fact_key, fact_value, source_memory_id)
+       VALUES (1, %s, %s, %s, %s::uuid)
+       ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL
+       DO NOTHING"""
+)
+
+_SQL_GET_DISTILLED_FACTS = (
+    """SELECT fact_key, fact_value FROM pr_project_facts
+       WHERE client_id=1 AND project=%s AND valid_until IS NULL
+       ORDER BY fact_key"""
+)
+
+_SQL_GET_DISTILLED_MEMORY_ITEMS = (
+    """SELECT content, scope, scope_ref, created_at FROM pr_memory_items
+       WHERE client_id=1 AND project=%s
+       ORDER BY created_at DESC LIMIT 8"""
+)
+
+_SQL_GET_EXISTING_ENTITY_VALUES = (
+    """SELECT id, name FROM mng_entity_values
+       WHERE client_id=1 AND project=%s AND status='active'
+       ORDER BY name LIMIT 50"""
+)
+
+_SQL_GET_ACTIVE_ENTITY_VALUES_FOR_AUTOTAG = (
+    """SELECT v.id, c.name AS category, v.name
+       FROM mng_entity_values v
+       JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+       WHERE v.client_id=1 AND v.project=%s AND v.status='active'
+       ORDER BY c.name, v.name"""
+)
+
+_SQL_GET_UNTAGGED_EVENTS = (
+    """SELECT e.id, e.event_type, e.title
+       FROM pr_events e
+       WHERE e.client_id=1 AND e.project=%s
+         AND NOT EXISTS (SELECT 1 FROM pr_event_tags et WHERE et.event_id=e.id)
+         {since_filter}
+       ORDER BY e.created_at DESC LIMIT 30"""
+)
+
+_SQL_INSERT_EVENT_TAG = (
+    "INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged) "
+    "VALUES (%s,%s,TRUE) ON CONFLICT DO NOTHING"
+)
+
+_SQL_GET_NEW_EVENTS_FOR_RELATIONSHIPS = (
+    """SELECT id, event_type, source_id, title, content, metadata
+       FROM pr_events
+       WHERE client_id=1 AND project=%s {where_clause}
+       ORDER BY created_at DESC LIMIT 50"""
+)
+
+_SQL_INSERT_EVENT_LINK = (
+    "INSERT INTO pr_event_links (from_event_id, to_event_id, link_type) "
+    "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING"
+)
+
+_SQL_GET_UNEMBEDDED_COMMITS = (
+    """SELECT c.commit_hash FROM pr_commits c
+       WHERE c.client_id=1 AND c.project=%s
+         AND NOT EXISTS (
+           SELECT 1 FROM pr_embeddings e
+           WHERE e.client_id=1 AND e.project=%s
+             AND e.source_type='commit' AND e.source_id=c.commit_hash
+       )
+       ORDER BY c.committed_at DESC LIMIT 30"""
+)
+
+_SQL_COUNT_INTERACTIONS_TOTAL = (
+    "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt'"
+)
+
+_SQL_COUNT_INTERACTIONS_SINCE = (
+    "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 router = APIRouter()
 log = logging.getLogger(__name__)
 
@@ -1328,20 +1508,7 @@ async def generate_memory(project_name: str):
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        """SELECT c.name AS category, c.icon,
-                                  v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
-                                  COUNT(DISTINCT et.event_id)                                          AS event_count,
-                                  COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
-                           FROM mng_entity_categories c
-                           JOIN mng_entity_values v ON v.category_id = c.id
-                           LEFT JOIN pr_event_tags et ON et.entity_value_id = v.id
-                           LEFT JOIN pr_events ev ON ev.id = et.event_id AND ev.client_id=1 AND ev.project=%s
-                           WHERE c.client_id=1 AND v.project=%s AND v.status != 'archived'
-                           GROUP BY c.name, c.icon, v.id, v.name, v.description, v.status, v.due_date, v.parent_id
-                           ORDER BY c.name, v.status, COUNT(DISTINCT et.event_id) DESC""",
-                        (project_name, project_name),
-                    )
+                    cur.execute(_SQL_GET_ENTITY_SUMMARY, (project_name, project_name))
                     entity_rows = cur.fetchall()
             # Build per-category groups
             _cats: dict[str, list] = {}
