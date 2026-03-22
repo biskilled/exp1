@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Tags persistence debugging (2026-03-22) — Planner tag loading issue identified: _plannerState.project fallback categories (null IDs) not triggering cache reload; fix implements force-reload logic in _initPlanner with auto-select of first real category
-- Planner UI tag display (2026-03-22) — Categories loading but all tags not visible; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch
-- Backend module restructuring finalization (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; completed agents/ reorganization; removed stale core/encryption.py
-- Database initialization race condition resolution (2026-03-22) — Verified PostgreSQL agent roles have real IDs (10+), router endpoints query proper tables; removed stale fallback workarounds from planner initialization
-- UI code optimization and dead code removal (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup for memory leaks in graph_workflow.js
-- Memory items and project_facts table population (pending) — Per specification, these tables should be updated to enable improved memory/context mechanism; logic not yet implemented
+- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic in _initPlanner with cache validation check and auto-select of first real category
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch; anyValuesFallback check prevents stale cache
+- Backend module restructuring completion (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; reorganized agents/ folder; removed stale core/encryption.py
+- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
+- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js to prevent memory leaks
+- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per specification

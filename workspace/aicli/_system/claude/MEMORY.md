@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 02:44 UTC by aicli /memory_
+_Generated: 2026-03-22 02:51 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates with Claude CLI and other LLM platforms, providing unified memory management, project tagging, graph-based workflows, and MCP integration. Currently in active development (v2.2.0) with focus on resolving tag persistence issues, completing backend module restructuring, and ensuring database initialization stability across session switches.
+aicli is a shared AI memory platform enabling persistent context across Claude CLI and multiple LLM platforms through dual-layer JSONL + PostgreSQL storage, JWT-authenticated FastAPI backend, and Electron UI with graph-based workflow visualization. Currently in active development (v2.2.0) with focus on stabilizing tag persistence caching, completing backend module restructuring with consistent naming conventions, and implementing pending memory synthesis table population to enable improved context-aware agent capabilities.
 
 ## Project Facts
 
@@ -56,7 +56,7 @@ Reviewer: ```json
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; encrypted API keys
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
@@ -65,7 +65,7 @@ Reviewer: ```json
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml for IDE support
+- **config_management**: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
@@ -73,7 +73,7 @@ Reviewer: ```json
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with agent roles initialized; per-project and shared schema tables
+- **database**: PostgreSQL 15+ with per-project and shared schema tables; agent roles initialized
 
 ## Key Decisions
 
@@ -83,34 +83,34 @@ Reviewer: ```json
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
-- Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
+- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds needed
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons/promotions managed in SQL tables
-- Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections
+- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
 
 ## In Progress
 
-- Tags persistence debugging (2026-03-22) — Planner tag loading issue identified: _plannerState.project fallback categories (null IDs) not triggering cache reload; fix implements force-reload logic in _initPlanner with auto-select of first real category
-- Planner UI tag display (2026-03-22) — Categories loading but all tags not visible; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch
-- Backend module restructuring finalization (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; completed agents/ reorganization; removed stale core/encryption.py
-- Database initialization race condition resolution (2026-03-22) — Verified PostgreSQL agent roles have real IDs (10+), router endpoints query proper tables; removed stale fallback workarounds from planner initialization
-- UI code optimization and dead code removal (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup for memory leaks in graph_workflow.js
-- Memory items and project_facts table population (pending) — Per specification, these tables should be updated to enable improved memory/context mechanism; logic not yet implemented
+- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic in _initPlanner with cache validation check and auto-select of first real category
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch; anyValuesFallback check prevents stale cache
+- Backend module restructuring completion (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; reorganized agents/ folder; removed stale core/encryption.py
+- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
+- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js to prevent memory leaks
+- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per specification
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(95 events, 85 commits)`
+- **hooks** `(99 events, 88 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(47 events, 45 commits)`
+- **low-level-design** `(50 events, 48 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -118,23 +118,23 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(90 events, 82 commits)`
-- **auth** `(89 events, 83 commits)`
-- **shared-memory** `(88 events, 82 commits)`
-- **graph-workflow** `(79 events, 72 commits)`
-- **workflow-runner** `(75 events, 72 commits)`
-- **billing** `(46 events, 45 commits)`
-- **mcp** `(46 events, 45 commits)`
+- **UI** `(93 events, 85 commits)`
+- **auth** `(92 events, 86 commits)`
+- **shared-memory** `(91 events, 85 commits)`
+- **graph-workflow** `(82 events, 75 commits)`
+- **workflow-runner** `(78 events, 75 commits)`
+- **billing** `(49 events, 48 commits)`
+- **mcp** `(49 events, 48 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **tagging**
+- **tagging** `(1 events)`
 - **test-picker-feature**
 - **dropbox**
 - **pagination**
 
 ### Phase
 
-- **discovery** `(87 events, 82 commits)`
-- **development** `(80 events, 73 commits)`
+- **discovery** `(90 events, 85 commits)`
+- **development** `(83 events, 76 commits)`
 - **prod**
 
 ### Task
@@ -212,4 +212,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `claude_cli` — Planner tags loading resolved: identified fallback category fallback (null IDs) preventing cache reload; implemented force-reload logic in `_initPlanner` with auto-selection of first real category to prevent blank right pane and ensure full tag hierarchy visibility. **[2026-03-22]** `backend validation` — Confirmed PostgreSQL agent roles initialized with real IDs (10+); router endpoints verified querying proper per-project tables; removed stale fallback workarounds from previous code. **[2026-03-21]** `module restructuring` — Completed backend reorganization: renamed data access files with `dl_` prefix, pipeline files with `pipeline_` prefix, provider files with `pr_` prefix, tool files with `tool_` prefix; extracted SQL queries to module-level constants (_SQL_VERB_ENTITY pattern); removed stale core/encryption.py. **[2026-03-22]** `UI optimization` — Fixed XSS vulnerabilities in markdown.js; added 30s timeout to api.js; added JSDoc documentation; cleaned up setInterval in graph_workflow.js to prevent memory leaks. **[2026-03-18]** `memory endpoint fix` — Fixed undefined `code_dir` template variable at line 1120 in CLAUDE.md; variable now properly scoped from config. **[2026-03-10]** `data persistence` — Identified tags disappear on session switch; implemented load-once-on-access, update-on-save pattern to reduce redundant SQL calls and improve performance.
+**[2026-03-22]** `claude_cli` — Tags persistence bug root cause identified: fallback categories with null IDs blocking cache reload; implemented force-reload detection using anyValuesFallback flag and cache validation in _initPlanner to auto-select first real category. **[2026-03-22]** `claude_cli` — Tag visibility on UI fixed by ensuring full tag hierarchy loads on session/project switch through cache invalidation and re-render flow; planner now forces reload when stale cache detected. **[2026-03-21-22]** `development` — Backend module restructuring completed: all files renamed with semantic prefixes (dl_, tool_, pipeline_, pr_, mem_); SQL queries extracted to module-level constants; agents/ folder fully reorganized and stale encryption.py removed. **[2026-03-22]** `development` — Database initialization race condition resolved by confirming PostgreSQL agent roles have real IDs (10+) and router endpoints query correct per-project tables; eliminated stale fallback workarounds. **[2026-03-22]** `development` — Frontend code optimized: XSS vulnerabilities fixed in markdown.js, 30s timeout added to api.js, JSDoc documentation added, setInterval memory leaks cleaned up in graph_workflow.js. **[2026-03-10]** `session-summary` — Tag hierarchy enhancement approved for nested structure beyond current 2-level; UI/UX improvements prioritized (visibility of action options, 3-dot menu buttons, unarchive ability). **[2026-03-10]** `session-summary` — Data persistence issue documented: tags saved in UI disappear on session switch (DB save vs. rendering issue unclear); AI suggestions visibility and labeling enhanced with session context and GitHub commit links. **[2026-03-14]** `project-facts` — Confirmed auth pattern uses first-level hierarchy login; backend startup race condition handled via retry logic for empty project lists; memory management follows load-once-on-access, update-on-save pattern. **[pending]** `implementation-gap` — memory_items and project_facts tables exist in schema but update logic not yet implemented; required for improved memory/context mechanism per original specification. **[2026-03-22]** `feature-request` — User inquired about creating screens to run aicli commands from Claude CLI (e.g., `/ac /memory` to run memory function); scope and feasibility not yet addressed.

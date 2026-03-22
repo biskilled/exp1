@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 02:46 UTC — do not edit manually.
+> Auto-generated 2026-03-22 02:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 241
-- **Last active**: 2026-03-22T02:44:42Z
+- **Sessions**: 242
+- **Last active**: 2026-03-22T02:51:37Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -21,7 +21,7 @@
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; encrypted API keys
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
@@ -30,7 +30,7 @@
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml for IDE support
+- **config_management**: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
@@ -38,16 +38,16 @@
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with agent roles initialized; per-project and shared schema tables
+- **database**: PostgreSQL 15+ with per-project and shared schema tables; agent roles initialized
 
 ## In Progress
 
-- Tags persistence debugging (2026-03-22) — Planner tag loading issue identified: _plannerState.project fallback categories (null IDs) not triggering cache reload; fix implements force-reload logic in _initPlanner with auto-select of first real category
-- Planner UI tag display (2026-03-22) — Categories loading but all tags not visible; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch
-- Backend module restructuring finalization (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; completed agents/ reorganization; removed stale core/encryption.py
-- Database initialization race condition resolution (2026-03-22) — Verified PostgreSQL agent roles have real IDs (10+), router endpoints query proper tables; removed stale fallback workarounds from planner initialization
-- UI code optimization and dead code removal (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup for memory leaks in graph_workflow.js
-- Memory items and project_facts table population (pending) — Per specification, these tables should be updated to enable improved memory/context mechanism; logic not yet implemented
+- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic in _initPlanner with cache validation check and auto-select of first real category
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch; anyValuesFallback check prevents stale cache
+- Backend module restructuring completion (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; reorganized agents/ folder; removed stale core/encryption.py
+- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
+- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js to prevent memory leaks
+- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per specification
 
 ## Key Decisions
 
@@ -57,15 +57,15 @@
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
-- Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
+- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds needed
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons/promotions managed in SQL tables
-- Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections
+- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
 
 ---
 
@@ -159,6 +159,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 02:49]** `claude_cli/claude`  
+→ Is it possilbe to creatre skeen that run my aiCli commands from Claude CLI - for example /ac /memory - will run my memor
+
+**[2026-03-22 02:48]** `claude_cli/claude`  
+→ This is still not working. I dont see tags loading at all (just empty categories)
+← _Good — the backend correctly returns `fallback: True` when DB is unavailable.  The full fix chain now is: - **`tagCache.js`**: checks `vData.fallback` per-category — if any values came back as fallbac_
+
 **[2026-03-22 02:39]** `claude_cli/claude`  
 → Planner still dont load all tags , all I see is ctegories
 ← _`_plannerState.project` is set. The fix is correct.  The changes make three improvements:  1. **`_initPlanner`**: detects fallback categories (null IDs) and force-reloads the cache with `force=true` b_
@@ -210,11 +217,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:57]** `claude_cli/claude`  
 → For what encryption is used for ? also auth - is is looks like a general auth , it is not part of route ? 
 ← _Done. `data/` layer now has three files:  ``` data/   dl_user.py      — user CRUD   dl_api_keys.py  — encrypted key storage     dl_seq.py       — atomic sequential ID allocation ```  `core/` is now pu_
-
-**[2026-03-22 00:54]** `claude_cli/claude`  
-→ ok. option B 
-← _That's just a stale comment in `dl_seq.py` itself — the docstring example still says `from core.seq`. Fix it:_
-
-**[2026-03-22 00:54]** `claude_cli/claude`  
-→ I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 files ?
-← _Done. The structure is now:  ``` core/      → infrastructure: database.py, auth.py, config.py, encryption.py, seq.py data/      → data layer:     dl_user.py, dl_api_keys.py  (+ future dl_events.py, dl_

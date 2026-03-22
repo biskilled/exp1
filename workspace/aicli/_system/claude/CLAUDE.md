@@ -32,15 +32,15 @@ You are a senior Python software architect with deep expertise in:
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
-- Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
+- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds needed
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons/promotions managed in SQL tables
-- Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections
+- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent 
-- [2026-03-22] `claude_cli`: I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading 
 - [2026-03-22] `claude_cli`: PostgreSql is up and running, why do you build a workaround. it looks like router mappig not query t
 - [2026-03-22] `claude_cli`: I do see categroeis uploaded in Planner tab, but I do not see all the tags in each categroy. Also I 
 - [2026-03-22] `claude_cli`: Planner still dont load all tags , all I see is ctegories
+- [2026-03-22] `claude_cli`: This is still not working. I dont see tags loading at all (just empty categories)
+- [2026-03-22] `claude_cli`: Is it possilbe to creatre skeen that run my aiCli commands from Claude CLI - for example /ac /memory
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
