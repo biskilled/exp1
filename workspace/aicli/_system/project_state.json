@@ -20,14 +20,15 @@
     "mcp": "Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)",
     "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
     "database_schema": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
-    "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml and VS Code config for dev environment",
+    "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml for IDE support",
     "db_tables": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
     "llm_provider_adapters": "agents/providers/ with pr_ prefix for pricing and provider implementations",
     "pipeline_engine": "Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix",
     "pipeline_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation",
     "billing_storage": "data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables",
     "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
-    "dev_environment": "PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root"
+    "dev_environment": "PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root",
+    "database": "PostgreSQL 15+ with agent roles initialized; per-project and shared schema tables"
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ contains backend logic; workspace/ stores per-project content; _system/ holds project state",
@@ -37,14 +38,14 @@
     "All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none",
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization",
     "Memory synthesis: Claude Haiku for dual-layer output (raw JSONL \u2192 interaction_tags \u2192 5 files); smart chunking per language/section",
-    "Backend modular organization: core/ for infrastructure (auth, config, database), data/ for data access (dl_ prefix), routers/ for HTTP endpoints, agents/ for business logic, pipelines/ for workflow engine",
-    "SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization",
-    "Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)",
+    "Backend modular organization: core/ for infrastructure, data/ for data access (dl_ prefix), routers/ for HTTP endpoints, agents/ for business logic",
+    "Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
     "Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials",
     "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/",
+    "SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization",
+    "PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds needed",
     "File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons/promotions managed in SQL tables",
-    "Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections",
-    "PyProject.toml and VS Code config for IDE support; absolute imports via sys.path; PyCharm: Mark backend/ as Sources Root"
+    "Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -73,12 +74,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Backend startup optimization and role initialization (2026-03-22) \u2014 Fixed slow loading; PostgreSQL agent roles configuration required; Planner, Pipeline, History/Runs endpoints verified working",
-    "UI code optimization (2026-03-22) \u2014 Dead code removal (explorer.js, workflow.js, Cytoscape CDN); XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation for 12 view files; setInterval cleanup in graph_workflow.js for memory leaks",
-    "Backend module restructuring completion (2026-03-21-22) \u2014 Moved agents/tools, agents/mcp under agents/; renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; implemented build_update() for dynamic queries",
-    "Data layer consolidation (2026-03-21-22) \u2014 Created dl_user.py, dl_api_keys.py (with encryption), dl_seq.py; removed core/encryption.py; merged encryption into dl_api_keys.py; moved provider_usage files to data/provider_usage/",
-    "Configuration and authentication cleanup (2026-03-21-22) \u2014 Removed stale api_keys.json; externalized sensitive data to .env; implemented user-scoped encrypted API key storage in database; added PyProject.toml for IDE support",
-    "Tags persistence and project visibility debugging (2026-03-18-22) \u2014 Tags saved in UI disappearing on session switch; AiCli appearing in Recent but not as active project; race condition fixes in initialization; continue investigating rendering vs. database save timing"
+    "PostgreSQL agent roles initialization verification (2026-03-22) \u2014 Confirmed DB is up, roles have real IDs (id: 10+), and router endpoints query proper tables; investigation of why workarounds appeared in previous code",
+    "Backend endpoint validation (2026-03-22) \u2014 Planner, Pipeline, History/Runs endpoints verified working; confirmed query paths are correct; removed stale fallback logic",
+    "UI code optimization and dead code removal (2026-03-22) \u2014 XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup for memory leaks in graph_workflow.js",
+    "Tags persistence debugging (2026-03-18-22) \u2014 Tags saved in UI disappearing on session switch; investigating render timing vs. database save failures; race condition in initialization suspected",
+    "Backend module restructuring finalization (2026-03-21-22) \u2014 Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; completed agents/ reorganization",
+    "Data layer consolidation and encryption (2026-03-21-22) \u2014 Created dl_api_keys.py with encryption; moved provider_usage files to data/provider_usage/; removed stale core/encryption.py"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -110,7 +111,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-22T02:07:20Z",
+  "last_memory_run": "2026-03-22T02:30:33Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic; workspace/ stores per-project content; _system/ holds project state",
@@ -120,22 +121,22 @@
       "All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none",
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization",
       "Memory synthesis: Claude Haiku for dual-layer output (raw JSONL \u2192 interaction_tags \u2192 5 files); smart chunking per language/section",
-      "Backend modular organization: core/ for infrastructure (auth, config, database), data/ for data access (dl_ prefix), routers/ for HTTP endpoints, agents/ for business logic, pipelines/ for workflow engine",
-      "SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization",
-      "Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)",
+      "Backend modular organization: core/ for infrastructure, data/ for data access (dl_ prefix), routers/ for HTTP endpoints, agents/ for business logic",
+      "Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
       "Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials",
       "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/",
+      "SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization",
+      "PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds needed",
       "File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons/promotions managed in SQL tables",
-      "Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections",
-      "PyProject.toml and VS Code config for IDE support; absolute imports via sys.path; PyCharm: Mark backend/ as Sources Root"
+      "Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections"
     ],
     "in_progress": [
-      "Backend startup optimization and role initialization (2026-03-22) \u2014 Fixed slow loading; PostgreSQL agent roles configuration required; Planner, Pipeline, History/Runs endpoints verified working",
-      "UI code optimization (2026-03-22) \u2014 Dead code removal (explorer.js, workflow.js, Cytoscape CDN); XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation for 12 view files; setInterval cleanup in graph_workflow.js for memory leaks",
-      "Backend module restructuring completion (2026-03-21-22) \u2014 Moved agents/tools, agents/mcp under agents/; renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; implemented build_update() for dynamic queries",
-      "Data layer consolidation (2026-03-21-22) \u2014 Created dl_user.py, dl_api_keys.py (with encryption), dl_seq.py; removed core/encryption.py; merged encryption into dl_api_keys.py; moved provider_usage files to data/provider_usage/",
-      "Configuration and authentication cleanup (2026-03-21-22) \u2014 Removed stale api_keys.json; externalized sensitive data to .env; implemented user-scoped encrypted API key storage in database; added PyProject.toml for IDE support",
-      "Tags persistence and project visibility debugging (2026-03-18-22) \u2014 Tags saved in UI disappearing on session switch; AiCli appearing in Recent but not as active project; race condition fixes in initialization; continue investigating rendering vs. database save timing"
+      "PostgreSQL agent roles initialization verification (2026-03-22) \u2014 Confirmed DB is up, roles have real IDs (id: 10+), and router endpoints query proper tables; investigation of why workarounds appeared in previous code",
+      "Backend endpoint validation (2026-03-22) \u2014 Planner, Pipeline, History/Runs endpoints verified working; confirmed query paths are correct; removed stale fallback logic",
+      "UI code optimization and dead code removal (2026-03-22) \u2014 XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup for memory leaks in graph_workflow.js",
+      "Tags persistence debugging (2026-03-18-22) \u2014 Tags saved in UI disappearing on session switch; investigating render timing vs. database save failures; race condition in initialization suspected",
+      "Backend module restructuring finalization (2026-03-21-22) \u2014 Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; completed agents/ reorganization",
+      "Data layer consolidation and encryption (2026-03-21-22) \u2014 Created dl_api_keys.py with encryption; moved provider_usage files to data/provider_usage/; removed stale core/encryption.py"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -144,16 +145,15 @@
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database": "PostgreSQL 15+ with agent roles initialized; per-project and shared schema tables",
       "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; encrypted API keys in database",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku for dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
-      "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)",
       "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
-      "dev_environment": "PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root"
+      "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml for IDE support"
     },
-    "project_summary": "aicli is a shared AI memory platform with a FastAPI backend, PostgreSQL semantic storage, and Electron/Vanilla JS frontend. It provides multi-provider LLM integration (Claude, OpenAI, etc.), async DAG workflow execution, encrypted per-user API key management, and dual-layer memory synthesis. Currently optimizing backend startup performance, consolidating data layer architecture with consistent dl_ prefixes, and cleaning UI code with JSDoc documentation and memory leak fixes.",
-    "memory_digest": "**[2026-03-22]** `backend optimization` \u2014 Fixed slow backend startup; verified Planner, Pipeline, History/Runs endpoints working; PostgreSQL agent roles configuration still required. **[2026-03-22]** `UI code cleanup` \u2014 Completed dead code removal (explorer.js, workflow.js, Cytoscape CDN); added XSS fixes (markdown.js), 30s timeout (api.js), JSDoc for 12 view files, setInterval cleanup (graph_workflow.js) to fix memory leaks. **[2026-03-21-22]** `backend restructure` \u2014 Reorganized agents/tools and agents/mcp under agents/; implemented consistent file prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted 150+ SQL queries as module-level constants; implemented build_update() for safe dynamic UPDATE statements. **[2026-03-21-22]** `data layer consolidation` \u2014 Created dl_user.py, dl_api_keys.py (with encryption), dl_seq.py; removed core/encryption.py and stale api_keys.json; moved provider_usage to data/provider_usage/; all sensitive data now in .env. **[2026-03-21-22]** `configuration & IDE support` \u2014 Added PyProject.toml and VS Code launch.json for proper IDE debugging; fixed absolute import paths (sys.path via backend/ as Sources Root in PyCharm); externalized config to config.py. **[2026-03-18-22]** `session & visibility bugs` \u2014 Investigated tags disappearing on session switch (UI save vs DB persistence timing); AiCli appearing in Recent but not as active project; fixed race conditions in startup initialization; continues investigation needed."
+    "project_summary": "aicli is a shared AI memory platform that aggregates development history, embeddings, and project state across multiple LLM interfaces (Claude CLI, platforms). It combines JSONL event logs with PostgreSQL semantic search (pgvector), provides authenticated multi-user access with role-based billing, and implements async DAG workflows for AI-assisted task planning and code analysis. Current focus is stabilizing backend endpoints, fixing tag persistence race conditions, and optimizing UI performance.",
+    "memory_digest": "**[2026-03-22]** `claude_cli` \u2014 Verified PostgreSQL agent roles are properly initialized with real IDs; confirmed router endpoints query correct per-project tables; eliminated speculation about missing workarounds. **[2026-03-22]** `code audit` \u2014 Fixed UI XSS vulnerabilities in markdown.js; added 30s API timeout; documented JSDoc for 12 view files; cleaned setInterval leaks in graph_workflow.js. **[2026-03-21-22]** `backend refactor` \u2014 Completed modular restructuring: moved agents/tools and agents/mcp under agents/; renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted all SQL queries to module-level constants with _SQL_VERB_ENTITY pattern; implemented build_update() for dynamic query building. **[2026-03-21-22]** `data layer` \u2014 Created dl_api_keys.py with encryption; consolidated provider_usage tracking to data/provider_usage/; removed redundant core/encryption.py; implemented user-scoped encrypted API key storage. **[2026-03-18-22]** `tags persistence bug` \u2014 Identified race condition: tags saved in UI disappear on session switch; suspected timing issue between render and database save; AiCli project appears in Recent but not as active\u2014continues investigation. **[2026-03-18]** `startup fixes` \u2014 Removed stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md code_dir variable scoping (line 1120); added retry logic to handle empty project list on first load."
   }
 }

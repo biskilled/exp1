@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 02:07 UTC — do not edit manually.
+> Auto-generated 2026-03-22 02:30 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 237
-- **Last active**: 2026-03-22T02:06:58Z
+- **Sessions**: 238
+- **Last active**: 2026-03-22T02:30:08Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -30,7 +30,7 @@
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml and VS Code config for dev environment
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml for IDE support
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
@@ -38,15 +38,16 @@
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
+- **database**: PostgreSQL 15+ with agent roles initialized; per-project and shared schema tables
 
 ## In Progress
 
-- Backend startup optimization and role initialization (2026-03-22) — Fixed slow loading; PostgreSQL agent roles configuration required; Planner, Pipeline, History/Runs endpoints verified working
-- UI code optimization (2026-03-22) — Dead code removal (explorer.js, workflow.js, Cytoscape CDN); XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation for 12 view files; setInterval cleanup in graph_workflow.js for memory leaks
-- Backend module restructuring completion (2026-03-21-22) — Moved agents/tools, agents/mcp under agents/; renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; implemented build_update() for dynamic queries
-- Data layer consolidation (2026-03-21-22) — Created dl_user.py, dl_api_keys.py (with encryption), dl_seq.py; removed core/encryption.py; merged encryption into dl_api_keys.py; moved provider_usage files to data/provider_usage/
-- Configuration and authentication cleanup (2026-03-21-22) — Removed stale api_keys.json; externalized sensitive data to .env; implemented user-scoped encrypted API key storage in database; added PyProject.toml for IDE support
-- Tags persistence and project visibility debugging (2026-03-18-22) — Tags saved in UI disappearing on session switch; AiCli appearing in Recent but not as active project; race condition fixes in initialization; continue investigating rendering vs. database save timing
+- PostgreSQL agent roles initialization verification (2026-03-22) — Confirmed DB is up, roles have real IDs (id: 10+), and router endpoints query proper tables; investigation of why workarounds appeared in previous code
+- Backend endpoint validation (2026-03-22) — Planner, Pipeline, History/Runs endpoints verified working; confirmed query paths are correct; removed stale fallback logic
+- UI code optimization and dead code removal (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup for memory leaks in graph_workflow.js
+- Tags persistence debugging (2026-03-18-22) — Tags saved in UI disappearing on session switch; investigating render timing vs. database save failures; race condition in initialization suspected
+- Backend module restructuring finalization (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; completed agents/ reorganization
+- Data layer consolidation and encryption (2026-03-21-22) — Created dl_api_keys.py with encryption; moved provider_usage files to data/provider_usage/; removed stale core/encryption.py
 
 ## Key Decisions
 
@@ -57,14 +58,14 @@
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Backend modular organization: core/ for infrastructure (auth, config, database), data/ for data access (dl_ prefix), routers/ for HTTP endpoints, agents/ for business logic, pipelines/ for workflow engine
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
+- Backend modular organization: core/ for infrastructure, data/ for data access (dl_ prefix), routers/ for HTTP endpoints, agents/ for business logic
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
+- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds needed
 - File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons/promotions managed in SQL tables
 - Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections
-- PyProject.toml and VS Code config for IDE support; absolute imports via sys.path; PyCharm: Mark backend/ as Sources Root
 
 ---
 
@@ -158,6 +159,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 02:07]** `claude_cli/claude`  
+→ PostgreSql is up and running, why do you build a workaround. it looks like router mappig not query the proper tables
+← _DB is connected — roles have real IDs (`id: 10`, no fallback). Let me verify all the previously-failing endpoints:_
+
 **[2026-03-22 02:04]** `claude_cli/claude`  
 → I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading 
 ← _Good — `source-tags` already has the fallback. Now restart and test all four:_
@@ -213,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:47]** `claude_cli/claude`  
 → Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
 ← _All 5 agents are done. Here's the complete summary of what was applied across all 23 files:  ---  **SQL constants extracted:** ~150 queries named `_SQL_VERB_ENTITY`, all placed in a `# ── SQL ──` bloc_
-
-**[2026-03-22 00:41]** `claude_cli/claude`  
-→ What about core/user , this is not suppose to be as a router ? I do do see router_user_api_key as well - it is not the s
-← _Good question — same pattern as `core/auth.py` vs `routers/route_auth.py`:  **`core/user.py`** — data access library. Contains `create_user()`, `find_by_id()`, `authenticate()`, `list_users()`, `updat_
