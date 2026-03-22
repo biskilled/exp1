@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 02:55 UTC — do not edit manually.
+> Auto-generated 2026-03-22 02:57 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 243
-- **Last active**: 2026-03-22T02:54:44Z
+- **Sessions**: 244
+- **Last active**: 2026-03-22T02:55:49Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -42,30 +42,30 @@
 
 ## In Progress
 
-- Tags not loading via API (2026-03-22) — User reports no DB API calls for tags, only categories visible; investigating cache invalidation and tag query logic in planner initialization; suspected issue in tags/_fetch or _initPlanner category selection fallback
-- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic in _initPlanner with cache validation check and auto-select of first real category
-- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch
-- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js to prevent memory leaks
-- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
-- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per specification
+- Tags not loading via API (2026-03-22) — User reports no DB API calls for tags, only categories visible; investigating cache invalidation and tag query logic in planner initialization
+- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic with cache validation
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
+- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
+- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
+- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load
 
 ## Key Decisions
 
-- Engine/workspace separation: aicli/ contains backend logic; workspace/ stores per-project content; _system/ holds project state
-- Dual storage: JSONL (history.jsonl with rotation) for primary; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and indexed per-project tables
-- Electron UI with xterm.js + Monaco + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
+- Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
+- Dual storage: JSONL (history.jsonl with rotation) for primary history; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and per-project indexed tables
+- Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
-- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
+- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
-- Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage tables
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
+- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
 
 ---
 
@@ -161,6 +161,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-22 02:53]** `claude_cli/claude`  
 → I dont see any tags loading, it looks like there is no api call to the db . all I can see is just the categoroes 
+← _The Vite dev server (HMR) should hot-reload automatically. The Planner tab should now work — switch to another tab and back, or just click a category.  The root cause: **all previous fixes were applie_
 
 **[2026-03-22 02:49]** `claude_cli/claude`  
 → Is it possilbe to creatre skeen that run my aiCli commands from Claude CLI - for example /ac /memory - will run my memor

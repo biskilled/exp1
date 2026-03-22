@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 02:54 UTC by aicli /memory_
+_Generated: 2026-03-22 02:56 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling Claude CLI and LLM platforms to maintain persistent project context across sessions. It features dual-layer storage (JSONL + PostgreSQL with pgvector), async DAG workflow orchestration with Cytoscape visualization, per-project tagging and memory synthesis, MCP integration for work item retrieval, and a full-stack auth system (JWT + role-based access). Current focus is resolving tag loading issues in the planner UI and implementing remaining memory population logic.
+aicli is a shared AI memory platform combining a FastAPI backend with PostgreSQL (pgvector) semantic search, Electron/Vanilla JS frontend, and MCP integration for work item management. Currently at v2.2.0, the system manages per-project development history, tagged events, embeddings, and workflow execution via async DAG pipelines. Active development focuses on resolving tag persistence/visibility issues in the planner UI and implementing memory synthesis for project facts.
 
 ## Project Facts
 
@@ -77,40 +77,40 @@ Reviewer: ```json
 
 ## Key Decisions
 
-- Engine/workspace separation: aicli/ contains backend logic; workspace/ stores per-project content; _system/ holds project state
-- Dual storage: JSONL (history.jsonl with rotation) for primary; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and indexed per-project tables
-- Electron UI with xterm.js + Monaco + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
+- Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
+- Dual storage: JSONL (history.jsonl with rotation) for primary history; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and per-project indexed tables
+- Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
-- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
+- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
-- Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage tables
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
+- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
 
 ## In Progress
 
-- Tags not loading via API (2026-03-22) — User reports no DB API calls for tags, only categories visible; investigating cache invalidation and tag query logic in planner initialization; suspected issue in tags/_fetch or _initPlanner category selection fallback
-- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic in _initPlanner with cache validation check and auto-select of first real category
-- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch
-- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js to prevent memory leaks
-- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
-- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per specification
+- Tags not loading via API (2026-03-22) — User reports no DB API calls for tags, only categories visible; investigating cache invalidation and tag query logic in planner initialization
+- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic with cache validation
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
+- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
+- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
+- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(99 events, 88 commits)`
+- **hooks** `(100 events, 89 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(50 events, 48 commits)`
+- **low-level-design** `(51 events, 49 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -118,23 +118,23 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(93 events, 85 commits)`
-- **auth** `(92 events, 86 commits)`
-- **shared-memory** `(91 events, 85 commits)`
-- **graph-workflow** `(82 events, 75 commits)`
-- **workflow-runner** `(78 events, 75 commits)`
-- **billing** `(49 events, 48 commits)`
-- **mcp** `(49 events, 48 commits)`
+- **UI** `(94 events, 86 commits)`
+- **auth** `(93 events, 87 commits)`
+- **shared-memory** `(92 events, 86 commits)`
+- **graph-workflow** `(83 events, 76 commits)`
+- **workflow-runner** `(79 events, 76 commits)`
+- **tagging** `(50 events, 49 commits)`
+- **billing** `(50 events, 49 commits)`
+- **mcp** `(50 events, 49 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **tagging** `(1 events)`
 - **test-picker-feature**
 - **dropbox**
 - **pagination**
 
 ### Phase
 
-- **discovery** `(90 events, 85 commits)`
-- **development** `(83 events, 76 commits)`
+- **discovery** `(91 events, 86 commits)`
+- **development** `(85 events, 78 commits)`
 - **prod**
 
 ### Task
@@ -212,4 +212,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `in_progress` — Tags API fetch failing silently in planner; categories load but tags don't appear in UI; root cause identified as cache fallback to null project state; implemented force-reload with validation. **[2026-03-22]** `frontend_optimization` — Fixed XSS in markdown.js, added 30s API timeout, added JSDoc docs, cleaned up setInterval leaks in graph_workflow.js. **[2026-03-22]** `database_initialization` — Confirmed PostgreSQL agent roles have real IDs; router queries now correctly target per-project tables; removed fallback workarounds. **[2026-03-21-22]** `backend_restructuring` — Completed module renaming with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; reorganized agents/ folder. **[2026-03-10]** `memory_persistence` — Identified tags disappear on session switch; designed load-once-on-access pattern with explicit save updates to prevent stale cache. **[pending]** `memory_population` — memory_items and project_facts tables exist in schema but update logic not implemented; blocks improved context mechanism.
+**[2026-03-22]** `bug fix` — Identified tags not loading via API due to _plannerState.project fallback category issue causing null IDs; implemented force-reload logic with cache validation check in _initPlanner. **[2026-03-22]** `frontend optimization` — XSS fixes in markdown.js, 30s timeout in api.js, JSDoc documentation, and setInterval cleanup in graph_workflow.js to prevent memory leaks. **[2026-03-18]** `backend stability` — Removed stale db.ensure_project_schema() call in main.py (method doesn't exist); fixed memory endpoint CLAUDE.md template error (code_dir variable scoping at line 1120); corrected backend startup race condition in _continueToApp() retry logic for empty projects list. **[2026-03-10]** `database performance` — Implemented load-once-on-access pattern for tags into memory with update-on-save to reduce redundant SQL calls; approved nested tags feature beyond 2-level hierarchy. **[2026-03-10]** `UI/UX` — Increased visibility of planner action options by replacing small buttons with 3-dot menu; added ability to unarchive archived items. **[pending]** `architecture` — memory_items and project_facts tables exist but update logic not implemented; required for improved memory/context mechanism per specification.

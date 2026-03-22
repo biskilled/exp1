@@ -1,7 +1,5 @@
 ---
-name: ac
 description: Run aicli backend commands — memory, status, pipeline, search, commit, entities
-user-invocable: true
 ---
 
 # aicli Command Bridge
