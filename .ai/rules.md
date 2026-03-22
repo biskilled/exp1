@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 01:11 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 01:18 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -49,12 +49,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update()
 - _ensure_shared_schema pattern for shared database initialization
-- Data layer owns encrypted API key storage; all encryption logic merged into dl_api_keys.py
+- Data layer owns encrypted API key storage; all encryption logic in dl_api_keys.py
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] For what encryption is used for ? also auth - is is looks like a general auth , it is not part of route ?
 - [2026-03-22] Ok. ,erge encryption to dl_api_keys
 - [2026-03-22] Is it worth to change core to shared (folder name) ?
 - [2026-03-22] I do see that when you use import you are using relative import for example from core.config import settings. which are 
 - [2026-03-22] Can you add the pyproject.toml (can be pushed to git as well)
+- [2026-03-22] Now, code looks more optimised. can you do the same for the ui code- make sure all code is well defined, documented, the

@@ -1,11 +1,10 @@
 /**
- * prompts.js — "Roles" tab: manage DB-backed agent roles + workspace prompt files.
+ * prompts.js — Roles tab: DB-backed agent role editor and workspace prompt file browser.
  *
- * Left panel has two sections:
- *   1. Agent Roles (DB) — create/edit/delete named roles with system prompts, model, provider
- *   2. Prompt Files — file-browser for workspace prompt markdown files (legacy/custom)
- *
- * Right panel shows the selected role form or file editor.
+ * Two-panel layout: left sidebar lists Agent Roles (DB) and Prompt Files (workspace markdown);
+ * right panel shows the selected role form (system prompt, provider, model, IO schema) or
+ * file editor with live markdown preview and save/delete actions.
+ * Rendered via: renderPrompts() called from main.js navigateTo().
  */
 import { api }      from '../utils/api.js';
 import { toast }    from '../utils/toast.js';

@@ -1,3 +1,12 @@
+/**
+ * state.js — Central reactive application state
+ *
+ * Holds the single shared `state` object (auth, navigation, projects, settings)
+ * and exposes `setState(updates)` to merge patches and notify all subscribers.
+ * Use `subscribe(fn)` to register a listener that fires on every state change;
+ * the returned function unsubscribes. No framework required — plain pub/sub.
+ */
+
 import { BACKEND_URL } from '../utils/config.js';
 
 // Central reactive state

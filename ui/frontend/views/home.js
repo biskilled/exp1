@@ -1,3 +1,12 @@
+/**
+ * home.js — Home screen: project list and quick-open dashboard.
+ *
+ * Renders the aicli landing page showing recently opened projects first, followed by
+ * all available projects in alphabetical order, with create-project and open-project
+ * actions.
+ * Rendered via: renderHome() called from main.js navigateTo().
+ */
+
 import { state } from '../stores/state.js';
 import { api, getRecentProjects } from '../utils/api.js';
 import { toast } from '../utils/toast.js';

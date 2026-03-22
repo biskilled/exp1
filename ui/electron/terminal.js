@@ -1,16 +1,9 @@
 /**
- * Terminal IPC handlers — xterm.js + node-pty.
+ * electron/terminal.js — node-pty terminal session manager
  *
- * Spawns a Python CLI session (python3.12 cli.py) inside the Electron window.
- * The renderer uses xterm.js to display and interact with it.
- *
- * IPC events:
- *   terminal:spawn   → spawns a new pty, returns { id }
- *   terminal:write   → send keystrokes to pty
- *   terminal:resize  → resize pty
- *   terminal:kill    → kill pty
- *   terminal:data:<id>  → emitted when pty produces output
- *   terminal:exit:<id>  → emitted when process exits
+ * Handles IPC events for terminal:spawn / terminal:write / terminal:resize / terminal:kill.
+ * Creates PTY sessions (xterm-256color) and forwards data/exit events back to the renderer.
+ * Gracefully stubs all handlers if node-pty is not installed.
  */
 
 const { ipcMain } = require("electron");

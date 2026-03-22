@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Project configuration management — Add pyproject.toml and VS Code config files (.vscode/) to support local development; ensure safe to commit with no secrets
+- UI code optimization (2026-03-22) — Dead code removal (explorer.js, workflow.js, Cytoscape CDN), utils cleanup with XSS fixes and 30s timeout, JSDoc documentation for all 12 view files, memory leak fixes in graph_workflow.js setInterval cleanup
 - Data persistence bug investigation — Tags saved in UI disappear on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
+- Backend startup race condition — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent vs. main list under investigation
+- Project configuration management — Add pyproject.toml and VS Code config files (.vscode/) to support local development; ensure safe to commit with no secrets
 - Memory items and project_facts population — Tables exist but update logic not implemented; required for improved memory/context mechanism
-- Backend startup race condition — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
 - Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries) across 23 files; 5 agents complete with build_update() applied
-- Data layer refactoring — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files; core/ now pure infrastructure

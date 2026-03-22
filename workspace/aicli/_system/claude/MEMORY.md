@@ -5,7 +5,7 @@ _Generated: 2026-03-22 01:18 UTC by aicli /memory_
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates with Claude CLI and other LLM platforms, featuring a dual-storage architecture (JSONL + PostgreSQL with pgvector), async DAG workflow execution, role-based auth (JWT), and an Electron-based UI with semantic search capabilities. The system manages per-project data (commits, events, embeddings, tags) and synthesizes memory via Claude Haiku; current development focus is on UI optimization, fixing data persistence bugs (tag disappearance on session switch), implementing memory table population, and resolving backend startup timing issues.
+aicli is a shared AI memory platform enabling Claude CLI and LLM users to maintain semantic context across sessions via dual-layer storage (JSONL + PostgreSQL with pgvector embeddings). The system combines an async DAG workflow executor, role-based authentication, multi-provider LLM support, and an Electron desktop UI with xterm.js terminal emulation and graph workflow visualization. Currently in active development focusing on UI code optimization, resolving data persistence bugs, and implementing memory_items/project_facts population for enhanced context retrieval.
 
 ## Project Facts
 
@@ -86,19 +86,19 @@ Reviewer: ```json
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
-- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/ for implementations
+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update()
 - _ensure_shared_schema pattern for shared database initialization
 - Data layer owns encrypted API key storage; all encryption logic in dl_api_keys.py
 
 ## In Progress
 
-- UI code optimization (2026-03-22) — Dead code removal, utils cleanup with XSS fixes, JSDoc documentation across 12 view files, memory leak fixes in graph_workflow.js setInterval handlers
-- Backend startup race condition handling — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent list vs. main project view timing issue under investigation
-- Data persistence debugging — Tags saved in UI disappear on session switch; unclear if rendering or database save failure; project visibility timing still pending resolution
-- Memory items and project_facts population — Tables exist but update logic not implemented; required for memory/context mechanism to function
-- Query organization refactoring — Applied dynamic query templating and SQL constants extraction across 23 files; 5 agents complete with build_update() applied
-- Project configuration management — pyproject.toml and VS Code config files (.vscode/) added for local development; ensuring safe to commit with no secrets
+- UI code optimization (2026-03-22) — Dead code removal (explorer.js, workflow.js, Cytoscape CDN), utils cleanup with XSS fixes and 30s timeout, JSDoc documentation for all 12 view files, memory leak fixes in graph_workflow.js setInterval cleanup
+- Data persistence bug investigation — Tags saved in UI disappear on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
+- Backend startup race condition — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent vs. main list under investigation
+- Project configuration management — Add pyproject.toml and VS Code config files (.vscode/) to support local development; ensure safe to commit with no secrets
+- Memory items and project_facts population — Tables exist but update logic not implemented; required for improved memory/context mechanism
+- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries) across 23 files; 5 agents complete with build_update() applied
 
 ## Active Features / Bugs / Tasks
 
@@ -210,4 +210,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `claude_cli` — UI code optimization campaign: removed dead code (explorer.js, workflow.js, Cytoscape CDN), fixed XSS vulnerabilities in markdown.js, added 30s timeout to api.js, documented all 7 utils and 12 view files with JSDoc, fixed memory leaks in graph_workflow.js setInterval cleanup. **[2026-03-18]** `development_session` — Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template error (code_dir scoping); modified backend startup retry logic to handle empty project list edge case. **[2026-03-10]** `development_session` — Identified database performance issue (redundant SQL calls), implemented load-once-on-access pattern for tags; approved nested tag hierarchy with unlimited depth; discovered data persistence bug where UI-saved tags disappear on session switch. **[2026-03-14]** `project_facts` — Confirmed hierarchical data model (clients contain multiple users); documented auth pattern as login_as_first_level_hierarchy; identified memory_items and project_facts table population as pending implementation. **[2026-03-14]** `query_refactoring` — Applied dynamic query templating across 23 backend files (~150 SQL queries), extracted module-level SQL constants, completed build_update() pattern on 5 agents.
+**[2026-03-22]** `claude_cli` — Major UI code cleanup: removed dead code (explorer.js, workflow.js, Cytoscape CDN), added XSS fixes and 30s timeout to API layer, comprehensive JSDoc documentation across 12 view files, fixed memory leaks in graph_workflow.js setInterval cleanup. **[2026-03-18]** `main.py` — Fixed AttributeError by removing stale `db.ensure_project_schema()` call; corrected memory endpoint template by properly scoping `code_dir` variable; modified retry logic to handle empty project lists on first backend load. **[2026-03-10]** `memory-system` — Identified and approved load-once-on-access pattern to reduce DB redundancy; expanded tag hierarchy from 2-level to unlimited nested depth via parent_id FK with login as first-level only; discovered data persistence bug where tags disappear on session switch. **[2026-03-10]** `ui-ux` — Increased visibility of action options, replaced small buttons with 3-dot menu, added unarchive capability, improved `/memory` suggestion labeling with session context and GitHub links. **[2026-03-10]** `backend-stability` — Addressed intermittent app restart failures due to port binding conflicts on 127.0.0.1:8000.

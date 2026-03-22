@@ -10,7 +10,7 @@ import { renderChat } from './views/chat.js';
 import { renderPrompts } from './views/prompts.js';
 import { renderCode } from './views/code.js';
 import { renderDocuments } from './views/documents.js';
-import { renderGraphWorkflow } from './views/graph_workflow.js';
+import { renderGraphWorkflow, destroyGraphWorkflow } from './views/graph_workflow.js';
 import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
 import { renderEntities } from './views/entities.js';
@@ -460,6 +460,9 @@ window._nav = navigateTo;
 
 export function navigateTo(viewId, opts = {}) {
   setState({ activeView: viewId });
+
+  // Clean up any running intervals from the pipeline view before tearing down its DOM.
+  destroyGraphWorkflow();
 
   const container = document.getElementById('views-container');
   if (!container) return;

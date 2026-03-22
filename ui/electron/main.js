@@ -1,12 +1,9 @@
 /**
- * Electron main process.
+ * electron/main.js — Electron main process
  *
- * Responsibilities:
- * - Create the BrowserWindow
- * - Spawn the FastAPI backend when using a local server (python3.12 -m uvicorn main:app)
- * - Support remote backend server (skip local spawn when serverUrl is not localhost)
- * - IPC handlers: fs read/write, shell open, dialog, settings
- * - Gracefully kill backend on quit
+ * Manages the app lifecycle: spawns the Python backend (uvicorn) when running locally,
+ * creates the BrowserWindow, handles IPC for file system / dialogs / settings,
+ * and cleans up on exit. Settings (server URL) are persisted to userData/settings.json.
  */
 
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, globalShortcut } = require("electron");

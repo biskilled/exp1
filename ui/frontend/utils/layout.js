@@ -1,7 +1,12 @@
 /**
- * AgentDesk Layout Manager
- * Detects device type, manages breakpoints, handles orientation,
- * and exposes helpers used by view components to adapt their behaviour.
+ * layout.js — Responsive layout and device detection
+ *
+ * Exports the `device` object (isMobile, isTablet, isDesktop, isTouch, isPWA,
+ * isIOS, isAndroid, orientation) and `BP` breakpoint constants. Provides
+ * `initLayout()` to apply CSS classes to `<html>`, `onLayoutChange(fn)` for
+ * resize callbacks, and mobile-specific helpers: `initKeyboardDetection`,
+ * `initPullToRefresh`, `showBottomSheet`, `haptic`, `onSwipe`, and
+ * `responsiveVal` for breakpoint-aware value selection.
  */
 
 // ── Breakpoints ───────────────────────────────────────────────────────────────

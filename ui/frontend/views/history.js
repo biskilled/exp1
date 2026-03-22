@@ -1,20 +1,10 @@
 /**
- * History view — JSONL chat history, commits, workflow run logs.
+ * history.js — Project history: chat log, commits, workflow runs, and evals.
  *
- * Tabs:
- *   Chat  |  Commits  |  Runs  |  Evals
- *
- * Data loading strategy:
- *   - Loaded ONCE per project; cached in this._histData / this._commitData.
- *   - Re-used on repeated tab clicks (no re-fetch until project changes or ↻ Refresh clicked).
- *   - Pagination: _PAGE_SIZE entries per page; filter applies to FULL dataset.
- *   - Tags: loaded from DB on first render, tracked in-session in _entryTags.
- *
- * Commits tab:
- *   - If PostgreSQL available: loads from `commits` table with full metadata.
- *   - Fallback: reads commit_log.jsonl.
- *   - Phase: dropdown. Feature/Bug/Task: combobox (datalist from tag cache).
- *   - prompt_source_id: shown as "⊙ HH:MM" in Prompt column.
+ * Renders a four-tab view (Chat, Commits, Runs, Evals) backed by paginated JSONL history
+ * and the PostgreSQL commits/runs tables; data is loaded once per project and cached
+ * in-memory with per-entry entity tagging support via the shared tagCache.
+ * Rendered via: new HistoryView(container).render() called from main.js navigateTo().
  */
 
 import { state } from '../stores/state.js';

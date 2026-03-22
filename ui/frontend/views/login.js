@@ -1,12 +1,10 @@
 /**
- * Login / Register view.
+ * login.js — Authentication gate: login and registration form.
  *
- * Shown when REQUIRE_AUTH=true on the backend and no valid token is stored.
- * On success, stores JWT in localStorage and calls onSuccess() to continue.
- *
- * Usage:
- *   import { renderLogin } from './views/login.js';
- *   renderLogin(document.body, backendUrl, () => initApp());
+ * Renders a modal login/register card shown when REQUIRE_AUTH=true and no valid JWT is
+ * stored; on successful authentication it stores the token in localStorage and invokes
+ * the onSuccess() callback to resume app initialization.
+ * Rendered via: renderLogin() called from main.js navigateTo().
  */
 
 export function renderLogin(container, backendUrl, onSuccess, onClose = null) {

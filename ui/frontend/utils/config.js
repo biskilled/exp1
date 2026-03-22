@@ -1,14 +1,11 @@
 /**
- * Central frontend configuration.
+ * config.js — Central frontend configuration
  *
- * BACKEND_URL resolution order:
- *   1. import.meta.env.VITE_BACKEND_URL  — set at Vite build time via env var
- *   2. window.__BACKEND_URL__            — injected at runtime by server/Electron
- *   3. 'http://localhost:8000'           — local development fallback
- *
- * To target a different backend, set BACKEND_URL in your environment before
- * running `npm run dev` or `npm run build`:
- *   BACKEND_URL=https://my-server.railway.app npm run dev
+ * Resolves and exports `BACKEND_URL` using a three-tier fallback: Vite build-time
+ * env var (`VITE_BACKEND_URL`), then a runtime value injected by the Electron main
+ * process (`window.__BACKEND_URL__`), then the local development default
+ * (`http://localhost:8000`). Set `BACKEND_URL` in your environment before
+ * `npm run dev` or `npm run build` to target a remote server.
  */
 
 export const BACKEND_URL =

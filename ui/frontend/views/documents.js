@@ -1,10 +1,10 @@
 /**
  * documents.js — Two-pane document browser for workspace/documents/.
  *
- * Left panel: collapsible folder tree.
- * Right panel: file viewer with inline edit and delete.
- * Auto-saved outputs from graph workflow nodes and work-item pipeline stages
- * appear here automatically.
+ * Renders a resizable split view with a collapsible folder tree (left) and a markdown
+ * viewer/editor (right) for workspace documents; auto-saved outputs from graph workflow
+ * nodes and work-item pipeline stages appear here automatically.
+ * Rendered via: renderDocuments() called from main.js navigateTo().
  */
 
 import { api } from '../utils/api.js';

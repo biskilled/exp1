@@ -1,11 +1,9 @@
 /**
- * Electron preload script.
+ * electron/preload.js — contextBridge IPC shim
  *
- * Exposes a safe API to the renderer via window.electronAPI.
- * Uses contextBridge to avoid exposing Node.js directly.
- *
- * Injects window.__BACKEND_URL__ synchronously so config.js picks it up
- * before any renderer module is evaluated.
+ * Runs in an isolated context before the renderer loads. Injects window.__BACKEND_URL__
+ * synchronously and exposes window.electronAPI (file system, dialogs, shell, settings,
+ * terminal) via contextBridge — no direct Node.js access from the renderer.
  */
 
 const { contextBridge, ipcRenderer } = require("electron");

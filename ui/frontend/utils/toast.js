@@ -1,3 +1,12 @@
+/**
+ * toast.js — Lightweight toast notification system
+ *
+ * Exports a single `toast(message, type, duration)` function that appends a
+ * self-dismissing notification element to a `.toast-container` div (created on
+ * first use). Supports `info`, `success`, and `error` severity types with
+ * matching icons, and auto-fades after the configurable `duration` (ms).
+ */
+
 export function toast(message, type = 'info', duration = 3000) {
   let container = document.querySelector('.toast-container');
   if (!container) {

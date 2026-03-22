@@ -1,3 +1,12 @@
+/**
+ * code.js — Code browser: resizable file-tree and syntax-highlighted file viewer.
+ *
+ * Renders a two-panel code explorer for the project's configured code_dir, with a
+ * resizable file tree on the left and a read-only syntax-highlighted viewer on the right;
+ * supports directory selection via Electron's native dialog or manual path entry.
+ * Rendered via: renderCode() called from main.js navigateTo().
+ */
+
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 

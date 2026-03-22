@@ -1,3 +1,12 @@
+/**
+ * summary.js — Project summary: PROJECT.md viewer and memory dashboard.
+ *
+ * Renders the active project's PROJECT.md with toggle between rendered markdown and
+ * raw edit mode, alongside cards for Memory Health, Project Facts, and LLM-synthesized
+ * memory digest; supports context rebuild and inline save via Cmd+S.
+ * Rendered via: renderSummary() called from main.js navigateTo().
+ */
+
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 import { renderMd } from '../utils/markdown.js';

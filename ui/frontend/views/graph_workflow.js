@@ -1,11 +1,10 @@
 /**
  * graph_workflow.js — Horizontal CSS pipeline designer (v2).
  *
- * Replaces Cytoscape.js with a pure-CSS horizontal card-based layout.
- * Left sidebar: saved workflows + role library + IO type legend.
- * Center canvas: scrollable horizontal pipeline with connector arrows.
- * Right detail panel: full node config (slides in on node click).
- * Bottom run log: collapsible, approval panel overlay.
+ * Renders a pure-CSS card-based pipeline builder with a left sidebar (saved workflows,
+ * role library, IO type legend), a scrollable horizontal canvas of connected agent nodes,
+ * a slide-in node config panel, and a collapsible live run log with approval-gate overlay.
+ * Rendered via: renderGraphWorkflow() called from main.js navigateTo().
  */
 
 import { state } from '../stores/state.js';
@@ -1903,4 +1902,16 @@ async function _importYAML(input) {
     toast(`Import failed: ${e.message}`, 'error');
   }
   input.value = '';
+}
+
+// ── Cleanup ───────────────────────────────────────────────────────────────────
+
+/**
+ * Stop all running intervals owned by this module.
+ * Must be called by the router (navigateTo) before switching away from this view
+ * to prevent orphaned setInterval handles from continuing to fire.
+ */
+export function destroyGraphWorkflow() {
+  if (_pollInterval)  { clearInterval(_pollInterval);  _pollInterval  = null; }
+  if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
 }
