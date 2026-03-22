@@ -32,7 +32,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.database import db
-from core.seq import next_seq
+from data.dl_seq import next_seq
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 

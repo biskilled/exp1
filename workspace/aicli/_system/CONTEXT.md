@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:52 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:54 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 221
-- **Last active**: 2026-03-22T00:52:23Z
+- **Sessions**: 222
+- **Last active**: 2026-03-22T00:54:17Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -157,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 00:54]** `claude_cli/claude`  
+→ I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 files ?
+← _Done. The structure is now:  ``` core/      → infrastructure: database.py, auth.py, config.py, encryption.py, seq.py data/      → data layer:     dl_user.py, dl_api_keys.py  (+ future dl_events.py, dl_
+
 **[2026-03-22 00:50]** `claude_cli/claude`  
 → So I prefer to store all data layer classes in data folder and have prefix dl_ about database.py - this is not a data la
 ← _Done. The structure is now:  ``` core/      → infrastructure: database.py, auth.py, config.py, encryption.py, seq.py data/      → data layer:     dl_user.py, dl_api_keys.py  (+ future dl_events.py, dl_
@@ -211,8 +215,4 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-21 23:25]** `claude_cli/claude`  
 → The backend is used for code only, it wont have any read permissions... any file data will be updated and used as data h
-← _`backend/data/provider_usage/` is already gitignored — the empty files just exist locally and will never be committed. Nothing to change._
-
-**[2026-03-21 23:09]** `claude_cli/claude`  
-→ What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty 
 ← _`backend/data/provider_usage/` is already gitignored — the empty files just exist locally and will never be committed. Nothing to change._

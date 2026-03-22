@@ -44,7 +44,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.database import db, build_update
-from core.seq import next_seq
+from data.dl_seq import next_seq
 
 log = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:52 UTC by aicli /memory_
+_Generated: 2026-03-22 00:54 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -100,11 +100,11 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(83 events, 73 commits)`
+- **hooks** `(84 events, 74 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(35 events, 33 commits)`
+- **low-level-design** `(36 events, 34 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -112,13 +112,13 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(77 events, 70 commits)`
-- **auth** `(75 events, 71 commits)`
-- **graph-workflow** `(67 events, 60 commits)`
-- **workflow-runner** `(63 events, 60 commits)`
+- **UI** `(78 events, 71 commits)`
+- **auth** `(76 events, 72 commits)`
+- **graph-workflow** `(68 events, 61 commits)`
+- **workflow-runner** `(64 events, 61 commits)`
 - **shared-memory** `(42 events, 37 commits)`
-- **billing** `(34 events, 33 commits)`
-- **mcp** `(34 events, 33 commits)`
+- **billing** `(35 events, 34 commits)`
+- **mcp** `(35 events, 34 commits)`
 - **embeddings** `(28 events, 27 commits)`
 - **tagging**
 - **test-picker-feature**
@@ -127,8 +127,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(74 events, 70 commits)`
-- **development** `(68 events, 61 commits)`
+- **discovery** `(75 events, 71 commits)`
+- **development** `(69 events, 62 commits)`
 - **prod**
 
 ### Task

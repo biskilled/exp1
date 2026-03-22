@@ -10,7 +10,7 @@ short number across any AI tool:
   epic      → #50000+
 
 Usage (inside an open connection cursor):
-    from core.seq import next_seq
+    from data.dl_seq import next_seq
     seq = next_seq(cur, project, category_name)
 """
 from __future__ import annotations
