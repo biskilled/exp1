@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 01:03 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 01:08 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -42,19 +42,19 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
+- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ─── SQL ─── blocks; build_update() for dynamic UPDATEs
-- _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update()
+- _ensure_shared_schema pattern for shared database initialization
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 files ?
 - [2026-03-22] ok. option B
 - [2026-03-22] For what encryption is used for ? also auth - is is looks like a general auth , it is not part of route ?
 - [2026-03-22] Ok. ,erge encryption to dl_api_keys
 - [2026-03-22] Is it worth to change core to shared (folder name) ?
+- [2026-03-22] I do see that when you use import you are using relative import for example from core.config import settings. which are 

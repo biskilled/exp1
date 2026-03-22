@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 01:04 UTC — do not edit manually.
+> Auto-generated 2026-03-22 01:08 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 226
-- **Last active**: 2026-03-22T01:03:17Z
+- **Sessions**: 227
+- **Last active**: 2026-03-22T01:08:06Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,12 +40,12 @@
 
 ## In Progress
 
-- API keys encryption migration (2026-03-22) — Deleted core/encryption.py and merged all encryption logic into dl_api_keys.py; verified no remaining references across backend; encrypted key storage now fully owned by data layer
-- Data layer refactoring (2026-03-22) — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files (dl_user.py, dl_api_keys.py, dl_seq.py); core/ now pure infrastructure
-- Query organization refactoring (2026-03-22) — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied
-- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing with project visibility timing issues
-- Backend startup race condition resolution (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
-- Memory items and project_facts table population (2026-03-18) — Tables created but update logic not yet implemented; blocking improved memory/context mechanism; requires implementation and testing
+- API keys encryption migration — Deleted core/encryption.py and merged all encryption logic into dl_api_keys.py; encrypted key storage now fully owned by data layer; verified no remaining references
+- Data layer refactoring — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files (dl_user.py, dl_api_keys.py, dl_seq.py); core/ now pure infrastructure
+- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied
+- Data persistence bug investigation — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing with project visibility timing issues
+- Backend startup race condition resolution — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
+- IDE import path compatibility — PyCharm absolute imports (from core.config import settings) require Sources Root marking or PYTHONPATH configuration; debugging setup documented
 
 ## Key Decisions
 
@@ -56,13 +56,13 @@
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
+- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) in # ─── SQL ─── blocks; build_update() for dynamic UPDATEs
-- _ensure_shared_schema pattern replaces ensure_project_schema for shared database initialization
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update()
+- _ensure_shared_schema pattern for shared database initialization
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 
 ---
@@ -157,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 01:07]** `claude_cli/claude`  
+→ I do see that when you use import you are using relative import for example from core.config import settings. which are 
+← _These are not relative imports — they're **absolute imports that assume `backend/` is on `sys.path`**. They work when you `cd backend && uvicorn main:app` because Python adds the CWD to `sys.path`. Th_
+
 **[2026-03-22 01:03]** `claude_cli/claude`  
 → Is it worth to change core to shared (folder name) ? 
 ← _Not really worth it. `core/` is the standard Python/FastAPI convention for foundational infrastructure — config, auth, DB pool. `shared/` is more of a frontend/JS pattern and is vaguer ("shared by who_
@@ -212,7 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:02]** `claude_cli/claude`  
 → Is there is a problen to remove data\api_keys.json 
 ← _Now verify nothing still writes `api_keys.json`:_
-
-**[2026-03-22 00:00]** `claude_cli/claude`  
-→ I do see the api_keys.json under backend\data folder. also when it removed - there are only 2 files remain, maybe it wil
-← _Stale file + 35 import sites to update. Doing it all at once:_
