@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:58 UTC by aicli /memory_
+_Generated: 2026-03-22 01:02 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling users to manage development projects, workflows, and AI-assisted tasks through a hybrid backend (FastAPI + PostgreSQL with pgvector) and Electron UI. Currently at v2.2.0 with dual storage (JSONL + semantic DB), JWT auth, async DAG workflow execution, and Claude-powered memory synthesis; active focus on backend refactoring, query standardization, and resolving data persistence bugs affecting tag management across sessions.
+aicli is a shared AI memory platform enabling collaborative development across Claude CLI and LLM platforms with semantic search, workflow automation, and multi-user project management. Currently in active development with dual JSONL/PostgreSQL storage, JWT authentication, and DAG-based workflow execution; recent work focused on data layer refactoring, encryption migration, and resolving startup race conditions and tag persistence bugs.
 
 ## Project Facts
 
@@ -56,7 +56,7 @@ Reviewer: ```json
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; encrypted API keys in database
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
@@ -93,9 +93,9 @@ Reviewer: ```json
 
 ## In Progress
 
+- API keys encryption migration (2026-03-22) — Deleted core/encryption.py and merged all encryption logic into dl_api_keys.py; verified no remaining references across backend; encrypted key storage now fully owned by data layer
 - Data layer refactoring (2026-03-22) — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into data/ layer files (dl_user.py, dl_api_keys.py, dl_seq.py); core/ now pure infrastructure
 - Query organization refactoring (2026-03-22) — Applied dynamic query templating and SQL constants extraction (~150 queries named _SQL_VERB_ENTITY) across 23 files; 5 agents complete with build_update() applied
-- API keys.json file removal (2026-03-22) — Verified no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py patterns clarified as data layer
 - Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure); investigation ongoing with project visibility timing issues
 - Backend startup race condition resolution (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still under investigation
 - Memory items and project_facts table population (2026-03-18) — Tables created but update logic not yet implemented; blocking improved memory/context mechanism; requires implementation and testing
@@ -104,11 +104,11 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(86 events, 76 commits)`
+- **hooks** `(87 events, 77 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(38 events, 36 commits)`
+- **low-level-design** `(39 events, 37 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -116,13 +116,13 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(80 events, 73 commits)`
-- **auth** `(78 events, 74 commits)`
-- **graph-workflow** `(70 events, 63 commits)`
-- **workflow-runner** `(66 events, 63 commits)`
+- **UI** `(81 events, 74 commits)`
+- **auth** `(80 events, 75 commits)`
+- **graph-workflow** `(71 events, 64 commits)`
+- **workflow-runner** `(67 events, 64 commits)`
 - **shared-memory** `(42 events, 37 commits)`
-- **billing** `(37 events, 36 commits)`
-- **mcp** `(37 events, 36 commits)`
+- **billing** `(38 events, 37 commits)`
+- **mcp** `(38 events, 37 commits)`
 - **embeddings** `(28 events, 27 commits)`
 - **tagging**
 - **test-picker-feature**
@@ -131,8 +131,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(77 events, 73 commits)`
-- **development** `(71 events, 64 commits)`
+- **discovery** `(78 events, 74 commits)`
+- **development** `(72 events, 65 commits)`
 - **prod**
 
 ### Task
@@ -210,4 +210,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `claude_cli` — Core data layer refactoring completed: extracted user CRUD (dl_user.py), encrypted API key storage (dl_api_keys.py), and atomic sequential ID allocation (dl_seq.py) into data/ module; core/ now contains only infrastructure (database, auth, config, encryption). **[2026-03-22]** `refactoring` — Query organization standardized across 23 files with ~150 SQL constants following _SQL_VERB_ENTITY naming pattern in # ─── SQL ─── blocks; build_update() applied for dynamic UPDATE generation; 5 agents fully compliant. **[2026-03-22]** `cleanup` — Verified complete removal of data/api_keys.json file dependency across 35+ import sites; core/api_keys.py usage patterns clarified as data layer interface. **[2026-03-21]** `bug-fix` — Backend startup race condition resolved: retry logic now handles edge case where project list query succeeds but returns empty array, preventing false "project not found" errors on first load. **[2026-03-21]** `investigation` — Data persistence bug identified: tags saved in UI disappear on session switch; root cause uncertain (UI rendering vs. database transaction failure); AiCli project visibility timing issues also noted in Recent projects list. **[2026-03-18]** `pending` — memory_items and project_facts tables created but population logic not implemented; blocking implementation of improved memory/context mechanism requiring immediate attention.
+**[2026-03-22]** `claude_cli` — Completed encryption migration: deleted core/encryption.py and merged all encryption logic into dl_api_keys.py; verified no remaining references across backend. **[2026-03-22]** `internal` — Applied dynamic query templating across 23 backend files with ~150 SQL constants named _SQL_VERB_ENTITY; 5 agents complete with build_update() pattern for dynamic UPDATEs. **[2026-03-22]** `internal` — Extracted user CRUD, encrypted API key storage, and atomic ID allocation into dedicated data layer files (dl_user.py, dl_api_keys.py, dl_seq.py); core/ now purely infrastructure. **[2026-03-21]** `internal` — Modified backend startup retry logic to handle edge case where projects list returns empty on first load; identified but unresolved project visibility timing issue affecting AiCli in Recent vs. main list. **[2026-03-18]** `internal` — Removed stale ensure_project_schema() call in main.py and fixed memory endpoint template variable scoping; memory_items and project_facts tables created but update logic not yet implemented. **[2026-03-10]** `internal` — Approved nested tag hierarchy via parent_id FK allowing unlimited depth; identified data persistence bug where tags disappear on session switch (root cause unclear); implemented load-once-on-access pattern to reduce redundant SQL calls.

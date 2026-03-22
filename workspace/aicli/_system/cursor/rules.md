@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 00:58 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 01:02 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -16,7 +16,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; encrypted API keys in database
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
@@ -53,8 +53,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
 - [2026-03-22] So I prefer to store all data layer classes in data folder and have prefix dl_ about database.py - this is not a data la
 - [2026-03-22] I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 files ?
 - [2026-03-22] ok. option B
 - [2026-03-22] For what encryption is used for ? also auth - is is looks like a general auth , it is not part of route ?
+- [2026-03-22] Ok. ,erge encryption to dl_api_keys

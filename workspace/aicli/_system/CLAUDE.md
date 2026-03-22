@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
 - [2026-03-22] `claude_cli`: So I prefer to store all data layer classes in data folder and have prefix dl_ about database.py - t
 - [2026-03-22] `claude_cli`: I do see seq.py which I assume suppose to be part of database.py , is there is a reason to have 2 fi
 - [2026-03-22] `claude_cli`: ok. option B 
 - [2026-03-22] `claude_cli`: For what encryption is used for ? also auth - is is looks like a general auth , it is not part of ro
+- [2026-03-22] `claude_cli`: Ok. ,erge encryption to dl_api_keys 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
