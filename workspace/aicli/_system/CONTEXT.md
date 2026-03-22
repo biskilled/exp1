@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 23:15 UTC — do not edit manually.
+> Auto-generated 2026-03-22 23:24 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 252
-- **Last active**: 2026-03-22T23:00:47Z
+- **Sessions**: 253
+- **Last active**: 2026-03-22T23:24:11Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -42,7 +42,7 @@
 
 ## In Progress
 
-- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination and ensure consistent agent behavior across all providers
+- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination across all providers; Sr. Architect role testing from Auth feature history
 - Tags loading and cache invalidation (2026-03-22) — User reports no DB API calls for tags on planner load; identified _plannerState.project fallback category issue causing null IDs; implementing force-reload logic with cache validation
 - Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to resolve display issues
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
@@ -159,6 +159,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 23:21]** `claude_cli/claude`  
+→ I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
+← _The skill loaded an old cached version — let me run this directly and also pull the auth history to give you a complete picture:_
+
 **[2026-03-22 22:48]** `claude_cli/claude`  
 → I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
 ← _Everything is working. Now update MEMORY.md:_
@@ -213,7 +217,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 02:04]** `claude_cli/claude`  
 → I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading 
 ← _Good — `source-tags` already has the fallback. Now restart and test all four:_
-
-**[2026-03-22 01:55]** `claude_cli/claude`  
-→ looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent roles) Also Pipeline
-← _Now restart the backend and verify both endpoints:_

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 23:00 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 23:24 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -55,8 +55,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] I would like that manage agennts/roles only as an adming (so other customers can only see the role/agent name but cannot
 - [2026-03-22] So when yaml is configured - is it suppose to load into the database ?
 - [2026-03-22] OK .so when user update from ui / run role push (can run role [role_name] push or role push for all rules - there will b
 - [2026-03-22] Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla
 - [2026-03-22] I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
+- [2026-03-22] I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what

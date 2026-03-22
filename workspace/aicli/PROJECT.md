@@ -375,7 +375,7 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination and ensure consistent agent behavior across all providers
+- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination across all providers; Sr. Architect role testing from Auth feature history
 - Tags loading and cache invalidation (2026-03-22) — User reports no DB API calls for tags on planner load; identified _plannerState.project fallback category issue causing null IDs; implementing force-reload logic with cache validation
 - Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to resolve display issues
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js

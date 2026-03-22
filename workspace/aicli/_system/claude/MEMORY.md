@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 23:00 UTC by aicli /memory_
+_Generated: 2026-03-22 23:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform providing Claude CLI and other LLM platforms with persistent, searchable work context across sessions. It combines dual-layer storage (JSONL + PostgreSQL with pgvector embeddings), Electron-based desktop UI with terminal integration (xterm.js), async DAG workflow execution, and multi-provider LLM support with encrypted server-side key management. Current focus: stabilizing agent behavior through standardized roles/prompts/ReAct execution, fixing tag cache invalidation in planner UI, and populating memory_items/project_facts tables for enhanced context retrieval.
+aicli is a shared AI memory platform enabling Claude CLI, desktop (Electron), and LLM platforms to access persistent, semantically-searchable project context across multiple users and clients. It combines dual-layer storage (JSONL history + PostgreSQL with pgvector embeddings), pluggable LLM provider adapters (Claude, OpenAI, DeepSeek, Gemini, Grok), async DAG-based workflow orchestration with visual approval panels, and an MCP server for work item management. Current state: 18 active features/bugs in development (auth, UI, shared-memory, graph-workflow, billing, mcp, tagging maturity 52/94 events); two critical issues blocking release—tag cache invalidation on session switches and unresolved project visibility timing bug during backend initialization.
 
 ## Project Facts
 
@@ -95,7 +95,7 @@ Reviewer: ```json
 
 ## In Progress
 
-- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination and ensure consistent agent behavior across all providers
+- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination across all providers; Sr. Architect role testing from Auth feature history
 - Tags loading and cache invalidation (2026-03-22) — User reports no DB API calls for tags on planner load; identified _plannerState.project fallback category issue causing null IDs; implementing force-reload logic with cache validation
 - Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to resolve display issues
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
@@ -118,9 +118,9 @@ Reviewer: ```json
 
 ### Feature
 
-- **auth** `(97 events, 90 commits)`
+- **auth** `(98 events, 91 commits)`
 - **UI** `(95 events, 87 commits)`
-- **shared-memory** `(93 events, 87 commits)`
+- **shared-memory** `(94 events, 87 commits)`
 - **graph-workflow** `(84 events, 77 commits)`
 - **workflow-runner** `(80 events, 77 commits)`
 - **tagging** `(52 events, 50 commits)`
@@ -133,7 +133,7 @@ Reviewer: ```json
 
 ### Phase
 
-- **development** `(93 events, 81 commits)`
+- **development** `(94 events, 82 commits)`
 - **discovery** `(92 events, 87 commits)`
 - **prod**
 
@@ -212,4 +212,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `claude_cli` — Agent standardization initiative: each agent now requires defined system role, explicit prompts, input/output schema specification, and ReAct mode execution to prevent hallucination and ensure deterministic behavior. **[2026-03-22]** `frontend` — Tag visibility regression in planner UI; categories loading from DB but tags not rendering in picker. Root cause: _plannerState.project fallback causing null category IDs. Solution: implement aggressive cache invalidation on project/session switch with force DB reload. **[2026-03-22]** `frontend` — Code quality pass: XSS sanitization in markdown.js, 30s API timeout in api.js, JSDoc documentation, setInterval cleanup in graph_workflow.js to prevent memory leaks. **[2026-03-18]** `backend` — Backend startup race condition resolved: _continueToApp() retry logic now handles edge case where projects API returns success but empty list on first load (prevented false 'project not found' errors). **[2026-03-18]** `bug` — Project visibility timing issue: AiCli appears in Recent projects list but not rendering as active in main project view; suspected backend initialization race condition. **[2026-03-10]** `database` — Database performance optimization: implemented load-once-on-access pattern for tags (into memory on project load) to eliminate redundant SQL calls; only update DB on explicit save.
+**[2026-03-22]** `agent-role-testing` — Sr. Architect role initiated to test per-agent system role implementation with Auth feature history; goal is to define input (prompts, commits from Auth feature), learnable context (historical patterns), and expected output for standardized agent behavior without hallucination. **[2026-03-22]** `tag-system` — Cache invalidation framework identified as critical: tags load once on project access but _plannerState.project fallback is causing null category IDs; implementing force-reload logic and cache validation to fix tag visibility in tag picker. **[2026-03-22]** `frontend-optimization` — Ongoing XSS hardening in markdown.js, 30s API timeout in api.js, JSDoc documentation, and setInterval cleanup in graph_workflow.js to improve stability and maintainability. **[2026-03-18]** `backend-startup` — Fixed race condition in _continueToApp() retry logic where empty projects list on first load triggered false "project not found" errors; identified unresolved project visibility bug where AiCli appears in Recent but not as current active project. **[2026-03-14]** `memory-population` — memory_items and project_facts table schemas created but update logic remains unimplemented; required for dual-layer synthesis per original specification; blocking improved memory/context mechanism. **[2026-03-10]** `data-persistence` — Diagnosed that tags saved in UI disappear on session switch; determined to be database save failure or rendering issue requiring investigation; also identified database performance bottleneck with redundant SQL calls—strategy approved to load data once on project access and update only on explicit save.
