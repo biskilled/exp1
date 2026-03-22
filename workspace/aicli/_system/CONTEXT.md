@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 02:57 UTC — do not edit manually.
+> Auto-generated 2026-03-22 11:00 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 244
-- **Last active**: 2026-03-22T02:55:49Z
+- **Sessions**: 249
+- **Last active**: 2026-03-22T10:52:25Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -159,6 +159,28 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 10:53]** `claude_cli/claude`  
+→ Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla
+
+**[2026-03-22 10:44]** `claude_cli/claude`  
+→ OK .so when user update from ui / run role push (can run role [role_name] push or role push for all rules - there will b
+← _All components of the ReAct Agents implementation are in place:  - **DB migrations** — `tools JSONB`, `react BOOLEAN`, `max_iterations INT` columns added - **Agent tools** — `tool_memory.py` + `tool_w_
+
+**[2026-03-22 10:35]** `claude_cli/claude`  
+→ So when yaml is configured - is it suppose to load into the database ? 
+← _Now verify the SQL is syntactically correct by doing a dry import:_
+
+**[2026-03-22 10:32]** `claude_cli/claude`  
+→ I would like that manage agennts/roles only as an adming (so other customers can only see the role/agent name but cannot
+← _Quick verification:_
+
+**[2026-03-22 09:57]** `claude_cli/claude`  
+→ I have tried but it is not working
+← _Now — the issue is that **you need to restart Claude Code** for it to discover new skills. The skill file is correct at `.claude/skills/ac/SKILL.md`.  After restarting, type `/` and you should see `ac_
+
+**[2026-03-22 09:55]** `claude_cli/claude`  
+→ the rason of this change was to declare properly an agent. currently an agent is based only on prompts (or set of prompt
+
 **[2026-03-22 02:53]** `claude_cli/claude`  
 → I dont see any tags loading, it looks like there is no api call to the db . all I can see is just the categoroes 
 ← _The Vite dev server (HMR) should hot-reload automatically. The Planner tab should now work — switch to another tab and back, or just click a category.  The root cause: **all previous fixes were applie_
@@ -194,27 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 01:35]** `claude_cli/claude`  
 → I do see that backend is failing to start (it also take quite a while to load ) 
 ← _Now verify the backend starts immediately:_
-
-**[2026-03-22 01:26]** `claude_cli/claude`  
-→ I have created pyproject.toml manualy. can you update that file again ? also I do see error in stop hook which preventin
-← _Push succeeded — no force needed since the rewritten commits built on the same base. Now fix `pyproject.toml`:_
-
-**[2026-03-22 01:13]** `claude_cli/claude`  
-→ Now, code looks more optimised. can you do the same for the ui code- make sure all code is well defined, documented, the
-← _4 agents running in parallel:  1. **Dead code removal** — deleting `explorer.js`, `workflow.js`, removing Cytoscape CDN from `index.html` 2. **Utils cleanup** — fixing XSS in `markdown.js`, adding 30s_
-
-**[2026-03-22 01:10]** `claude_cli/claude`  
-→ Can you add the pyproject.toml (can be pushed to git as well) 
-← _Also add the VS Code config (safe to commit, no secrets):_
-
-**[2026-03-22 01:07]** `claude_cli/claude`  
-→ I do see that when you use import you are using relative import for example from core.config import settings. which are 
-← _These are not relative imports — they're **absolute imports that assume `backend/` is on `sys.path`**. They work when you `cd backend && uvicorn main:app` because Python adds the CWD to `sys.path`. Th_
-
-**[2026-03-22 01:03]** `claude_cli/claude`  
-→ Is it worth to change core to shared (folder name) ? 
-← _Not really worth it. `core/` is the standard Python/FastAPI convention for foundational infrastructure — config, auth, DB pool. `shared/` is more of a frontend/JS pattern and is vaguer ("shared by who_
-
-**[2026-03-22 00:59]** `claude_cli/claude`  
-→ Ok. ,erge encryption to dl_api_keys 
-← _Done. `core/encryption.py` deleted, and no remaining references to it anywhere in the backend._

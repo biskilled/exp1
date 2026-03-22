@@ -17,6 +17,19 @@ import { renderEntities } from './views/entities.js';
 import { loadTagCache } from './utils/tagCache.js';
 import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';
 
+// ── Global UI error reporting ──────────────────────────────────────────────────
+function _reportUiError(message, stack) {
+  const base = (state?.settings?.backend_url || 'http://localhost:8000').replace(/\/$/, '');
+  fetch(`${base}/logs/ui-error`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ level: 'ERROR', message: String(message), stack: stack || null, url: window.location.href }),
+  }).catch(() => {});
+}
+window.addEventListener('error', (e) => _reportUiError(e.message, e.error?.stack));
+window.addEventListener('unhandledrejection', (e) => _reportUiError(String(e.reason), e.reason?.stack));
+// ──────────────────────────────────────────────────────────────────────────────
+
 // ── History singleton — reused across tab switches, recreated on project change ─
 let _historyViewInstance = null;
 let _historyViewProject  = null;

@@ -5,14 +5,37 @@ Serves the API for the Electron frontend.
 No SQLite, no ChromaDB — JSONL/JSON/CSV file storage only.
 """
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 import os
 import shutil
 from pathlib import Path
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
 from core.config import settings
+
+# ── Logging — must be set up before any other import that calls get_logger ──────
+from core.logger import AppLogger, get_logger
+
+AppLogger.setup(
+    log_dir=Path(settings.log_dir),
+    level=settings.log_level,
+    retention_days=settings.log_retention_days,
+    debug_backup_count=settings.log_debug_backup_count,
+)
+log = get_logger(__name__)
+# ────────────────────────────────────────────────────────────────────────────────
+
+from core.database import db
+from routers import (
+    route_auth, route_chat, route_history, route_usage, route_workflows,
+    route_prompts, route_files, route_projects, route_config_sync, route_admin,
+    route_git, route_billing, route_search, route_entities, route_graph_workflows,
+    route_work_items, route_agent_roles, route_system_roles, route_documents,
+    route_user_api_keys, route_logs,
+)
+from pwa_router import router as pwa_router
 
 
 def _migrate_server_data():
@@ -33,16 +56,7 @@ def _migrate_server_data():
                 shutil.copy2(str(item), str(dest))
             migrated.append(item.name)
     if migrated:
-        print(f"✅ Migrated server_data to ui/backend/data/: {', '.join(migrated)}")
-from core.database import db
-from routers import (
-    route_auth, route_chat, route_history, route_usage, route_workflows,
-    route_prompts, route_files, route_projects, route_config_sync, route_admin,
-    route_git, route_billing, route_search, route_entities, route_graph_workflows,
-    route_work_items, route_agent_roles, route_system_roles, route_documents,
-    route_user_api_keys,
-)
-from pwa_router import router as pwa_router
+        log.info("Migrated server_data → data/: %s", ", ".join(migrated))
 
 
 app = FastAPI(
@@ -84,6 +98,7 @@ app.include_router(route_agent_roles.router,    prefix="/agent-roles",    tags=[
 app.include_router(route_system_roles.router,   prefix="/system-roles",   tags=["system_roles"])
 app.include_router(route_documents.router,      prefix="/documents",      tags=["documents"])
 app.include_router(route_user_api_keys.router,  prefix="/user/api-keys",  tags=["user_api_keys"])
+app.include_router(route_logs.router,           prefix="/logs",           tags=["logs"])
 
 # Static files
 STATIC_DIR = Path(__file__).parent / "static"
@@ -116,9 +131,11 @@ async def startup():
     from agents.providers.pr_pricing import load_pricing
     from routers.route_admin import _load_coupons
     load_pricing(); _load_coupons()
-    print(f"✅ aicli backend ready — {settings.backend_url}")
-    print(f"   workspace: {settings.workspace_dir}")
-    print(f"   project:   {settings.active_project}")
-    print(f"   db:        {'PostgreSQL' if db.is_available() else 'file-based'}")
+
+    log.info("aicli backend ready — %s", settings.backend_url)
+    log.info("  workspace : %s", settings.workspace_dir)
+    log.info("  project   : %s", settings.active_project)
+    log.info("  db        : %s", "PostgreSQL" if db.is_available() else "file-based")
+    log.info("  logs      : %s", settings.log_dir)
     if settings.dev_mode:
-        print(f"   ⚠️  DEV_MODE=true — all requests authenticated as admin")
+        log.warning("DEV_MODE=true — all requests authenticated as admin")

@@ -74,6 +74,13 @@ class Settings(BaseSettings):
     backend_url: str = "http://localhost:8000"
     db_pool_max: int = 10
 
+    # Logging — files written to log_dir (external to backend/)
+    # Override via env: LOG_DIR, LOG_LEVEL, LOG_RETENTION_DAYS, LOG_DEBUG_BACKUP_COUNT
+    log_dir: str = str(Path.home() / ".aicli" / "logs")
+    log_level: str = "info"            # console level: debug|info|warning|error
+    log_retention_days: int = 30       # days to keep app.log + error.log backups
+    log_debug_backup_count: int = 7    # days to keep debug.log backups
+
     class Config:
         env_file = str(_ENGINE_ROOT / ".env")
         extra = "ignore"

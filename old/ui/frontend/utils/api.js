@@ -387,6 +387,16 @@ api.documents = {
   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
 };
 
+// ── UI log helper — callable from any view ─────────────────────────────────────
+/** Send a log entry to the backend log files (appears in app.log / error.log). */
+export function logToBackend(level, message, context = null) {
+  fetch(_base() + '/logs/ui-error', {
+    method: 'POST',
+    headers: _headers(),
+    body: JSON.stringify({ level, message, context, url: window.location.href }),
+  }).catch(() => {});
+}
+
 const RECENT_KEY = 'aicli_recent_projects';
 
 export function addRecentProject(name) {

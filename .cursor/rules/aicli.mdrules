@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:56 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 11:00 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -55,8 +55,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] I do see categroeis uploaded in Planner tab, but I do not see all the tags in each categroy. Also I do got an error when
-- [2026-03-22] Planner still dont load all tags , all I see is ctegories
-- [2026-03-22] This is still not working. I dont see tags loading at all (just empty categories)
-- [2026-03-22] Is it possilbe to creatre skeen that run my aiCli commands from Claude CLI - for example /ac /memory - will run my memor
-- [2026-03-22] I dont see any tags loading, it looks like there is no api call to the db . all I can see is just the categoroes
+- [2026-03-22] I have tried but it is not working
+- [2026-03-22] I would like that manage agennts/roles only as an adming (so other customers can only see the role/agent name but cannot
+- [2026-03-22] So when yaml is configured - is it suppose to load into the database ?
+- [2026-03-22] OK .so when user update from ui / run role push (can run role [role_name] push or role push for all rules - there will b
+- [2026-03-22] Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla

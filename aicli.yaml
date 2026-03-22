@@ -19,9 +19,18 @@ large_change_file_threshold: 20
 large_change_line_threshold: 1000
 run_tests: false
 test_command: "pytest"
-log_level: info
 memory_enabled: true
 memory_top_k: 5
+
+# ------------------------------------------------------------------
+# LOGGING
+# ------------------------------------------------------------------
+logging:
+  log_dir: ~/.aicli/logs        # external to backend/ — use ~ or absolute path
+  level: info                   # console log level: debug | info | warning | error
+  retention_days: 30            # days to keep app.log + error.log rotated backups
+  debug_backup_count: 7         # days to keep debug.log backups (verbose, fills fast)
+  # Backend env var overrides: LOG_DIR, LOG_LEVEL, LOG_RETENTION_DAYS, LOG_DEBUG_BACKUP_COUNT
 
 # ------------------------------------------------------------------
 # PROVIDERS

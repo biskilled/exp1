@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 02:56 UTC by aicli /memory_
+_Generated: 2026-03-22 11:00 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a FastAPI backend with PostgreSQL (pgvector) semantic search, Electron/Vanilla JS frontend, and MCP integration for work item management. Currently at v2.2.0, the system manages per-project development history, tagged events, embeddings, and workflow execution via async DAG pipelines. Active development focuses on resolving tag persistence/visibility issues in the planner UI and implementing memory synthesis for project facts.
 
 ## Project Facts
 
@@ -106,7 +102,7 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(100 events, 89 commits)`
+- **hooks** `(101 events, 89 commits)`
 
 ### Doc_type
 
@@ -123,13 +119,13 @@ Reviewer: ```json
 - **shared-memory** `(92 events, 86 commits)`
 - **graph-workflow** `(83 events, 76 commits)`
 - **workflow-runner** `(79 events, 76 commits)`
-- **tagging** `(50 events, 49 commits)`
+- **tagging** `(51 events, 49 commits)`
 - **billing** `(50 events, 49 commits)`
 - **mcp** `(50 events, 49 commits)`
 - **embeddings** `(28 events, 27 commits)`
+- **pagination**
 - **test-picker-feature**
 - **dropbox**
-- **pagination**
 
 ### Phase
 
@@ -209,7 +205,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-22]** `bug fix` — Identified tags not loading via API due to _plannerState.project fallback category issue causing null IDs; implemented force-reload logic with cache validation check in _initPlanner. **[2026-03-22]** `frontend optimization` — XSS fixes in markdown.js, 30s timeout in api.js, JSDoc documentation, and setInterval cleanup in graph_workflow.js to prevent memory leaks. **[2026-03-18]** `backend stability` — Removed stale db.ensure_project_schema() call in main.py (method doesn't exist); fixed memory endpoint CLAUDE.md template error (code_dir variable scoping at line 1120); corrected backend startup race condition in _continueToApp() retry logic for empty projects list. **[2026-03-10]** `database performance` — Implemented load-once-on-access pattern for tags into memory with update-on-save to reduce redundant SQL calls; approved nested tags feature beyond 2-level hierarchy. **[2026-03-10]** `UI/UX` — Increased visibility of planner action options by replacing small buttons with 3-dot menu; added ability to unarchive archived items. **[pending]** `architecture` — memory_items and project_facts tables exist but update logic not implemented; required for improved memory/context mechanism per specification.
