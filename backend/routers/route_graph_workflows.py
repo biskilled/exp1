@@ -66,7 +66,7 @@ _SQL_LIST_RUNS = (
        FROM pr_graph_runs r
        LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
        WHERE r.client_id=1 AND r.project=%s
-       ORDER BY r.started_at DESC LIMIT 50"""
+       ORDER BY r.started_at DESC LIMIT %s"""
 )
 
 _SQL_GET_RUN_BASIC = (

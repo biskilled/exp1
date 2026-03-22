@@ -26,6 +26,11 @@ export async function loadTagCache(project, force = false) {
     const catData = await api.entities.listCategories(project);
     _cache.categories = catData.categories || [];
 
+    // If DB was unavailable the categories have null IDs (fallback mode).
+    // Don't mark the cache as loaded so the next navigation triggers a fresh
+    // reload once the DB is ready.
+    if (catData.fallback) return _cache;
+
     // Load all categories' values in parallel — one batch instead of N serial calls
     await Promise.all(_cache.categories.map(async c => {
       try {
