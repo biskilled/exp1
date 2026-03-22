@@ -292,8 +292,17 @@ class CategoryPatch(BaseModel):
 
 @router.get("/categories")
 async def list_categories(project: str | None = Query(None)):
-    _require_db()
     p = _project(project)
+    if not db.is_available():
+        # Return default categories so the Planner tab renders without DB
+        return {
+            "categories": [
+                {"id": None, "name": n, "color": c, "icon": i, "project": p}
+                for n, c, i in _DEFAULT_CATEGORIES
+            ],
+            "project": p,
+            "fallback": True,
+        }
     _seed_defaults(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -371,6 +380,8 @@ async def list_values(
     category_name: str | None = Query(None),   # e.g. "feature", "bug", "task"
     status:        str | None = Query(None),   # e.g. "active", "done", "archived"
 ):
+    if not db.is_available():
+        return {"values": [], "project": _project(project), "fallback": True}
     _require_db()
     p = _project(project)
     _seed_defaults(p)

@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- UI code optimization and dead code removal (2026-03-22) — Eliminating explorer.js, workflow.js, Cytoscape CDN; utils cleanup with XSS fixes and 30s timeout; JSDoc documentation for 12 view files; memory leak fixes in graph_workflow.js setInterval cleanup
-- Data persistence bug investigation — Tags saved in UI disappearing on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
-- Backend startup race condition fix (2026-03-18) — Removed stale db.ensure_project_schema() call; modified _continueToApp() retry logic to handle empty project list on first load
-- Memory endpoint template variable scoping fix (2026-03-18) — code_dir variable undefined at line 1120 in CLAUDE.md; variable now properly scoped from config
-- Project visibility bug resolution — AiCli appears in Recent projects but not displaying as current active project in main view; suspected initialization timing issue requiring further investigation
-- Memory items and project_facts table population — Tables exist but update logic not implemented; required for improved memory/context mechanism
+- Backend startup optimization and role initialization (2026-03-22) — Fixed slow loading; PostgreSQL agent roles configuration required; Planner, Pipeline, History/Runs endpoints verified working
+- UI code optimization (2026-03-22) — Dead code removal (explorer.js, workflow.js, Cytoscape CDN); XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation for 12 view files; setInterval cleanup in graph_workflow.js for memory leaks
+- Backend module restructuring completion (2026-03-21-22) — Moved agents/tools, agents/mcp under agents/; renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; implemented build_update() for dynamic queries
+- Data layer consolidation (2026-03-21-22) — Created dl_user.py, dl_api_keys.py (with encryption), dl_seq.py; removed core/encryption.py; merged encryption into dl_api_keys.py; moved provider_usage files to data/provider_usage/
+- Configuration and authentication cleanup (2026-03-21-22) — Removed stale api_keys.json; externalized sensitive data to .env; implemented user-scoped encrypted API key storage in database; added PyProject.toml for IDE support
+- Tags persistence and project visibility debugging (2026-03-18-22) — Tags saved in UI disappearing on session switch; AiCli appearing in Recent but not as active project; race condition fixes in initialization; continue investigating rendering vs. database save timing

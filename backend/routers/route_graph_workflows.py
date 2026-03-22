@@ -336,7 +336,8 @@ async def list_workflows(
     project: str = Query(""),
     user=Depends(get_optional_user),
 ):
-    _require_db()
+    if not db.is_available():
+        return {"workflows": [], "fallback": True}
     p = _active_project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -367,6 +368,8 @@ async def list_recent_runs(
     user=Depends(get_optional_user),
 ):
     """All recent runs across all workflows for a project, with workflow name."""
+    if not db.is_available():
+        return {"runs": [], "fallback": True}
     _require_db()
     p = _active_project(project)
     with db.conn() as conn:

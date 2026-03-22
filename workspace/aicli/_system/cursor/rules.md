@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 01:52 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:02 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -32,6 +32,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+- **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
 
 ## Key Decisions
 
@@ -42,19 +43,19 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save
-- Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
-- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for implementations (tool_ prefix)
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update()
-- _ensure_shared_schema pattern for shared database initialization
-- Data layer owns encrypted API key storage; all encryption logic in dl_api_keys.py
+- Backend modular organization: core/ for infrastructure (auth, config, database), data/ for data access (dl_ prefix), routers/ for HTTP endpoints, agents/ for business logic, pipelines/ for workflow engine
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
+- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/
+- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons/promotions managed in SQL tables
+- Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections
+- PyProject.toml and VS Code config for IDE support; absolute imports via sys.path; PyCharm: Mark backend/ as Sources Root
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] I do see that when you use import you are using relative import for example from core.config import settings. which are 
 - [2026-03-22] Can you add the pyproject.toml (can be pushed to git as well)
 - [2026-03-22] Now, code looks more optimised. can you do the same for the ui code- make sure all code is well defined, documented, the
 - [2026-03-22] I have created pyproject.toml manualy. can you update that file again ? also I do see error in stop hook which preventin
 - [2026-03-22] I do see that backend is failing to start (it also take quite a while to load )
+- [2026-03-22] looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent roles) Also Pipeline

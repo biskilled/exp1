@@ -292,6 +292,8 @@ async def list_work_items(
     limit:    int        = Query(100),
 ):
     """List work items, optionally filtered by category, status, or exact name."""
+    if not db.is_available():
+        return {"items": [], "project": _project(project), "fallback": True}
     _require_db()
     p = _project(project)
     where = ["w.client_id=1", "w.project=%s"]
@@ -932,6 +934,8 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
 @router.get("/facts")
 async def get_project_facts(project: str | None = Query(None)):
     """Return current (valid_until IS NULL) project facts."""
+    if not db.is_available():
+        return {"facts": [], "project": _project(project), "total": 0, "fallback": True}
     _require_db()
     p = _project(project)
     with db.conn() as conn:
