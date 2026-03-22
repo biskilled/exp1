@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:05 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:19 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 207
-- **Last active**: 2026-03-22T00:05:00Z
+- **Sessions**: 208
+- **Last active**: 2026-03-22T00:19:30Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -156,6 +156,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 00:12]** `claude_cli/claude`  
+→ Can you make sure UI contain only client interface and backend manage all backend activity , as I would like to package 
+← _Done. Here's what was implemented:  **`ui/electron/main.js`** - Added `loadSettings()` / `saveSettings()` backed by `Electron userData/settings.json` - `getServerUrl()` returns saved URL or `http://12_
+
 **[2026-03-22 00:02]** `claude_cli/claude`  
 → Is there is a problen to remove data\api_keys.json 
 ← _Now verify nothing still writes `api_keys.json`:_
@@ -211,7 +215,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 22:22]** `claude_cli/claude`  
 → can you rename all files under providers to start with pr_  also the one under memory - start with mem_ . I do have yaml
 ← _**Verify everything loads:**_
-
-**[2026-03-21 22:18]** `claude_cli/claude`  
-→ All 4 files - pricing and the one start with provider are realted to agents providers. can you add thos files over there
-← _Now update `agents/providers/__init__.py` to also surface these:_
