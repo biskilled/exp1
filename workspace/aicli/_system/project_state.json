@@ -40,10 +40,10 @@
     "Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL",
     "Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only",
     "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)",
-    "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
-    "Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
-    "Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes",
-    "Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability"
+    "Backend module organization: routers/ for API endpoints, core/ for data access libraries, agents/tools/ for agent implementations (tool_ prefix)",
+    "Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability",
+    "Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}",
+    "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -72,12 +72,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Query organization refactoring (2026-03-22) \u2014 Applying dynamic query templating and optimization across router files; evaluating database.py for centralized query management",
-    "API keys.json file removal (2026-03-22) \u2014 Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated",
-    "Per-user encrypted API key system (2026-03-21) \u2014 Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only",
-    "Data persistence bug investigation (2026-03-21) \u2014 Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)",
+    "Query organization refactoring (2026-03-22) \u2014 Applying dynamic query templating across router files; evaluating database.py for centralized query management and SQL optimization",
+    "API keys.json file removal (2026-03-22) \u2014 Verifying no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified",
+    "Core module organization (2026-03-22) \u2014 Distinguishing between core/user.py (data access library, no APIRouter) and routers/route_auth.py (API endpoints); applying consistent patterns across core/api_keys.py and related modules",
+    "Data persistence bug investigation (2026-03-21) \u2014 Tags saved in UI disappear on session switch; root cause still unclear (UI rendering vs. database save failure)",
     "Backend startup race condition (2026-03-21) \u2014 Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation",
-    "Tool naming convention completion (2026-03-21) \u2014 agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation"
+    "Memory items and project_facts table population (2026-03-18) \u2014 Tables created but update logic not yet implemented; blocking improved memory/context mechanism"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -109,7 +109,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-22T00:40:42Z",
+  "last_memory_run": "2026-03-22T00:43:52Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state",
@@ -123,18 +123,18 @@
       "Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL",
       "Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only",
       "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)",
-      "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()",
-      "Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
-      "Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes",
-      "Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability"
+      "Backend module organization: routers/ for API endpoints, core/ for data access libraries, agents/tools/ for agent implementations (tool_ prefix)",
+      "Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability",
+      "Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}",
+      "Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()"
     ],
     "in_progress": [
-      "Query organization refactoring (2026-03-22) \u2014 Applying dynamic query templating and optimization across router files; evaluating database.py for centralized query management",
-      "API keys.json file removal (2026-03-22) \u2014 Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated",
-      "Per-user encrypted API key system (2026-03-21) \u2014 Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only",
-      "Data persistence bug investigation (2026-03-21) \u2014 Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)",
+      "Query organization refactoring (2026-03-22) \u2014 Applying dynamic query templating across router files; evaluating database.py for centralized query management and SQL optimization",
+      "API keys.json file removal (2026-03-22) \u2014 Verifying no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified",
+      "Core module organization (2026-03-22) \u2014 Distinguishing between core/user.py (data access library, no APIRouter) and routers/route_auth.py (API endpoints); applying consistent patterns across core/api_keys.py and related modules",
+      "Data persistence bug investigation (2026-03-21) \u2014 Tags saved in UI disappear on session switch; root cause still unclear (UI rendering vs. database save failure)",
       "Backend startup race condition (2026-03-21) \u2014 Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation",
-      "Tool naming convention completion (2026-03-21) \u2014 agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation"
+      "Memory items and project_facts table population (2026-03-18) \u2014 Tables created but update logic not yet implemented; blocking improved memory/context mechanism"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -146,10 +146,13 @@
       "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; per-user encrypted API keys in database",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic",
+      "memory_synthesis": "Claude Haiku for dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
+      "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)",
-      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder"
+      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
+      "config_management": "config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for pipeline definitions"
     },
-    "project_summary": "aicli is a shared AI memory platform enabling multi-user AI-assisted development with persistent project context, semantic embeddings, and workflow automation. The system combines a FastAPI backend with PostgreSQL+pgvector semantic search, an Electron desktop UI with embedded terminal and Monaco editor, and autonomous agent capabilities via MCP integration. Current focus is on stabilizing data persistence, query optimization, and completing encrypted per-user API key migration from file-based to database storage.",
-    "memory_digest": "**[2026-03-22]** `in_progress` \u2014 Query organization refactoring underway; applying dynamic templating and optimization across all router files to centralize SQL query management. **[2026-03-22]** `in_progress` \u2014 Completed API keys.json file removal validation; 35+ import sites verified; no remaining code paths write to deprecated file storage. **[2026-03-21]** `in_progress` \u2014 Per-user encrypted API key system fully implemented in database; .env holds only main app credentials. **[2026-03-21]** `bug` \u2014 Data persistence issue: tags saved in UI disappear on session switch; investigation ongoing (UI rendering vs. database save failure). **[2026-03-21]** `bug` \u2014 Backend startup race condition fixed: retry logic now handles empty project list on first load; project visibility bug (AiCli in Recent but not main view) requires further investigation. **[2026-03-21]** `refactor` \u2014 Tool naming convention completed; agents/tools/ files renamed to tool_ prefix with import path validation. **[2026-03-18]** `fix` \u2014 Removed stale db.ensure_project_schema() call in main.py; corrected to use _ensure_shared_schema instead. **[2026-03-18]** `fix` \u2014 Memory endpoint CLAUDE.md template error resolved; code_dir variable now properly scoped at line 1120. **[2026-03-14]** `design` \u2014 Confirmed hierarchical data model: Clients contain multiple Users; nested tag hierarchy via parent_id FK with login as first-level category. **[2026-03-10]** `design` \u2014 Database performance optimization: load-once-on-access pattern for tags/workflows in memory; update DB only on explicit save to eliminate redundant SQL calls."
+    "project_summary": "aicli is a shared AI memory platform enabling Claude CLI and other LLM tools to access persistent project context via semantic search (pgvector embeddings), structured tagging, and YAML-based workflow automation. It combines a Python FastAPI backend with Electron-based vanilla JS UI featuring xterm.js terminals, Monaco editors, and Cytoscape.js workflow visualization, with PostgreSQL as the semantic storage layer and JSONL for rotated history. Core features include per-user JWT auth with encrypted API key management, async DAG workflow execution, Claude Haiku-powered memory synthesis, and MCP server integration for work item management.",
+    "memory_digest": "**[2026-03-22]** `query-refactoring` \u2014 Systematic query organization across router files using dynamic templating and centralized query builders to improve maintainability and SQL optimization. **[2026-03-22]** `api-keys-migration` \u2014 Completion of API key migration from data/api_keys.json file storage to encrypted PostgreSQL storage; 35+ import sites validated. **[2026-03-22]** `core-module-patterns` \u2014 Clarified distinction between core/ data access libraries (no APIRouter, imported by routers) vs routers/ API endpoints; established consistent patterns for core/user.py, core/api_keys.py, and router_user_api_key implementations. **[2026-03-21]** `startup-race-condition` \u2014 Fixed backend startup logic to handle empty project list edge case on first load; identified but unresolved: AiCli visibility discrepancy between Recent and main project view. **[2026-03-21]** `ui-data-persistence` \u2014 Identified bug where tags saved in UI disappear on session switch; root cause investigation ongoing (unclear if UI rendering or database save failure). **[2026-03-18]** `memory-synthesis-design` \u2014 Confirmed memory_items and project_facts tables created but update logic not yet implemented; blocking improved memory/context mechanism per spec. **[2026-03-10]** `db-performance-optimization` \u2014 Implemented load-once-on-access pattern to cache tags and workflows in memory, updating database only on explicit save to eliminate redundant SQL queries. **[2026-03-10]** `tag-hierarchy-expansion` \u2014 Approved nested tag hierarchy via parent_id FK enabling unlimited depth beyond 2-level structure; login remains first-level only. **[2026-03-10]** `port-binding-stability` \u2014 Fixed intermittent app restart failures due to port 127.0.0.1:8000 binding conflicts via freePort() utility and proper Electron cleanup. **[2026-03-10]** `ui-ux-improvements` \u2014 Increased visibility of tag/action options with 3-dot menu pattern, added unarchive capability, made /memory suggestions more visible with session/commit traceability."
   }
 }

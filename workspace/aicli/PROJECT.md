@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Query organization refactoring (2026-03-22) — Applying dynamic query templating and optimization across router files; evaluating database.py for centralized query management
-- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated
-- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only
-- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
+- Query organization refactoring (2026-03-22) — Applying dynamic query templating across router files; evaluating database.py for centralized query management and SQL optimization
+- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified
+- Core module organization (2026-03-22) — Distinguishing between core/user.py (data access library, no APIRouter) and routers/route_auth.py (API endpoints); applying consistent patterns across core/api_keys.py and related modules
+- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause still unclear (UI rendering vs. database save failure)
 - Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation
-- Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
+- Memory items and project_facts table population (2026-03-18) — Tables created but update logic not yet implemented; blocking improved memory/context mechanism

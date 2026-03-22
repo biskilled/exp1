@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:39 UTC by aicli /memory_
+_Generated: 2026-03-22 00:42 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling multi-user AI-assisted development with persistent project context, semantic embeddings, and workflow automation. The system combines a FastAPI backend with PostgreSQL+pgvector semantic search, an Electron desktop UI with embedded terminal and Monaco editor, and autonomous agent capabilities via MCP integration. Current focus is on stabilizing data persistence, query optimization, and completing encrypted per-user API key migration from file-based to database storage.
+aicli is a shared AI memory platform enabling Claude CLI and other LLM tools to access persistent project context via semantic search (pgvector embeddings), structured tagging, and YAML-based workflow automation. It combines a Python FastAPI backend with Electron-based vanilla JS UI featuring xterm.js terminals, Monaco editors, and Cytoscape.js workflow visualization, with PostgreSQL as the semantic storage layer and JSONL for rotated history. Core features include per-user JWT auth with encrypted API key management, async DAG workflow execution, Claude Haiku-powered memory synthesis, and MCP server integration for work item management.
 
 ## Project Facts
 
@@ -86,44 +86,44 @@ Reviewer: ```json
 - Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
-- Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
+- Backend module organization: routers/ for API endpoints, core/ for data access libraries, agents/tools/ for agent implementations (tool_ prefix)
 - Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
+- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Applying dynamic query templating and optimization across router files; evaluating database.py for centralized query management
-- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated
-- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only
-- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
+- Query organization refactoring (2026-03-22) — Applying dynamic query templating across router files; evaluating database.py for centralized query management and SQL optimization
+- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified
+- Core module organization (2026-03-22) — Distinguishing between core/user.py (data access library, no APIRouter) and routers/route_auth.py (API endpoints); applying consistent patterns across core/api_keys.py and related modules
+- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause still unclear (UI rendering vs. database save failure)
 - Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation
-- Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
+- Memory items and project_facts table population (2026-03-18) — Tables created but update logic not yet implemented; blocking improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(76 events, 66 commits)`
+- **hooks** `(78 events, 68 commits)`
 
 ### Doc_type
 
+- **low-level-design** `(30 events, 28 commits)`
 - **Test** `(28 events, 27 commits)`
-- **low-level-design** `(28 events, 26 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
 - **customer-meeting** — dsds
 
 ### Feature
 
-- **UI** `(70 events, 63 commits)`
-- **auth** `(68 events, 64 commits)`
-- **graph-workflow** `(60 events, 53 commits)`
-- **workflow-runner** `(56 events, 53 commits)`
+- **UI** `(72 events, 65 commits)`
+- **auth** `(70 events, 66 commits)`
+- **graph-workflow** `(62 events, 55 commits)`
+- **workflow-runner** `(58 events, 55 commits)`
 - **shared-memory** `(42 events, 37 commits)`
+- **billing** `(29 events, 28 commits)`
+- **mcp** `(29 events, 28 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **billing** `(27 events, 26 commits)`
-- **mcp** `(27 events, 26 commits)`
 - **tagging**
 - **test-picker-feature**
 - **dropbox**
@@ -131,8 +131,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(67 events, 63 commits)`
-- **development** `(61 events, 54 commits)`
+- **discovery** `(69 events, 65 commits)`
+- **development** `(63 events, 56 commits)`
 - **prod**
 
 ### Task
@@ -210,4 +210,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `in_progress` — Query organization refactoring underway; applying dynamic templating and optimization across all router files to centralize SQL query management. **[2026-03-22]** `in_progress` — Completed API keys.json file removal validation; 35+ import sites verified; no remaining code paths write to deprecated file storage. **[2026-03-21]** `in_progress` — Per-user encrypted API key system fully implemented in database; .env holds only main app credentials. **[2026-03-21]** `bug` — Data persistence issue: tags saved in UI disappear on session switch; investigation ongoing (UI rendering vs. database save failure). **[2026-03-21]** `bug` — Backend startup race condition fixed: retry logic now handles empty project list on first load; project visibility bug (AiCli in Recent but not main view) requires further investigation. **[2026-03-21]** `refactor` — Tool naming convention completed; agents/tools/ files renamed to tool_ prefix with import path validation. **[2026-03-18]** `fix` — Removed stale db.ensure_project_schema() call in main.py; corrected to use _ensure_shared_schema instead. **[2026-03-18]** `fix` — Memory endpoint CLAUDE.md template error resolved; code_dir variable now properly scoped at line 1120. **[2026-03-14]** `design` — Confirmed hierarchical data model: Clients contain multiple Users; nested tag hierarchy via parent_id FK with login as first-level category. **[2026-03-10]** `design` — Database performance optimization: load-once-on-access pattern for tags/workflows in memory; update DB only on explicit save to eliminate redundant SQL calls.
+**[2026-03-22]** `query-refactoring` — Systematic query organization across router files using dynamic templating and centralized query builders to improve maintainability and SQL optimization. **[2026-03-22]** `api-keys-migration` — Completion of API key migration from data/api_keys.json file storage to encrypted PostgreSQL storage; 35+ import sites validated. **[2026-03-22]** `core-module-patterns` — Clarified distinction between core/ data access libraries (no APIRouter, imported by routers) vs routers/ API endpoints; established consistent patterns for core/user.py, core/api_keys.py, and router_user_api_key implementations. **[2026-03-21]** `startup-race-condition` — Fixed backend startup logic to handle empty project list edge case on first load; identified but unresolved: AiCli visibility discrepancy between Recent and main project view. **[2026-03-21]** `ui-data-persistence` — Identified bug where tags saved in UI disappear on session switch; root cause investigation ongoing (unclear if UI rendering or database save failure). **[2026-03-18]** `memory-synthesis-design` — Confirmed memory_items and project_facts tables created but update logic not yet implemented; blocking improved memory/context mechanism per spec. **[2026-03-10]** `db-performance-optimization` — Implemented load-once-on-access pattern to cache tags and workflows in memory, updating database only on explicit save to eliminate redundant SQL queries. **[2026-03-10]** `tag-hierarchy-expansion` — Approved nested tag hierarchy via parent_id FK enabling unlimited depth beyond 2-level structure; login remains first-level only. **[2026-03-10]** `port-binding-stability` — Fixed intermittent app restart failures due to port 127.0.0.1:8000 binding conflicts via freePort() utility and proper Electron cleanup. **[2026-03-10]** `ui-ux-improvements` — Increased visibility of tag/action options with 3-dot menu pattern, added unarchive capability, made /memory suggestions more visible with session/commit traceability.

@@ -37,10 +37,10 @@ You are a senior Python software architect with deep expertise in:
 - Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
-- Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
+- Backend module organization: routers/ for API endpoints, core/ for data access libraries, agents/tools/ for agent implementations (tool_ prefix)
 - Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
+- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: Can you make sure UI contain only client interface and backend manage all backend activity , as I wo
 - [2026-03-22] `claude_cli`: I still see duplicate - under core I do see auth.py and under route - raute_auth.py why there are 2 
 - [2026-03-22] `claude_cli`: Basicly all files under route can use db quesries. Is there is any other place that using db queries
 - [2026-03-22] `claude_cli`: is there is a way to manage the queries better, maybe to define quesried at the begining of each fil
 - [2026-03-22] `claude_cli`: scope - apply to all files, Dynamic - try to use tamplate (maybe add that into database.py file). al
+- [2026-03-22] `claude_cli`: What about core/user , this is not suppose to be as a router ? I do do see router_user_api_key as we
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

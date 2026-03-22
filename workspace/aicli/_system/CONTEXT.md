@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:40 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:43 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 215
-- **Last active**: 2026-03-22T00:39:16Z
+- **Sessions**: 218
+- **Last active**: 2026-03-22T00:42:36Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,12 +40,12 @@
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Applying dynamic query templating and optimization across router files; evaluating database.py for centralized query management
-- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated
-- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only
-- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
+- Query organization refactoring (2026-03-22) — Applying dynamic query templating across router files; evaluating database.py for centralized query management and SQL optimization
+- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json; 35+ import sites validated; core/api_keys.py and router_user_api_key patterns clarified
+- Core module organization (2026-03-22) — Distinguishing between core/user.py (data access library, no APIRouter) and routers/route_auth.py (API endpoints); applying consistent patterns across core/api_keys.py and related modules
+- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappear on session switch; root cause still unclear (UI rendering vs. database save failure)
 - Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation
-- Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
+- Memory items and project_facts table population (2026-03-18) — Tables created but update logic not yet implemented; blocking improved memory/context mechanism
 
 ## Key Decisions
 
@@ -60,10 +60,10 @@
 - Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-- Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
-- Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
+- Backend module organization: routers/ for API endpoints, core/ for data access libraries, agents/tools/ for agent implementations (tool_ prefix)
 - Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
+- Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 
 ---
 
@@ -157,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 00:41]** `claude_cli/claude`  
+→ What about core/user , this is not suppose to be as a router ? I do do see router_user_api_key as well - it is not the s
+← _Good question — same pattern as `core/auth.py` vs `routers/route_auth.py`:  **`core/user.py`** — data access library. Contains `create_user()`, `find_by_id()`, `authenticate()`, `list_users()`, `updat_
+
 **[2026-03-22 00:30]** `claude_cli/claude`  
 → scope - apply to all files, Dynamic - try to use tamplate (maybe add that into database.py file). also please review eac
 ← _Let me launch the remaining router file groups in parallel while the first two agents run._
@@ -212,7 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 23:02]** `claude_cli/claude`  
 → Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - currently there is o
 ← _Summary of changes: - `tool_git.py`, `tool_file.py` (renamed from `git_tool.py`, `file_tool.py`) - `agents/mcp/tools/` deleted (was empty)_
-
-**[2026-03-21 22:59]** `claude_cli/claude`  
-→ Is there is a reason to have tools under mcp as well ?  
-← _All imports clean. The backend restructure is complete and verified:  - `agents/tools/` (moved from `tools/agent_tools/`) - `agents/mcp/` (moved from `tools/mcp/`) - `tools/` folder deleted - `routers_
