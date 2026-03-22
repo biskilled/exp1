@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:47 UTC by aicli /memory_
+_Generated: 2026-03-22 00:52 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform enabling development teams to synchronize context across Claude CLI, LLM platforms, and MCP integrations. Built with FastAPI (Python) backend, Electron + Vanilla JS frontend, and dual JSONL/PostgreSQL+pgvector storage, it provides semantic search, project-scoped tag hierarchies, async DAG workflow execution, and role-based billing. Currently in active development with focus on query optimization, data persistence reliability, and memory synthesis improvements.
 
 ## Project Facts
 
@@ -104,11 +100,11 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(82 events, 72 commits)`
+- **hooks** `(83 events, 73 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(34 events, 32 commits)`
+- **low-level-design** `(35 events, 33 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -116,13 +112,13 @@ Reviewer: ```json
 
 ### Feature
 
-- **UI** `(76 events, 69 commits)`
-- **auth** `(74 events, 70 commits)`
-- **graph-workflow** `(66 events, 59 commits)`
-- **workflow-runner** `(62 events, 59 commits)`
+- **UI** `(77 events, 70 commits)`
+- **auth** `(75 events, 71 commits)`
+- **graph-workflow** `(67 events, 60 commits)`
+- **workflow-runner** `(63 events, 60 commits)`
 - **shared-memory** `(42 events, 37 commits)`
-- **billing** `(33 events, 32 commits)`
-- **mcp** `(33 events, 32 commits)`
+- **billing** `(34 events, 33 commits)`
+- **mcp** `(34 events, 33 commits)`
 - **embeddings** `(28 events, 27 commits)`
 - **tagging**
 - **test-picker-feature**
@@ -131,8 +127,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(73 events, 69 commits)`
-- **development** `(67 events, 60 commits)`
+- **discovery** `(74 events, 70 commits)`
+- **development** `(68 events, 61 commits)`
 - **prod**
 
 ### Task
@@ -207,7 +203,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-22]** `development-history` — Completed query organization refactoring: extracted ~150 SQL queries as module-level constants (_SQL_VERB_ENTITY pattern) across 23 files in # ── SQL ── blocks; applied build_update() for dynamic UPDATEs in core/user.py and pipeline files (5 agents done). **[2026-03-22]** `development-history` — Clarified core module architecture: core/user.py and similar core modules function as data access libraries exposing database services to routers; confirmed no remaining references to removed data/api_keys.json file (35+ import sites validated). **[2026-03-21]** `memory-summaries` — Modified backend startup retry logic to handle edge case where project list returns empty on first load; identified but unresolved issue: AiCli appears in Recent projects but not in main project view (suspected timing issue during initialization). **[2026-03-18]** `memory-summaries` — Fixed AttributeError in main.py by removing stale ensure_project_schema() call and using _ensure_shared_schema instead; fixed memory endpoint CLAUDE.md template error (code_dir variable scoping at line 1120). **[2026-03-10]** `memory-summaries` — Implemented load-once-on-access caching strategy to eliminate redundant SQL calls; expanded tag hierarchy beyond 2-level limitation with nested parent_id FK support; identified data persistence bug where tags disappear on session switch (root cause under investigation). **[2026-03-10]** `memory-summaries` — UI/UX improvements approved for Planner: increased action option visibility, replaced small buttons with 3-dot menu, added unarchive capability; improved AI suggestions visibility in /memory output with session context and GitHub links.

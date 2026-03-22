@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:48 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 220
-- **Last active**: 2026-03-22T00:47:17Z
+- **Sessions**: 221
+- **Last active**: 2026-03-22T00:52:23Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -157,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 00:50]** `claude_cli/claude`  
+→ So I prefer to store all data layer classes in data folder and have prefix dl_ about database.py - this is not a data la
+← _Done. The structure is now:  ``` core/      → infrastructure: database.py, auth.py, config.py, encryption.py, seq.py data/      → data layer:     dl_user.py, dl_api_keys.py  (+ future dl_events.py, dl_
+
 **[2026-03-22 00:47]** `claude_cli/claude`  
 → Ok. so user, api_keys is like a data layer (dl) that expose databse services to router ?
 ← _All 5 agents are done. Here's the complete summary of what was applied across all 23 files:  ---  **SQL constants extracted:** ~150 queries named `_SQL_VERB_ENTITY`, all placed in a `# ── SQL ──` bloc_
@@ -212,7 +216,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-21 23:09]** `claude_cli/claude`  
 → What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty 
 ← _`backend/data/provider_usage/` is already gitignored — the empty files just exist locally and will never be committed. Nothing to change._
-
-**[2026-03-21 23:06]** `claude_cli/claude`  
-→ I do see provider files unde data , I do see also provider_usage folder under data (which might make sense) and do see s
-← _Done. Final layout:  ``` data/ ├── api_keys.json          ← server secrets (config) ├── coupons.json           ← billing config ├── pricing.json           ← markup/tier config ├── database.py         _
