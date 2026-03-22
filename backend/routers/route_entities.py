@@ -43,10 +43,203 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 
 from core.config import settings
-from core.database import db
+from core.database import db, build_update
 from core.seq import next_seq
 
 log = logging.getLogger(__name__)
+
+# ── SQL ─────────────────────────────────────────────────────────────────────────
+
+_SQL_GET_CATEGORY_NAMES = """
+    SELECT name FROM mng_entity_categories WHERE client_id=1 AND project=%s
+"""
+
+_SQL_SEED_CATEGORY = """
+    INSERT INTO mng_entity_categories (client_id, project, name, color, icon)
+    VALUES (1, %s, %s, %s, %s)
+    ON CONFLICT (client_id, project, name) DO NOTHING
+"""
+
+_SQL_LIST_CATEGORIES = """
+    SELECT c.id, c.name, c.color, c.icon,
+           COUNT(v.id) AS value_count
+    FROM mng_entity_categories c
+    LEFT JOIN mng_entity_values v ON v.category_id = c.id AND v.client_id=1
+    WHERE c.client_id=1 AND c.project=%s
+    GROUP BY c.id ORDER BY c.name
+"""
+
+_SQL_INSERT_CATEGORY = """
+    INSERT INTO mng_entity_categories (client_id, project, name, color, icon)
+    VALUES (1, %s, %s, %s, %s)
+    RETURNING id
+"""
+
+_SQL_DELETE_CATEGORY = """
+    DELETE FROM mng_entity_categories WHERE id=%s RETURNING id
+"""
+
+_SQL_GET_CATEGORY_ID = """
+    SELECT id FROM mng_entity_categories WHERE client_id=1 AND project=%s AND name=%s
+"""
+
+# Template for _SQL_LIST_VALUES — dynamic WHERE clause appended at call site.
+# Uses LEFT JOIN for event_count instead of a correlated subquery for better
+# performance on large event_tags tables (single pass vs N correlated scans).
+_SQL_LIST_VALUES = """
+    SELECT v.id, v.category_id, v.name, v.description, v.status,
+           v.created_at, v.due_date, v.parent_id, v.lifecycle_status,
+           v.seq_num,
+           COUNT(et.event_id) AS event_count,
+           c.name AS category_name, c.color, c.icon
+    FROM mng_entity_values v
+    JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+    LEFT JOIN pr_event_tags et ON et.entity_value_id = v.id
+    WHERE {where}
+    GROUP BY v.id, v.category_id, v.name, v.description, v.status,
+             v.created_at, v.due_date, v.parent_id, v.lifecycle_status,
+             v.seq_num, c.name, c.color, c.icon
+    ORDER BY v.parent_id NULLS FIRST, v.status, v.name
+"""
+
+# Extended version used by /summary — includes commit_count via CASE aggregate.
+_SQL_LIST_VALUES_SUMMARY = """
+    SELECT c.id AS cat_id, c.name AS category, c.color, c.icon,
+           v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
+           v.lifecycle_status,
+           COUNT(DISTINCT et.event_id)                                          AS event_count,
+           COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
+    FROM mng_entity_categories c
+    JOIN mng_entity_values v ON v.category_id = c.id AND v.client_id=1
+    LEFT JOIN pr_event_tags et ON et.entity_value_id = v.id
+    LEFT JOIN pr_events ev ON ev.id = et.event_id AND ev.client_id=1 AND ev.project=%s
+    WHERE c.client_id=1 AND c.project=%s AND v.status != 'archived'
+    GROUP BY c.id, c.name, c.color, c.icon,
+             v.id, v.name, v.description, v.status, v.due_date, v.parent_id, v.lifecycle_status
+    ORDER BY c.name, v.status, COUNT(DISTINCT et.event_id) DESC
+"""
+
+_SQL_INSERT_VALUE = """
+    INSERT INTO mng_entity_values
+           (client_id, category_id, project, name, description, due_date, parent_id, lifecycle_status, seq_num)
+    VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s)
+    RETURNING id
+"""
+
+_SQL_GET_VALUE_BY_SEQ = """
+    SELECT v.id, v.name, v.description, v.status, v.created_at,
+           v.due_date, v.parent_id, v.lifecycle_status, v.seq_num,
+           c.name AS category_name, c.color, c.icon
+    FROM mng_entity_values v
+    JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+    WHERE v.client_id=1 AND v.project=%s AND v.seq_num=%s
+    LIMIT 1
+"""
+
+_SQL_DELETE_VALUE = """
+    DELETE FROM mng_entity_values WHERE id=%s RETURNING id
+"""
+
+_SQL_GET_EVENTS_FOR_VALUE = """
+    SELECT e.id, e.event_type, e.source_id, e.title,
+           e.metadata, e.created_at
+    FROM pr_events e
+    JOIN pr_event_tags et ON et.event_id = e.id
+    WHERE et.entity_value_id=%s AND e.client_id=1 AND e.project=%s
+    ORDER BY e.created_at DESC LIMIT %s
+"""
+
+_SQL_INSERT_EVENT_TAG = """
+    INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged)
+    VALUES (%s, %s, %s)
+    ON CONFLICT DO NOTHING
+"""
+
+_SQL_DELETE_EVENT_TAG = """
+    DELETE FROM pr_event_tags WHERE event_id=%s AND entity_value_id=%s
+"""
+
+_SQL_INSERT_EVENT_LINK = """
+    INSERT INTO pr_event_links (from_event_id, to_event_id, link_type)
+    VALUES (%s, %s, %s)
+    ON CONFLICT DO NOTHING
+"""
+
+_SQL_DELETE_EVENT_LINK = """
+    DELETE FROM pr_event_links
+    WHERE from_event_id=%s AND to_event_id=%s AND link_type=%s
+"""
+
+_SQL_GET_OUTBOUND_LINKS = """
+    SELECT el.to_event_id, el.link_type, e.event_type, e.title
+    FROM pr_event_links el JOIN pr_events e ON e.id = el.to_event_id
+    WHERE el.from_event_id=%s
+"""
+
+_SQL_GET_INBOUND_LINKS = """
+    SELECT el.from_event_id, el.link_type, e.event_type, e.title
+    FROM pr_event_links el JOIN pr_events e ON e.id = el.from_event_id
+    WHERE el.to_event_id=%s
+"""
+
+# Used inside session_bulk_tag to find or import session events.
+_SQL_UPSERT_SESSION_TAG_SYNC = """
+    SELECT id FROM pr_events
+    WHERE client_id=1 AND project=%s
+      AND (
+        metadata->>'session_id' = %s
+        OR source_id = %s
+      )
+"""
+
+_SQL_INSERT_VALUE_LINK = """
+    INSERT INTO mng_entity_value_links (from_value_id, to_value_id, link_type)
+    VALUES (%s, %s, %s)
+    ON CONFLICT DO NOTHING
+"""
+
+_SQL_DELETE_VALUE_LINK = """
+    DELETE FROM mng_entity_value_links
+    WHERE from_value_id=%s AND to_value_id=%s AND link_type=%s
+"""
+
+_SQL_GET_OUTBOUND_VALUE_LINKS = """
+    SELECT evl.to_value_id, evl.link_type, v.name, c.name AS category, c.color
+    FROM mng_entity_value_links evl
+    JOIN mng_entity_values v ON v.id = evl.to_value_id AND v.client_id=1
+    JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+    WHERE evl.from_value_id=%s
+"""
+
+_SQL_GET_INBOUND_VALUE_LINKS = """
+    SELECT evl.from_value_id, evl.link_type, v.name, c.name AS category, c.color
+    FROM mng_entity_value_links evl
+    JOIN mng_entity_values v ON v.id = evl.from_value_id AND v.client_id=1
+    JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+    WHERE evl.to_value_id=%s
+"""
+
+_SQL_UPSERT_ENTITY_VALUE_GITHUB = """
+    INSERT INTO mng_entity_values (client_id, project, category_id, name, description, due_date)
+    VALUES (1, %s, %s, %s, %s, %s)
+    ON CONFLICT (client_id, project, name)
+    DO UPDATE SET description=EXCLUDED.description,
+                  due_date=COALESCE(EXCLUDED.due_date, mng_entity_values.due_date)
+    RETURNING (xmax = 0) AS was_inserted
+"""
+
+_SQL_GET_SESSION_ENTITY_TAGS = """
+    SELECT DISTINCT v.id, v.name, v.status,
+           c.id AS category_id, c.name AS category_name, c.color, c.icon
+    FROM pr_event_tags et
+    JOIN pr_events e  ON e.id  = et.event_id AND e.client_id=1 AND e.project=%s
+    JOIN mng_entity_values v      ON v.id  = et.entity_value_id AND v.client_id=1
+    JOIN mng_entity_categories c  ON c.id  = v.category_id AND c.client_id=1
+   WHERE e.metadata->>'session_id' = %s
+      OR e.source_id = %s
+"""
+
+# ────────────────────────────────────────────────────────────────────────────────
 
 router = APIRouter()
 
@@ -76,18 +269,11 @@ def _seed_defaults(project: str) -> None:
     """Idempotent: ensures every default category exists for the project."""
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT name FROM mng_entity_categories WHERE client_id=1 AND project=%s",
-                (project,),
-            )
+            cur.execute(_SQL_GET_CATEGORY_NAMES, (project,))
             existing = {r[0] for r in cur.fetchall()}
             for name, color, icon in _DEFAULT_CATEGORIES:
                 if name not in existing:
-                    cur.execute(
-                        "INSERT INTO mng_entity_categories (client_id, project, name, color, icon) "
-                        "VALUES (1, %s, %s, %s, %s) ON CONFLICT (client_id, project, name) DO NOTHING",
-                        (project, name, color, icon),
-                    )
+                    cur.execute(_SQL_SEED_CATEGORY, (project, name, color, icon))
 
 
 # ── Categories ─────────────────────────────────────────────────────────────────
@@ -111,15 +297,7 @@ async def list_categories(project: str | None = Query(None)):
     _seed_defaults(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT c.id, c.name, c.color, c.icon,
-                          COUNT(v.id) AS value_count
-                   FROM mng_entity_categories c
-                   LEFT JOIN mng_entity_values v ON v.category_id = c.id AND v.client_id=1
-                   WHERE c.client_id=1 AND c.project=%s
-                   GROUP BY c.id ORDER BY c.name""",
-                (p,),
-            )
+            cur.execute(_SQL_LIST_CATEGORIES, (p,))
             cols = [d[0] for d in cur.description]
             return {"categories": [dict(zip(cols, r)) for r in cur.fetchall()], "project": p}
 
@@ -130,29 +308,22 @@ async def create_category(body: CategoryCreate):
     p = _project(body.project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO mng_entity_categories (client_id, project, name, color, icon) "
-                "VALUES (1, %s, %s, %s, %s) RETURNING id",
-                (p, body.name, body.color, body.icon),
-            )
+            cur.execute(_SQL_INSERT_CATEGORY, (p, body.name, body.color, body.icon))
             return {"id": cur.fetchone()[0], "name": body.name, "project": p}
 
 
 @router.patch("/categories/{cat_id}")
 async def patch_category(cat_id: int, body: CategoryPatch):
     _require_db()
-    fields, params = [], []
-    if body.name  is not None: fields.append("name=%s");  params.append(body.name)
-    if body.color is not None: fields.append("color=%s"); params.append(body.color)
-    if body.icon  is not None: fields.append("icon=%s");  params.append(body.icon)
+    fields = {k: v for k, v in {"name": body.name, "color": body.color, "icon": body.icon}.items() if v is not None}
     if not fields:
         raise HTTPException(400, "Nothing to update")
-    params.append(cat_id)
+    set_clause, vals = build_update(fields)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE mng_entity_categories SET " + ",".join(fields) + " WHERE id=%s RETURNING id",
-                params,
+                f"UPDATE mng_entity_categories SET {set_clause} WHERE id=%s RETURNING id",
+                vals + [cat_id],
             )
             if not cur.fetchone():
                 raise HTTPException(404, "Category not found")
@@ -164,7 +335,7 @@ async def delete_category(cat_id: int):
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM mng_entity_categories WHERE id=%s RETURNING id", (cat_id,))
+            cur.execute(_SQL_DELETE_CATEGORY, (cat_id,))
             if not cur.fetchone():
                 raise HTTPException(404, "Category not found")
     return {"ok": True}
@@ -207,32 +378,20 @@ async def list_values(
         with conn.cursor() as cur:
             # Resolve category_name → category_id if provided
             if category_name and not category_id:
-                cur.execute(
-                    "SELECT id FROM mng_entity_categories WHERE client_id=1 AND project=%s AND name=%s",
-                    (p, category_name),
-                )
+                cur.execute(_SQL_GET_CATEGORY_ID, (p, category_name))
                 row = cur.fetchone()
                 if row:
                     category_id = row[0]
 
-            where = ["v.client_id=1", "v.project=%s"]
+            where_parts = ["v.client_id=1", "v.project=%s"]
             params: list = [p]
             if category_id:
-                where.append("v.category_id=%s"); params.append(category_id)
+                where_parts.append("v.category_id=%s"); params.append(category_id)
             if status:
-                where.append("v.status=%s"); params.append(status)
+                where_parts.append("v.status=%s"); params.append(status)
 
             cur.execute(
-                """SELECT v.id, v.category_id, v.name, v.description, v.status,
-                          v.created_at, v.due_date, v.parent_id, v.lifecycle_status,
-                          v.seq_num,
-                          (SELECT COUNT(*) FROM pr_event_tags et
-                           WHERE et.entity_value_id = v.id) AS event_count,
-                          c.name AS category_name, c.color, c.icon
-                   FROM mng_entity_values v
-                   JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
-                   WHERE """ + " AND ".join(where) + """
-                   ORDER BY v.parent_id NULLS FIRST, v.status, v.name""",
+                _SQL_LIST_VALUES.format(where=" AND ".join(where_parts)),
                 params,
             )
             cols = [d[0] for d in cur.description]
@@ -260,22 +419,7 @@ async def entity_summary(project: str | None = Query(None)):
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT c.id AS cat_id, c.name AS category, c.color, c.icon,
-                          v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
-                          v.lifecycle_status,
-                          COUNT(DISTINCT et.event_id)                                          AS event_count,
-                          COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
-                   FROM mng_entity_categories c
-                   JOIN mng_entity_values v ON v.category_id = c.id AND v.client_id=1
-                   LEFT JOIN pr_event_tags et ON et.entity_value_id = v.id
-                   LEFT JOIN pr_events ev ON ev.id = et.event_id AND ev.client_id=1 AND ev.project=%s
-                   WHERE c.client_id=1 AND c.project=%s AND v.status != 'archived'
-                   GROUP BY c.id, c.name, c.color, c.icon,
-                            v.id, v.name, v.description, v.status, v.due_date, v.parent_id, v.lifecycle_status
-                   ORDER BY c.name, v.status, COUNT(DISTINCT et.event_id) DESC""",
-                (p, p),
-            )
+            cur.execute(_SQL_LIST_VALUES_SUMMARY, (p, p))
             rows = cur.fetchall()
 
     # Group by category
@@ -336,10 +480,7 @@ async def create_value(body: ValueCreate):
             # Resolve category_name → category_id (for MCP callers that pass name)
             cat_id = body.category_id
             if (not cat_id or cat_id == 0) and body.category_name:
-                cur.execute(
-                    "SELECT id FROM mng_entity_categories WHERE client_id=1 AND project=%s AND name=%s",
-                    (p, body.category_name),
-                )
+                cur.execute(_SQL_GET_CATEGORY_ID, (p, body.category_name))
                 row = cur.fetchone()
                 if not row:
                     raise HTTPException(404, f"Category '{body.category_name}' not found")
@@ -364,8 +505,7 @@ async def create_value(body: ValueCreate):
                     cat_name_for_seq = r2[0]
             seq = next_seq(cur, p, cat_name_for_seq)
             cur.execute(
-                "INSERT INTO mng_entity_values (client_id, category_id, project, name, description, due_date, parent_id, lifecycle_status, seq_num) "
-                "VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                _SQL_INSERT_VALUE,
                 (cat_id, p, body.name, body.description, body.due_date or None,
                  body.parent_id or None, lc, seq),
             )
@@ -380,16 +520,7 @@ async def get_value_by_number(seq_num: int, project: str | None = Query(None)):
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT v.id, v.name, v.description, v.status, v.created_at,
-                          v.due_date, v.parent_id, v.lifecycle_status, v.seq_num,
-                          c.name AS category_name, c.color, c.icon
-                   FROM mng_entity_values v
-                   JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
-                   WHERE v.client_id=1 AND v.project=%s AND v.seq_num=%s
-                   LIMIT 1""",
-                (p, seq_num),
-            )
+            cur.execute(_SQL_GET_VALUE_BY_SEQ, (p, seq_num))
             r = cur.fetchone()
             if not r:
                 raise HTTPException(404, f"Entity #{seq_num} not found in project {p!r}")
@@ -405,6 +536,8 @@ async def get_value_by_number(seq_num: int, project: str | None = Query(None)):
 @router.patch("/values/{val_id}")
 async def patch_value(val_id: int, body: ValuePatch):
     _require_db()
+    # Build SET clause manually to preserve None-sentinel semantics for nullable
+    # fields (due_date=""/None clears the column; parent_id=0/None clears the FK).
     fields, params = [], []
     if body.name             is not None: fields.append("name=%s");             params.append(body.name)
     if body.description      is not None: fields.append("description=%s");      params.append(body.description)
@@ -431,7 +564,7 @@ async def delete_value(val_id: int):
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM mng_entity_values WHERE id=%s RETURNING id", (val_id,))
+            cur.execute(_SQL_DELETE_VALUE, (val_id,))
             if not cur.fetchone():
                 raise HTTPException(404, "Value not found")
     return {"ok": True}
@@ -452,12 +585,7 @@ async def list_events(
         with conn.cursor() as cur:
             if value_id:
                 cur.execute(
-                    """SELECT e.id, e.event_type, e.source_id, e.title,
-                              e.metadata, e.created_at
-                       FROM pr_events e
-                       JOIN pr_event_tags et ON et.event_id = e.id
-                       WHERE et.entity_value_id=%s AND e.client_id=1 AND e.project=%s
-                       ORDER BY e.created_at DESC LIMIT %s""",
+                    _SQL_GET_EVENTS_FOR_VALUE,
                     (value_id, p, limit),
                 )
             elif event_type:
@@ -785,11 +913,7 @@ async def add_event_tag(event_id: int, body: TagAdd, project: str | None = Query
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged) "
-                "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
-                (event_id, body.entity_value_id, body.auto_tagged),
-            )
+            cur.execute(_SQL_INSERT_EVENT_TAG, (event_id, body.entity_value_id, body.auto_tagged))
     return {"ok": True}
 
 
@@ -799,10 +923,7 @@ async def remove_event_tag(event_id: int, value_id: int, project: str | None = Q
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM pr_event_tags WHERE event_id=%s AND entity_value_id=%s",
-                (event_id, value_id),
-            )
+            cur.execute(_SQL_DELETE_EVENT_TAG, (event_id, value_id))
     return {"ok": True}
 
 
@@ -872,9 +993,8 @@ async def _auto_suggest_tags(event_id: int, project: str, content: str) -> None:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged) "
-                            "VALUES (%s,%s,TRUE) ON CONFLICT DO NOTHING",
-                            (event_id, vid),
+                            _SQL_INSERT_EVENT_TAG,
+                            (event_id, vid, True),
                         )
             except Exception:
                 pass
@@ -1006,11 +1126,7 @@ async def add_event_link(event_id: int, body: LinkCreate, project: str | None = 
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO pr_event_links (from_event_id, to_event_id, link_type) "
-                "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
-                (event_id, body.to_event_id, body.link_type),
-            )
+            cur.execute(_SQL_INSERT_EVENT_LINK, (event_id, body.to_event_id, body.link_type))
     return {"ok": True}
 
 
@@ -1020,11 +1136,7 @@ async def remove_event_link(event_id: int, to_id: int, link_type: str, project: 
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM pr_event_links "
-                "WHERE from_event_id=%s AND to_event_id=%s AND link_type=%s",
-                (event_id, to_id, link_type),
-            )
+            cur.execute(_SQL_DELETE_EVENT_LINK, (event_id, to_id, link_type))
     return {"ok": True}
 
 
@@ -1034,22 +1146,12 @@ async def get_event_links(event_id: int, project: str | None = Query(None)):
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT el.to_event_id, el.link_type, e.event_type, e.title
-                   FROM pr_event_links el JOIN pr_events e ON e.id = el.to_event_id
-                   WHERE el.from_event_id=%s""",
-                (event_id,),
-            )
+            cur.execute(_SQL_GET_OUTBOUND_LINKS, (event_id,))
             outgoing = [
                 {"to_id": r[0], "link_type": r[1], "event_type": r[2], "title": r[3]}
                 for r in cur.fetchall()
             ]
-            cur.execute(
-                """SELECT el.from_event_id, el.link_type, e.event_type, e.title
-                   FROM pr_event_links el JOIN pr_events e ON e.id = el.from_event_id
-                   WHERE el.to_event_id=%s""",
-                (event_id,),
-            )
+            cur.execute(_SQL_GET_INBOUND_LINKS, (event_id,))
             incoming = [
                 {"from_id": r[0], "link_type": r[1], "event_type": r[2], "title": r[3]}
                 for r in cur.fetchall()
@@ -1089,10 +1191,7 @@ async def session_bulk_tag(body: SessionTagBody):
                 if not body.category_name or not body.value_name:
                     raise HTTPException(400, "Provide value_id OR category_name+value_name")
                 # Get category id
-                cur.execute(
-                    "SELECT id FROM mng_entity_categories WHERE client_id=1 AND project=%s AND name=%s",
-                    (p, body.category_name),
-                )
+                cur.execute(_SQL_GET_CATEGORY_ID, (p, body.category_name))
                 cat_row = cur.fetchone()
                 if not cat_row:
                     raise HTTPException(404, f"Category '{body.category_name}' not found")
@@ -1116,25 +1215,13 @@ async def session_bulk_tag(body: SessionTagBody):
             # Find all events for this session
             # Events created by the UI have metadata->>'session_id' = session_id
             # Events from CLI have session_id in history.jsonl metadata
-            cur.execute(
-                """SELECT id FROM pr_events
-                   WHERE client_id=1 AND project=%s
-                     AND (
-                       metadata->>'session_id' = %s
-                       OR source_id = %s
-                     )""",
-                (p, body.session_id, body.session_id),
-            )
+            cur.execute(_SQL_UPSERT_SESSION_TAG_SYNC, (p, body.session_id, body.session_id))
             event_ids = [r[0] for r in cur.fetchall()]
 
             # Tag them all (idempotent)
             tagged = 0
             for eid in event_ids:
-                cur.execute(
-                    "INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged) "
-                    "VALUES (%s,%s,false) ON CONFLICT DO NOTHING",
-                    (eid, value_id),
-                )
+                cur.execute(_SQL_INSERT_EVENT_TAG, (eid, value_id, False))
                 tagged += cur.rowcount
 
     # Also link interactions → interaction_tags for matching work_item (best-effort)
@@ -1343,11 +1430,7 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
                 raise HTTPException(404, "Entity value not found")
 
             # Tag (idempotent)
-            cur.execute(
-                "INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged) "
-                "VALUES (%s,%s,false) ON CONFLICT DO NOTHING",
-                (event_id, body.entity_value_id),
-            )
+            cur.execute(_SQL_INSERT_EVENT_TAG, (event_id, body.entity_value_id, False))
 
     # Background: propagate prompt tags → commit events in same session
     background.add_task(_propagate_tags_phase4, p)
@@ -1404,10 +1487,7 @@ async def untag_event_by_source_id(
             row = cur.fetchone()
             if not row:
                 raise HTTPException(404, f"No event found for source_id={source_id!r}")
-            cur.execute(
-                "DELETE FROM pr_event_tags WHERE event_id=%s AND entity_value_id=%s",
-                (row[0], value_id),
-            )
+            cur.execute(_SQL_DELETE_EVENT_TAG, (row[0], value_id))
     return {"ok": True, "source_id": source_id, "value_id": value_id}
 
 
@@ -1490,11 +1570,7 @@ async def add_value_link(val_id: int, body: ValueLinkCreate, project: str | None
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO mng_entity_value_links (from_value_id, to_value_id, link_type)
-                   VALUES (%s,%s,%s) ON CONFLICT DO NOTHING""",
-                (val_id, body.to_value_id, body.link_type),
-            )
+            cur.execute(_SQL_INSERT_VALUE_LINK, (val_id, body.to_value_id, body.link_type))
     return {"ok": True, "from_value_id": val_id, "to_value_id": body.to_value_id, "link_type": body.link_type}
 
 
@@ -1504,10 +1580,7 @@ async def remove_value_link(val_id: int, to_id: int, link_type: str = Query("blo
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM mng_entity_value_links WHERE from_value_id=%s AND to_value_id=%s AND link_type=%s",
-                (val_id, to_id, link_type),
-            )
+            cur.execute(_SQL_DELETE_VALUE_LINK, (val_id, to_id, link_type))
     return {"ok": True}
 
 
@@ -1517,26 +1590,12 @@ async def get_value_links(val_id: int):
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT evl.to_value_id, evl.link_type, v.name, c.name AS category, c.color
-                   FROM mng_entity_value_links evl
-                   JOIN mng_entity_values v ON v.id = evl.to_value_id AND v.client_id=1
-                   JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
-                   WHERE evl.from_value_id=%s""",
-                (val_id,),
-            )
+            cur.execute(_SQL_GET_OUTBOUND_VALUE_LINKS, (val_id,))
             outgoing = [
                 {"to_value_id": r[0], "link_type": r[1], "name": r[2], "category": r[3], "color": r[4]}
                 for r in cur.fetchall()
             ]
-            cur.execute(
-                """SELECT evl.from_value_id, evl.link_type, v.name, c.name AS category, c.color
-                   FROM mng_entity_value_links evl
-                   JOIN mng_entity_values v ON v.id = evl.from_value_id AND v.client_id=1
-                   JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
-                   WHERE evl.to_value_id=%s""",
-                (val_id,),
-            )
+            cur.execute(_SQL_GET_INBOUND_VALUE_LINKS, (val_id,))
             incoming = [
                 {"from_value_id": r[0], "link_type": r[1], "name": r[2], "category": r[3], "color": r[4]}
                 for r in cur.fetchall()
@@ -1596,10 +1655,7 @@ async def github_sync(
                     skipped += 1
                     continue
                 cat_name = _label_to_category(issue.get("labels", []))
-                cur.execute(
-                    "SELECT id FROM mng_entity_categories WHERE client_id=1 AND project=%s AND name=%s",
-                    (p, cat_name),
-                )
+                cur.execute(_SQL_GET_CATEGORY_ID, (p, cat_name))
                 cat_row = cur.fetchone()
                 if not cat_row:
                     skipped += 1
@@ -1611,15 +1667,7 @@ async def github_sync(
                 if issue.get("milestone") and issue["milestone"].get("due_on"):
                     due = issue["milestone"]["due_on"][:10]
 
-                cur.execute(
-                    """INSERT INTO mng_entity_values (client_id, project, category_id, name, description, due_date)
-                       VALUES (1, %s, %s, %s, %s, %s)
-                       ON CONFLICT (client_id, project, name)
-                       DO UPDATE SET description=EXCLUDED.description,
-                                     due_date=COALESCE(EXCLUDED.due_date, mng_entity_values.due_date)
-                       RETURNING (xmax = 0) AS was_inserted""",
-                    (p, cat_id, name, desc, due),
-                )
+                cur.execute(_SQL_UPSERT_ENTITY_VALUE_GITHUB, (p, cat_id, name, desc, due))
                 row = cur.fetchone()
                 if row and row[0]:
                     created += 1
@@ -1646,17 +1694,7 @@ async def get_session_entity_tags(session_id: str, project: str | None = Query(N
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT DISTINCT v.id, v.name, v.status,
-                           c.id AS category_id, c.name AS category_name, c.color, c.icon
-                    FROM pr_event_tags et
-                    JOIN pr_events e  ON e.id  = et.event_id AND e.client_id=1 AND e.project=%s
-                    JOIN mng_entity_values v      ON v.id  = et.entity_value_id AND v.client_id=1
-                    JOIN mng_entity_categories c  ON c.id  = v.category_id AND c.client_id=1
-                   WHERE e.metadata->>'session_id' = %s
-                      OR e.source_id = %s""",
-                (p, session_id, session_id),
-            )
+            cur.execute(_SQL_GET_SESSION_ENTITY_TAGS, (p, session_id, session_id))
             cols = [d[0] for d in cur.description]
             tags = [dict(zip(cols, row)) for row in cur.fetchall()]
 

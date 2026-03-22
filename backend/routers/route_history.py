@@ -22,6 +22,99 @@ from core.config import settings
 from core.auth import get_optional_user
 from core.database import db
 
+# ── SQL ────────────────────────────────────────────────────────────────────────
+
+_SQL_LIST_COMMITS = """
+    SELECT id, commit_hash, commit_msg, summary, phase,
+           feature, bug_ref, source, session_id, prompt_source_id,
+           tags, committed_at
+    FROM pr_commits
+    WHERE client_id=1 AND project=%s
+    ORDER BY committed_at DESC NULLS LAST, id DESC
+    LIMIT %s
+"""
+
+_SQL_UPSERT_COMMIT_FROM_LOG = """
+    INSERT INTO pr_commits
+        (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
+    VALUES (1, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (commit_hash) DO UPDATE SET
+        session_id = CASE
+            WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
+            THEN EXCLUDED.session_id
+            ELSE pr_commits.session_id
+        END
+"""
+
+_SQL_UPDATE_COMMIT_META = (
+    "UPDATE pr_commits SET {set_clause} WHERE id = %s AND client_id=1 RETURNING id"
+)
+
+# Dynamic WHERE variant: add time-window filter when session timestamps are available.
+# Base form matches by session_id only; extended form adds a committed_at range.
+# Build dynamically in the handler; see session_commits() below.
+_SQL_SESSION_COMMITS_BASE = """
+    SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+          FROM pr_commits
+         WHERE client_id=1 AND project=%s AND session_id = %s
+         ORDER BY committed_at
+"""
+
+_SQL_SESSION_COMMITS_WITH_WINDOW = """
+    SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+          FROM pr_commits
+         WHERE client_id=1 AND project=%s
+           AND (session_id = %s
+            OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz))
+         ORDER BY committed_at
+"""
+
+_SQL_GET_SESSION_TAGS = (
+    "SELECT phase, feature, bug_ref, extra FROM mng_session_tags WHERE client_id=1 AND project=%s"
+)
+
+_SQL_UPSERT_SESSION_TAGS = """
+    INSERT INTO mng_session_tags (client_id, project, phase, feature, bug_ref, extra, updated_at)
+    VALUES (1, %s, %s, %s, %s, %s, NOW())
+    ON CONFLICT (client_id, project) DO UPDATE SET
+        phase = EXCLUDED.phase,
+        feature = EXCLUDED.feature,
+        bug_ref = EXCLUDED.bug_ref,
+        extra = EXCLUDED.extra,
+        updated_at = NOW()
+"""
+
+# Workflow run queries — dynamic: with or without a workflow name filter.
+# Build the variant conditionally in workflow_runs(); constants cover both shapes.
+_SQL_LIST_RUNS_BASE = """
+    SELECT r.id, r.status, r.user_input, r.started_at, r.finished_at,
+           r.total_cost_usd, r.error, r.current_node, r.context,
+           w.name AS workflow_name
+    FROM pr_graph_runs r
+    LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
+    WHERE r.client_id=1 AND r.project=%s
+    ORDER BY r.started_at DESC LIMIT %s
+"""
+
+_SQL_LIST_RUNS_BY_WORKFLOW = """
+    SELECT r.id, r.status, r.user_input, r.started_at, r.finished_at,
+           r.total_cost_usd, r.error, r.current_node, r.context,
+           w.name AS workflow_name
+    FROM pr_graph_runs r
+    LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
+    WHERE r.client_id=1 AND r.project=%s AND w.name=%s
+    ORDER BY r.started_at DESC LIMIT %s
+"""
+
+# IN-list placeholder built dynamically; template documents intent.
+# Usage: f"SELECT run_id, COUNT(*) FROM pr_graph_node_results WHERE run_id IN ({placeholders}) GROUP BY run_id"
+_SQL_COUNT_NODE_RESULTS_TEMPLATE = (
+    "SELECT run_id, COUNT(*) FROM pr_graph_node_results "
+    "WHERE run_id IN ({placeholders}) GROUP BY run_id"
+)
+
+# ── Router definition ─────────────────────────────────────────────────────────
+
 router = APIRouter()
 
 # Engine root: .../aicli/ui/backend/routers/history.py → four parents up
@@ -179,15 +272,7 @@ async def commits_history(
     if db.is_available():
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, commit_hash, commit_msg, summary, phase,
-                           feature, bug_ref, source, session_id, prompt_source_id,
-                           tags, committed_at
-                    FROM pr_commits
-                    WHERE client_id=1 AND project=%s
-                    ORDER BY committed_at DESC NULLS LAST, id DESC
-                    LIMIT %s
-                """, (p, limit))
+                cur.execute(_SQL_LIST_COMMITS, (p, limit))
                 cols = [d[0] for d in cur.description]
                 rows = [dict(zip(cols, r)) for r in cur.fetchall()]
                 # Normalise types for JSON
@@ -263,7 +348,7 @@ async def patch_commit(commit_id: int, body: CommitPatch, project: str | None = 
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE pr_commits SET {', '.join(updates)} WHERE id = %s AND client_id=1 RETURNING id",
+                _SQL_UPDATE_COMMIT_META.format(set_clause=", ".join(updates)),
                 params,
             )
             if not cur.fetchone():
@@ -300,24 +385,17 @@ async def sync_commits(project: str | None = Query(None)):
                     if not commit_hash:
                         continue
 
-                    cur.execute("""
-                        INSERT INTO pr_commits
-                            (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
-                        VALUES (1, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (commit_hash) DO UPDATE SET
-                            session_id = CASE
-                                WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
-                                THEN EXCLUDED.session_id
-                                ELSE pr_commits.session_id
-                            END
-                    """, (
-                        p,
-                        commit_hash,
-                        raw.get("message", raw.get("msg", "")),
-                        raw.get("source", "git"),
-                        raw.get("session_id"),
-                        raw.get("ts"),
-                    ))
+                    cur.execute(
+                        _SQL_UPSERT_COMMIT_FROM_LOG,
+                        (
+                            p,
+                            commit_hash,
+                            raw.get("message", raw.get("msg", "")),
+                            raw.get("source", "git"),
+                            raw.get("session_id"),
+                            raw.get("ts"),
+                        ),
+                    )
                     inserted += cur.rowcount
 
     return {"imported": inserted, "project": p}
@@ -362,10 +440,7 @@ async def get_session_tags(project: str | None = Query(None)):
     if db.is_available():
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT phase, feature, bug_ref, extra FROM mng_session_tags WHERE client_id=1 AND project=%s",
-                    (p,),
-                )
+                cur.execute(_SQL_GET_SESSION_TAGS, (p,))
                 row = cur.fetchone()
                 if row:
                     return {"project": p, "phase": row[0], "feature": row[1],
@@ -408,17 +483,11 @@ async def put_session_tags(body: SessionTagsUpdate, project: str | None = Query(
     if db.is_available():
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO mng_session_tags (client_id, project, phase, feature, bug_ref, extra, updated_at)
-                    VALUES (1, %s, %s, %s, %s, %s, NOW())
-                    ON CONFLICT (client_id, project) DO UPDATE SET
-                        phase = EXCLUDED.phase,
-                        feature = EXCLUDED.feature,
-                        bug_ref = EXCLUDED.bug_ref,
-                        extra = EXCLUDED.extra,
-                        updated_at = NOW()
-                """, (p, body.phase, body.feature, body.bug_ref,
-                      _json.dumps(body.extra or {})))
+                cur.execute(
+                    _SQL_UPSERT_SESSION_TAGS,
+                    (p, body.phase, body.feature, body.bug_ref,
+                     _json.dumps(body.extra or {})),
+                )
 
     return {"ok": True, **tags}
 
@@ -450,26 +519,16 @@ async def workflow_runs(
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    # Use the workflow-filtered variant when a name is provided;
+                    # otherwise use the base query (_SQL_LIST_RUNS_BY_WORKFLOW / _SQL_LIST_RUNS_BASE).
                     if workflow:
                         cur.execute(
-                            """SELECT r.id, r.status, r.user_input, r.started_at, r.finished_at,
-                                      r.total_cost_usd, r.error, r.current_node, r.context,
-                                      w.name AS workflow_name
-                               FROM pr_graph_runs r
-                               LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
-                               WHERE r.client_id=1 AND r.project=%s AND w.name=%s
-                               ORDER BY r.started_at DESC LIMIT %s""",
+                            _SQL_LIST_RUNS_BY_WORKFLOW,
                             (project, workflow, min(limit, 200)),
                         )
                     else:
                         cur.execute(
-                            """SELECT r.id, r.status, r.user_input, r.started_at, r.finished_at,
-                                      r.total_cost_usd, r.error, r.current_node, r.context,
-                                      w.name AS workflow_name
-                               FROM pr_graph_runs r
-                               LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
-                               WHERE r.client_id=1 AND r.project=%s
-                               ORDER BY r.started_at DESC LIMIT %s""",
+                            _SQL_LIST_RUNS_BASE,
                             (project, min(limit, 200)),
                         )
                     rows = cur.fetchall()
@@ -480,7 +539,7 @@ async def workflow_runs(
                     if run_ids:
                         placeholders = ",".join(["%s"] * len(run_ids))
                         cur.execute(
-                            f"SELECT run_id, COUNT(*) FROM pr_graph_node_results WHERE run_id IN ({placeholders}) GROUP BY run_id",
+                            _SQL_COUNT_NODE_RESULTS_TEMPLATE.format(placeholders=placeholders),
                             run_ids,
                         )
                         for sc_row in cur.fetchall():
@@ -626,25 +685,16 @@ async def session_commits(
     if db.is_available():
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # Build query: always match by session_id; add time window if available
+                # Use the time-window variant when session timestamps are available
+                # (_SQL_SESSION_COMMITS_WITH_WINDOW), otherwise fall back to the
+                # session_id-only query (_SQL_SESSION_COMMITS_BASE).
                 if created_at and updated_at:
                     cur.execute(
-                        """SELECT commit_hash, commit_msg, phase, feature, source, committed_at
-                              FROM pr_commits
-                             WHERE client_id=1 AND project=%s
-                               AND (session_id = %s
-                                OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz))
-                             ORDER BY committed_at""",
+                        _SQL_SESSION_COMMITS_WITH_WINDOW,
                         (p, session_id, created_at, updated_at),
                     )
                 else:
-                    cur.execute(
-                        """SELECT commit_hash, commit_msg, phase, feature, source, committed_at
-                              FROM pr_commits
-                             WHERE client_id=1 AND project=%s AND session_id = %s
-                             ORDER BY committed_at""",
-                        (p, session_id),
-                    )
+                    cur.execute(_SQL_SESSION_COMMITS_BASE, (p, session_id))
                 cols = [d[0] for d in cur.description]
                 for row in cur.fetchall():
                     r = dict(zip(cols, row))

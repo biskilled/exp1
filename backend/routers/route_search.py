@@ -16,6 +16,30 @@ from core.config import settings
 from core.auth import get_optional_user
 from core.database import db
 
+# ── SQL ──────────────────────────────────────────────────────────────────────
+
+# Base template for tagged-context queries — dynamic WHERE clauses are built
+# in get_tagged_context() and appended to this template.
+_SQL_SEARCH_EMBEDDINGS_BASE = (
+    """SELECT ev.id, ev.event_type, ev.source_id, ev.title,
+              ev.phase, ev.feature, ev.session_id,
+              ev.created_at, ev.metadata
+         FROM pr_events ev
+         {where}
+        ORDER BY ev.created_at DESC
+        LIMIT %s"""
+)
+
+_SQL_COUNT_INTERACTIONS_TOTAL = (
+    "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt'"
+)
+
+_SQL_COUNT_INTERACTIONS_SINCE = (
+    "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 router = APIRouter()
 
 
@@ -99,19 +123,12 @@ async def get_tagged_context(
     where = "WHERE " + " AND ".join(filters)
     params.append(limit)
 
+    sql = _SQL_SEARCH_EMBEDDINGS_BASE.format(where=where)
+
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    f"""SELECT ev.id, ev.event_type, ev.source_id, ev.title,
-                               ev.phase, ev.feature, ev.session_id,
-                               ev.created_at, ev.metadata
-                          FROM pr_events ev
-                          {where}
-                         ORDER BY ev.created_at DESC
-                         LIMIT %s""",
-                    params,
-                )
+                cur.execute(sql, params)
                 rows = cur.fetchall()
         events = [
             {

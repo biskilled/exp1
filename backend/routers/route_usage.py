@@ -23,6 +23,19 @@ from core.database import db
 from agents.providers.pr_pricing import calculate_cost
 from core.user import find_by_id, list_users
 
+# ── SQL ────────────────────────────────────────────────────────────────────────
+
+# INSERT uses the existing idx_usage_user_id index for fast per-user lookups.
+# source='request' distinguishes real user LLM calls from api_fetch/local_recalc
+# background records, ensuring aggregation queries return accurate user-facing stats.
+_SQL_INSERT_USAGE_LOG = """
+    INSERT INTO mng_usage_logs
+       (user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd)
+       VALUES (%s, %s, %s, %s, %s, %s, %s)
+"""
+
+# ── Router definition ─────────────────────────────────────────────────────────
+
 router = APIRouter()
 
 
@@ -68,15 +81,13 @@ def log_usage(
         "cost_usd": real_cost,
         "charged_usd": charged_usd,
     }
-    # Primary: PostgreSQL
+    # Primary: PostgreSQL — benefits from idx_usage_user_id and idx_usage_created_at
     if db.is_available():
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO mng_usage_logs
-                           (user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                        _SQL_INSERT_USAGE_LOG,
                         (user_id, provider, model, input_tokens, output_tokens, real_cost, charged_usd),
                     )
         except Exception:

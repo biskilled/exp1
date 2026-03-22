@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:38 UTC by aicli /memory_
+_Generated: 2026-03-22 00:39 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates semantic memory management, multi-provider LLM support (Claude, OpenAI, DeepSeek, Gemini, Grok), and workflow automation through a full-stack architecture combining Python FastAPI backend, PostgreSQL with pgvector embeddings, Electron desktop UI with vanilla JS, and MCP server integration. Currently in active development (v2.2.0) with focus on query optimization, API key migration to encrypted database storage, bug fixes for data persistence and startup race conditions, and pending implementation of memory synthesis table population logic.
+aicli is a shared AI memory platform enabling multi-user AI-assisted development with persistent project context, semantic embeddings, and workflow automation. The system combines a FastAPI backend with PostgreSQL+pgvector semantic search, an Electron desktop UI with embedded terminal and Monaco editor, and autonomous agent capabilities via MCP integration. Current focus is on stabilizing data persistence, query optimization, and completing encrypted per-user API key migration from file-based to database storage.
 
 ## Project Facts
 
@@ -56,7 +56,7 @@ Reviewer: ```json
 - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; encrypted per-user API keys in database
+- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; per-user encrypted API keys in database
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
@@ -65,7 +65,7 @@ Reviewer: ```json
 - **mcp**: Stdio MCP server with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers
+- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings, agent role providers; YAML config for pipeline definitions
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
@@ -75,30 +75,30 @@ Reviewer: ```json
 
 ## Key Decisions
 
-- Engine/workspace separation: aicli/ contains backend logic; workspace/ stores per-project content; _system/ holds project state
-- Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector (1536-dim embeddings) for semantic search
-- JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
+- Engine/workspace separation: aicli/ contains backend logic only; workspace/ stores per-project content; _system/ holds project state
+- Dual storage: JSONL (history.jsonl with rotation) for primary storage; PostgreSQL 15+ with pgvector (1536-dim embeddings) for semantic search and per-project indexed tables
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
+- JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys
-- Nested tag hierarchy via parent_id FK with unlimited depth; tags synced across Chat/History/Commits on explicit save
-- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
+- Per-user encrypted API key storage in database; main app keys remain in .env only
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Per-user encrypted API key storage in database; main app keys remain in .env; api_keys.json file fully deprecated
-- MCP server (stdio) with 12+ tools configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
+- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
+- Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
-- Hierarchical data model: Clients contain multiple Users; authentication pattern establishes first-level hierarchy
+- Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Applying dynamic query templating and optimization review; evaluating centralized query management via database.py
-- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to legacy file; 35+ import sites validated; transition to encrypted database storage complete
-- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys fully implemented; .env holds main app credentials only; legacy file storage eliminated
-- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure); requires focused debugging
-- Backend startup race condition fix (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list timing issue still unresolved
-- Memory items and project_facts table population (2026-03-18) — Original specification requires table updates for improved memory/context; implementation logic pending
+- Query organization refactoring (2026-03-22) — Applying dynamic query templating and optimization across router files; evaluating database.py for centralized query management
+- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated
+- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only
+- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
+- Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation
+- Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
 
 ## Active Features / Bugs / Tasks
 
@@ -210,4 +210,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `in_progress` — Query organization refactoring in progress across all router files; evaluating centralized query management patterns for maintainability and performance optimization. **[2026-03-22]** `in_progress` — API keys.json file removal completed; verified 35+ import sites; transition to encrypted database-backed API key storage fully implemented with legacy file deprecation. **[2026-03-21]** `in_progress` — Per-user encrypted API key system operational; database-backed encrypted keys replace file storage; .env holds main app credentials only. **[2026-03-21]** `bug` — Data persistence issue identified: tags saved in UI disappear on session switch; root cause remains unclear (UI rendering vs. database save failure). **[2026-03-21]** `bug` — Backend startup race condition partially fixed via retry logic for empty project list; AiCli visibility timing issue in Recent vs. main project list still pending investigation. **[2026-03-18]** `bug_fixed` — Removed stale `db.ensure_project_schema()` call in main.py; replaced with correct `_ensure_shared_schema()` method. **[2026-03-18]** `bug_fixed` — Memory endpoint CLAUDE.md template error resolved; `code_dir` variable now properly scoped/defined from config (line 1120). **[2026-03-18]** `pending` — Memory items and project_facts table population logic not implemented; original specification requires these tables for improved memory/context mechanism. **[2026-03-10]** `feature` — Nested tag hierarchy enhancement approved; system now supports unlimited depth via parent_id FK (replaces previous 2-level limitation). **[2026-03-10]** `design_decision` — Confirmed hierarchical data model: Clients contain multiple Users; login established as first-level hierarchy.
+**[2026-03-22]** `in_progress` — Query organization refactoring underway; applying dynamic templating and optimization across all router files to centralize SQL query management. **[2026-03-22]** `in_progress` — Completed API keys.json file removal validation; 35+ import sites verified; no remaining code paths write to deprecated file storage. **[2026-03-21]** `in_progress` — Per-user encrypted API key system fully implemented in database; .env holds only main app credentials. **[2026-03-21]** `bug` — Data persistence issue: tags saved in UI disappear on session switch; investigation ongoing (UI rendering vs. database save failure). **[2026-03-21]** `bug` — Backend startup race condition fixed: retry logic now handles empty project list on first load; project visibility bug (AiCli in Recent but not main view) requires further investigation. **[2026-03-21]** `refactor` — Tool naming convention completed; agents/tools/ files renamed to tool_ prefix with import path validation. **[2026-03-18]** `fix` — Removed stale db.ensure_project_schema() call in main.py; corrected to use _ensure_shared_schema instead. **[2026-03-18]** `fix` — Memory endpoint CLAUDE.md template error resolved; code_dir variable now properly scoped at line 1120. **[2026-03-14]** `design` — Confirmed hierarchical data model: Clients contain multiple Users; nested tag hierarchy via parent_id FK with login as first-level category. **[2026-03-10]** `design` — Database performance optimization: load-once-on-access pattern for tags/workflows in memory; update DB only on explicit save to eliminate redundant SQL calls.

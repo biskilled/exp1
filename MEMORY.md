@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 00:35 UTC by aicli /memory_
+_Generated: 2026-03-22 00:39 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to manage project development workflows with semantic search via PostgreSQL+pgvector, DAG-based workflow execution, and multi-LLM provider support. Currently in active development with 17 features/bugs/tasks tracked; recent work focuses on query optimization, encrypted per-user API key migration, backend stability improvements, and resolving data persistence issues around tag synchronization across sessions.
+aicli is a shared AI memory platform enabling multi-user AI-assisted development with persistent project context, semantic embeddings, and workflow automation. The system combines a FastAPI backend with PostgreSQL+pgvector semantic search, an Electron desktop UI with embedded terminal and Monaco editor, and autonomous agent capabilities via MCP integration. Current focus is on stabilizing data persistence, query optimization, and completing encrypted per-user API key migration from file-based to database storage.
 
 ## Project Facts
 
@@ -80,11 +80,11 @@ Reviewer: ```json
 - Electron UI with xterm.js + Monaco editor; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys
-- Nested tag hierarchy via parent_id FK with unlimited depth; tags synced across Chat/History/Commits on explicit save
-- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
+- Per-user encrypted API key storage in database; main app keys remain in .env only
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Per-user encrypted API key storage in database (replacing api_keys.json); main app keys remain in .env
+- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
+- Nested tag hierarchy via parent_id FK with unlimited depth; login is first-level category only
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
@@ -93,7 +93,7 @@ Reviewer: ```json
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Applying dynamic query templating and optimization review across all router files; evaluating database.py for centralized query management
+- Query organization refactoring (2026-03-22) — Applying dynamic query templating and optimization across router files; evaluating database.py for centralized query management
 - API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated
 - Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only
 - Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
@@ -104,26 +104,26 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(74 events, 64 commits)`
+- **hooks** `(76 events, 66 commits)`
 
 ### Doc_type
 
 - **Test** `(28 events, 27 commits)`
-- **low-level-design** `(26 events, 24 commits)`
+- **low-level-design** `(28 events, 26 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
 - **customer-meeting** — dsds
 
 ### Feature
 
-- **UI** `(68 events, 61 commits)`
-- **auth** `(66 events, 62 commits)`
-- **graph-workflow** `(57 events, 51 commits)`
-- **workflow-runner** `(54 events, 51 commits)`
+- **UI** `(70 events, 63 commits)`
+- **auth** `(68 events, 64 commits)`
+- **graph-workflow** `(60 events, 53 commits)`
+- **workflow-runner** `(56 events, 53 commits)`
 - **shared-memory** `(42 events, 37 commits)`
 - **embeddings** `(28 events, 27 commits)`
-- **billing** `(25 events, 24 commits)`
-- **mcp** `(25 events, 24 commits)`
+- **billing** `(27 events, 26 commits)`
+- **mcp** `(27 events, 26 commits)`
 - **tagging**
 - **test-picker-feature**
 - **dropbox**
@@ -131,8 +131,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(64 events, 61 commits)`
-- **development** `(59 events, 52 commits)`
+- **discovery** `(67 events, 63 commits)`
+- **development** `(61 events, 54 commits)`
 - **prod**
 
 ### Task
@@ -210,4 +210,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `claude_cli` — Query optimization refactoring initiated: applying dynamic templating and reviewing optimization potential across all router files, considering centralized query builders in database.py. **[2026-03-22]** `claude_cli` — API keys.json removal validation nearly complete: confirmed 35+ import sites no longer reference file-based storage; per-user encrypted database storage now primary system. **[2026-03-21]** `claude_cli` — Backend startup race condition partially resolved: modified retry logic to handle empty project list edge case on first load; AiCli Recent/active project visibility discrepancy still requires investigation. **[2026-03-21]** `claude_cli` — Tool naming convention standardization completed: agents/tools/ files renamed to tool_ prefix with validated import paths post-relocation. **[2026-03-10]** `claude_cli` — Database performance optimization approved: implemented load-once-on-access pattern (tags cached in memory, DB updated only on explicit save) to eliminate redundant SQL calls. **[2026-03-10]** `claude_cli` — Tag hierarchy design approved: nested parent_id FK structure supports unlimited depth; login designated as first-level only category. **[2026-03-10]** `claude_cli` — Data persistence bug identified: tags saved in UI disappear on session switch; root cause unclear (UI rendering vs. database save failure).
+**[2026-03-22]** `in_progress` — Query organization refactoring underway; applying dynamic templating and optimization across all router files to centralize SQL query management. **[2026-03-22]** `in_progress` — Completed API keys.json file removal validation; 35+ import sites verified; no remaining code paths write to deprecated file storage. **[2026-03-21]** `in_progress` — Per-user encrypted API key system fully implemented in database; .env holds only main app credentials. **[2026-03-21]** `bug` — Data persistence issue: tags saved in UI disappear on session switch; investigation ongoing (UI rendering vs. database save failure). **[2026-03-21]** `bug` — Backend startup race condition fixed: retry logic now handles empty project list on first load; project visibility bug (AiCli in Recent but not main view) requires further investigation. **[2026-03-21]** `refactor` — Tool naming convention completed; agents/tools/ files renamed to tool_ prefix with import path validation. **[2026-03-18]** `fix` — Removed stale db.ensure_project_schema() call in main.py; corrected to use _ensure_shared_schema instead. **[2026-03-18]** `fix` — Memory endpoint CLAUDE.md template error resolved; code_dir variable now properly scoped at line 1120. **[2026-03-14]** `design` — Confirmed hierarchical data model: Clients contain multiple Users; nested tag hierarchy via parent_id FK with login as first-level category. **[2026-03-10]** `design` — Database performance optimization: load-once-on-access pattern for tags/workflows in memory; update DB only on explicit save to eliminate redundant SQL calls.

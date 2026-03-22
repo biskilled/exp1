@@ -21,7 +21,70 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from core.auth import get_optional_user
-from core.database import db
+from core.database import db, build_update
+
+# ── SQL ──────────────────────────────────────────────────────────────────────
+
+_SQL_LIST_ROLES = (
+    """SELECT id, project, name, description, system_prompt,
+              provider, model, tags, is_active, created_at, updated_at,
+              inputs, outputs, role_type, output_schema, auto_commit
+       FROM mng_agent_roles
+       WHERE client_id=1 AND is_active=TRUE AND (project='_global' OR project=%s)
+       ORDER BY project DESC, name"""
+)
+
+_SQL_GET_ROLE_BY_ID = (
+    """SELECT id, project, name, description, system_prompt,
+              provider, model, tags, is_active, created_at, updated_at,
+              inputs, outputs, role_type, output_schema, auto_commit
+       FROM mng_agent_roles WHERE id=%s"""
+)
+
+_SQL_INSERT_ROLE = (
+    """INSERT INTO mng_agent_roles
+           (client_id, project, name, description, system_prompt, provider, model, tags,
+            inputs, outputs, role_type, output_schema, auto_commit)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+       RETURNING id, project, name, description, system_prompt,
+                 provider, model, tags, is_active, created_at, updated_at,
+                 inputs, outputs, role_type, output_schema, auto_commit"""
+)
+
+_SQL_DELETE_ROLE = (
+    "UPDATE mng_agent_roles SET is_active=FALSE, updated_at=NOW() WHERE id=%s AND client_id=1"
+)
+
+_SQL_INSERT_ROLE_VERSION = (
+    """INSERT INTO mng_agent_role_versions
+           (role_id, system_prompt, provider, model, changed_by, note)
+       VALUES (%s, %s, %s, %s, %s, %s)"""
+)
+
+_SQL_LIST_ROLE_VERSIONS = (
+    """SELECT id, system_prompt, provider, model, changed_by, changed_at, note
+       FROM mng_agent_role_versions WHERE role_id=%s ORDER BY changed_at DESC"""
+)
+
+_SQL_GET_ROLE_FOR_UPDATE = (
+    "SELECT id, system_prompt, provider, model FROM mng_agent_roles WHERE id=%s AND client_id=1"
+)
+
+_SQL_GET_VERSION_BY_ID = (
+    "SELECT system_prompt, provider, model FROM mng_agent_role_versions WHERE id=%s AND role_id=%s"
+)
+
+_SQL_GET_ROLE_CURRENT_STATE = (
+    "SELECT system_prompt, provider, model FROM mng_agent_roles WHERE id=%s AND client_id=1"
+)
+
+_SQL_RESTORE_ROLE = (
+    """UPDATE mng_agent_roles
+       SET system_prompt=%s, provider=%s, model=%s, updated_at=NOW()
+       WHERE id=%s AND client_id=1"""
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 router = APIRouter()
 
@@ -74,15 +137,7 @@ async def list_roles(
     admin = _is_admin(user)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT id, project, name, description, system_prompt,
-                          provider, model, tags, is_active, created_at, updated_at,
-                          inputs, outputs, role_type, output_schema, auto_commit
-                   FROM mng_agent_roles
-                   WHERE client_id=1 AND is_active=TRUE AND (project='_global' OR project=%s)
-                   ORDER BY (project='_global') DESC, name""",
-                (project,),
-            )
+            cur.execute(_SQL_LIST_ROLES, (project,))
             rows = cur.fetchall()
     return {
         "roles": [_row_to_role(r, include_prompt=admin) for r in rows],
@@ -115,13 +170,7 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO mng_agent_roles
-                       (client_id, project, name, description, system_prompt, provider, model, tags,
-                        inputs, outputs, role_type, output_schema, auto_commit)
-                   VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                   RETURNING id, project, name, description, system_prompt,
-                             provider, model, tags, is_active, created_at, updated_at,
-                             inputs, outputs, role_type, output_schema, auto_commit""",
+                _SQL_INSERT_ROLE,
                 (body.project, body.name, body.description, body.system_prompt,
                  body.provider, body.model, body.tags,
                  _json.dumps(body.inputs), _json.dumps(body.outputs),
@@ -158,10 +207,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
     # Load current values for version comparison
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, system_prompt, provider, model FROM mng_agent_roles WHERE id=%s AND client_id=1",
-                (role_id,),
-            )
+            cur.execute(_SQL_GET_ROLE_FOR_UPDATE, (role_id,))
             existing = cur.fetchone()
     if not existing:
         raise HTTPException(404, "Role not found")
@@ -206,9 +252,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
         with conn.cursor() as cur:
             if versioned_changed:
                 cur.execute(
-                    """INSERT INTO mng_agent_role_versions
-                           (role_id, system_prompt, provider, model, changed_by, note)
-                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    _SQL_INSERT_ROLE_VERSION,
                     (role_id, existing[1], existing[2], existing[3],
                      (user or {}).get("email", ""), body.note),
                 )
@@ -216,13 +260,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
                 f"UPDATE mng_agent_roles SET {', '.join(fields)} WHERE id=%s",
                 values,
             )
-            cur.execute(
-                """SELECT id, project, name, description, system_prompt,
-                          provider, model, tags, is_active, created_at, updated_at,
-                          inputs, outputs, role_type, output_schema, auto_commit
-                   FROM mng_agent_roles WHERE id=%s""",
-                (role_id,),
-            )
+            cur.execute(_SQL_GET_ROLE_BY_ID, (role_id,))
             row = cur.fetchone()
     return _row_to_role(row, include_prompt=True)
 
@@ -235,10 +273,7 @@ async def delete_role(role_id: int, user=Depends(get_optional_user)):
     _require_admin(user)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE mng_agent_roles SET is_active=FALSE, updated_at=NOW() WHERE id=%s AND client_id=1",
-                (role_id,),
-            )
+            cur.execute(_SQL_DELETE_ROLE, (role_id,))
     return {"deleted": True, "role_id": role_id}
 
 
@@ -250,11 +285,7 @@ async def get_versions(role_id: int, user=Depends(get_optional_user)):
     _require_admin(user)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT id, system_prompt, provider, model, changed_by, changed_at, note
-                   FROM mng_agent_role_versions WHERE role_id=%s ORDER BY changed_at DESC""",
-                (role_id,),
-            )
+            cur.execute(_SQL_LIST_ROLE_VERSIONS, (role_id,))
             rows = cur.fetchall()
     return {
         "versions": [
@@ -280,32 +311,19 @@ async def restore_version(role_id: int, version_id: int, user=Depends(get_option
     _require_admin(user)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT system_prompt, provider, model FROM mng_agent_role_versions WHERE id=%s AND role_id=%s",
-                (version_id, role_id),
-            )
+            cur.execute(_SQL_GET_VERSION_BY_ID, (version_id, role_id))
             ver = cur.fetchone()
             if not ver:
                 raise HTTPException(404, "Version not found")
 
             # Save current state before overwriting
-            cur.execute(
-                "SELECT system_prompt, provider, model FROM mng_agent_roles WHERE id=%s AND client_id=1",
-                (role_id,),
-            )
+            cur.execute(_SQL_GET_ROLE_CURRENT_STATE, (role_id,))
             cur_state = cur.fetchone()
             if cur_state:
                 cur.execute(
-                    """INSERT INTO mng_agent_role_versions
-                           (role_id, system_prompt, provider, model, changed_by, note)
-                       VALUES (%s, %s, %s, %s, %s, 'before restore')""",
+                    _SQL_INSERT_ROLE_VERSION,
                     (role_id, cur_state[0], cur_state[1], cur_state[2],
-                     (user or {}).get("email", "")),
+                     (user or {}).get("email", ""), "before restore"),
                 )
-            cur.execute(
-                """UPDATE mng_agent_roles
-                   SET system_prompt=%s, provider=%s, model=%s, updated_at=NOW()
-                   WHERE id=%s AND client_id=1""",
-                (ver[0], ver[1], ver[2], role_id),
-            )
+            cur.execute(_SQL_RESTORE_ROLE, (ver[0], ver[1], ver[2], role_id))
     return {"restored": True, "role_id": role_id, "version_id": version_id}
