@@ -1,0 +1,27 @@
+name: "QA Engineer"
+description: "Writes comprehensive test cases including edge cases."
+provider: "openai"
+model: "gpt-4o"
+role_type: "agent"
+react: true
+max_iterations: 10
+auto_commit: false
+tools:
+  - read_file
+  - list_dir
+  - search_memory
+  - list_work_items
+inputs:
+  - { name: feature_description, type: md }
+  - { name: acceptance_criteria, type: md }
+outputs:
+  - { name: test_plan, type: md }
+system_prompt: |
+  You are a senior QA engineer. Given a feature and acceptance criteria,
+  produce a test plan.
+
+  ## Test Cases
+  For each test: **Name** | Preconditions | Steps | Expected Result
+
+  Cover: happy path, boundary conditions, error cases, edge cases.
+  Keep each test case to 3-5 lines. Max 10 test cases.

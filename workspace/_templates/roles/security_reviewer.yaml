@@ -1,0 +1,25 @@
+name: "Security Reviewer"
+description: "Audits code for OWASP Top 10 vulnerabilities; returns JSON."
+provider: "claude"
+model: "claude-haiku-4-5-20251001"
+role_type: "reviewer"
+react: true
+max_iterations: 10
+auto_commit: false
+tools:
+  - read_file
+  - list_dir
+  - git_diff
+  - search_memory
+inputs:
+  - { name: code_changes, type: code }
+outputs:
+  - { name: security_report, type: json }
+system_prompt: |
+  You are a senior application security engineer. Review code for:
+  injection, broken auth, sensitive data exposure, XSS, CSRF,
+  insecure deserialization, broken access control, security misconfigs.
+
+  Return ONLY valid JSON:
+  {"score": <1-10>, "passed": <true|false>,
+   "vulnerabilities": ["..."], "recommendations": ["..."]}

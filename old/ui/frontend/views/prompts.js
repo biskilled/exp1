@@ -135,6 +135,7 @@ export async function renderPrompts(container, projectName) {
   window._rolesSelect         = _rolesSelect;
   window._rolesDelete         = _rolesDelete;
   window._rolesSave           = _rolesSave;
+  window._rolesExportYaml     = _rolesExportYaml;
   window._rolesProviderChange = _rolesProviderChange;
   window._sysRolesNew         = _sysRolesNew;
   window._sysRolesSelect      = _sysRolesSelect;
@@ -258,6 +259,9 @@ async function _rolesSelect(id) {
   const pathEl = document.getElementById('prompts-path');
   if (pathEl) pathEl.textContent = `Role: ${role.name}`;
 
+  // Load available tools and render checkboxes
+  _loadRoleTools(role);
+
   // Load linked system roles
   try {
     const data = await api.systemRoles.listLinks(id);
@@ -266,6 +270,40 @@ async function _rolesSelect(id) {
     _roleLinks[id] = [];
   }
   _renderRoleSystemRolesSection(id);
+}
+
+async function _loadRoleTools(role) {
+  const grid = document.getElementById('role-tools-grid');
+  if (!grid) return;
+  let allTools = [];
+  try {
+    const data = await api.agentRoles.availableTools();
+    allTools = data.tools || [];
+  } catch (_) {
+    grid.innerHTML = '<div style="font-size:0.65rem;color:var(--muted)">Tools unavailable</div>';
+    return;
+  }
+  const enabled = new Set(role.tools || []);
+  const byCategory = {};
+  for (const t of allTools) {
+    if (!byCategory[t.category]) byCategory[t.category] = [];
+    byCategory[t.category].push(t);
+  }
+  const catColors = { git: '#e8834e', file: '#5b8af5', memory: '#9b7ef8', work_items: '#4ec9a6', other: '#888' };
+  let html = '';
+  for (const [cat, tools] of Object.entries(byCategory)) {
+    const col = catColors[cat] || '#888';
+    html += tools.map(t => `
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;
+                    padding:0.2rem 0.4rem;border-radius:4px;border:1px solid var(--border);
+                    background:var(--surface2);font-size:0.65rem;color:var(--text)">
+        <input type="checkbox" value="${t.name}" ${enabled.has(t.name) ? 'checked' : ''}
+          style="width:12px;height:12px;accent-color:${col};cursor:pointer">
+        <span style="color:${col};font-size:0.55rem;font-weight:600;text-transform:uppercase">${cat}</span>
+        <span>${t.name}</span>
+      </label>`).join('');
+  }
+  grid.innerHTML = html || '<div style="font-size:0.65rem;color:var(--muted)">No tools registered</div>';
 }
 
 function _renderRoleSystemRolesSection(roleId) {
@@ -403,6 +441,8 @@ function _renderRoleEditor(role) {
                       background:rgba(155,126,248,0.18);color:#9b7ef8">INT — system managed</span>`
       : `<button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);font-size:0.62rem"
            onclick="window._rolesDelete(${role.id})">Delete</button>`}
+    <button class="btn btn-ghost btn-sm" style="font-size:0.62rem"
+      onclick="window._rolesExportYaml(${role.id}, ${JSON.stringify(role.name)})">↓ YAML</button>
     <button class="btn btn-primary btn-sm" id="roles-save-btn"
       onclick="window._rolesSave(${role.id})">Save</button>
   `;
@@ -493,6 +533,34 @@ function _renderRoleEditor(role) {
         </div>
       </div>
 
+      <!-- ReAct + Max Iterations -->
+      <div style="display:grid;grid-template-columns:auto auto 1fr;gap:1rem;align-items:center">
+        <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.72rem;color:var(--text)">
+          <input type="checkbox" id="role-react" ${role.react !== false ? 'checked' : ''}
+            onchange="document.getElementById('role-max-iter-wrap').style.display=this.checked?'flex':'none'"
+            style="width:14px;height:14px;cursor:pointer">
+          Use ReAct reasoning (Thought / Action / Observation)
+        </label>
+        <div id="role-max-iter-wrap" style="display:${role.react !== false ? 'flex' : 'none'};align-items:center;gap:0.4rem">
+          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;white-space:nowrap">Max iterations</label>
+          <input type="number" id="role-max-iterations" value="${role.max_iterations || 10}" min="1" max="50"
+            style="width:60px;background:var(--bg);border:1px solid var(--border);
+                   color:var(--text);font-family:var(--font);font-size:0.72rem;
+                   padding:0.3rem 0.4rem;border-radius:var(--radius);outline:none;text-align:center">
+        </div>
+        <div></div>
+      </div>
+
+      <!-- Tools -->
+      <div>
+        <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.4rem">
+          Tools <span style="text-transform:none;font-weight:400;opacity:0.7">(allowed in agentic loop)</span>
+        </div>
+        <div id="role-tools-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.25rem">
+          <div style="font-size:0.65rem;color:var(--muted)">Loading tools…</div>
+        </div>
+      </div>
+
       <!-- System Roles (prepended fragments) -->
       <div id="role-sys-roles-section">
         <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.4rem">
@@ -523,29 +591,50 @@ function _renderRoleEditor(role) {
   `;
 }
 
+function _collectTools() {
+  const checks = document.querySelectorAll('#role-tools-grid input[type=checkbox]');
+  return Array.from(checks).filter(c => c.checked).map(c => c.value);
+}
+
 async function _rolesSave(id) {
-  const name         = document.getElementById('role-name')?.value?.trim();
-  const provider     = document.getElementById('role-provider')?.value;
-  const model        = document.getElementById('role-model')?.value?.trim();
-  const description  = document.getElementById('role-description')?.value?.trim();
-  const systemPrompt = document.getElementById('role-system-prompt')?.value;
-  const roleType     = document.getElementById('role-type')?.value || 'agent';
-  const inputs       = _collectIO('input');
-  const outputs      = _collectIO('output');
+  const name           = document.getElementById('role-name')?.value?.trim();
+  const provider       = document.getElementById('role-provider')?.value;
+  const model          = document.getElementById('role-model')?.value?.trim();
+  const description    = document.getElementById('role-description')?.value?.trim();
+  const systemPrompt   = document.getElementById('role-system-prompt')?.value;
+  const roleType       = document.getElementById('role-type')?.value || 'agent';
+  const react          = document.getElementById('role-react')?.checked ?? true;
+  const maxIterations  = parseInt(document.getElementById('role-max-iterations')?.value || '10', 10);
+  const tools          = _collectTools();
+  const inputs         = _collectIO('input');
+  const outputs        = _collectIO('output');
   if (!name) { toast('Name required', 'error'); return; }
   try {
     const updated = await api.agentRoles.patch(id, {
       name, provider, model, description, system_prompt: systemPrompt,
-      role_type: roleType, inputs, outputs,
+      role_type: roleType, inputs, outputs, tools, react, max_iterations: maxIterations,
     });
     const idx = _roles.findIndex(r => r.id === id);
     if (idx !== -1) _roles[idx] = { ..._roles[idx], ...updated,
       name, provider, model, description, system_prompt: systemPrompt,
-      role_type: roleType, inputs, outputs };
+      role_type: roleType, inputs, outputs, tools, react, max_iterations: maxIterations };
     _activeRole = _roles[idx] || _activeRole;
     _renderRolesList();
     toast('Role saved', 'success');
   } catch (e) { toast('Save failed: ' + e.message, 'error'); }
+}
+
+async function _rolesExportYaml(id, name) {
+  try {
+    const yaml = await api.agentRoles.exportYaml(id);
+    const blob = new Blob([yaml], { type: 'text/yaml' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `${(name||'role').toLowerCase().replace(/\s+/g,'_')}.yaml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { toast('Export failed: ' + e.message, 'error'); }
 }
 
 async function _rolesDelete(id) {

@@ -245,7 +245,10 @@ ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS inputs        JSONB        
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS outputs       JSONB        DEFAULT '[]';
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS role_type     VARCHAR(50)  NOT NULL DEFAULT 'agent';
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS output_schema JSONB        DEFAULT NULL;
-ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS auto_commit   BOOLEAN      NOT NULL DEFAULT FALSE;
+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS auto_commit     BOOLEAN      NOT NULL DEFAULT FALSE;
+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS tools           JSONB        DEFAULT '[]';
+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS react           BOOLEAN      NOT NULL DEFAULT TRUE;
+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS max_iterations  INT          NOT NULL DEFAULT 10;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mar_cid_proj_name
     ON mng_agent_roles(client_id, project, name);
 CREATE INDEX IF NOT EXISTS idx_mar_cp ON mng_agent_roles(client_id, project);
@@ -261,6 +264,7 @@ CREATE TABLE IF NOT EXISTS mng_agent_role_versions (
     changed_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     note          TEXT         NOT NULL DEFAULT ''
 );
+ALTER TABLE mng_agent_role_versions ADD COLUMN IF NOT EXISTS tools JSONB DEFAULT '[]';
 CREATE INDEX IF NOT EXISTS idx_marv_role ON mng_agent_role_versions(role_id);
 
 CREATE TABLE IF NOT EXISTS mng_system_roles (
@@ -1273,7 +1277,7 @@ class _Database:
         auto_commit=True is set on developer roles so pipeline nodes that
         link to them automatically commit+push their file changes.
         """
-        # (name, description, system_prompt, provider, model, role_type, auto_commit)
+        # (name, description, system_prompt, provider, model, role_type, auto_commit, tools, react, max_iter)
         _ROLES = [
             (
                 "Product Manager",
@@ -1287,6 +1291,8 @@ class _Database:
                 "- [ ] <specific, testable criterion 3 (max 5 total)>\n\n"
                 "Rules: under 250 words total. No preamble. No user stories unless asked.",
                 "claude", "claude-haiku-4-5-20251001", "agent", False,
+                ["search_memory", "get_recent_history", "get_project_facts",
+                 "list_work_items", "create_work_item", "read_file"], True, 10,
             ),
             (
                 "Sr. Architect",
@@ -1300,6 +1306,7 @@ class _Database:
                 "Rules: under 300 words. Be precise about file paths and function names. "
                 "No lengthy prose.",
                 "claude", "claude-sonnet-4-6", "system_designer", False,
+                ["search_memory", "get_project_facts", "read_file", "list_dir"], True, 10,
             ),
             (
                 "Web Developer",
@@ -1316,6 +1323,8 @@ class _Database:
                 "- All acceptance criteria must be met\n"
                 "- Add inline comments for non-obvious logic",
                 "claude", "claude-sonnet-4-6", "developer", True,
+                ["read_file", "write_file", "list_dir", "git_status", "git_diff",
+                 "git_commit", "git_push", "search_memory"], True, 15,
             ),
             (
                 "Backend Developer",
@@ -1331,6 +1340,8 @@ class _Database:
                 "- Use the project's existing stack and patterns\n"
                 "- Add input validation at all system boundaries",
                 "deepseek", "deepseek-chat", "developer", True,
+                ["read_file", "write_file", "list_dir", "git_status", "git_diff",
+                 "git_commit", "git_push", "search_memory"], True, 15,
             ),
             (
                 "Frontend Developer",
@@ -1345,6 +1356,8 @@ class _Database:
                 "- Match the existing design system and naming conventions\n"
                 "- Ensure accessibility (ARIA, keyboard nav) and responsiveness",
                 "openai", "gpt-4o", "developer", True,
+                ["read_file", "write_file", "list_dir", "git_status", "git_diff",
+                 "git_commit", "git_push", "search_memory"], True, 15,
             ),
             (
                 "DevOps Engineer",
@@ -1359,6 +1372,8 @@ class _Database:
                 "- Include health checks, rollback strategy, and env var docs\n"
                 "- Security: no hardcoded secrets, least-privilege IAM",
                 "claude", "claude-haiku-4-5-20251001", "developer", True,
+                ["read_file", "write_file", "list_dir", "git_status", "git_diff",
+                 "git_commit", "git_push", "search_memory"], True, 15,
             ),
             (
                 "Code Reviewer",
@@ -1371,6 +1386,7 @@ class _Database:
                 '"issues": ["..."], "suggestions": ["..."]}\n\n'
                 "Score >= 7 means passed. Be specific and actionable.",
                 "claude", "claude-sonnet-4-6", "reviewer", False,
+                ["read_file", "list_dir", "git_diff", "search_memory"], True, 10,
             ),
             (
                 "Security Reviewer",
@@ -1382,6 +1398,7 @@ class _Database:
                 '{"score": <1-10>, "passed": <true|false>, '
                 '"vulnerabilities": ["..."], "recommendations": ["..."]}',
                 "claude", "claude-haiku-4-5-20251001", "reviewer", False,
+                ["read_file", "list_dir", "git_diff", "search_memory"], True, 10,
             ),
             (
                 "QA Engineer",
@@ -1393,6 +1410,7 @@ class _Database:
                 "Cover: happy path, boundary conditions, error cases, edge cases.\n"
                 "Keep each test case to 3-5 lines. Max 10 test cases.",
                 "openai", "gpt-4o", "agent", False,
+                ["read_file", "list_dir", "search_memory", "list_work_items"], True, 10,
             ),
             (
                 "AWS Architect",
@@ -1405,6 +1423,7 @@ class _Database:
                 "Include: compute, storage, networking, IAM (least-privilege), "
                 "auto-scaling, cost notes.",
                 "claude", "claude-sonnet-4-6", "developer", True,
+                ["read_file", "write_file", "list_dir", "search_memory"], True, 10,
             ),
         ]
         _INTERNAL_FACT_PROMPT = (
@@ -1434,39 +1453,90 @@ class _Database:
         )
 
         try:
+            import json as _json
             from psycopg2.extras import execute_values
             with conn.cursor() as cur:
                 # Batch all roles into one INSERT (single round trip)
                 rows = [
-                    (1, "_global", name, desc, prompt, provider, model, role_type, auto_commit)
-                    for name, desc, prompt, provider, model, role_type, auto_commit in _ROLES
+                    (1, "_global", name, desc, prompt, provider, model, role_type,
+                     auto_commit, _json.dumps(tools), react, max_iter)
+                    for (name, desc, prompt, provider, model, role_type,
+                         auto_commit, tools, react, max_iter) in _ROLES
                 ]
                 # Append internal fact-extraction role
                 rows.append((
                     1, "_global", "internal_project_fact",
                     "Internal: extracts durable architectural facts from memory summaries.",
-                    _INTERNAL_FACT_PROMPT, "claude", "claude-haiku-4-5-20251001", "internal", False,
+                    _INTERNAL_FACT_PROMPT, "claude", "claude-haiku-4-5-20251001",
+                    "internal", False, "[]", False, 5,
                 ))
                 execute_values(
                     cur,
                     """INSERT INTO mng_agent_roles
                            (client_id, project, name, description, system_prompt,
-                            provider, model, role_type, auto_commit)
+                            provider, model, role_type, auto_commit,
+                            tools, react, max_iterations)
                        VALUES %s
                        ON CONFLICT (client_id, project, name) DO UPDATE SET
-                           description   = EXCLUDED.description,
-                           system_prompt = EXCLUDED.system_prompt,
-                           provider      = EXCLUDED.provider,
-                           model         = EXCLUDED.model,
-                           role_type     = EXCLUDED.role_type,
-                           auto_commit   = EXCLUDED.auto_commit""",
+                           description    = EXCLUDED.description,
+                           system_prompt  = EXCLUDED.system_prompt,
+                           provider       = EXCLUDED.provider,
+                           model          = EXCLUDED.model,
+                           role_type      = EXCLUDED.role_type,
+                           auto_commit    = EXCLUDED.auto_commit,
+                           tools          = EXCLUDED.tools,
+                           react          = EXCLUDED.react,
+                           max_iterations = EXCLUDED.max_iterations""",
                     rows,
                 )
+
+                # Auto-seed from workspace/_templates/roles/*.yaml
+                _Database._seed_roles_from_yaml(cur)
+
             conn.commit()
             log.debug("✅ Agent roles seeded")
         except Exception as e:
             conn.rollback()
             log.warning(f"Agent roles seed skipped: {e}")
+
+    @staticmethod
+    def _seed_roles_from_yaml(cur) -> None:
+        """Upsert agent roles from workspace/_templates/roles/*.yaml into DB (project='_global').
+
+        YAML values override built-in defaults for matching names. Called inside
+        _seed_agent_roles() after the built-in batch INSERT, within the same transaction.
+        """
+        import json as _json
+        try:
+            import yaml as _yaml
+        except ImportError:
+            return
+
+        templates_dir = (
+            Path(__file__).parent.parent.parent
+            / "workspace" / "_templates" / "roles"
+        )
+        if not templates_dir.exists():
+            return
+
+        for yaml_path in sorted(templates_dir.glob("*.yaml")):
+            try:
+                data = _yaml.safe_load(yaml_path.read_text())
+                if not data or not isinstance(data, dict) or not data.get("name"):
+                    continue
+                name   = data["name"]
+                tools  = _json.dumps(data.get("tools", []))
+                react  = bool(data.get("react", True))
+                max_it = int(data.get("max_iterations", 10))
+                cur.execute(
+                    """UPDATE mng_agent_roles
+                       SET tools=%s, react=%s, max_iterations=%s
+                       WHERE client_id=1 AND project='_global' AND name=%s""",
+                    (tools, react, max_it, name),
+                )
+                log.debug(f"YAML seed applied for role '{name}'")
+            except Exception as yaml_err:
+                log.debug(f"YAML seed skip {yaml_path.name}: {yaml_err}")
 
     @staticmethod
     def _seed_system_roles(conn) -> None:

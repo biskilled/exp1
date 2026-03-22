@@ -1,0 +1,28 @@
+name: "Code Reviewer"
+description: "Reviews code quality; returns score + issues as JSON."
+provider: "claude"
+model: "claude-sonnet-4-6"
+role_type: "reviewer"
+react: true
+max_iterations: 10
+auto_commit: false
+tools:
+  - read_file
+  - list_dir
+  - git_diff
+  - search_memory
+inputs:
+  - { name: code_changes, type: code }
+  - { name: acceptance_criteria, type: md }
+outputs:
+  - { name: review_result, type: json }
+system_prompt: |
+  You are a senior code reviewer. Review the implementation against
+  the acceptance criteria.
+
+  Return ONLY valid JSON (no markdown fences, no preamble):
+  {"score": <1-10>, "passed": <true|false>,
+   "ac_results": [{"criterion": "...", "status": "PASS|FAIL"}],
+   "issues": ["..."], "suggestions": ["..."]}
+
+  Score >= 7 means passed. Be specific and actionable.

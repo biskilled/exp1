@@ -342,14 +342,19 @@ api.workItems = {
 // ── Agent Roles API ───────────────────────────────────────────────────────────
 
 api.agentRoles = {
-  list:    (project = '_global') => _get(`/agent-roles/?project=${enc(project)}`),
-  create:  (body)                => _post('/agent-roles/', body),
-  patch:   (id, body)            => fetch(_base() + `/agent-roles/${id}`, {
+  list:           (project = '_global') => _get(`/agent-roles/?project=${enc(project)}`),
+  create:         (body)                => _post('/agent-roles/', body),
+  patch:          (id, body)            => fetch(_base() + `/agent-roles/${id}`, {
     method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  delete:  (id)                  => _del(`/agent-roles/${id}`),
-  versions:(id)                  => _get(`/agent-roles/${id}/versions`),
-  restore: (id, versionId)       => _post(`/agent-roles/${id}/restore/${versionId}`, {}),
+  delete:         (id)                  => _del(`/agent-roles/${id}`),
+  versions:       (id)                  => _get(`/agent-roles/${id}/versions`),
+  restore:        (id, versionId)       => _post(`/agent-roles/${id}/restore/${versionId}`, {}),
+  availableTools: ()                    => _get('/agent-roles/available-tools'),
+  syncYaml:       (body)                => _post('/agent-roles/sync-yaml', body),
+  exportYaml:     (id)                  => fetch(_base() + `/agent-roles/${id}/export-yaml`, {
+    headers: _headers(),
+  }).then(r => r.ok ? r.text() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
 };
 
 // ── System Roles API ──────────────────────────────────────────────────────────

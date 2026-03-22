@@ -21,8 +21,19 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-_MAX_TOOL_CALLS = 10
 _CTX_CAP = 3000  # chars per prior-node output injected into user message
+
+_REACT_SUFFIX = """\
+## Reasoning Format
+
+When using tools, follow this pattern:
+
+Thought: [what you need to find out or do, and why]
+Action: [call the tool]
+Observation: [result — filled in automatically]
+
+Repeat Thought/Action/Observation as needed. When you have sufficient
+information, write your final output directly."""
 
 # ── SQL ───────────────────────────────────────────────────────────────────────
 
@@ -30,12 +41,16 @@ _SQL_LOAD_ROLE = """SELECT ar.system_prompt, ar.provider, ar.model,
                           COALESCE(
                             string_agg(sr.content, E'\\n\\n' ORDER BY rl.order_index),
                             ''
-                          ) AS sys_content
+                          ) AS sys_content,
+                          COALESCE(ar.tools, '[]'::jsonb),
+                          COALESCE(ar.react, TRUE),
+                          COALESCE(ar.max_iterations, 10)
                    FROM   mng_agent_roles ar
                    LEFT JOIN mng_role_system_links rl ON rl.role_id = ar.id
                    LEFT JOIN mng_system_roles sr ON sr.id = rl.system_role_id
                    WHERE  ar.name = %s AND ar.client_id = 1
-                   GROUP  BY ar.id, ar.system_prompt, ar.provider, ar.model
+                   GROUP  BY ar.id, ar.system_prompt, ar.provider, ar.model,
+                             ar.tools, ar.react, ar.max_iterations
                    LIMIT 1"""
 
 
@@ -59,12 +74,16 @@ class Agent:
         provider: str,
         model: str,
         tools: list[dict] | None = None,
+        react: bool = False,
+        max_iterations: int = 10,
     ) -> None:
         self.name = name
         self.system_prompt = system_prompt
         self.provider = provider
         self.model = model
         self.tools = tools or []
+        self.react = react
+        self.max_iterations = max_iterations
 
     # ── Factory ───────────────────────────────────────────────────────────────
 
@@ -77,14 +96,17 @@ class Agent:
         """Load from mng_agent_roles + mng_system_roles JOIN.
 
         Falls back to a sensible default when the DB is unavailable or the
-        role is not found.
+        role is not found.  Respects tools/react/max_iterations from the DB.
         """
         from core.database import db
         from core.config import settings
 
-        system_prompt = f"You are a {role_name}."
-        provider = "claude"
-        model = settings.haiku_model
+        system_prompt  = f"You are a {role_name}."
+        provider       = "claude"
+        model          = settings.haiku_model
+        role_tool_names: list[str] = []
+        react          = False
+        max_iterations = 10
 
         if db.is_available():
             try:
@@ -93,23 +115,41 @@ class Agent:
                         cur.execute(_SQL_LOAD_ROLE, (role_name,))
                         row = cur.fetchone()
                         if row:
-                            base = row[0] or ""
-                            provider = row[1] or "claude"
-                            model = row[2] or settings.haiku_model
-                            sys_content = row[3] or ""
-                            system_prompt = (
+                            base           = row[0] or ""
+                            provider       = row[1] or "claude"
+                            model          = row[2] or settings.haiku_model
+                            sys_content    = row[3] or ""
+                            role_tool_names = row[4] or []
+                            react          = bool(row[5])
+                            max_iterations = int(row[6] or 10)
+                            system_prompt  = (
                                 f"{base}\n\n{sys_content}".strip() if sys_content else base
                             )
             except Exception as e:
                 log.debug(f"Agent.from_role DB error for '{role_name}': {e}")
 
+        # Build tool definitions filtered to this role's allowed tool list
         tools: list[dict] = []
-        if with_tools:
-            from agents.tools import ALL_TOOL_DEFS
-            tools = ALL_TOOL_DEFS
+        if with_tools or role_tool_names:
+            from agents.tools import AGENT_TOOLS, ALL_TOOL_DEFS
+            if role_tool_names:
+                tools = [
+                    AGENT_TOOLS[t]["definition"]
+                    for t in role_tool_names
+                    if t in AGENT_TOOLS
+                ]
+            elif with_tools:
+                tools = ALL_TOOL_DEFS
 
-        return cls(name=role_name, system_prompt=system_prompt,
-                   provider=provider, model=model, tools=tools)
+        return cls(
+            name=role_name,
+            system_prompt=system_prompt,
+            provider=provider,
+            model=model,
+            tools=tools,
+            react=react,
+            max_iterations=max_iterations,
+        )
 
     # ── LLM dispatch ──────────────────────────────────────────────────────────
 
@@ -205,7 +245,16 @@ class Agent:
         tool_calls_made: list[dict] = []
         total_input = total_output = 0
 
-        for _ in range(_MAX_TOOL_CALLS + 1):
+        # Inject ReAct reasoning format suffix into effective system prompt
+        effective_system = self.system_prompt
+        if self.react and self.tools:
+            effective_system = self.system_prompt + "\n\n" + _REACT_SUFFIX
+
+        # Temporarily override system_prompt for _call_provider
+        _saved_system = self.system_prompt
+        self.system_prompt = effective_system
+
+        for _ in range(self.max_iterations + 1):
             resp = await self._call_provider(messages, max_tokens, api_key)
             total_input += resp.get("input_tokens", 0)
             total_output += resp.get("output_tokens", 0)
@@ -214,7 +263,8 @@ class Agent:
             stop_reason = resp.get("stop_reason", "end_turn")
 
             if stop_reason != "tool_use" or not tool_calls:
-                # Terminal turn — return content
+                # Terminal turn — restore system prompt and return content
+                self.system_prompt = _saved_system
                 cost = 0.0
                 try:
                     cost = estimate_cost(
@@ -253,7 +303,8 @@ class Agent:
 
             messages.append({"role": "user", "content": tool_results})
 
-        # Exceeded max tool calls — return last content
+        self.system_prompt = _saved_system
+        # Exceeded max iterations — return last content
         return AgentResult(
             output=resp.get("content", ""),
             tool_calls_made=tool_calls_made,

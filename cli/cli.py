@@ -64,6 +64,7 @@ SLASH_COMMANDS = [
     "/memory", "/switch", "/project", "/history", "/search",
     "/status", "/help", "/clear", "/exit", "/run",
     "/tag", "/tags", "/phase",
+    "/role", "/pipeline",
 ]
 
 # ── Session state ──────────────────────────────────────────────────────────────
@@ -233,17 +234,240 @@ def _cmd_status(session: dict) -> None:
 def _cmd_help() -> None:
     console.print(Panel(
         "\n".join([
-            "[bold]/memory[/bold]       Synthesize and save project memory",
-            "[bold]/switch <p>[/bold]   Switch LLM provider (claude/openai/deepseek/gemini/grok)",
-            "[bold]/project <n>[/bold]  Switch active project",
-            "[bold]/history[/bold]      Show recent conversation history",
-            "[bold]/status[/bold]       Show backend status",
-            "[bold]/run <name>[/bold]   Trigger a named workflow pipeline",
-            "[bold]/clear[/bold]        Clear screen",
-            "[bold]/exit[/bold]         Exit the CLI",
+            "[bold]/memory[/bold]               Synthesize and save project memory",
+            "[bold]/switch <p>[/bold]           Switch LLM provider (claude/openai/deepseek/gemini/grok)",
+            "[bold]/project <n>[/bold]          Switch active project",
+            "[bold]/history[/bold]              Show recent conversation history",
+            "[bold]/status[/bold]               Show backend status",
+            "[bold]/run <name>[/bold]           Trigger a named workflow pipeline",
+            "[bold]/role list[/bold]            List all agent roles",
+            "[bold]/role view <name>[/bold]     Show role details (tools, ReAct, etc.)",
+            "[bold]/role push <yaml>[/bold]     Sync a YAML role file to DB",
+            "[bold]/role pull <name>[/bold]     Export a DB role to YAML file",
+            "[bold]/pipeline list[/bold]        List all pipelines",
+            "[bold]/pipeline view <name>[/bold] Show pipeline nodes",
+            "[bold]/pipeline push <yaml>[/bold] Import a YAML pipeline to DB",
+            "[bold]/pipeline pull <name>[/bold] Export a pipeline to YAML file",
+            "[bold]/clear[/bold]                Clear screen",
+            "[bold]/exit[/bold]                 Exit the CLI",
         ]),
         title="aicli Commands",
     ))
+
+
+def _cmd_role(session: dict, args: str) -> None:
+    """Handle /role list|view|push|pull commands."""
+    parts = args.strip().split(None, 1)
+    sub   = parts[0].lower() if parts else "list"
+    rest  = parts[1] if len(parts) > 1 else ""
+
+    if sub == "list":
+        data = _backend_get(f"/agent-roles/?project=_global")
+        if not data:
+            console.print("[red]Could not fetch roles.[/red]")
+            return
+        roles = data.get("roles", [])
+        from rich.table import Table
+        t = Table(show_header=True, header_style="bold cyan")
+        t.add_column("Name", min_width=20)
+        t.add_column("Provider", width=12)
+        t.add_column("Model", width=22)
+        t.add_column("Tools", width=6, justify="right")
+        t.add_column("ReAct", width=6)
+        for r in roles:
+            if r.get("role_type") == "internal":
+                continue
+            t.add_row(
+                r.get("name", ""),
+                r.get("provider", ""),
+                r.get("model", ""),
+                str(len(r.get("tools", []))),
+                "✓" if r.get("react") else "—",
+            )
+        console.print(t)
+
+    elif sub == "view":
+        name = rest.strip()
+        if not name:
+            console.print("[yellow]Usage: /role view <name>[/yellow]")
+            return
+        data = _backend_get(f"/agent-roles/?project=_global")
+        if not data:
+            console.print("[red]Could not fetch roles.[/red]")
+            return
+        roles = data.get("roles", [])
+        role  = next((r for r in roles if r["name"].lower() == name.lower()), None)
+        if not role:
+            console.print(f"[red]Role '{name}' not found.[/red]")
+            return
+        tools = role.get("tools", [])
+        console.print(Panel(
+            f"[bold]{role['name']}[/bold]  [{role.get('role_type','agent')}]\n"
+            f"Provider: [cyan]{role.get('provider','')}[/cyan]  "
+            f"Model: [cyan]{role.get('model','')}[/cyan]\n"
+            f"ReAct: {'[green]yes[/green]' if role.get('react') else '[dim]no[/dim]'}  "
+            f"Max iter: {role.get('max_iterations',10)}\n"
+            f"Tools ({len(tools)}): {', '.join(tools) or '[dim]none[/dim]'}\n\n"
+            f"{role.get('description','')}",
+            title="Role Details",
+        ))
+
+    elif sub == "push":
+        yaml_path = rest.strip()
+        if not yaml_path:
+            console.print("[yellow]Usage: /role push <yaml_path>[/yellow]")
+            return
+        p = Path(yaml_path).expanduser()
+        if not p.exists():
+            console.print(f"[red]File not found: {yaml_path}[/red]")
+            return
+        yaml_content = p.read_text()
+        result = _backend_post("/agent-roles/sync-yaml", {
+            "yaml_content": yaml_content,
+            "project":      "_global",
+        })
+        if result:
+            console.print(f"[green]{result.get('message', 'Role synced.')}[/green]")
+        else:
+            console.print("[red]Push failed.[/red]")
+
+    elif sub == "pull":
+        parts2   = rest.strip().split(None, 1)
+        name     = parts2[0] if parts2 else ""
+        out_path = parts2[1] if len(parts2) > 1 else ""
+        if not name:
+            console.print("[yellow]Usage: /role pull <name> [out_path][/yellow]")
+            return
+        # Find role ID
+        data = _backend_get(f"/agent-roles/?project=_global")
+        if not data:
+            console.print("[red]Could not fetch roles.[/red]")
+            return
+        roles = data.get("roles", [])
+        role  = next((r for r in roles if r["name"].lower() == name.lower()), None)
+        if not role or not role.get("id"):
+            console.print(f"[red]Role '{name}' not found or has no DB ID.[/red]")
+            return
+        try:
+            r = httpx.get(f"{BACKEND_URL}/agent-roles/{role['id']}/export-yaml", timeout=10.0)
+            r.raise_for_status()
+            yaml_str = r.text
+        except Exception as e:
+            console.print(f"[red]Export failed: {e}[/red]")
+            return
+        if not out_path:
+            cfg = _load_config()
+            workspace = cfg.get("workspace_dir", str(Path.home() / "workspace"))
+            out_path  = str(Path(workspace) / "_templates" / "roles" / f"{name.lower().replace(' ', '_')}.yaml")
+        out_p = Path(out_path).expanduser()
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(yaml_str)
+        console.print(f"[green]Role '{name}' saved to {out_p}[/green]")
+
+    else:
+        console.print("[yellow]Usage: /role list | view <name> | push <yaml> | pull <name> [path][/yellow]")
+
+
+def _cmd_pipeline(session: dict, args: str) -> None:
+    """Handle /pipeline list|view|push|pull commands."""
+    parts = args.strip().split(None, 1)
+    sub   = parts[0].lower() if parts else "list"
+    rest  = parts[1] if len(parts) > 1 else ""
+    project = session["project"]
+
+    if sub == "list":
+        data = _backend_get(f"/graph-workflows/?project={project}")
+        if not data:
+            console.print("[red]Could not fetch pipelines.[/red]")
+            return
+        workflows = data if isinstance(data, list) else data.get("workflows", [])
+        from rich.table import Table
+        t = Table(show_header=True, header_style="bold cyan")
+        t.add_column("Name", min_width=25)
+        t.add_column("Max Iter", width=10, justify="right")
+        t.add_column("Created", width=12)
+        for w in workflows:
+            ts = (w.get("created_at") or "")[:10]
+            t.add_row(w.get("name", ""), str(w.get("max_iterations", "?")), ts)
+        console.print(t)
+
+    elif sub == "view":
+        name = rest.strip()
+        if not name:
+            console.print("[yellow]Usage: /pipeline view <name>[/yellow]")
+            return
+        data = _backend_get(f"/graph-workflows/?project={project}")
+        if not data:
+            console.print("[red]Could not fetch pipelines.[/red]")
+            return
+        workflows = data if isinstance(data, list) else data.get("workflows", [])
+        wf = next((w for w in workflows if w.get("name", "").lower() == name.lower()), None)
+        if not wf:
+            console.print(f"[red]Pipeline '{name}' not found.[/red]")
+            return
+        detail = _backend_get(f"/graph-workflows/{wf['id']}")
+        if not detail:
+            console.print("[red]Could not fetch pipeline details.[/red]")
+            return
+        nodes = detail.get("nodes", [])
+        lines = [f"[bold]{wf['name']}[/bold]  ({len(nodes)} nodes)"]
+        for i, n in enumerate(nodes, 1):
+            lines.append(f"  {i}. {n.get('name','')} — role: {n.get('role_id','?')}")
+        console.print(Panel("\n".join(lines), title="Pipeline"))
+
+    elif sub == "push":
+        yaml_path = rest.strip()
+        if not yaml_path:
+            console.print("[yellow]Usage: /pipeline push <yaml_path>[/yellow]")
+            return
+        p = Path(yaml_path).expanduser()
+        if not p.exists():
+            console.print(f"[red]File not found: {yaml_path}[/red]")
+            return
+        yaml_content = p.read_text()
+        result = _backend_post("/graph-workflows/import-yaml", {
+            "yaml_content": yaml_content,
+            "project":      project,
+        })
+        if result:
+            console.print(f"[green]Pipeline synced: {result.get('name', 'ok')}[/green]")
+        else:
+            console.print("[red]Push failed.[/red]")
+
+    elif sub == "pull":
+        parts2   = rest.strip().split(None, 1)
+        name     = parts2[0] if parts2 else ""
+        out_path = parts2[1] if len(parts2) > 1 else ""
+        if not name:
+            console.print("[yellow]Usage: /pipeline pull <name> [out_path][/yellow]")
+            return
+        data = _backend_get(f"/graph-workflows/?project={project}")
+        if not data:
+            console.print("[red]Could not fetch pipelines.[/red]")
+            return
+        workflows = data if isinstance(data, list) else data.get("workflows", [])
+        wf = next((w for w in workflows if w.get("name", "").lower() == name.lower()), None)
+        if not wf:
+            console.print(f"[red]Pipeline '{name}' not found.[/red]")
+            return
+        try:
+            r = httpx.get(f"{BACKEND_URL}/graph-workflows/{wf['id']}/export-yaml", timeout=10.0)
+            r.raise_for_status()
+            yaml_str = r.text
+        except Exception as e:
+            console.print(f"[red]Export failed: {e}[/red]")
+            return
+        if not out_path:
+            cfg = _load_config()
+            workspace = cfg.get("workspace_dir", str(Path.home() / "workspace"))
+            out_path  = str(Path(workspace) / project / "pipelines" / f"{name.lower().replace(' ', '_')}.yaml")
+        out_p = Path(out_path).expanduser()
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(yaml_str)
+        console.print(f"[green]Pipeline '{name}' saved to {out_p}[/green]")
+
+    else:
+        console.print("[yellow]Usage: /pipeline list | view <name> | push <yaml> | pull <name> [path][/yellow]")
 
 
 def _cmd_run(session: dict, args: str) -> None:
@@ -339,6 +563,10 @@ def main() -> None:
                 _cmd_status(session)
             elif cmd == "/run":
                 _cmd_run(session, args)
+            elif cmd == "/role":
+                _cmd_role(session, args)
+            elif cmd == "/pipeline":
+                _cmd_pipeline(session, args)
             else:
                 console.print(f"[red]Unknown command: {cmd}[/red]  /help for list")
             continue
