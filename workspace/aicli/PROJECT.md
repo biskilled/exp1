@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- UI code optimization (2026-03-22) — Dead code removal (explorer.js, workflow.js, Cytoscape CDN), utils cleanup with XSS fixes and 30s timeout, JSDoc documentation for all 12 view files, memory leak fixes in graph_workflow.js setInterval cleanup
-- Data persistence bug investigation — Tags saved in UI disappear on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
-- Backend startup race condition — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent vs. main list under investigation
-- Project configuration management — Add pyproject.toml and VS Code config files (.vscode/) to support local development; ensure safe to commit with no secrets
-- Memory items and project_facts population — Tables exist but update logic not implemented; required for improved memory/context mechanism
-- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries) across 23 files; 5 agents complete with build_update() applied
+- UI code optimization and dead code removal (2026-03-22) — Eliminating explorer.js, workflow.js, Cytoscape CDN; utils cleanup with XSS fixes and 30s timeout; JSDoc documentation for 12 view files; memory leak fixes in graph_workflow.js setInterval cleanup
+- Data persistence bug investigation — Tags saved in UI disappearing on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
+- Backend startup race condition fix (2026-03-18) — Removed stale db.ensure_project_schema() call; modified _continueToApp() retry logic to handle empty project list on first load
+- Memory endpoint template variable scoping fix (2026-03-18) — code_dir variable undefined at line 1120 in CLAUDE.md; variable now properly scoped from config
+- Project visibility bug resolution — AiCli appears in Recent projects but not displaying as current active project in main view; suspected initialization timing issue requiring further investigation
+- Memory items and project_facts table population — Tables exist but update logic not implemented; required for improved memory/context mechanism

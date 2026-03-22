@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 01:18 UTC by aicli /memory_
+_Generated: 2026-03-22 01:21 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling Claude CLI and LLM users to maintain semantic context across sessions via dual-layer storage (JSONL + PostgreSQL with pgvector embeddings). The system combines an async DAG workflow executor, role-based authentication, multi-provider LLM support, and an Electron desktop UI with xterm.js terminal emulation and graph workflow visualization. Currently in active development focusing on UI code optimization, resolving data persistence bugs, and implementing memory_items/project_facts population for enhanced context retrieval.
+aicli is a shared AI memory platform providing semantic search, workflow automation, and MCP integration across Claude CLI and other LLM platforms. Built with Python FastAPI backend, PostgreSQL with pgvector, and Electron UI with xterm.js/Monaco/Cytoscape.js, it manages per-project event tracking, embeddings, memory synthesis via Claude Haiku, and role-based access control. Currently stabilizing critical bug fixes (data persistence, startup race conditions, project visibility) while refactoring frontend code and completing memory table population logic.
 
 ## Project Facts
 
@@ -93,22 +93,22 @@ Reviewer: ```json
 
 ## In Progress
 
-- UI code optimization (2026-03-22) — Dead code removal (explorer.js, workflow.js, Cytoscape CDN), utils cleanup with XSS fixes and 30s timeout, JSDoc documentation for all 12 view files, memory leak fixes in graph_workflow.js setInterval cleanup
-- Data persistence bug investigation — Tags saved in UI disappear on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
-- Backend startup race condition — Retry logic modified to handle empty project list on first load; AiCli visibility in Recent vs. main list under investigation
-- Project configuration management — Add pyproject.toml and VS Code config files (.vscode/) to support local development; ensure safe to commit with no secrets
-- Memory items and project_facts population — Tables exist but update logic not implemented; required for improved memory/context mechanism
-- Query organization refactoring — Applied dynamic query templating and SQL constants extraction (~150 queries) across 23 files; 5 agents complete with build_update() applied
+- UI code optimization and dead code removal (2026-03-22) — Eliminating explorer.js, workflow.js, Cytoscape CDN; utils cleanup with XSS fixes and 30s timeout; JSDoc documentation for 12 view files; memory leak fixes in graph_workflow.js setInterval cleanup
+- Data persistence bug investigation — Tags saved in UI disappearing on session switch; debugging UI rendering vs. database save failure; project visibility timing issues with AiCli in Recent list
+- Backend startup race condition fix (2026-03-18) — Removed stale db.ensure_project_schema() call; modified _continueToApp() retry logic to handle empty project list on first load
+- Memory endpoint template variable scoping fix (2026-03-18) — code_dir variable undefined at line 1120 in CLAUDE.md; variable now properly scoped from config
+- Project visibility bug resolution — AiCli appears in Recent projects but not displaying as current active project in main view; suspected initialization timing issue requiring further investigation
+- Memory items and project_facts table population — Tables exist but update logic not implemented; required for improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(91 events, 81 commits)`
+- **hooks** `(92 events, 82 commits)`
 
 ### Doc_type
 
-- **low-level-design** `(43 events, 41 commits)`
+- **low-level-design** `(44 events, 42 commits)`
 - **Test** `(28 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
@@ -116,13 +116,13 @@ Reviewer: ```json
 
 ### Feature
 
-- **auth** `(85 events, 79 commits)`
-- **UI** `(85 events, 78 commits)`
-- **shared-memory** `(84 events, 78 commits)`
-- **graph-workflow** `(75 events, 68 commits)`
-- **workflow-runner** `(71 events, 68 commits)`
-- **billing** `(42 events, 41 commits)`
-- **mcp** `(42 events, 41 commits)`
+- **auth** `(86 events, 80 commits)`
+- **UI** `(86 events, 79 commits)`
+- **shared-memory** `(85 events, 79 commits)`
+- **graph-workflow** `(76 events, 69 commits)`
+- **workflow-runner** `(72 events, 69 commits)`
+- **billing** `(43 events, 42 commits)`
+- **mcp** `(43 events, 42 commits)`
 - **embeddings** `(28 events, 27 commits)`
 - **tagging**
 - **test-picker-feature**
@@ -131,8 +131,8 @@ Reviewer: ```json
 
 ### Phase
 
-- **discovery** `(83 events, 78 commits)`
-- **development** `(76 events, 69 commits)`
+- **discovery** `(84 events, 79 commits)`
+- **development** `(77 events, 70 commits)`
 - **prod**
 
 ### Task
@@ -210,4 +210,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `claude_cli` — Major UI code cleanup: removed dead code (explorer.js, workflow.js, Cytoscape CDN), added XSS fixes and 30s timeout to API layer, comprehensive JSDoc documentation across 12 view files, fixed memory leaks in graph_workflow.js setInterval cleanup. **[2026-03-18]** `main.py` — Fixed AttributeError by removing stale `db.ensure_project_schema()` call; corrected memory endpoint template by properly scoping `code_dir` variable; modified retry logic to handle empty project lists on first backend load. **[2026-03-10]** `memory-system` — Identified and approved load-once-on-access pattern to reduce DB redundancy; expanded tag hierarchy from 2-level to unlimited nested depth via parent_id FK with login as first-level only; discovered data persistence bug where tags disappear on session switch. **[2026-03-10]** `ui-ux` — Increased visibility of action options, replaced small buttons with 3-dot menu, added unarchive capability, improved `/memory` suggestion labeling with session context and GitHub links. **[2026-03-10]** `backend-stability` — Addressed intermittent app restart failures due to port binding conflicts on 127.0.0.1:8000.
+**2026-03-22** `in_progress` — Dead code removal underway (explorer.js, workflow.js, Cytoscape CDN); utils refactoring with XSS fixes and 30s timeout; JSDoc documentation for all 12 view files; memory leak fixes in graph_workflow.js setInterval cleanup. **2026-03-18** `bug fix` — AttributeError in main.py resolved by removing stale db.ensure_project_schema() call; backend startup race condition fixed by handling empty project list on first load in _continueToApp() retry logic. **2026-03-18** `bug fix` — CLAUDE.md memory endpoint template error: code_dir variable now properly scoped from config at line 1120. **2026-03 (unresolved)** `bug` — Project visibility timing issue: AiCli appears in Recent but not as active project in main view; requires further investigation. **2026-03-10** `architecture` — Load-once-on-access pattern approved to cache tags/workflows in memory and update DB only on explicit save; redundant SQL calls eliminated. **2026-03-10** `feature` — Nested tag hierarchy expanded beyond 2-level (category → tag) with unlimited depth via parent_id FK; login remains first-level only. **2026-03-10** `data model` — Hierarchical structure clarified: Clients contain multiple Users. **2026-03 (pending)** `implementation` — memory_items and project_facts tables exist but update logic not implemented; required for improved memory/context mechanism.
