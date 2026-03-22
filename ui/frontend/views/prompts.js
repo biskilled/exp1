@@ -621,6 +621,7 @@ async function _rolesSave(id) {
   const inputs         = _collectIO('input');
   const outputs        = _collectIO('output');
   if (!name) { toast('Name required', 'error'); return; }
+  _rolesShowErrors([]);  // clear any previous errors
   try {
     const updated = await api.agentRoles.patch(id, {
       name, provider, model, description, system_prompt: systemPrompt,
@@ -633,7 +634,44 @@ async function _rolesSave(id) {
     _activeRole = _roles[idx] || _activeRole;
     _renderRolesList();
     toast('Role saved', 'success');
-  } catch (e) { toast('Save failed: ' + e.message, 'error'); }
+  } catch (e) {
+    let errs = [];
+    try {
+      const body = JSON.parse(e.message.match(/\{.*\}/s)?.[0] || '{}');
+      errs = body.errors || body.detail?.errors || [];
+    } catch (_) {}
+    if (errs.length) {
+      _rolesShowErrors(errs);
+    } else {
+      toast('Save failed: ' + e.message, 'error');
+    }
+  }
+}
+
+function _rolesShowErrors(errors) {
+  let box = document.getElementById('role-validation-errors');
+  if (!errors.length) {
+    if (box) box.remove();
+    return;
+  }
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'role-validation-errors';
+    box.style.cssText = [
+      'background:rgba(220,53,69,0.12)',
+      'border:1px solid rgba(220,53,69,0.4)',
+      'border-radius:6px',
+      'padding:0.6rem 0.8rem',
+      'margin-bottom:0.75rem',
+      'font-size:0.7rem',
+      'color:#f08080',
+    ].join(';');
+    const form = document.querySelector('#prompts-editor-body > div');
+    if (form) form.prepend(box);
+  }
+  box.innerHTML =
+    '<div style="font-weight:600;margin-bottom:0.3rem">Validation errors — role not saved:</div>' +
+    errors.map(e => `<div>• ${e}</div>`).join('');
 }
 
 async function _rolesDelete(id) {

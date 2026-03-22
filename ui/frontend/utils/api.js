@@ -351,6 +351,7 @@ api.agentRoles = {
   versions:       (id)                  => _get(`/agent-roles/${id}/versions`),
   restore:        (id, versionId)       => _post(`/agent-roles/${id}/restore/${versionId}`, {}),
   availableTools: ()                    => _get('/agent-roles/available-tools'),
+  validateYaml:   (body)                => _post('/agent-roles/validate-yaml', body),
   syncYaml:       (body)                => _post('/agent-roles/sync-yaml', body),
   exportYaml:     (id)                  => fetch(_base() + `/agent-roles/${id}/export-yaml`, {
     headers: _headers(),

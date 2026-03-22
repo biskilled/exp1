@@ -2,16 +2,20 @@
 agent_roles.py — Agent role library with version history.
 
 Roles define the system prompt, provider, and model for a workflow node.
-- All users: see name, description, provider, model (no system_prompt)
-- Admin:     full CRUD including system_prompt, version history, create/edit/delete
+- All users: see name + description only (full definition is admin-only).
+- Admin:     full CRUD including system_prompt, tools, react settings, version history.
 
 Routes:
-  GET    /agent-roles                    list active roles
-  POST   /agent-roles                    create (admin only)
-  PATCH  /agent-roles/{id}               edit; auto-saves version on prompt/model/provider change (admin)
-  DELETE /agent-roles/{id}               soft-delete is_active=false (admin)
-  GET    /agent-roles/{id}/versions      version history (admin)
-  POST   /agent-roles/{id}/restore/{vid} restore to previous version (admin)
+  GET    /agent-roles                       list roles (name+desc for users, full for admins)
+  POST   /agent-roles                       create (admin only)
+  PATCH  /agent-roles/{id}                  edit + validate (admin only)
+  DELETE /agent-roles/{id}                  soft-delete (admin only)
+  GET    /agent-roles/{id}/versions         version history (admin only)
+  POST   /agent-roles/{id}/restore/{vid}    restore to previous version (admin only)
+  GET    /agent-roles/available-tools       list all registered tool names + categories
+  POST   /agent-roles/validate-yaml         validate YAML without writing to DB (admin only)
+  POST   /agent-roles/sync-yaml             validate + upsert role from YAML (admin only)
+  GET    /agent-roles/{id}/export-yaml      export role to YAML (admin only)
 """
 from __future__ import annotations
 
@@ -22,6 +26,100 @@ from pydantic import BaseModel
 
 from core.auth import get_optional_user
 from core.database import db, build_update
+
+# ── Validation constants ──────────────────────────────────────────────────────
+
+_KNOWN_FIELDS = {
+    "name", "description", "system_prompt", "provider", "model",
+    "role_type", "auto_commit", "react", "max_iterations",
+    "tools", "inputs", "outputs", "output_schema", "tags",
+}
+
+_VALID_PROVIDERS = {
+    "claude", "anthropic", "openai", "deepseek", "gemini", "grok", "xai", "ollama",
+}
+
+_VALID_ROLE_TYPES = {
+    "agent", "system_designer", "reviewer", "developer", "internal",
+}
+
+_VALID_IO_TYPES = {"prompt", "md", "json", "code", "text", "yaml", "csv"}
+
+
+def _validate_role_data(data: dict) -> list[str]:
+    """Validate a role definition dict (from YAML or PATCH body).
+
+    Returns a list of human-readable error strings. Empty list = valid.
+    """
+    errors: list[str] = []
+
+    # Unknown top-level keys (catches typos like 'provder')
+    unknown = set(data.keys()) - _KNOWN_FIELDS
+    if unknown:
+        errors.append(f"Unknown field(s): {', '.join(sorted(unknown))}. "
+                      f"Known: {', '.join(sorted(_KNOWN_FIELDS))}")
+
+    # name
+    if "name" in data and not str(data.get("name", "")).strip():
+        errors.append("'name' must not be empty")
+
+    # provider
+    prov = data.get("provider")
+    if prov and prov not in _VALID_PROVIDERS:
+        errors.append(f"'provider' value '{prov}' is not recognised. "
+                      f"Valid: {', '.join(sorted(_VALID_PROVIDERS))}")
+
+    # role_type
+    rt = data.get("role_type")
+    if rt and rt not in _VALID_ROLE_TYPES:
+        errors.append(f"'role_type' value '{rt}' is not recognised. "
+                      f"Valid: {', '.join(sorted(_VALID_ROLE_TYPES))}")
+
+    # max_iterations
+    max_it = data.get("max_iterations")
+    if max_it is not None:
+        if not isinstance(max_it, int) or max_it < 1 or max_it > 100:
+            errors.append("'max_iterations' must be an integer between 1 and 100")
+
+    # tools — validate against registered AGENT_TOOLS
+    tools = data.get("tools")
+    if tools is not None:
+        if not isinstance(tools, list):
+            errors.append("'tools' must be a list of tool name strings")
+        else:
+            try:
+                from agents.tools import AGENT_TOOLS
+                unknown_tools = [t for t in tools if t not in AGENT_TOOLS]
+                if unknown_tools:
+                    errors.append(
+                        f"Unknown tool(s): {', '.join(unknown_tools)}. "
+                        f"Registered: {', '.join(sorted(AGENT_TOOLS))}"
+                    )
+            except ImportError:
+                pass  # tools module not available (test env)
+
+    # inputs / outputs structure
+    for field in ("inputs", "outputs"):
+        items = data.get(field)
+        if items is None:
+            continue
+        if not isinstance(items, list):
+            errors.append(f"'{field}' must be a list")
+            continue
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                errors.append(f"'{field}[{i}]' must be a mapping with at least a 'name' key")
+                continue
+            if not item.get("name", "").strip():
+                errors.append(f"'{field}[{i}]' is missing a non-empty 'name'")
+            io_type = item.get("type")
+            if io_type and io_type not in _VALID_IO_TYPES:
+                errors.append(
+                    f"'{field}[{i}].type' value '{io_type}' is not recognised. "
+                    f"Valid: {', '.join(sorted(_VALID_IO_TYPES))}"
+                )
+
+    return errors
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
@@ -314,6 +412,12 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
     _require_db()
     _require_admin(user)
 
+    # Validate only the fields being updated
+    patch_dict = {k: v for k, v in body.model_dump(exclude={"note"}).items() if v is not None}
+    errors = _validate_role_data(patch_dict)
+    if errors:
+        raise HTTPException(422, {"errors": errors})
+
     # Load current values for version comparison
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -474,6 +578,32 @@ async def list_available_tools():
     return {"tools": tools}
 
 
+# ── Shared YAML parse helper ──────────────────────────────────────────────────
+
+def _parse_and_validate_yaml(yaml_content: str) -> tuple[dict, list[str]]:
+    """Parse YAML string and run validation. Returns (data, errors).
+
+    On YAML parse failure, errors contains a single parse-error string and
+    data is an empty dict.
+    """
+    try:
+        import yaml as _yaml
+        data = _yaml.safe_load(yaml_content)
+    except Exception as e:
+        return {}, [f"YAML parse error: {e}"]
+
+    if not data or not isinstance(data, dict):
+        return {}, ["YAML must be a mapping (key: value pairs)"]
+
+    errors = _validate_role_data(data)
+
+    # 'name' required for DB operations
+    if not data.get("name", "").strip():
+        errors.append("'name' field is required")
+
+    return data, errors
+
+
 # ── Sync YAML → DB ────────────────────────────────────────────────────────────
 
 class SyncYamlBody(BaseModel):
@@ -481,24 +611,38 @@ class SyncYamlBody(BaseModel):
     project:      str = "_global"
 
 
+@router.post("/validate-yaml")
+async def validate_yaml(body: SyncYamlBody, user=Depends(get_optional_user)):
+    """Dry-run: parse and validate a YAML role definition without writing to DB.
+
+    Returns {valid: bool, errors: [...], name: str|null}.
+    Used by UI before Save and by CLI before push.
+    """
+    _require_admin(user)
+    data, errors = _parse_and_validate_yaml(body.yaml_content)
+    return {
+        "valid":  len(errors) == 0,
+        "errors": errors,
+        "name":   data.get("name", "").strip() or None,
+    }
+
+
 @router.post("/sync-yaml")
 async def sync_yaml(body: SyncYamlBody, user=Depends(get_optional_user)):
-    """Parse a YAML role definition and upsert it into the DB."""
+    """Validate + upsert a role from YAML into the DB.
+
+    Returns 422 with {errors: [...]} if validation fails.
+    Returns {synced, name, id, tools, react, max_iterations, message} on success.
+    """
     _require_db()
     _require_admin(user)
-    try:
-        import yaml as _yaml
-        import json as _json
-        data = _yaml.safe_load(body.yaml_content)
-    except Exception as e:
-        raise HTTPException(400, f"Invalid YAML: {e}")
 
-    if not data or not isinstance(data, dict):
-        raise HTTPException(400, "YAML must be a mapping")
-    name = data.get("name", "").strip()
-    if not name:
-        raise HTTPException(400, "YAML must have a 'name' field")
+    import json as _json
+    data, errors = _parse_and_validate_yaml(body.yaml_content)
+    if errors:
+        raise HTTPException(422, {"errors": errors})
 
+    name           = data["name"].strip()
     tools          = data.get("tools", [])
     react          = bool(data.get("react", True))
     max_iterations = int(data.get("max_iterations", 10))
@@ -510,7 +654,6 @@ async def sync_yaml(body: SyncYamlBody, user=Depends(get_optional_user)):
     auto_commit    = bool(data.get("auto_commit", False))
     inputs         = data.get("inputs", [])
     outputs        = data.get("outputs", [])
-    project        = body.project
 
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -518,8 +661,7 @@ async def sync_yaml(body: SyncYamlBody, user=Depends(get_optional_user)):
                 """INSERT INTO mng_agent_roles
                        (client_id, project, name, description, system_prompt,
                         provider, model, role_type, auto_commit,
-                        tools, react, max_iterations,
-                        inputs, outputs)
+                        tools, react, max_iterations, inputs, outputs)
                    VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (client_id, project, name) DO UPDATE SET
                        description    = EXCLUDED.description,
@@ -535,20 +677,23 @@ async def sync_yaml(body: SyncYamlBody, user=Depends(get_optional_user)):
                        outputs        = EXCLUDED.outputs,
                        updated_at     = NOW()
                    RETURNING id""",
-                (project, name, description, system_prompt,
+                (body.project, name, description, system_prompt,
                  provider, model, role_type, auto_commit,
                  _json.dumps(tools), react, max_iterations,
                  _json.dumps(inputs), _json.dumps(outputs)),
             )
             row = cur.fetchone()
     return {
-        "synced": True,
-        "name":   name,
-        "id":     row[0] if row else None,
-        "tools":  len(tools),
-        "react":  react,
+        "synced":         True,
+        "name":           name,
+        "id":             row[0] if row else None,
+        "tools":          len(tools),
+        "react":          react,
         "max_iterations": max_iterations,
-        "message": f"Role '{name}' synced ({len(tools)} tools, react={react}, max_iter={max_iterations})",
+        "message": (
+            f"Role '{name}' synced — "
+            f"{len(tools)} tool(s), react={react}, max_iter={max_iterations}"
+        ),
     }
 
 

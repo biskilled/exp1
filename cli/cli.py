@@ -240,10 +240,11 @@ def _cmd_help() -> None:
             "[bold]/history[/bold]              Show recent conversation history",
             "[bold]/status[/bold]               Show backend status",
             "[bold]/run <name>[/bold]           Trigger a named workflow pipeline",
-            "[bold]/role list[/bold]            List all agent roles",
-            "[bold]/role view <name>[/bold]     Show role details (tools, ReAct, etc.)",
-            "[bold]/role push <yaml>[/bold]     Sync a YAML role file to DB",
-            "[bold]/role pull <name>[/bold]     Export a DB role to YAML file",
+            "[bold]/role list[/bold]              List all agent roles",
+            "[bold]/role view <name>[/bold]       Show role details (tools, ReAct, etc.)",
+            "[bold]/role push[/bold]              Push ALL roles from workspace/_templates/roles/",
+            "[bold]/role push <name|path>[/bold]  Push a specific role (by name or YAML file path)",
+            "[bold]/role pull <name>[/bold]       Export a DB role to YAML file",
             "[bold]/pipeline list[/bold]        List all pipelines",
             "[bold]/pipeline view <name>[/bold] Show pipeline nodes",
             "[bold]/pipeline push <yaml>[/bold] Import a YAML pipeline to DB",
@@ -253,6 +254,125 @@ def _cmd_help() -> None:
         ]),
         title="aicli Commands",
     ))
+
+
+def _resolve_role_yaml(name_or_path: str) -> Path | None:
+    """Resolve a role name or path to a YAML file.
+
+    - If it's an existing file path → return as-is.
+    - If it looks like a role name → search workspace/_templates/roles/ for a match
+      by YAML 'name' field or by snake_case filename.
+    """
+    p = Path(name_or_path).expanduser()
+    if p.exists() and p.suffix in (".yaml", ".yml"):
+        return p
+
+    # Treat as a role name — search the templates directory
+    cfg = _load_config()
+    workspace = cfg.get("workspace_dir", str(Path.home() / "workspace"))
+    roles_dir = Path(workspace) / "_templates" / "roles"
+    if not roles_dir.exists():
+        return None
+
+    name_lower = name_or_path.lower()
+    # First pass: match by 'name' field inside the YAML
+    for f in sorted(roles_dir.glob("*.yaml")):
+        try:
+            import yaml as _yaml
+            data = _yaml.safe_load(f.read_text())
+            if isinstance(data, dict) and data.get("name", "").lower() == name_lower:
+                return f
+        except Exception:
+            continue
+    # Second pass: match by filename stem (snake_case)
+    name_snake = name_lower.replace(" ", "_").replace("-", "_")
+    candidate = roles_dir / f"{name_snake}.yaml"
+    if candidate.exists():
+        return candidate
+
+    return None
+
+
+def _push_role_file(yaml_path: Path) -> dict | None:
+    """Validate then push one YAML file. Prints result, returns response dict or None."""
+    try:
+        yaml_content = yaml_path.read_text()
+    except Exception as e:
+        console.print(f"  [red]Cannot read {yaml_path.name}: {e}[/red]")
+        return None
+
+    # Validate first (dry run)
+    val = _backend_post("/agent-roles/validate-yaml", {
+        "yaml_content": yaml_content,
+        "project":      "_global",
+    })
+    if val and not val.get("valid", True):
+        console.print(f"  [red]✗[/red] [bold]{yaml_path.name}[/bold] — validation failed:")
+        for err in val.get("errors", []):
+            console.print(f"      • {err}")
+        return None
+
+    # Push
+    result = _backend_post("/agent-roles/sync-yaml", {
+        "yaml_content": yaml_content,
+        "project":      "_global",
+    })
+    if result and result.get("synced"):
+        name = result.get("name", yaml_path.stem)
+        tools_n = result.get("tools", 0)
+        react   = result.get("react", False)
+        max_it  = result.get("max_iterations", 10)
+        console.print(
+            f"  [green]✓[/green] [bold]{name}[/bold] — "
+            f"{tools_n} tool(s), react={'yes' if react else 'no'}, max_iter={max_it}"
+        )
+        return result
+    else:
+        console.print(f"  [red]✗[/red] [bold]{yaml_path.name}[/bold] — push failed")
+        return None
+
+
+def _cmd_role_push(target: str) -> None:
+    """Push one role (by name or path) or all roles (no target)."""
+    cfg = _load_config()
+    workspace = cfg.get("workspace_dir", str(Path.home() / "workspace"))
+    roles_dir = Path(workspace) / "_templates" / "roles"
+
+    if not target:
+        # Push ALL YAML files in the templates directory
+        if not roles_dir.exists():
+            console.print(f"[yellow]No roles directory found at {roles_dir}[/yellow]")
+            return
+        files = sorted(roles_dir.glob("*.yaml"))
+        if not files:
+            console.print(f"[yellow]No YAML files found in {roles_dir}[/yellow]")
+            return
+        console.print(f"[cyan]Pushing {len(files)} role(s) from {roles_dir}[/cyan]")
+        ok = fail = 0
+        for f in files:
+            r = _push_role_file(f)
+            if r:
+                ok += 1
+            else:
+                fail += 1
+        console.print()
+        if fail == 0:
+            console.print(f"[green]All {ok} role(s) pushed successfully.[/green]")
+        else:
+            console.print(f"[yellow]{ok} succeeded, {fail} failed.[/yellow]")
+        return
+
+    # Push a specific role by name or path
+    yaml_path = _resolve_role_yaml(target)
+    if not yaml_path:
+        console.print(
+            f"[red]Could not find YAML for '{target}'.[/red]\n"
+            f"Checked {roles_dir}/*.yaml and as a file path.\n"
+            f"Use '/role list' to see available roles."
+        )
+        return
+    console.print(f"[cyan]Pushing {yaml_path.name}[/cyan]")
+    _push_role_file(yaml_path)
 
 
 def _cmd_role(session: dict, args: str) -> None:
@@ -313,23 +433,7 @@ def _cmd_role(session: dict, args: str) -> None:
         ))
 
     elif sub == "push":
-        yaml_path = rest.strip()
-        if not yaml_path:
-            console.print("[yellow]Usage: /role push <yaml_path>[/yellow]")
-            return
-        p = Path(yaml_path).expanduser()
-        if not p.exists():
-            console.print(f"[red]File not found: {yaml_path}[/red]")
-            return
-        yaml_content = p.read_text()
-        result = _backend_post("/agent-roles/sync-yaml", {
-            "yaml_content": yaml_content,
-            "project":      "_global",
-        })
-        if result:
-            console.print(f"[green]{result.get('message', 'Role synced.')}[/green]")
-        else:
-            console.print("[red]Push failed.[/red]")
+        _cmd_role_push(rest.strip())
 
     elif sub == "pull":
         parts2   = rest.strip().split(None, 1)
@@ -365,7 +469,7 @@ def _cmd_role(session: dict, args: str) -> None:
         console.print(f"[green]Role '{name}' saved to {out_p}[/green]")
 
     else:
-        console.print("[yellow]Usage: /role list | view <name> | push <yaml> | pull <name> [path][/yellow]")
+        console.print("[yellow]Usage: /role list | view <name> | push [name|path] | pull <name> [path][/yellow]")
 
 
 def _cmd_pipeline(session: dict, args: str) -> None:
