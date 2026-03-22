@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 11:03 UTC by aicli /memory_
+_Generated: 2026-03-22 23:00 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform with Python CLI + FastAPI backend + Electron/Vanilla JS frontend, enabling collaborative work tracking and AI-assisted project management across Claude, OpenAI, and other LLM providers. The system uses dual storage (JSONL + PostgreSQL with pgvector), async DAG workflow execution, and MCP integration for semantic work item retrieval. Current focus is resolving tag cache invalidation issues in the planner UI, optimizing frontend performance, and implementing memory_items/project_facts table population for enhanced context management.
+aicli is a shared AI memory platform providing Claude CLI and other LLM platforms with persistent, searchable work context across sessions. It combines dual-layer storage (JSONL + PostgreSQL with pgvector embeddings), Electron-based desktop UI with terminal integration (xterm.js), async DAG workflow execution, and multi-provider LLM support with encrypted server-side key management. Current focus: stabilizing agent behavior through standardized roles/prompts/ReAct execution, fixing tag cache invalidation in planner UI, and populating memory_items/project_facts tables for enhanced context retrieval.
 
 ## Project Facts
 
@@ -57,7 +57,7 @@ Reviewer: ```json
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok — each with defined system roles, prompts, input/output schemas, and ReAct execution mode
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
@@ -91,22 +91,22 @@ Reviewer: ```json
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes; no hallucination tolerance
 
 ## In Progress
 
+- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination and ensure consistent agent behavior across all providers
 - Tags loading and cache invalidation (2026-03-22) — User reports no DB API calls for tags on planner load; identified _plannerState.project fallback category issue causing null IDs; implementing force-reload logic with cache validation
 - Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to resolve display issues
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load, preventing false 'project not found' errors
-- Project visibility bug investigation (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization
+- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle empty projects list on first load; project visibility bug investigation (AiCli not displaying as current in main project view)
 - Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per original specification
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(103 events, 90 commits)`
+- **hooks** `(105 events, 92 commits)`
 
 ### Doc_type
 
@@ -118,7 +118,7 @@ Reviewer: ```json
 
 ### Feature
 
-- **auth** `(95 events, 88 commits)`
+- **auth** `(97 events, 90 commits)`
 - **UI** `(95 events, 87 commits)`
 - **shared-memory** `(93 events, 87 commits)`
 - **graph-workflow** `(84 events, 77 commits)`
@@ -133,8 +133,8 @@ Reviewer: ```json
 
 ### Phase
 
+- **development** `(93 events, 81 commits)`
 - **discovery** `(92 events, 87 commits)`
-- **development** `(91 events, 79 commits)`
 - **prod**
 
 ### Task
@@ -212,4 +212,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `in_progress` — Tag loading and cache invalidation identified as critical blocker; _plannerState.project fallback causing null category IDs; force-reload logic with cache validation being implemented to resolve tag picker visibility issue. **[2026-03-22]** `in_progress` — Frontend code optimization underway: XSS fixes in markdown.js, 30s timeout in api.js, JSDoc documentation, and setInterval cleanup in graph_workflow.js. **[2026-03-18]** `fix` — Backend startup race condition resolved; modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load, preventing false 'project not found' errors. **[2026-03-18]** `bug` — AttributeError in main.py fixed by removing stale db.ensure_project_schema() call (method doesn't exist; should use _ensure_shared_schema instead). **[2026-03-18]** `bug` — Memory endpoint CLAUDE.md template error fixed; undefined code_dir variable at line 1120 now properly scoped/defined from config. **[2026-03-18]** `investigation` — Project visibility bug identified; AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization pending further investigation. **[2026-03-10]** `database` — Database performance issue identified with multiple redundant SQL calls; implemented strategy to load data once on project access (tags into memory) and only update DB on explicit save actions. **[2026-03-10]** `bug` — Data persistence issue discovered; tags saved in UI disappear when switching sessions; unclear if UI rendering issue or database save failure; requires investigation. **[pending]** `implementation` — memory_items and project_facts table population not yet implemented despite schema existence; required for improved memory/context mechanism per specification. **[2026-03-10]** `architecture` — Tag hierarchy enhancement approved to support nested tags beyond current 2-level hierarchy (category → tag); login confirmed as first-level only.
+**[2026-03-22]** `claude_cli` — Agent standardization initiative: each agent now requires defined system role, explicit prompts, input/output schema specification, and ReAct mode execution to prevent hallucination and ensure deterministic behavior. **[2026-03-22]** `frontend` — Tag visibility regression in planner UI; categories loading from DB but tags not rendering in picker. Root cause: _plannerState.project fallback causing null category IDs. Solution: implement aggressive cache invalidation on project/session switch with force DB reload. **[2026-03-22]** `frontend` — Code quality pass: XSS sanitization in markdown.js, 30s API timeout in api.js, JSDoc documentation, setInterval cleanup in graph_workflow.js to prevent memory leaks. **[2026-03-18]** `backend` — Backend startup race condition resolved: _continueToApp() retry logic now handles edge case where projects API returns success but empty list on first load (prevented false 'project not found' errors). **[2026-03-18]** `bug` — Project visibility timing issue: AiCli appears in Recent projects list but not rendering as active in main project view; suspected backend initialization race condition. **[2026-03-10]** `database` — Database performance optimization: implemented load-once-on-access pattern for tags (into memory on project load) to eliminate redundant SQL calls; only update DB on explicit save.

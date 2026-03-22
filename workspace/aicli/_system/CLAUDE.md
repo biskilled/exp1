@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes; no hallucination tolerance
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: I have tried but it is not working
 - [2026-03-22] `claude_cli`: I would like that manage agennts/roles only as an adming (so other customers can only see the role/a
 - [2026-03-22] `claude_cli`: So when yaml is configured - is it suppose to load into the database ? 
 - [2026-03-22] `claude_cli`: OK .so when user update from ui / run role push (can run role [role_name] push or role push for all 
 - [2026-03-22] `claude_cli`: Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy
+- [2026-03-22] `claude_cli`: I would like to make sure each agent works same as you are - not hilusinsating, and have a defined s
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

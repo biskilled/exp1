@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 11:03 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 23:00 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -17,7 +17,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok — each with defined system roles, prompts, input/output schemas, and ReAct execution mode
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
@@ -51,12 +51,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes; no hallucination tolerance
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] I have tried but it is not working
 - [2026-03-22] I would like that manage agennts/roles only as an adming (so other customers can only see the role/agent name but cannot
 - [2026-03-22] So when yaml is configured - is it suppose to load into the database ?
 - [2026-03-22] OK .so when user update from ui / run role push (can run role [role_name] push or role push for all rules - there will b
 - [2026-03-22] Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla
+- [2026-03-22] I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 22:14 UTC — do not edit manually.
+> Auto-generated 2026-03-22 23:15 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 251
-- **Last active**: 2026-03-22T11:03:49Z
+- **Sessions**: 252
+- **Last active**: 2026-03-22T23:00:47Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -22,7 +22,7 @@
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
-- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok — each with defined system roles, prompts, input/output schemas, and ReAct execution mode
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
@@ -42,11 +42,11 @@
 
 ## In Progress
 
+- Agent role standardization (2026-03-22) — Implement per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination and ensure consistent agent behavior across all providers
 - Tags loading and cache invalidation (2026-03-22) — User reports no DB API calls for tags on planner load; identified _plannerState.project fallback category issue causing null IDs; implementing force-reload logic with cache validation
 - Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to resolve display issues
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle edge case where projects list returns empty on first load, preventing false 'project not found' errors
-- Project visibility bug investigation (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization
+- Backend startup race condition fix (2026-03-18) — Modified _continueToApp() retry logic to handle empty projects list on first load; project visibility bug investigation (AiCli not displaying as current in main project view)
 - Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per original specification
 
 ## Key Decisions
@@ -65,7 +65,7 @@
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes; no hallucination tolerance
 
 ---
 
@@ -159,6 +159,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 22:48]** `claude_cli/claude`  
+→ I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
+← _Everything is working. Now update MEMORY.md:_
+
 **[2026-03-22 10:53]** `claude_cli/claude`  
 → Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla
 ← _Now update the auto-memory MEMORY.md with logging system details:_
@@ -213,7 +217,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 01:55]** `claude_cli/claude`  
 → looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent roles) Also Pipeline
 ← _Now restart the backend and verify both endpoints:_
-
-**[2026-03-22 01:35]** `claude_cli/claude`  
-→ I do see that backend is failing to start (it also take quite a while to load ) 
-← _Now verify the backend starts immediately:_
