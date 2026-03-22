@@ -26,19 +26,33 @@ export async function loadTagCache(project, force = false) {
     const catData = await api.entities.listCategories(project);
     _cache.categories = catData.categories || [];
 
+    // If DB was unavailable the categories have null IDs (fallback mode).
+    // Don't mark the cache as loaded so the next navigation triggers a fresh
+    // reload once the DB is ready.
+    if (catData.fallback) return _cache;
+
     // Load all categories' values in parallel — one batch instead of N serial calls
+    let anyValuesFallback = false;
     await Promise.all(_cache.categories.map(async c => {
       try {
         const vData = await api.entities.listValues(project, c.id);
-        _cache.values[String(c.id)] = vData.values || [];
-        c.value_count = _cache.values[String(c.id)].length;
+        if (vData.fallback) {
+          // DB unavailable for this category's values — don't mark cache as loaded
+          anyValuesFallback = true;
+          _cache.values[String(c.id)] = [];
+          c.value_count = 0;
+        } else {
+          _cache.values[String(c.id)] = vData.values || [];
+          c.value_count = _cache.values[String(c.id)].length;
+        }
       } catch {
         _cache.values[String(c.id)] = [];
         c.value_count = 0;
       }
     }));
 
-    _cache.loaded = true;
+    // Only mark loaded if all values came from the real DB (no fallback)
+    if (!anyValuesFallback) _cache.loaded = true;
   } catch (e) {
     console.warn('[tagCache] load failed:', e.message);
   }

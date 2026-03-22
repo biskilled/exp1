@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 02:52 UTC — do not edit manually.
+> Auto-generated 2026-03-22 02:55 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 242
-- **Last active**: 2026-03-22T02:51:37Z
+- **Sessions**: 243
+- **Last active**: 2026-03-22T02:54:44Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -42,11 +42,11 @@
 
 ## In Progress
 
+- Tags not loading via API (2026-03-22) — User reports no DB API calls for tags, only categories visible; investigating cache invalidation and tag query logic in planner initialization; suspected issue in tags/_fetch or _initPlanner category selection fallback
 - Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic in _initPlanner with cache validation check and auto-select of first real category
-- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch; anyValuesFallback check prevents stale cache
-- Backend module restructuring completion (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; reorganized agents/ folder; removed stale core/encryption.py
-- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js to prevent memory leaks
+- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
 - Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per specification
 
 ## Key Decisions
@@ -60,12 +60,12 @@
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
-- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
+- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
 
 ---
 
@@ -159,8 +159,12 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 02:53]** `claude_cli/claude`  
+→ I dont see any tags loading, it looks like there is no api call to the db . all I can see is just the categoroes 
+
 **[2026-03-22 02:49]** `claude_cli/claude`  
 → Is it possilbe to creatre skeen that run my aiCli commands from Claude CLI - for example /ac /memory - will run my memor
+← _The `/ac` skill is ready. Here's what you can now do in Claude Code:  | Command | What it does | |---------|-------------| | `/ac /memory` | Generates all 5 memory files via your backend | | `/ac /sta_
 
 **[2026-03-22 02:48]** `claude_cli/claude`  
 → This is still not working. I dont see tags loading at all (just empty categories)
@@ -213,7 +217,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 00:59]** `claude_cli/claude`  
 → Ok. ,erge encryption to dl_api_keys 
 ← _Done. `core/encryption.py` deleted, and no remaining references to it anywhere in the backend._
-
-**[2026-03-22 00:57]** `claude_cli/claude`  
-→ For what encryption is used for ? also auth - is is looks like a general auth , it is not part of route ? 
-← _Done. `data/` layer now has three files:  ``` data/   dl_user.py      — user CRUD   dl_api_keys.py  — encrypted key storage     dl_seq.py       — atomic sequential ID allocation ```  `core/` is now pu_

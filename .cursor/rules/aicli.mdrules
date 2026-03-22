@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:51 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:54 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -46,17 +46,17 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
-- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
+- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] PostgreSql is up and running, why do you build a workaround. it looks like router mappig not query the proper tables
 - [2026-03-22] I do see categroeis uploaded in Planner tab, but I do not see all the tags in each categroy. Also I do got an error when
 - [2026-03-22] Planner still dont load all tags , all I see is ctegories
 - [2026-03-22] This is still not working. I dont see tags loading at all (just empty categories)
 - [2026-03-22] Is it possilbe to creatre skeen that run my aiCli commands from Claude CLI - for example /ac /memory - will run my memor
+- [2026-03-22] I dont see any tags loading, it looks like there is no api call to the db . all I can see is just the categoroes

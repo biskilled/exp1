@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 02:51 UTC by aicli /memory_
+_Generated: 2026-03-22 02:54 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling persistent context across Claude CLI and multiple LLM platforms through dual-layer JSONL + PostgreSQL storage, JWT-authenticated FastAPI backend, and Electron UI with graph-based workflow visualization. Currently in active development (v2.2.0) with focus on stabilizing tag persistence caching, completing backend module restructuring with consistent naming conventions, and implementing pending memory synthesis table population to enable improved context-aware agent capabilities.
+aicli is a shared AI memory platform enabling Claude CLI and LLM platforms to maintain persistent project context across sessions. It features dual-layer storage (JSONL + PostgreSQL with pgvector), async DAG workflow orchestration with Cytoscape visualization, per-project tagging and memory synthesis, MCP integration for work item retrieval, and a full-stack auth system (JWT + role-based access). Current focus is resolving tag loading issues in the planner UI and implementing remaining memory population logic.
 
 ## Project Facts
 
@@ -86,20 +86,20 @@ Reviewer: ```json
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
-- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB; UI renders from in-memory cache
+- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
+- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL tables
+- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
+- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
 
 ## In Progress
 
+- Tags not loading via API (2026-03-22) — User reports no DB API calls for tags, only categories visible; investigating cache invalidation and tag query logic in planner initialization; suspected issue in tags/_fetch or _initPlanner category selection fallback
 - Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic in _initPlanner with cache validation check and auto-select of first real category
-- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch; anyValuesFallback check prevents stale cache
-- Backend module restructuring completion (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; reorganized agents/ folder; removed stale core/encryption.py
-- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
+- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js to prevent memory leaks
+- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
 - Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per specification
 
 ## Active Features / Bugs / Tasks
@@ -212,4 +212,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-22]** `claude_cli` — Tags persistence bug root cause identified: fallback categories with null IDs blocking cache reload; implemented force-reload detection using anyValuesFallback flag and cache validation in _initPlanner to auto-select first real category. **[2026-03-22]** `claude_cli` — Tag visibility on UI fixed by ensuring full tag hierarchy loads on session/project switch through cache invalidation and re-render flow; planner now forces reload when stale cache detected. **[2026-03-21-22]** `development` — Backend module restructuring completed: all files renamed with semantic prefixes (dl_, tool_, pipeline_, pr_, mem_); SQL queries extracted to module-level constants; agents/ folder fully reorganized and stale encryption.py removed. **[2026-03-22]** `development` — Database initialization race condition resolved by confirming PostgreSQL agent roles have real IDs (10+) and router endpoints query correct per-project tables; eliminated stale fallback workarounds. **[2026-03-22]** `development` — Frontend code optimized: XSS vulnerabilities fixed in markdown.js, 30s timeout added to api.js, JSDoc documentation added, setInterval memory leaks cleaned up in graph_workflow.js. **[2026-03-10]** `session-summary` — Tag hierarchy enhancement approved for nested structure beyond current 2-level; UI/UX improvements prioritized (visibility of action options, 3-dot menu buttons, unarchive ability). **[2026-03-10]** `session-summary` — Data persistence issue documented: tags saved in UI disappear on session switch (DB save vs. rendering issue unclear); AI suggestions visibility and labeling enhanced with session context and GitHub commit links. **[2026-03-14]** `project-facts` — Confirmed auth pattern uses first-level hierarchy login; backend startup race condition handled via retry logic for empty project lists; memory management follows load-once-on-access, update-on-save pattern. **[pending]** `implementation-gap` — memory_items and project_facts tables exist in schema but update logic not yet implemented; required for improved memory/context mechanism per original specification. **[2026-03-22]** `feature-request` — User inquired about creating screens to run aicli commands from Claude CLI (e.g., `/ac /memory` to run memory function); scope and feasibility not yet addressed.
+**[2026-03-22]** `in_progress` — Tags API fetch failing silently in planner; categories load but tags don't appear in UI; root cause identified as cache fallback to null project state; implemented force-reload with validation. **[2026-03-22]** `frontend_optimization` — Fixed XSS in markdown.js, added 30s API timeout, added JSDoc docs, cleaned up setInterval leaks in graph_workflow.js. **[2026-03-22]** `database_initialization` — Confirmed PostgreSQL agent roles have real IDs; router queries now correctly target per-project tables; removed fallback workarounds. **[2026-03-21-22]** `backend_restructuring` — Completed module renaming with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; reorganized agents/ folder. **[2026-03-10]** `memory_persistence` — Identified tags disappear on session switch; designed load-once-on-access pattern with explicit save updates to prevent stale cache. **[pending]** `memory_population` — memory_items and project_facts tables exist in schema but update logic not implemented; blocks improved context mechanism.

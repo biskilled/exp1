@@ -1,12 +1,10 @@
 /**
  * entities.js — Planner: Unified Tag Manager.
  *
- * 2-pane layout: left = category list (160px), right = tag table.
- * Reads from the shared tagCache — zero DB calls on navigation. Mutations
- * update the cache synchronously (instant UI feedback) then fire the DB
- * call in the background.
- *
- * Requires PostgreSQL (shows 503 notice when unavailable).
+ * Two-pane layout (category list left, tag table right) for creating and managing entity
+ * values (features, bugs, tasks, etc.) with lifecycle status, due dates, nested tags, and
+ * dependency links; uses tagCache for zero-latency navigation and lazy DB writes.
+ * Rendered via: renderEntities() called from main.js navigateTo().
  */
 
 import { state } from '../stores/state.js';
@@ -120,12 +118,24 @@ export function renderEntities(container) {
 // ── Init: use cache if warm, otherwise load ──────────────────────────────────
 
 async function _initPlanner(project) {
-  if (!isCacheLoaded() || getCacheProject() !== project) {
+  const cats0 = getCacheCategories();
+  // Force reload if: not loaded, wrong project, has fallback null-IDs,
+  // or values are empty for all categories that claim to have items (stale fallback load).
+  const hasFallback  = cats0.some(c => c.id === null);
+  const hasStaleVals = isCacheLoaded() && cats0.length > 0 &&
+    cats0.every(c => (c.value_count || 0) > 0 && getCacheValues(c.id).length === 0);
+
+  if (!isCacheLoaded() || getCacheProject() !== project || hasFallback || hasStaleVals) {
     document.getElementById('planner-cat-list').innerHTML =
       '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">Loading…</div>';
-    await loadTagCache(project);
+    await loadTagCache(project, true);
   }
   _renderCategoryList();
+  // Auto-select first category so right pane is populated on open
+  const cats = getCacheCategories();
+  if (!_plannerState.selectedCat && cats.length > 0 && cats[0].id != null) {
+    await _plannerSelectCat(cats[0].id, cats[0].name);
+  }
 }
 
 // ── Category list ─────────────────────────────────────────────────────────────
@@ -152,6 +162,16 @@ function _renderCategoryList() {
 }
 
 async function _plannerSelectCat(catId, catName) {
+  // Fallback categories have null IDs — reload cache and resolve real ID by name
+  if (catId === null || catId === undefined) {
+    const pane = document.getElementById('planner-tags-pane');
+    if (pane) pane.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:16px">Loading…</div>';
+    await loadTagCache(_plannerState.project, true);
+    const real = getCacheCategories().find(c => c.name === catName && c.id != null);
+    if (real) return _plannerSelectCat(real.id, real.name);
+    if (pane) pane.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:16px">Database not ready yet — try again shortly</div>';
+    return;
+  }
   _plannerState.selectedCat = catId;
   _plannerState.selectedCatName = catName;
   const cat = getCacheCategories().find(c => c.id === catId) || {};
