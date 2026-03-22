@@ -21,7 +21,7 @@ from typing import Optional
 
 from core.config import settings
 from core.auth import hash_password, verify_password
-from core.database import db
+from core.database import db, build_update
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -72,6 +72,22 @@ _BALANCE_DEFAULTS = {
     "stripe_customer_id": "",
 }
 
+# ── SQL ───────────────────────────────────────────────────────────────────────
+
+_SQL_FIND_BY_EMAIL = f"SELECT {_PG_COLS} FROM mng_users WHERE email = %s"
+
+_SQL_FIND_BY_ID = f"SELECT {_PG_COLS} FROM mng_users WHERE id = %s"
+
+_SQL_COUNT_USERS = "SELECT COUNT(*) FROM mng_users WHERE client_id = 1"
+
+_SQL_INSERT_USER = (
+    "INSERT INTO mng_users (id, email, password_hash, is_admin) VALUES (%s, %s, %s, %s)"
+)
+
+_SQL_LIST_USERS = f"SELECT {_PG_COLS} FROM mng_users ORDER BY created_at"
+
+_SQL_SOFT_DELETE_USER = "UPDATE mng_users SET is_active = FALSE WHERE id = %s"
+
 
 def _migrate_user(user: dict) -> dict:
     """Add missing monetization fields to legacy user records."""
@@ -108,7 +124,7 @@ def _pg_row(row: tuple) -> dict:
 def _pg_find_by_email(email: str) -> Optional[dict]:
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT {_PG_COLS} FROM mng_users WHERE email = %s", (email.lower().strip(),))
+            cur.execute(_SQL_FIND_BY_EMAIL, (email.lower().strip(),))
             row = cur.fetchone()
     return _pg_row(row) if row else None
 
@@ -116,7 +132,7 @@ def _pg_find_by_email(email: str) -> Optional[dict]:
 def _pg_find_by_id(user_id: str) -> Optional[dict]:
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT {_PG_COLS} FROM mng_users WHERE id = %s", (user_id,))
+            cur.execute(_SQL_FIND_BY_ID, (user_id,))
             row = cur.fetchone()
     return _pg_row(row) if row else None
 
@@ -124,14 +140,14 @@ def _pg_find_by_id(user_id: str) -> Optional[dict]:
 def _pg_create_user(email: str, password: str) -> dict:
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM mng_users")
+            cur.execute(_SQL_COUNT_USERS)
             is_admin = cur.fetchone()[0] == 0
     uid = str(uuid.uuid4())
     role = "admin" if is_admin else "free"
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO mng_users (id, email, password_hash, is_admin) VALUES (%s, %s, %s, %s)",
+                _SQL_INSERT_USER,
                 (uid, email, hash_password(password), is_admin),
             )
     return _migrate_user({"id": uid, "email": email, "is_admin": is_admin, "role": role, "is_active": True, "created_at": _now()})
@@ -140,7 +156,7 @@ def _pg_create_user(email: str, password: str) -> dict:
 def _pg_list_users() -> list[dict]:
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT {_PG_COLS} FROM mng_users ORDER BY created_at")
+            cur.execute(_SQL_LIST_USERS)
             rows = cur.fetchall()
     return [_safe(_migrate_user(_pg_row(r))) for r in rows]
 
@@ -150,11 +166,10 @@ def _pg_update_user(user_id: str, **fields) -> Optional[dict]:
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return _safe(_pg_find_by_id(user_id) or {}) or None
-    set_clause = ", ".join(f"{k} = %s" for k in updates)
-    values = list(updates.values()) + [user_id]
+    set_clause, vals = build_update(updates)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE mng_users SET {set_clause} WHERE id = %s", values)
+            cur.execute(f"UPDATE mng_users SET {set_clause} WHERE id = %s", vals + [user_id])
     row = _pg_find_by_id(user_id)
     return _safe(row) if row else None
 
@@ -162,7 +177,7 @@ def _pg_update_user(user_id: str, **fields) -> Optional[dict]:
 def _pg_delete_user(user_id: str) -> bool:
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE mng_users SET is_active = FALSE WHERE id = %s", (user_id,))
+            cur.execute(_SQL_SOFT_DELETE_USER, (user_id,))
             return cur.rowcount > 0
 
 

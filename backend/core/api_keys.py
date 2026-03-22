@@ -26,6 +26,29 @@ _ENV_ATTRS = {
     "grok":     "grok_api_key",
 }
 
+# ── SQL ───────────────────────────────────────────────────────────────────────
+
+_SQL_GET_SERVER_KEYS = "SELECT server_api_keys FROM mng_clients WHERE id=1"
+
+_SQL_UPDATE_SERVER_KEYS = "UPDATE mng_clients SET server_api_keys=%s WHERE id=1"
+
+_SQL_GET_USER_KEY = (
+    "SELECT key_enc FROM mng_user_api_keys WHERE user_id=%s AND provider=%s"
+)
+
+_SQL_UPSERT_USER_KEY = """INSERT INTO mng_user_api_keys (user_id, provider, key_enc, updated_at)
+                   VALUES (%s, %s, %s, NOW())
+                   ON CONFLICT (user_id, provider)
+                   DO UPDATE SET key_enc=EXCLUDED.key_enc, updated_at=NOW()"""
+
+_SQL_DELETE_USER_KEY = (
+    "DELETE FROM mng_user_api_keys WHERE user_id=%s AND provider=%s"
+)
+
+_SQL_LIST_USER_KEYS = (
+    "SELECT provider, key_enc, updated_at FROM mng_user_api_keys WHERE user_id=%s"
+)
+
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
@@ -43,7 +66,7 @@ def _load_server_keys() -> dict[str, str]:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT server_api_keys FROM mng_clients WHERE id=1")
+                cur.execute(_SQL_GET_SERVER_KEYS)
                 row = cur.fetchone()
                 if row and row[0]:
                     return dict(row[0])
@@ -68,10 +91,7 @@ def get_key(provider: str, user_id: Optional[str] = None, fallback: str = "") ->
             try:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute(
-                            "SELECT key_enc FROM mng_user_api_keys WHERE user_id=%s AND provider=%s",
-                            (user_id, provider),
-                        )
+                        cur.execute(_SQL_GET_USER_KEY, (user_id, provider))
                         row = cur.fetchone()
                         if row and row[0]:
                             return decrypt(row[0])
@@ -106,10 +126,7 @@ def save_server_key(provider: str, plaintext_key: str) -> None:
             keys.pop(provider, None)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE mng_clients SET server_api_keys=%s WHERE id=1",
-                    (json.dumps(keys),),
-                )
+                cur.execute(_SQL_UPDATE_SERVER_KEYS, (json.dumps(keys),))
     except Exception as e:
         log.warning(f"save_server_key DB error: {e}")
 
@@ -123,10 +140,7 @@ def save_user_key(user_id: str, provider: str, plaintext_key: str) -> None:
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO mng_user_api_keys (user_id, provider, key_enc, updated_at)
-                   VALUES (%s, %s, %s, NOW())
-                   ON CONFLICT (user_id, provider)
-                   DO UPDATE SET key_enc=EXCLUDED.key_enc, updated_at=NOW()""",
+                _SQL_UPSERT_USER_KEY,
                 (user_id, provider, encrypt(plaintext_key.strip())),
             )
 
@@ -138,10 +152,7 @@ def delete_user_key(user_id: str, provider: str) -> bool:
         return False
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM mng_user_api_keys WHERE user_id=%s AND provider=%s",
-                (user_id, provider),
-            )
+            cur.execute(_SQL_DELETE_USER_KEY, (user_id, provider))
             return cur.rowcount > 0
 
 
@@ -155,10 +166,7 @@ def list_user_keys(user_id: str) -> list[dict]:
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT provider, key_enc, updated_at FROM mng_user_api_keys WHERE user_id=%s",
-                    (user_id,),
-                )
+                cur.execute(_SQL_LIST_USER_KEYS, (user_id,))
                 for row in cur.fetchall():
                     try:
                         plain = decrypt(row[1])

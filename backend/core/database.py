@@ -1660,3 +1660,46 @@ class _Database:
 
 # Singleton used everywhere
 db = _Database()
+
+
+# ─── Dynamic query helpers ────────────────────────────────────────────────────
+
+def build_update(fields: dict) -> tuple[str, list]:
+    """Build a SET clause for UPDATE from a dict, skipping None values.
+
+    Returns (set_clause, values) — append your WHERE values after.
+
+    Usage::
+        set_clause, vals = build_update({"name": body.name, "color": body.color})
+        cur.execute(
+            f"UPDATE mng_entity_categories SET {set_clause}, updated_at=NOW() WHERE id=%s",
+            vals + [row_id],
+        )
+    """
+    items = [(k, v) for k, v in fields.items() if v is not None]
+    if not items:
+        raise ValueError("build_update: no non-None fields provided")
+    clause = ", ".join(f"{k} = %s" for k, _ in items)
+    return clause, [v for _, v in items]
+
+
+def build_where(*conditions: tuple[str, any] | None) -> tuple[str, list]:
+    """Build a WHERE clause from (snippet, value) pairs, skipping None entries.
+
+    Returns ('WHERE cond1 AND cond2 ...', [val1, val2, ...]).
+    Pass ``None`` for optional conditions to skip them cleanly.
+
+    Usage::
+        where, params = build_where(
+            ("client_id = %s", 1),
+            ("project = %s", project),
+            ("status = %s", status) if status else None,
+        )
+        cur.execute(f"SELECT * FROM pr_work_items {where} ORDER BY created_at", params)
+    """
+    active = [c for c in conditions if c is not None]
+    if not active:
+        return "", []
+    clause = "WHERE " + " AND ".join(snippet for snippet, _ in active)
+    params = [val for _, val in active]
+    return clause, params
