@@ -1501,15 +1501,19 @@ class _Database:
 
     @staticmethod
     def _seed_roles_from_yaml(cur) -> None:
-        """Upsert agent roles from workspace/_templates/roles/*.yaml into DB (project='_global').
+        """Full UPSERT of agent roles from workspace/_templates/roles/*.yaml into DB.
 
-        YAML values override built-in defaults for matching names. Called inside
-        _seed_agent_roles() after the built-in batch INSERT, within the same transaction.
+        - Existing role (matched by client_id + project + name): ALL fields updated from YAML.
+        - New role (not yet in DB): inserted fresh from YAML.
+
+        Called after the built-in batch INSERT so YAML values take precedence.
+        Roles are written to project='_global' (shared across all projects/clients).
         """
         import json as _json
         try:
             import yaml as _yaml
         except ImportError:
+            log.debug("PyYAML not installed — skipping YAML role seed")
             return
 
         templates_dir = (
@@ -1524,19 +1528,45 @@ class _Database:
                 data = _yaml.safe_load(yaml_path.read_text())
                 if not data or not isinstance(data, dict) or not data.get("name"):
                     continue
-                name   = data["name"]
-                tools  = _json.dumps(data.get("tools", []))
-                react  = bool(data.get("react", True))
-                max_it = int(data.get("max_iterations", 10))
+
+                name           = data["name"]
+                description    = data.get("description", "")
+                system_prompt  = data.get("system_prompt", "")
+                provider       = data.get("provider", "claude")
+                model          = data.get("model", "")
+                role_type      = data.get("role_type", "agent")
+                auto_commit    = bool(data.get("auto_commit", False))
+                tools          = _json.dumps(data.get("tools", []))
+                react          = bool(data.get("react", True))
+                max_it         = int(data.get("max_iterations", 10))
+                inputs         = _json.dumps(data.get("inputs", []))
+                outputs        = _json.dumps(data.get("outputs", []))
+
                 cur.execute(
-                    """UPDATE mng_agent_roles
-                       SET tools=%s, react=%s, max_iterations=%s
-                       WHERE client_id=1 AND project='_global' AND name=%s""",
-                    (tools, react, max_it, name),
+                    """INSERT INTO mng_agent_roles
+                           (client_id, project, name, description, system_prompt,
+                            provider, model, role_type, auto_commit,
+                            tools, react, max_iterations, inputs, outputs)
+                       VALUES (1, '_global', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT (client_id, project, name) DO UPDATE SET
+                           description    = EXCLUDED.description,
+                           system_prompt  = EXCLUDED.system_prompt,
+                           provider       = EXCLUDED.provider,
+                           model          = EXCLUDED.model,
+                           role_type      = EXCLUDED.role_type,
+                           auto_commit    = EXCLUDED.auto_commit,
+                           tools          = EXCLUDED.tools,
+                           react          = EXCLUDED.react,
+                           max_iterations = EXCLUDED.max_iterations,
+                           inputs         = EXCLUDED.inputs,
+                           outputs        = EXCLUDED.outputs,
+                           updated_at     = NOW()""",
+                    (name, description, system_prompt, provider, model,
+                     role_type, auto_commit, tools, react, max_it, inputs, outputs),
                 )
-                log.debug(f"YAML seed applied for role '{name}'")
+                log.debug(f"YAML role upserted: '{name}' ({yaml_path.name})")
             except Exception as yaml_err:
-                log.debug(f"YAML seed skip {yaml_path.name}: {yaml_err}")
+                log.warning(f"YAML role seed failed for {yaml_path.name}: {yaml_err}")
 
     @staticmethod
     def _seed_system_roles(conn) -> None:
