@@ -35,12 +35,12 @@ You are a senior Python software architect with deep expertise in:
 - Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Per-user encrypted API key storage in database (replacing api_keys.json); main app keys remain in .env
+- Per-user encrypted API key storage in database; main app keys remain in .env
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
-- Query management: define SQL queries at file start as module-level constants or centralized query builders to improve maintainability
+- Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: Is there is a problen to remove data\api_keys.json 
 - [2026-03-22] `claude_cli`: Can you make sure UI contain only client interface and backend manage all backend activity , as I wo
 - [2026-03-22] `claude_cli`: I still see duplicate - under core I do see auth.py and under route - raute_auth.py why there are 2 
 - [2026-03-22] `claude_cli`: Basicly all files under route can use db quesries. Is there is any other place that using db queries
 - [2026-03-22] `claude_cli`: is there is a way to manage the queries better, maybe to define quesried at the begining of each fil
+- [2026-03-22] `claude_cli`: scope - apply to all files, Dynamic - try to use tamplate (maybe add that into database.py file). al
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

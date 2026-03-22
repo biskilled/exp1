@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 00:28 UTC — do not edit manually.
+> Auto-generated 2026-03-22 00:35 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 211
-- **Last active**: 2026-03-22T00:27:54Z
+- **Sessions**: 213
+- **Last active**: 2026-03-22T00:35:10Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,12 +40,12 @@
 
 ## In Progress
 
-- Query organization refactoring (2026-03-22) — Evaluating approach to define queries at beginning of files for better maintainability and readability
-- API keys.json file removal (2026-03-22) — Verifying no remaining code paths write to data/api_keys.json after relocation to encrypted database storage; 35+ import sites validated
-- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys replacing api_keys.json file storage; .env holds main app credentials only
-- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause unclear (UI rendering vs. database save failure)
+- Query organization refactoring (2026-03-22) — Evaluating centralized SQL query definition approach; applying to all router files with template pattern; reviewing optimization opportunities per query
+- API keys.json file removal (2026-03-22) — Completing validation that no remaining code paths write to data/api_keys.json after full migration to encrypted database storage
+- Per-user encrypted API key system (2026-03-21) — Database-backed encrypted keys fully deployed; .env holds main app credentials only; all import sites validated
+- Data persistence bug investigation (2026-03-21) — Tags saved in UI disappearing on session switch; root cause still unclear (UI rendering vs. database save failure)
 - Backend startup race condition (2026-03-21) — Modified retry logic to handle empty project list on first load; AiCli visibility in Recent vs. main list still needs investigation
-- Tool naming convention completion (2026-03-21) — agents/tools/ files renamed to tool_ prefix; import paths validated post-relocation
+- Memory items and project_facts table population (2026-03-18) — Tables defined in schema but update logic not yet implemented; blocks improved memory/context mechanism
 
 ## Key Decisions
 
@@ -58,12 +58,12 @@
 - Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
 - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
-- Per-user encrypted API key storage in database (replacing api_keys.json); main app keys remain in .env
+- Per-user encrypted API key storage in database; main app keys remain in .env
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
 - Backend module organization: routers/ for API endpoints, agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - Graph runner commits via _apply_code_and_commit distinct from git_tool for existing working tree changes
-- Query management: define SQL queries at file start as module-level constants or centralized query builders to improve maintainability
+- Query management: define SQL queries at file start as module-level constants or centralized query builders for maintainability
 
 ---
 
@@ -157,6 +157,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-22 00:30]** `claude_cli/claude`  
+→ scope - apply to all files, Dynamic - try to use tamplate (maybe add that into database.py file). also please review eac
+← _Let me launch the remaining router file groups in parallel while the first two agents run._
+
 **[2026-03-22 00:27]** `claude_cli/claude`  
 → is there is a way to manage the queries better, maybe to define quesried at the begining of each file ? 
 ← _Let me look at a couple of files to understand the current pattern first._
@@ -211,8 +215,4 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-21 22:59]** `claude_cli/claude`  
 → Is there is a reason to have tools under mcp as well ?  
-← _All imports clean. The backend restructure is complete and verified:  - `agents/tools/` (moved from `tools/agent_tools/`) - `agents/mcp/` (moved from `tools/mcp/`) - `tools/` folder deleted - `routers_
-
-**[2026-03-21 22:48]** `claude_cli/claude`  
-→ There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen
 ← _All imports clean. The backend restructure is complete and verified:  - `agents/tools/` (moved from `tools/agent_tools/`) - `agents/mcp/` (moved from `tools/mcp/`) - `tools/` folder deleted - `routers_

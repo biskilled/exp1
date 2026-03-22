@@ -18,11 +18,48 @@ import json
 import logging
 
 from core.config import settings
-from core.database import db
+from core.database import db, build_update
 
 log = logging.getLogger(__name__)
 
 _MAX_ITERATIONS = 2
+
+# ── SQL ────────────────────────────────────────────────────────────────────────
+
+_SQL_LOAD_ROLE = """
+    SELECT ar.system_prompt, ar.provider, ar.model,
+           COALESCE(
+             string_agg(sr.content, E'\\n\\n' ORDER BY rl.order_index),
+             ''
+           ) AS sys_content
+    FROM   mng_agent_roles ar
+    LEFT JOIN mng_role_system_links rl ON rl.role_id = ar.id
+    LEFT JOIN mng_system_roles sr ON sr.id = rl.system_role_id
+    WHERE  ar.name = %s AND ar.client_id = 1
+    GROUP  BY ar.id, ar.system_prompt, ar.provider, ar.model
+"""
+
+_SQL_GET_WORK_ITEM = (
+    "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid"
+)
+
+_SQL_GET_FACTS = (
+    "SELECT fact_key, fact_value FROM pr_project_facts "
+    "WHERE client_id=1 AND project=%s AND valid_until IS NULL ORDER BY fact_key"
+)
+
+_SQL_GET_MEMORY = (
+    "SELECT content FROM pr_memory_items WHERE client_id=1 AND project=%s "
+    "ORDER BY created_at DESC LIMIT 3"
+)
+
+# _SQL_UPDATE_AGENT_STATUS and _SQL_UPDATE_PIPELINE_RESULTS are both handled
+# via build_update() — the table and WHERE clause are shared here as a template.
+_SQL_UPDATE_WORK_ITEM_WHERE = (
+    "UPDATE pr_work_items SET {set_clause}, updated_at=NOW() WHERE id=%s::uuid"
+)
+
+# ── Fallback prompts ───────────────────────────────────────────────────────────
 
 # Role name → fallback system prompt (used when DB is unavailable)
 _FALLBACK_PROMPTS: dict[str, str] = {
@@ -74,19 +111,7 @@ def _load_role(role_name: str) -> tuple[str, str, str]:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        """SELECT ar.system_prompt, ar.provider, ar.model,
-                                  COALESCE(
-                                    string_agg(sr.content, E'\\n\\n' ORDER BY rl.order_index),
-                                    ''
-                                  ) AS sys_content
-                           FROM   mng_agent_roles ar
-                           LEFT JOIN mng_role_system_links rl ON rl.role_id = ar.id
-                           LEFT JOIN mng_system_roles sr ON sr.id = rl.system_role_id
-                           WHERE  ar.name = %s AND ar.client_id = 1
-                           GROUP  BY ar.id, ar.system_prompt, ar.provider, ar.model""",
-                        (role_name,),
-                    )
+                    cur.execute(_SQL_LOAD_ROLE, (role_name,))
                     row = cur.fetchone()
                     if row:
                         base_prompt = row[0] or ""
@@ -115,10 +140,7 @@ def _save_pipeline_doc(project: str, work_item_id: str, filename: str, content: 
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid",
-                    (work_item_id,),
-                )
+                cur.execute(_SQL_GET_WORK_ITEM, (work_item_id,))
                 wi = cur.fetchone()
         if not wi:
             return
@@ -179,19 +201,11 @@ async def trigger_work_item_pipeline(
             try:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute(
-                            "SELECT fact_key, fact_value FROM pr_project_facts "
-                            "WHERE client_id=1 AND project=%s AND valid_until IS NULL ORDER BY fact_key",
-                            (project,),
-                        )
+                        cur.execute(_SQL_GET_FACTS, (project,))
                         facts = cur.fetchall()
                         if facts:
                             project_facts_text = "\n".join(f"  {k}: {v}" for k, v in facts)
-                        cur.execute(
-                            "SELECT content FROM pr_memory_items WHERE client_id=1 AND project=%s "
-                            "ORDER BY created_at DESC LIMIT 3",
-                            (project,),
-                        )
+                        cur.execute(_SQL_GET_MEMORY, (project,))
                         mem_rows = [r[0] for r in cur.fetchall()]
                         if mem_rows:
                             memory_text = "\n---\n".join(mem_rows)
@@ -346,18 +360,14 @@ def _set_status(work_item_id: str, status: str, error: str = "") -> None:
     if not db.is_available():
         return
     try:
+        agent_status = f"{status}: {error[:200]}" if error else status
+        set_clause, vals = build_update({"agent_status": agent_status})
         with db.conn() as conn:
             with conn.cursor() as cur:
-                if error:
-                    cur.execute(
-                        "UPDATE pr_work_items SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
-                        (f"{status}: {error[:200]}", work_item_id),
-                    )
-                else:
-                    cur.execute(
-                        "UPDATE pr_work_items SET agent_status=%s, updated_at=NOW() WHERE id=%s::uuid",
-                        (status, work_item_id),
-                    )
+                cur.execute(
+                    _SQL_UPDATE_WORK_ITEM_WHERE.format(set_clause=set_clause),
+                    vals + [work_item_id],
+                )
     except Exception as e:
         log.debug(f"_set_status failed: {e}")
 
@@ -367,15 +377,15 @@ def _update_fields(work_item_id: str, acceptance_criteria: str, implementation_p
     if not db.is_available():
         return
     try:
+        set_clause, vals = build_update({
+            "acceptance_criteria": acceptance_criteria,
+            "implementation_plan": implementation_plan,
+        })
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """UPDATE pr_work_items
-                          SET acceptance_criteria=%s,
-                              implementation_plan=%s,
-                              updated_at=NOW()
-                       WHERE id=%s::uuid""",
-                    (acceptance_criteria, implementation_plan, work_item_id),
+                    _SQL_UPDATE_WORK_ITEM_WHERE.format(set_clause=set_clause),
+                    vals + [work_item_id],
                 )
     except Exception as e:
         log.debug(f"_update_fields failed: {e}")

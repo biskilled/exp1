@@ -24,6 +24,20 @@ log = logging.getLogger(__name__)
 _MAX_TOOL_CALLS = 10
 _CTX_CAP = 3000  # chars per prior-node output injected into user message
 
+# ── SQL ───────────────────────────────────────────────────────────────────────
+
+_SQL_LOAD_ROLE = """SELECT ar.system_prompt, ar.provider, ar.model,
+                          COALESCE(
+                            string_agg(sr.content, E'\\n\\n' ORDER BY rl.order_index),
+                            ''
+                          ) AS sys_content
+                   FROM   mng_agent_roles ar
+                   LEFT JOIN mng_role_system_links rl ON rl.role_id = ar.id
+                   LEFT JOIN mng_system_roles sr ON sr.id = rl.system_role_id
+                   WHERE  ar.name = %s AND ar.client_id = 1
+                   GROUP  BY ar.id, ar.system_prompt, ar.provider, ar.model
+                   LIMIT 1"""
+
 
 @dataclass
 class AgentResult:
@@ -76,19 +90,7 @@ class Agent:
             try:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute(
-                            """SELECT ar.system_prompt, ar.provider, ar.model,
-                                      COALESCE(
-                                        string_agg(sr.content, E'\\n\\n' ORDER BY rl.order_index),
-                                        ''
-                                      ) AS sys_content
-                               FROM   mng_agent_roles ar
-                               LEFT JOIN mng_role_system_links rl ON rl.role_id = ar.id
-                               LEFT JOIN mng_system_roles sr ON sr.id = rl.system_role_id
-                               WHERE  ar.name = %s AND ar.client_id = 1
-                               GROUP  BY ar.id, ar.system_prompt, ar.provider, ar.model""",
-                            (role_name,),
-                        )
+                        cur.execute(_SQL_LOAD_ROLE, (role_name,))
                         row = cur.fetchone()
                         if row:
                             base = row[0] or ""
