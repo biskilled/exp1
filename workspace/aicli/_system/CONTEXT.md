@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-23 00:05 UTC — do not edit manually.
+> Auto-generated 2026-03-23 00:15 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 255
-- **Last active**: 2026-03-22T23:58:26Z
+- **Sessions**: 256
+- **Last active**: 2026-03-23T00:12:55Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -42,10 +42,10 @@
 
 ## In Progress
 
-- Feature/task/bug status workflow (2026-03-22) — Implement red 'add_info' status when description missing; green 'Active' status when complete and pipeline-ready; assess lifecycle tags for deprecation
+- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'Active' status when complete; lifecycle tags deprecated; user questioned why features show Active without proper descriptions—clarifying status enforcement logic
+- Deprecated old/ directory usage (2026-03-23) — Confirmed old/ should not be modified; update memory to reflect this is legacy code; focus development on current directory structure
+- Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; confirmed _plannerShowNewWorkItem calls _renderWorkItemTable() directly (correct path), not _renderTagTableFromCache()
 - Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing
-- Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs
-- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
 
@@ -159,6 +159,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-23 00:09]** `claude_cli/claude`  
+→ Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
+← _Good — `_plannerShowNewWorkItem` calls `_renderWorkItemTable()` directly, not `_renderTagTableFromCache()`. The refresh path is correct.  Now update memory to note `old/` should not be touched:_
+
 **[2026-03-22 23:48]** `claude_cli/claude`  
 → Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
 ← _Now do a quick syntax check on the backend file:_
@@ -213,7 +217,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 02:39]** `claude_cli/claude`  
 → Planner still dont load all tags , all I see is ctegories
 ← _`_plannerState.project` is set. The fix is correct.  The changes make three improvements:  1. **`_initPlanner`**: detects fallback categories (null IDs) and force-reloads the cache with `force=true` b_
-
-**[2026-03-22 02:34]** `claude_cli/claude`  
-→ I do see categroeis uploaded in Planner tab, but I do not see all the tags in each categroy. Also I do got an error when
-← _Now restart the backend and verify both fixes:_

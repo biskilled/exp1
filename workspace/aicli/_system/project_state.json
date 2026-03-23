@@ -74,10 +74,10 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Feature/task/bug status workflow (2026-03-22) \u2014 Implement red 'add_info' status when description missing; green 'Active' status when complete and pipeline-ready; assess lifecycle tags for deprecation",
+    "Feature/task/bug status workflow (2026-03-23) \u2014 Implement red 'add_info' status when description missing; green 'Active' status when complete; lifecycle tags deprecated; user questioned why features show Active without proper descriptions\u2014clarifying status enforcement logic",
+    "Deprecated old/ directory usage (2026-03-23) \u2014 Confirmed old/ should not be modified; update memory to reflect this is legacy code; focus development on current directory structure",
+    "Tags loading and cache invalidation (2026-03-22) \u2014 Force-reload logic with cache validation; confirmed _plannerShowNewWorkItem calls _renderWorkItemTable() directly (correct path), not _renderTagTableFromCache()",
     "Agent role standardization (2026-03-22) \u2014 Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing",
-    "Tags loading and cache invalidation (2026-03-22) \u2014 Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs",
-    "Planner UI tag visibility fix (2026-03-22) \u2014 Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow",
     "Frontend code optimization (2026-03-22) \u2014 XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js",
     "Memory items and project_facts table population (pending) \u2014 Tables exist in schema but update logic not implemented; required for improved memory/context mechanism"
   ],
@@ -111,7 +111,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-22T23:58:51Z",
+  "last_memory_run": "2026-03-23T00:13:21Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
@@ -131,10 +131,10 @@
       "Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation"
     ],
     "in_progress": [
-      "Feature/task/bug status workflow (2026-03-22) \u2014 Implement red 'add_info' status when description missing; green 'Active' status when complete and pipeline-ready; assess lifecycle tags for deprecation",
+      "Feature/task/bug status workflow (2026-03-23) \u2014 Implement red 'add_info' status when description missing; green 'Active' status when complete; lifecycle tags deprecated; user questioned why features show Active without proper descriptions\u2014clarifying status enforcement logic",
+      "Deprecated old/ directory usage (2026-03-23) \u2014 Confirmed old/ should not be modified; update memory to reflect this is legacy code; focus development on current directory structure",
+      "Tags loading and cache invalidation (2026-03-22) \u2014 Force-reload logic with cache validation; confirmed _plannerShowNewWorkItem calls _renderWorkItemTable() directly (correct path), not _renderTagTableFromCache()",
       "Agent role standardization (2026-03-22) \u2014 Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing",
-      "Tags loading and cache invalidation (2026-03-22) \u2014 Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs",
-      "Planner UI tag visibility fix (2026-03-22) \u2014 Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow",
       "Frontend code optimization (2026-03-22) \u2014 XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js",
       "Memory items and project_facts table population (pending) \u2014 Tables exist in schema but update logic not implemented; required for improved memory/context mechanism"
     ],
@@ -145,18 +145,14 @@
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database": "PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized",
+      "db_schema": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)",
       "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel",
-      "memory_synthesis": "Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
-      "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)",
-      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
-      "config_management": "config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support"
+      "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder"
     },
-    "project_summary": "aicli is a shared AI memory platform that combines a Python CLI backend (FastAPI + PostgreSQL with pgvector) with a desktop Electron UI (xterm.js + Monaco + Cytoscape) for collaborative AI-driven development workflows. It features JWT authentication, LLM provider adapters, async DAG workflow execution, memory synthesis via Claude Haiku, MCP integration, and a tagging system for work item organization. Current development focus: implementing feature/task/bug lifecycle status workflows, standardizing agent roles with ReAct execution, fixing tag cache invalidation in the UI, and populating memory tracking tables.",
-    "memory_digest": "**[2026-03-22]** `cli_session` \u2014 User requested feature/task/bug status workflow: items without descriptions should show red 'add_info' status; once fully described, transition to green 'Active' status allowing pipeline execution. Also flagged lifecycle tags as potentially unused and candidate for removal. **[2026-03-22]** `in_progress` \u2014 Agent role standardization ongoing with per-agent system roles, prompts, input/output schemas, and ReAct mode execution to reduce hallucination. Sr. Architect role being tested. **[2026-03-22]** `in_progress` \u2014 Tags cache invalidation issue: categories load but tags don't display in UI tag picker; force-reload logic with fallback category null ID issues being debugged. **[2026-03-22]** `in_progress` \u2014 Frontend code optimization: XSS fixes in markdown.js, 30s timeout in api.js, JSDoc documentation, setInterval cleanup in graph_workflow.js. **[2026-03-18]** `memory_summary` \u2014 Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template error with undefined code_dir variable; resolved backend startup race condition where empty project list caused false 'not found' errors. **[pending]** \u2014 Memory items and project_facts tables exist in schema but update logic not implemented; required for improved memory/context mechanism."
+    "project_summary": "aicli is a shared AI memory platform combining Claude CLI, FastAPI backend, PostgreSQL with pgvector, and an Electron UI (Vanilla JS + Cytoscape.js) to enable intelligent work item management, semantic search, and workflow automation across distributed development teams. Currently in active development (v2.2.0) with 10+ features implemented; recent focus on status workflows, agent standardization, and resolving data persistence issues.",
+    "memory_digest": "**[2026-03-23]** `claude_cli` \u2014 User questioned why all features display as 'Active' despite lacking descriptions; clarified status workflow should enforce 'add_info' (red) until descriptions complete, then transition to 'Active' (green). Confirmed lifecycle tags are candidate for deprecation. **[2026-03-23]** `claude_cli` \u2014 Deprecated old/ directory from development; update memory to reflect legacy status and prevent accidental modifications. **[2026-03-22]** `claude_cli` \u2014 Fixed _plannerShowNewWorkItem render path: correctly calls _renderWorkItemTable() directly instead of _renderTagTableFromCache(), ensuring proper UI refresh flow. **[2026-03-22]** `claude_cli` \u2014 Implemented agent role standardization with per-agent system roles, input/output schemas, and ReAct mode to reduce hallucination. **[2026-03-18]** `claude_cli` \u2014 Fixed AttributeError in main.py (removed stale db.ensure_project_schema call); fixed memory endpoint CLAUDE.md template error (code_dir variable scoping at line 1120); resolved backend startup race condition with improved retry logic for empty project list. **[2026-03-10]** `claude_cli` \u2014 Identified database performance issue: implemented load-once-on-access pattern for tags; discovered data persistence bug where tags disappear on session switch requiring investigation; approved nested tags feature expansion; improved UI visibility with 3-dot menu buttons; pending memory_items and project_facts table population for enhanced context mechanism."
   }
 }

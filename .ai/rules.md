@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 23:58 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:12 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -55,8 +55,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla
 - [2026-03-22] I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
 - [2026-03-22] I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
 - [2026-03-22] please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 
 - [2026-03-22] Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
+- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a

@@ -264,7 +264,7 @@ class WorkItemCreate(BaseModel):
     name:                str
     description:         str = ""
     project:             Optional[str] = None
-    status:              str = "active"
+    status:              str = "prereq"   # starts prereq; auto-advances to active when description is set
     lifecycle_status:    str = "idea"
     due_date:            Optional[str] = None
     parent_id:           Optional[str] = None
@@ -389,6 +389,19 @@ async def patch_work_item(
     if not fields:
         raise HTTPException(400, "Nothing to update")
 
+    # Auto-advance: if description is being set to non-empty and status is still 'prereq', activate
+    if body.description and body.description.strip() and body.status is None:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT status FROM pr_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s",
+                    (item_id, p),
+                )
+                row = cur.fetchone()
+                if row and row[0] == "prereq":
+                    fields.append("status=%s")
+                    params.append("active")
+
     fields.append("updated_at=NOW()")
     params.append(item_id)
     params.append(p)
@@ -396,11 +409,13 @@ async def patch_work_item(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE pr_work_items SET {','.join(fields)} WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id",
+                f"UPDATE pr_work_items SET {','.join(fields)} WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id, status",
                 params,
             )
-            if not cur.fetchone():
+            result = cur.fetchone()
+            if not result:
                 raise HTTPException(404, "Work item not found")
+            new_status = result[1]
 
     # When lifecycle → done, synthesize feature memory in background
     if body.lifecycle_status == "done":
@@ -410,7 +425,7 @@ async def patch_work_item(
         except Exception:
             pass
 
-    return {"ok": True, "id": item_id}
+    return {"ok": True, "id": item_id, "status": new_status}
 
 
 @router.delete("/{item_id}")

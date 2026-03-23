@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy
 - [2026-03-22] `claude_cli`: I would like to make sure each agent works same as you are - not hilusinsating, and have a defined s
 - [2026-03-22] `claude_cli`: I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. 
 - [2026-03-22] `claude_cli`: please fix the embedding. also I would like to understand the feutre as the test will be running the
 - [2026-03-22] `claude_cli`: Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should b
+- [2026-03-23] `claude_cli`: Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

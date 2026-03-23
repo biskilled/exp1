@@ -368,7 +368,8 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
   function rowsForNode(wi, depth) {
     const lc     = wi.lifecycle_status || 'idea';
     const lcCol  = _LIFECYCLE_COLORS[lc] || '#888';
-    const sc     = wi.status === 'active' ? '#27ae60' : wi.status === 'done' ? '#4a90e2' : '#888';
+    const effectiveStatus = (wi.status !== 'done' && wi.status !== 'archived' && (!wi.description || !wi.description.trim())) ? 'prereq' : wi.status;
+    const sc     = effectiveStatus === 'prereq' ? '#e74c3c' : effectiveStatus === 'active' ? '#27ae60' : effectiveStatus === 'done' ? '#4a90e2' : '#888';
     const kids   = children[wi.id] || [];
     const hasKids   = kids.length > 0;
     const expanded  = !_wiCollapsed.has(wi.id);
@@ -415,13 +416,8 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
                        cursor:pointer;user-select:none">${lc}</span>
         </td>
         <td style="padding:0.5rem 0.4rem;white-space:nowrap">
-          ${(!wi.description || !wi.description.trim())
-            ? `<span style="font-size:0.6rem;color:#e74c3c;background:#e74c3c22;
-                           padding:0.12rem 0.4rem;border-radius:10px;cursor:pointer"
-                    title="Add a description to enable the pipeline"
-                    onclick="event.stopPropagation();window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(catName)}','${_esc(project)}')">⚠ Add info</span>`
-            : `<span style="font-size:0.6rem;color:${sc};background:${sc}22;
-                           padding:0.12rem 0.4rem;border-radius:10px">${_esc(wi.status || 'active')}</span>`}
+          <span style="font-size:0.6rem;color:${sc};background:${sc}22;
+                       padding:0.12rem 0.4rem;border-radius:10px">${_esc(effectiveStatus)}</span>
         </td>
         <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem;
                    max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
@@ -494,6 +490,7 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
     if (!wi) { inner.innerHTML = '<div style="padding:1rem;color:var(--muted)">Not found</div>'; return; }
 
     const lc_col = _LIFECYCLE_COLORS[wi.lifecycle_status || 'idea'] || '#888';
+    const isPrereq = wi.status !== 'done' && wi.status !== 'archived' && (!wi.description || !wi.description.trim());
     const drawerSeqBadge = wi.seq_num
       ? `<span style="font-size:0.55rem;color:var(--muted);background:var(--surface2);
                        border:1px solid var(--border);padding:0.1rem 0.35rem;
@@ -524,12 +521,12 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                       letter-spacing:.06em;margin-bottom:0.3rem">Description</div>
           <textarea id="wi-desc-ta" rows="3"
-            style="width:100%;background:var(--bg);border:1px solid ${wi.description && wi.description.trim() ? 'var(--border)' : '#e74c3c'};
+            style="width:100%;background:var(--bg);border:1px solid ${isPrereq ? '#e74c3c' : 'var(--border)'};
                    color:var(--text);font-family:var(--font);font-size:0.68rem;
                    padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                    resize:vertical;box-sizing:border-box;line-height:1.5"
             oninput="(()=>{const v=this.value.trim();this.style.borderColor=v?'var(--border)':'#e74c3c';const b=document.getElementById('wi-drawer-run-btn');if(b){b.disabled=!v;b.style.opacity=v?'1':'0.45';b.style.cursor=v?'pointer':'not-allowed';b.title=v?'Run pipeline':'Add a description first';}})()"
-            onblur="api.workItems.patch('${id}','${project}',{description:this.value}).catch(e=>toast(e.message,'error'))"
+            onblur="(async()=>{const v=this.value;const res=await api.workItems.patch('${id}','${project}',{description:v}).catch(e=>{toast(e.message,'error');return null;});if(res&&res.status==='active'&&_wiItemsCache['${id}']){_wiItemsCache['${id}'].status='active';_wiItemsCache['${id}'].description=v;const b=document.getElementById('wi-drawer-run-btn');if(b){b.disabled=false;b.style.opacity='1';b.style.cursor='pointer';b.title='Run pipeline';}const tb=document.getElementById('wi-table-body');if(tb)tb.innerHTML=_wiRenderRows(_wiItemsCache,'${_esc(catName)}','${_esc(catColor)}','${_esc(catIcon)}','${_esc(project)}');}})()"
           >${_esc(wi.description || '')}</textarea>
         </div>
 
@@ -594,12 +591,12 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
         <div style="border-top:1px solid var(--border);padding-top:0.75rem">
           <button id="wi-drawer-run-btn"
             onclick="window._wiRunPipeline('${id}','${project}')"
-            title="${wi.description && wi.description.trim() ? 'Run pipeline' : 'Add a description first'}"
-            ${wi.description && wi.description.trim() ? '' : 'disabled'}
+            title="${isPrereq ? 'Add a description first' : 'Run pipeline'}"
+            ${isPrereq ? 'disabled' : ''}
             style="background:var(--accent);border:none;color:#fff;font-size:0.68rem;
                    padding:0.3rem 0.75rem;border-radius:var(--radius);
-                   cursor:${wi.description && wi.description.trim() ? 'pointer' : 'not-allowed'};
-                   opacity:${wi.description && wi.description.trim() ? '1' : '0.45'};
+                   cursor:${isPrereq ? 'not-allowed' : 'pointer'};
+                   opacity:${isPrereq ? '0.45' : '1'};
                    font-family:var(--font);outline:none;width:100%">▶ Run Pipeline</button>
           <div style="font-size:0.58rem;color:var(--muted);margin-top:0.35rem;line-height:1.4">
             PM → Architect → Developer → Reviewer
