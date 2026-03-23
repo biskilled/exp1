@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-23 00:26 UTC by aicli /memory_
+_Generated: 2026-03-23 01:07 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining Python CLI (backend: FastAPI + PostgreSQL with pgvector), Electron UI (Vanilla JS + xterm.js + Monaco + Cytoscape), and MCP integration for work item management across Claude and other LLM platforms. Current state: Core features (auth, shared memory, UI, workflows, billing) are functional with 19 active entities; in-progress work focuses on feature/task/bug status lifecycle visibility, tag management, and completing memory synthesis table population.
 
 ## Project Facts
 
@@ -74,6 +70,7 @@ Reviewer: ```json
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
+- **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
 
 ## Key Decisions
 
@@ -91,55 +88,55 @@ Reviewer: ```json
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
+- _ensure_shared_schema pattern replaces old ensure_project_schema method; retry logic handles empty project list on first load
 
 ## In Progress
 
+- Frontend build tooling fix (2026-03-23) — Resolved `npm run build` failing on missing DMG background image in old/ folder; confirmed ui/node_modules missing and reinstalled dependencies; verified Vite dev server and dev tools shortcuts (Cmd+R, Cmd+Option+I) now functional
+- UI update visibility issue (2026-03-23) — Debugged changes not reflecting in browser; root cause was missing node_modules in ui/ directory; confirmed full setup sequence (kill processes, npm install, npm run dev) restores hot reload functionality
 - Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; user reports status not visible in UI Planner tab; enforce missing data detection at creation and sync with database
 - Tag visibility and review (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
 - Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; timing issue during backend initialization; requires further investigation and fix
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
-- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Database startup race condition (2026-03-18) — Modified retry logic to handle empty project list on first load; confirmed _ensure_shared_schema pattern replaces old ensure_project_schema method
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(106 events, 92 commits)`
+- **hooks** `(119 events, 102 commits)`
 
 ### Doc_type
 
 - **low-level-design** `(52 events, 50 commits)`
-- **Test** `(35 events, 33 commits)`
+- **Test** `(39 events, 37 commits)`
 - **high-level-design** `(1 events)`
-- **retrospective**
 - **customer-meeting** — dsds
+- **retrospective**
 
 ### Feature
 
-- **auth** `(101 events, 94 commits)`
-- **shared-memory** `(100 events, 93 commits)`
-- **UI** `(95 events, 87 commits)`
-- **graph-workflow** `(85 events, 77 commits)`
+- **auth** `(105 events, 98 commits)`
+- **shared-memory** `(104 events, 97 commits)`
+- **UI** `(96 events, 87 commits)`
+- **graph-workflow** `(95 events, 87 commits)`
 - **workflow-runner** `(80 events, 77 commits)`
+- **billing** `(62 events, 60 commits)`
 - **tagging** `(52 events, 50 commits)`
-- **billing** `(52 events, 50 commits)`
 - **mcp** `(51 events, 50 commits)`
-- **embeddings** `(35 events, 33 commits)`
-- **test-picker-feature** `(7 events, 6 commits)`
+- **embeddings** `(39 events, 37 commits)`
+- **test-picker-feature** `(11 events, 10 commits)`
 - **dropbox**
 - **pagination**
 
 ### Phase
 
-- **discovery** `(99 events, 93 commits)`
-- **development** `(97 events, 85 commits)`
+- **discovery** `(103 events, 97 commits)`
+- **development** `(101 events, 89 commits)`
 - **prod**
 
 ### Task
 
-- **memory** `(41 events, 37 commits)`
+- **memory** `(52 events, 47 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
 
 ## Recent Memory
@@ -209,7 +206,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-23]** `claude_cli` — Status workflow incomplete: user reports 'add_info' (red) status for missing descriptions not visible in Planner UI despite code implementation; tag review requested for bug/feature categories. **[2026-03-23]** `internal` — Clarified feature/task/bug status lifecycle: red 'add_info' on missing description, green 'active' when complete; lifecycle tags deprecated. **[2026-03-22]** `internal` — Confirmed tag cache invalidation forces reload on session/project switch; agent role standardization in progress with Sr. Architect testing. **[2026-03-18]** `internal` — Fixed AttributeError in main.py (stale ensure_project_schema call); fixed memory endpoint CLAUDE.md template error (code_dir scoping); patched backend startup race condition for empty project list. **[2026-03-18]** `internal` — Identified project visibility bug: AiCli in Recent projects but not displaying as active in main view; timing issue during initialization. **[2026-03-14]** `project` — Project contains 19 active entities (features/bugs/tasks/phases) tracking core capabilities: auth, shared-memory, UI, graph-workflow, billing, MCP, embeddings; discovery and development phases active. **[2026-03-10]** `internal` — Database performance improved by loading tags once on project access; nested tag hierarchy approved; data persistence bug on session switch requires investigation; AI suggestions UI needs better visibility. **[pending]** `internal` — memory_items and project_facts tables defined in schema but update logic not implemented; blocks improved memory/context mechanism.

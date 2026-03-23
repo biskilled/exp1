@@ -5,6 +5,9 @@ const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 const PROXY_ROUTES = [
   "/chat", "/history", "/workflows", "/prompts",
   "/files", "/projects", "/config", "/health", "/git", "/auth", "/usage",
+  "/work-items", "/entities", "/search", "/billing", "/admin", "/logs",
+  "/agent-roles", "/system-roles", "/documents", "/user", "/agents",
+  "/graph", "/graph-workflows",
 ];
 
 export default defineConfig({

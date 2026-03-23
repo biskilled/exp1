@@ -14,8 +14,6 @@
 # ALL outcomes are logged — success, push failure, no changes, API errors.
 # Log: workspace/{project}/_system/commit_log.jsonl
 
-set -euo pipefail
-
 INPUT=$(cat)  # Claude Code sends JSON on stdin; consume it
 
 WORK_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"

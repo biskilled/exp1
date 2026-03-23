@@ -49,7 +49,6 @@
     },
     "dmg": {
       "title": "aicli Desktop",
-      "background": "static/dmg-bg.png",
       "window": { "width": 540, "height": 380 }
     },
     "win": {

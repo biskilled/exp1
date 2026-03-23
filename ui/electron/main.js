@@ -199,7 +199,10 @@ async function createWindow(serverUrl) {
   const isDev = process.env.NODE_ENV === "development";
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173");
-    // DevTools NOT opened automatically — use Cmd+Option+I / Ctrl+Shift+I to open
+    // Auto-open DevTools in dev mode so Cmd+R / console are always accessible
+    mainWindow.webContents.once("did-finish-load", () => {
+      mainWindow.webContents.openDevTools({ mode: "detach" });
+    });
   } else {
     const indexPath = path.join(UI_ROOT, "dist", "index.html");
     mainWindow.loadFile(indexPath);
@@ -329,6 +332,15 @@ app.whenReady().then(async () => {
   buildAppMenu();
   _stopCalled = false;
 
+  // Global shortcuts — work even when the window doesn't have keyboard focus
+  const isMac = process.platform === "darwin";
+  globalShortcut.register(isMac ? "Cmd+R" : "Ctrl+R", () => {
+    if (mainWindow) mainWindow.webContents.reloadIgnoringCache();
+  });
+  globalShortcut.register(isMac ? "Cmd+Option+I" : "Ctrl+Shift+I", () => {
+    if (mainWindow) mainWindow.webContents.toggleDevTools();
+  });
+
   const serverUrl = getServerUrl();
 
   if (isLocalServer(serverUrl)) {
@@ -355,4 +367,7 @@ app.on("window-all-closed", () => {
 });
 
 // before-quit fires on Cmd+Q / app.quit() — stopBackend guard prevents double-kill
-app.on("before-quit", stopBackend);
+app.on("before-quit", () => {
+  globalShortcut.unregisterAll();
+  stopBackend();
+});

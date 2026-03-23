@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:26 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 01:07 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -34,6 +34,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
+- **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
 
 ## Key Decisions
 
@@ -51,12 +52,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
+- _ensure_shared_schema pattern replaces old ensure_project_schema method; retry logic handles empty project list on first load
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
-- [2026-03-22] please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 
-- [2026-03-22] Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
-- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
-- [2026-03-23] It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that st
+- [2026-03-23] can you explain How should I force electorn to flash the memory as I do not see any change at the ui. is there is someth
+- [2026-03-23] I alway run using npm build dev (not npm run build) when I run npm run build I got errors regarding to old folder such a
+- [2026-03-23] When I run npm run build I still got an error - Error #1 ---------------------------------------------------------------
+- [2026-03-23] I think there is another issue , as I cannot see any uodate at the UI . I dod location.reload(true) using the dev tools 
+- [2026-03-23] There is again the problem with the hooks - Stop hook error: Failed with non-blocking status code: No stderr output. Als

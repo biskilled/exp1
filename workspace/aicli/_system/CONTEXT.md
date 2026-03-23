@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-23 00:28 UTC — do not edit manually.
+> Auto-generated 2026-03-23 01:08 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 257
-- **Last active**: 2026-03-23T00:26:44Z
+- **Sessions**: 261
+- **Last active**: 2026-03-23T01:01:29Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -39,15 +39,16 @@
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
+- **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
 
 ## In Progress
 
+- Frontend build tooling fix (2026-03-23) — Resolved `npm run build` failing on missing DMG background image in old/ folder; confirmed ui/node_modules missing and reinstalled dependencies; verified Vite dev server and dev tools shortcuts (Cmd+R, Cmd+Option+I) now functional
+- UI update visibility issue (2026-03-23) — Debugged changes not reflecting in browser; root cause was missing node_modules in ui/ directory; confirmed full setup sequence (kill processes, npm install, npm run dev) restores hot reload functionality
 - Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; user reports status not visible in UI Planner tab; enforce missing data detection at creation and sync with database
 - Tag visibility and review (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
 - Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; timing issue during backend initialization; requires further investigation and fix
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
-- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Database startup race condition (2026-03-18) — Modified retry logic to handle empty project list on first load; confirmed _ensure_shared_schema pattern replaces old ensure_project_schema method
 
 ## Key Decisions
 
@@ -65,7 +66,7 @@
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
+- _ensure_shared_schema pattern replaces old ensure_project_schema method; retry logic handles empty project list on first load
 
 ---
 
@@ -159,6 +160,25 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-23 01:06]** `claude_cli/claude`  
+→ There is again the problem with the hooks - Stop hook error: Failed with non-blocking status code: No stderr output. Als
+
+**[2026-03-23 00:55]** `claude_cli/claude`  
+→ I think there is another issue , as I cannot see any uodate at the UI . I dod location.reload(true) using the dev tools 
+← _`ui/` is missing `node_modules`. You need to install dependencies first. Here's the full sequence:  ```bash # 1. Kill the old/ui Vite process kill -9 45399  # 2. Install dependencies in the correct ui_
+
+**[2026-03-23 00:48]** `claude_cli/claude`  
+→ When I run npm run build I still got an error - Error #1 ---------------------------------------------------------------
+← _---  **What was wrong and how it's fixed:**  | Problem | Root cause | Fix | |---|---|---| | Can't open DevTools | No global shortcut registered; menu only | `globalShortcut.register(Cmd+Option+I)` + *_
+
+**[2026-03-23 00:42]** `claude_cli/claude`  
+→ I alway run using npm build dev (not npm run build) when I run npm run build I got errors regarding to old folder such a
+← _---  **What was wrong and how it's fixed:**  | Problem | Root cause | Fix | |---|---|---| | Can't open DevTools | No global shortcut registered; menu only | `globalShortcut.register(Cmd+Option+I)` + *_
+
+**[2026-03-23 00:35]** `claude_cli/claude`  
+→ can you explain How should I force electorn to flash the memory as I do not see any change at the ui. is there is someth
+← _---  **On forcing Electron to reload:**  There is no magic — Electron's renderer is essentially Chromium. Here's what to try, in order:  1. **Hard reload while app is open**: `Cmd+Shift+R` (Mac) — cle_
+
 **[2026-03-23 00:21]** `claude_cli/claude`  
 → It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that st
 ← _Now quick syntax check:_
@@ -198,22 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 10:32]** `claude_cli/claude`  
 → I would like that manage agennts/roles only as an adming (so other customers can only see the role/agent name but cannot
 ← _Quick verification:_
-
-**[2026-03-22 09:57]** `claude_cli/claude`  
-→ I have tried but it is not working
-← _Now — the issue is that **you need to restart Claude Code** for it to discover new skills. The skill file is correct at `.claude/skills/ac/SKILL.md`.  After restarting, type `/` and you should see `ac_
-
-**[2026-03-22 09:55]** `claude_cli/claude`  
-→ the rason of this change was to declare properly an agent. currently an agent is based only on prompts (or set of prompt
-
-**[2026-03-22 02:53]** `claude_cli/claude`  
-→ I dont see any tags loading, it looks like there is no api call to the db . all I can see is just the categoroes 
-← _The Vite dev server (HMR) should hot-reload automatically. The Planner tab should now work — switch to another tab and back, or just click a category.  The root cause: **all previous fixes were applie_
-
-**[2026-03-22 02:49]** `claude_cli/claude`  
-→ Is it possilbe to creatre skeen that run my aiCli commands from Claude CLI - for example /ac /memory - will run my memor
-← _The `/ac` skill is ready. Here's what you can now do in Claude Code:  | Command | What it does | |---------|-------------| | `/ac /memory` | Generates all 5 memory files via your backend | | `/ac /sta_
-
-**[2026-03-22 02:48]** `claude_cli/claude`  
-→ This is still not working. I dont see tags loading at all (just empty categories)
-← _Good — the backend correctly returns `fallback: True` when DB is unavailable.  The full fix chain now is: - **`tagCache.js`**: checks `vData.fallback` per-category — if any values came back as fallbac_
