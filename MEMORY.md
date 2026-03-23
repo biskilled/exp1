@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-22 23:37 UTC by aicli /memory_
+_Generated: 2026-03-22 23:58 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling Claude CLI and other LLMs to maintain persistent project context across sessions via dual-layer storage (JSONL + PostgreSQL with pgvector). Currently in active development with 11 features, 2 bugs, and 3 document types in progress. Core architecture includes async DAG workflow execution, hierarchical user/client data model, per-project semantic embeddings, and MCP integration for work item management.
+aicli is a shared AI memory platform that combines a Python CLI backend (FastAPI + PostgreSQL with pgvector) with a desktop Electron UI (xterm.js + Monaco + Cytoscape) for collaborative AI-driven development workflows. It features JWT authentication, LLM provider adapters, async DAG workflow execution, memory synthesis via Claude Haiku, MCP integration, and a tagging system for work item organization. Current development focus: implementing feature/task/bug lifecycle status workflows, standardizing agent roles with ReAct execution, fixing tag cache invalidation in the UI, and populating memory tracking tables.
 
 ## Project Facts
 
@@ -59,7 +59,7 @@ Reviewer: ```json
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
-- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
@@ -73,7 +73,7 @@ Reviewer: ```json
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with per-project and shared schema tables; agent roles initialized
+- **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
 
 ## Key Decisions
 
@@ -91,15 +91,15 @@ Reviewer: ```json
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes
+- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
 
 ## In Progress
 
-- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing from Auth feature history
+- Feature/task/bug status workflow (2026-03-22) — Implement red 'add_info' status when description missing; green 'Active' status when complete and pipeline-ready; assess lifecycle tags for deprecation
+- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing
 - Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs
 - Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Embeddings feature and workflow test validation (2026-03-22) — Testing full workflow from feature panel; Auth feature description/remarks needed for Sr. Architect understanding
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
 
 ## Active Features / Bugs / Tasks
@@ -111,30 +111,30 @@ Reviewer: ```json
 ### Doc_type
 
 - **low-level-design** `(52 events, 50 commits)`
-- **Test** `(28 events, 27 commits)`
+- **Test** `(29 events, 27 commits)`
 - **high-level-design** `(1 events)`
 - **retrospective**
 - **customer-meeting** — dsds
 
 ### Feature
 
-- **auth** `(99 events, 92 commits)`
-- **shared-memory** `(98 events, 91 commits)`
+- **auth** `(100 events, 93 commits)`
+- **shared-memory** `(99 events, 92 commits)`
 - **UI** `(95 events, 87 commits)`
 - **graph-workflow** `(84 events, 77 commits)`
 - **workflow-runner** `(80 events, 77 commits)`
 - **tagging** `(52 events, 50 commits)`
-- **billing** `(51 events, 50 commits)`
 - **mcp** `(51 events, 50 commits)`
-- **embeddings** `(28 events, 27 commits)`
+- **billing** `(51 events, 50 commits)`
+- **embeddings** `(29 events, 27 commits)`
+- **test-picker-feature** `(1 events)`
 - **pagination**
-- **test-picker-feature**
 - **dropbox**
 
 ### Phase
 
-- **development** `(95 events, 83 commits)`
-- **discovery** `(93 events, 87 commits)`
+- **discovery** `(98 events, 92 commits)`
+- **development** `(96 events, 84 commits)`
 - **prod**
 
 ### Task
@@ -212,4 +212,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**2026-03-22** `embedding-fix` — Agent role standardization in progress; per-agent system roles and ReAct mode execution being implemented to eliminate hallucination across all LLM providers; Sr. Architect role testing from Auth feature history. **2026-03-22** `ui-fix` — Tags loading and cache invalidation identified as root cause of planner UI tag picker visibility issues; force-reload logic with cache validation and null ID handling being implemented. **2026-03-22** `frontend-optimization` — Frontend code audit completed; XSS fixes for markdown.js, 30s timeout in api.js, JSDoc documentation standardization, and setInterval cleanup in graph_workflow.js in progress. **2026-03-22** `workflow-testing` — Full workflow testing from feature panel initiated; Auth feature description/remarks needed for Sr. Architect understanding in pipeline. **2026-03-18** `backend-race-condition` — Startup race condition fixed; _continueToApp() retry logic now handles empty projects list on first load; project visibility bug (AiCli not displaying as current) still pending investigation. **2026-03-10** `db-performance` — Tags loading strategy changed to load-once-on-access pattern to reduce redundant SQL calls; data persistence bug identified where tags disappear on session switch requiring investigation. **pending** `memory-population` — memory_items and project_facts tables exist in schema but update logic not yet implemented despite being required for improved memory/context mechanism per specification.
+**[2026-03-22]** `cli_session` — User requested feature/task/bug status workflow: items without descriptions should show red 'add_info' status; once fully described, transition to green 'Active' status allowing pipeline execution. Also flagged lifecycle tags as potentially unused and candidate for removal. **[2026-03-22]** `in_progress` — Agent role standardization ongoing with per-agent system roles, prompts, input/output schemas, and ReAct mode execution to reduce hallucination. Sr. Architect role being tested. **[2026-03-22]** `in_progress` — Tags cache invalidation issue: categories load but tags don't display in UI tag picker; force-reload logic with fallback category null ID issues being debugged. **[2026-03-22]** `in_progress` — Frontend code optimization: XSS fixes in markdown.js, 30s timeout in api.js, JSDoc documentation, setInterval cleanup in graph_workflow.js. **[2026-03-18]** `memory_summary` — Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template error with undefined code_dir variable; resolved backend startup race condition where empty project list caused false 'not found' errors. **[pending]** — Memory items and project_facts tables exist in schema but update logic not implemented; required for improved memory/context mechanism.

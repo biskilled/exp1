@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 23:37 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 23:58 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -19,7 +19,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
-- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with per-project and shared schema tables; agent roles initialized
+- **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
 
 ## Key Decisions
 
@@ -51,12 +51,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes
+- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-22] OK .so when user update from ui / run role push (can run role [role_name] push or role push for all rules - there will b
 - [2026-03-22] Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla
 - [2026-03-22] I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
 - [2026-03-22] I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
 - [2026-03-22] please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 
+- [2026-03-22] Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a

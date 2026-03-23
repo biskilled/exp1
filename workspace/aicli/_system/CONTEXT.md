@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-22 23:57 UTC — do not edit manually.
+> Auto-generated 2026-03-23 00:05 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 254
-- **Last active**: 2026-03-22T23:37:31Z
+- **Sessions**: 255
+- **Last active**: 2026-03-22T23:58:26Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -24,7 +24,7 @@
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
-- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
@@ -38,15 +38,15 @@
 - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with per-project and shared schema tables; agent roles initialized
+- **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
 
 ## In Progress
 
-- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing from Auth feature history
+- Feature/task/bug status workflow (2026-03-22) — Implement red 'add_info' status when description missing; green 'Active' status when complete and pipeline-ready; assess lifecycle tags for deprecation
+- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing
 - Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs
 - Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Embeddings feature and workflow test validation (2026-03-22) — Testing full workflow from feature panel; Auth feature description/remarks needed for Sr. Architect understanding
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
 
 ## Key Decisions
@@ -65,7 +65,7 @@
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes
+- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
 
 ---
 
@@ -161,6 +161,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-22 23:48]** `claude_cli/claude`  
 → Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
+← _Now do a quick syntax check on the backend file:_
 
 **[2026-03-22 23:35]** `claude_cli/claude`  
 → please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 

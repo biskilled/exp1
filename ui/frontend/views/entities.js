@@ -185,7 +185,16 @@ async function _plannerSelectCat(catId, catName) {
     r.style.borderLeft = sel ? '2px solid var(--accent)' : '2px solid transparent';
   });
 
-  _renderTagTableFromCache();
+  // Work item categories (feature/bug/task) use the pr_work_items table
+  if (_isWorkItemCat(catName)) {
+    const pane = document.getElementById('planner-tags-pane');
+    if (pane) {
+      const { selectedCatColor: catColor, selectedCatIcon: catIcon, project } = _plannerState;
+      _renderWorkItemTable(pane, catName, catColor, catIcon, project);
+    }
+  } else {
+    _renderTagTableFromCache();
+  }
 }
 
 // ── Work item categories ──────────────────────────────────────────────────────

@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing from Auth feature history
+- Feature/task/bug status workflow (2026-03-22) — Implement red 'add_info' status when description missing; green 'Active' status when complete and pipeline-ready; assess lifecycle tags for deprecation
+- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing
 - Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs
 - Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Embeddings feature and workflow test validation (2026-03-22) — Testing full workflow from feature panel; Auth feature description/remarks needed for Sr. Architect understanding
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism

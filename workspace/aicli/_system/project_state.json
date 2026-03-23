@@ -14,7 +14,7 @@
     "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
     "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok",
     "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic",
-    "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation",
+    "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel",
     "memory_synthesis": "Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
     "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
     "mcp": "Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)",
@@ -28,7 +28,7 @@
     "billing_storage": "data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables",
     "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
     "dev_environment": "PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root",
-    "database": "PostgreSQL 15+ with per-project and shared schema tables; agent roles initialized"
+    "database": "PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized"
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
@@ -45,7 +45,7 @@
     "Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic",
     "Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy",
     "Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials",
-    "Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes"
+    "Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -74,11 +74,11 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Agent role standardization (2026-03-22) \u2014 Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing from Auth feature history",
+    "Feature/task/bug status workflow (2026-03-22) \u2014 Implement red 'add_info' status when description missing; green 'Active' status when complete and pipeline-ready; assess lifecycle tags for deprecation",
+    "Agent role standardization (2026-03-22) \u2014 Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing",
     "Tags loading and cache invalidation (2026-03-22) \u2014 Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs",
     "Planner UI tag visibility fix (2026-03-22) \u2014 Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow",
     "Frontend code optimization (2026-03-22) \u2014 XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js",
-    "Embeddings feature and workflow test validation (2026-03-22) \u2014 Testing full workflow from feature panel; Auth feature description/remarks needed for Sr. Architect understanding",
     "Memory items and project_facts table population (pending) \u2014 Tables exist in schema but update logic not implemented; required for improved memory/context mechanism"
   ],
   "next_phase_plan": {
@@ -111,7 +111,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-22T23:37:54Z",
+  "last_memory_run": "2026-03-22T23:58:51Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
@@ -128,14 +128,14 @@
       "Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic",
       "Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy",
       "Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials",
-      "Agent roles initialized with real IDs; each agent has defined system role, prompts, input/output schema; ReAct mode for quality outcomes"
+      "Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation"
     ],
     "in_progress": [
-      "Agent role standardization (2026-03-22) \u2014 Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing from Auth feature history",
+      "Feature/task/bug status workflow (2026-03-22) \u2014 Implement red 'add_info' status when description missing; green 'Active' status when complete and pipeline-ready; assess lifecycle tags for deprecation",
+      "Agent role standardization (2026-03-22) \u2014 Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing",
       "Tags loading and cache invalidation (2026-03-22) \u2014 Force-reload logic with cache validation; _plannerState.project fallback category issue causing null IDs",
       "Planner UI tag visibility fix (2026-03-22) \u2014 Categories loading but tags not displaying in tag picker; implementing cache invalidation and re-render flow",
       "Frontend code optimization (2026-03-22) \u2014 XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js",
-      "Embeddings feature and workflow test validation (2026-03-22) \u2014 Testing full workflow from feature panel; Auth feature description/remarks needed for Sr. Architect understanding",
       "Memory items and project_facts table population (pending) \u2014 Tables exist in schema but update logic not implemented; required for improved memory/context mechanism"
     ],
     "tech_stack": {
@@ -145,14 +145,18 @@
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database": "PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized",
+      "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic",
+      "workflow_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel",
+      "memory_synthesis": "Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
       "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)",
       "deployment": "Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder",
       "config_management": "config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support"
     },
-    "project_summary": "aicli is a shared AI memory platform enabling Claude CLI and other LLMs to maintain persistent project context across sessions via dual-layer storage (JSONL + PostgreSQL with pgvector). Currently in active development with 11 features, 2 bugs, and 3 document types in progress. Core architecture includes async DAG workflow execution, hierarchical user/client data model, per-project semantic embeddings, and MCP integration for work item management.",
-    "memory_digest": "**2026-03-22** `embedding-fix` \u2014 Agent role standardization in progress; per-agent system roles and ReAct mode execution being implemented to eliminate hallucination across all LLM providers; Sr. Architect role testing from Auth feature history. **2026-03-22** `ui-fix` \u2014 Tags loading and cache invalidation identified as root cause of planner UI tag picker visibility issues; force-reload logic with cache validation and null ID handling being implemented. **2026-03-22** `frontend-optimization` \u2014 Frontend code audit completed; XSS fixes for markdown.js, 30s timeout in api.js, JSDoc documentation standardization, and setInterval cleanup in graph_workflow.js in progress. **2026-03-22** `workflow-testing` \u2014 Full workflow testing from feature panel initiated; Auth feature description/remarks needed for Sr. Architect understanding in pipeline. **2026-03-18** `backend-race-condition` \u2014 Startup race condition fixed; _continueToApp() retry logic now handles empty projects list on first load; project visibility bug (AiCli not displaying as current) still pending investigation. **2026-03-10** `db-performance` \u2014 Tags loading strategy changed to load-once-on-access pattern to reduce redundant SQL calls; data persistence bug identified where tags disappear on session switch requiring investigation. **pending** `memory-population` \u2014 memory_items and project_facts tables exist in schema but update logic not yet implemented despite being required for improved memory/context mechanism per specification."
+    "project_summary": "aicli is a shared AI memory platform that combines a Python CLI backend (FastAPI + PostgreSQL with pgvector) with a desktop Electron UI (xterm.js + Monaco + Cytoscape) for collaborative AI-driven development workflows. It features JWT authentication, LLM provider adapters, async DAG workflow execution, memory synthesis via Claude Haiku, MCP integration, and a tagging system for work item organization. Current development focus: implementing feature/task/bug lifecycle status workflows, standardizing agent roles with ReAct execution, fixing tag cache invalidation in the UI, and populating memory tracking tables.",
+    "memory_digest": "**[2026-03-22]** `cli_session` \u2014 User requested feature/task/bug status workflow: items without descriptions should show red 'add_info' status; once fully described, transition to green 'Active' status allowing pipeline execution. Also flagged lifecycle tags as potentially unused and candidate for removal. **[2026-03-22]** `in_progress` \u2014 Agent role standardization ongoing with per-agent system roles, prompts, input/output schemas, and ReAct mode execution to reduce hallucination. Sr. Architect role being tested. **[2026-03-22]** `in_progress` \u2014 Tags cache invalidation issue: categories load but tags don't display in UI tag picker; force-reload logic with fallback category null ID issues being debugged. **[2026-03-22]** `in_progress` \u2014 Frontend code optimization: XSS fixes in markdown.js, 30s timeout in api.js, JSDoc documentation, setInterval cleanup in graph_workflow.js. **[2026-03-18]** `memory_summary` \u2014 Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template error with undefined code_dir variable; resolved backend startup race condition where empty project list caused false 'not found' errors. **[pending]** \u2014 Memory items and project_facts tables exist in schema but update logic not implemented; required for improved memory/context mechanism."
   }
 }
