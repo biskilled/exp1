@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'Active' status when complete; lifecycle tags deprecated; user questioned why features show Active without proper descriptions—clarifying status enforcement logic
-- Deprecated old/ directory usage (2026-03-23) — Confirmed old/ should not be modified; update memory to reflect this is legacy code; focus development on current directory structure
-- Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; confirmed _plannerShowNewWorkItem calls _renderWorkItemTable() directly (correct path), not _renderTagTableFromCache()
-- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing
+- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; user reports status not visible in UI Planner tab; enforce missing data detection at creation and sync with database
+- Tag visibility and review (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
+- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; timing issue during backend initialization; requires further investigation and fix
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
+- Database startup race condition (2026-03-18) — Modified retry logic to handle empty project list on first load; confirmed _ensure_shared_schema pattern replaces old ensure_project_schema method

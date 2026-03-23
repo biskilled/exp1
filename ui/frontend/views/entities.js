@@ -131,10 +131,11 @@ async function _initPlanner(project) {
     await loadTagCache(project, true);
   }
   _renderCategoryList();
-  // Auto-select first category so right pane is populated on open
+  // Auto-select first pipeline category (feature/bug/task), else first overall
   const cats = getCacheCategories();
-  if (!_plannerState.selectedCat && cats.length > 0 && cats[0].id != null) {
-    await _plannerSelectCat(cats[0].id, cats[0].name);
+  if (!_plannerState.selectedCat && cats.length > 0) {
+    const first = cats.find(c => _isWorkItemCat(c.name) && c.id != null) || cats.find(c => c.id != null);
+    if (first) await _plannerSelectCat(first.id, first.name);
   }
 }
 
@@ -148,7 +149,11 @@ function _renderCategoryList() {
     list.innerHTML = '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">No categories yet</div>';
     return;
   }
-  list.innerHTML = cats.map(c => `
+
+  const pipeline = cats.filter(c => _isWorkItemCat(c.name));
+  const tags     = cats.filter(c => !_isWorkItemCat(c.name));
+
+  const catRow = c => `
     <div class="planner-cat-row" data-id="${c.id}"
          onclick="window._plannerSelectCat(${c.id},'${_esc(c.name)}')"
          style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;
@@ -158,7 +163,14 @@ function _renderCategoryList() {
       <span style="color:${c.color};font-size:0.85rem">${c.icon}</span>
       <span style="font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(c.name)}</span>
       <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${c.value_count ?? getCacheValues(c.id).length}</span>
-    </div>`).join('');
+    </div>`;
+
+  const divider = tags.length ? `
+    <div style="font-size:0.5rem;text-transform:uppercase;letter-spacing:.1em;
+                color:var(--muted);padding:8px 8px 3px;margin-top:4px;
+                border-top:1px solid var(--border)">Tags</div>` : '';
+
+  list.innerHTML = pipeline.map(catRow).join('') + divider + tags.map(catRow).join('');
 }
 
 async function _plannerSelectCat(catId, catName) {

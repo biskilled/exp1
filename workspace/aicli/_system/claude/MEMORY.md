@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-23 00:12 UTC by aicli /memory_
+_Generated: 2026-03-23 00:26 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining Claude CLI, FastAPI backend, PostgreSQL with pgvector, and an Electron UI (Vanilla JS + Cytoscape.js) to enable intelligent work item management, semantic search, and workflow automation across distributed development teams. Currently in active development (v2.2.0) with 10+ features implemented; recent focus on status workflows, agent standardization, and resolving data persistence issues.
+aicli is a shared AI memory platform combining Python CLI (backend: FastAPI + PostgreSQL with pgvector), Electron UI (Vanilla JS + xterm.js + Monaco + Cytoscape), and MCP integration for work item management across Claude and other LLM platforms. Current state: Core features (auth, shared memory, UI, workflows, billing) are functional with 19 active entities; in-progress work focuses on feature/task/bug status lifecycle visibility, tag management, and completing memory synthesis table population.
 
 ## Project Facts
 
@@ -91,16 +91,16 @@ Reviewer: ```json
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
+- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
 
 ## In Progress
 
-- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'Active' status when complete; lifecycle tags deprecated; user questioned why features show Active without proper descriptions—clarifying status enforcement logic
-- Deprecated old/ directory usage (2026-03-23) — Confirmed old/ should not be modified; update memory to reflect this is legacy code; focus development on current directory structure
-- Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; confirmed _plannerShowNewWorkItem calls _renderWorkItemTable() directly (correct path), not _renderTagTableFromCache()
-- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing
+- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; user reports status not visible in UI Planner tab; enforce missing data detection at creation and sync with database
+- Tag visibility and review (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
+- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; timing issue during backend initialization; requires further investigation and fix
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
+- Database startup race condition (2026-03-18) — Modified retry logic to handle empty project list on first load; confirmed _ensure_shared_schema pattern replaces old ensure_project_schema method
 
 ## Active Features / Bugs / Tasks
 
@@ -212,4 +212,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-23]** `claude_cli` — User questioned why all features display as 'Active' despite lacking descriptions; clarified status workflow should enforce 'add_info' (red) until descriptions complete, then transition to 'Active' (green). Confirmed lifecycle tags are candidate for deprecation. **[2026-03-23]** `claude_cli` — Deprecated old/ directory from development; update memory to reflect legacy status and prevent accidental modifications. **[2026-03-22]** `claude_cli` — Fixed _plannerShowNewWorkItem render path: correctly calls _renderWorkItemTable() directly instead of _renderTagTableFromCache(), ensuring proper UI refresh flow. **[2026-03-22]** `claude_cli` — Implemented agent role standardization with per-agent system roles, input/output schemas, and ReAct mode to reduce hallucination. **[2026-03-18]** `claude_cli` — Fixed AttributeError in main.py (removed stale db.ensure_project_schema call); fixed memory endpoint CLAUDE.md template error (code_dir variable scoping at line 1120); resolved backend startup race condition with improved retry logic for empty project list. **[2026-03-10]** `claude_cli` — Identified database performance issue: implemented load-once-on-access pattern for tags; discovered data persistence bug where tags disappear on session switch requiring investigation; approved nested tags feature expansion; improved UI visibility with 3-dot menu buttons; pending memory_items and project_facts table population for enhanced context mechanism.
+**[2026-03-23]** `claude_cli` — Status workflow incomplete: user reports 'add_info' (red) status for missing descriptions not visible in Planner UI despite code implementation; tag review requested for bug/feature categories. **[2026-03-23]** `internal` — Clarified feature/task/bug status lifecycle: red 'add_info' on missing description, green 'active' when complete; lifecycle tags deprecated. **[2026-03-22]** `internal` — Confirmed tag cache invalidation forces reload on session/project switch; agent role standardization in progress with Sr. Architect testing. **[2026-03-18]** `internal` — Fixed AttributeError in main.py (stale ensure_project_schema call); fixed memory endpoint CLAUDE.md template error (code_dir scoping); patched backend startup race condition for empty project list. **[2026-03-18]** `internal` — Identified project visibility bug: AiCli in Recent projects but not displaying as active in main view; timing issue during initialization. **[2026-03-14]** `project` — Project contains 19 active entities (features/bugs/tasks/phases) tracking core capabilities: auth, shared-memory, UI, graph-workflow, billing, MCP, embeddings; discovery and development phases active. **[2026-03-10]** `internal` — Database performance improved by loading tags once on project access; nested tag hierarchy approved; data persistence bug on session switch requires investigation; AI suggestions UI needs better visibility. **[pending]** `internal` — memory_items and project_facts tables defined in schema but update logic not implemented; blocks improved memory/context mechanism.

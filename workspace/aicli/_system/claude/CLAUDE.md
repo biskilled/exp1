@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
+- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
 
 ---
 
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-22] `claude_cli`: I would like to make sure each agent works same as you are - not hilusinsating, and have a defined s
 - [2026-03-22] `claude_cli`: I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. 
 - [2026-03-22] `claude_cli`: please fix the embedding. also I would like to understand the feutre as the test will be running the
 - [2026-03-22] `claude_cli`: Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should b
 - [2026-03-23] `claude_cli`: Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I 
+- [2026-03-23] `claude_cli`: It is still not working . I thought to have new status (before active) - preq where all new features
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

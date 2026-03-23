@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-23 00:15 UTC — do not edit manually.
+> Auto-generated 2026-03-23 00:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 256
-- **Last active**: 2026-03-23T00:12:55Z
+- **Sessions**: 257
+- **Last active**: 2026-03-23T00:26:44Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -42,12 +42,12 @@
 
 ## In Progress
 
-- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'Active' status when complete; lifecycle tags deprecated; user questioned why features show Active without proper descriptions—clarifying status enforcement logic
-- Deprecated old/ directory usage (2026-03-23) — Confirmed old/ should not be modified; update memory to reflect this is legacy code; focus development on current directory structure
-- Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; confirmed _plannerShowNewWorkItem calls _renderWorkItemTable() directly (correct path), not _renderTagTableFromCache()
-- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing
+- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; user reports status not visible in UI Planner tab; enforce missing data detection at creation and sync with database
+- Tag visibility and review (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
+- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; timing issue during backend initialization; requires further investigation and fix
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
 - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
+- Database startup race condition (2026-03-18) — Modified retry logic to handle empty project list on first load; confirmed _ensure_shared_schema pattern replaces old ensure_project_schema method
 
 ## Key Decisions
 
@@ -65,7 +65,7 @@
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
-- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
+- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
 
 ---
 
@@ -159,6 +159,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-23 00:21]** `claude_cli/claude`  
+→ It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that st
+← _Now quick syntax check:_
+
 **[2026-03-23 00:09]** `claude_cli/claude`  
 → Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
 ← _Good — `_plannerShowNewWorkItem` calls `_renderWorkItemTable()` directly, not `_renderTagTableFromCache()`. The refresh path is correct.  Now update memory to note `old/` should not be touched:_
@@ -213,7 +217,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 02:48]** `claude_cli/claude`  
 → This is still not working. I dont see tags loading at all (just empty categories)
 ← _Good — the backend correctly returns `fallback: True` when DB is unavailable.  The full fix chain now is: - **`tagCache.js`**: checks `vData.fallback` per-category — if any values came back as fallbac_
-
-**[2026-03-22 02:39]** `claude_cli/claude`  
-→ Planner still dont load all tags , all I see is ctegories
-← _`_plannerState.project` is set. The fix is correct.  The changes make three improvements:  1. **`_initPlanner`**: detects fallback categories (null IDs) and force-reloads the cache with `force=true` b_
