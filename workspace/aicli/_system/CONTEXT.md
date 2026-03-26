@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-26 21:50 UTC — do not edit manually.
+> Auto-generated 2026-03-26 21:58 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 265
-- **Last active**: 2026-03-26T21:49:37Z
+- **Sessions**: 266
+- **Last active**: 2026-03-26T21:58:10Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-26 21:57]** `claude_cli/claude`  
+→ I do not see the backend starting 
+← _Backend is clean — no errors. Now can you clarify what "upload the AiCli project" means? Is it:  1. **Creating a new project workspace** called "aicli" in the UI? 2. **The project selector** in the UI_
+
 **[2026-03-26 21:48]** `claude_cli/claude`  
 → The backend is not loading properly. Also I cannot upload the AiCli proejct 
 ← _Backend is clean — no errors. Now can you clarify what "upload the AiCli project" means? Is it:  1. **Creating a new project workspace** called "aicli" in the UI? 2. **The project selector** in the UI_
@@ -215,7 +219,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 22:48]** `claude_cli/claude`  
 → I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
 ← _Everything is working. Now update MEMORY.md:_
-
-**[2026-03-22 10:53]** `claude_cli/claude`  
-→ Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla
-← _Now update the auto-memory MEMORY.md with logging system details:_

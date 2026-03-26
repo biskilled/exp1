@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-23] `claude_cli`: I think there is another issue , as I cannot see any uodate at the UI . I dod location.reload(true) 
 - [2026-03-23] `claude_cli`: There is again the problem with the hooks - Stop hook error: Failed with non-blocking status code: N
 - [2026-03-23] `claude_cli`: yes
 - [2026-03-24] `claude_cli`: Can you proide short summery what is AiCli - I would like to add that into my website. it suppose to
 - [2026-03-26] `claude_cli`: The backend is not loading properly. Also I cannot upload the AiCli proejct 
+- [2026-03-26] `claude_cli`: I do not see the backend starting 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
