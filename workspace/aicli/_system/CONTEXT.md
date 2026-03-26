@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-23 01:08 UTC — do not edit manually.
+> Auto-generated 2026-03-26 21:50 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 261
-- **Last active**: 2026-03-23T01:01:29Z
+- **Sessions**: 265
+- **Last active**: 2026-03-26T21:49:37Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,8 +160,21 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-26 21:48]** `claude_cli/claude`  
+→ The backend is not loading properly. Also I cannot upload the AiCli proejct 
+← _Backend is clean — no errors. Now can you clarify what "upload the AiCli project" means? Is it:  1. **Creating a new project workspace** called "aicli" in the UI? 2. **The project selector** in the UI_
+
+**[2026-03-24 15:36]** `claude_cli/claude`  
+→ Can you proide short summery what is AiCli - I would like to add that into my website. it suppose to be the main tools I
+← _# aicli — AI-Powered Development Platform  **Stop re-explaining your project to every AI tool. aicli gives every LLM the same shared memory — so Claude CLI, Cursor, your web UI, and your agents all pi_
+
+**[2026-03-23 01:21]** `claude_cli/claude`  
+→ yes
+← _Pushed successfully. Here's what was done:  1. **Hook fix** — Removed `set -euo pipefail` from `auto_commit_push.sh`. That was the root cause: any command silently redirecting stderr to `/dev/null` (l_
+
 **[2026-03-23 01:06]** `claude_cli/claude`  
 → There is again the problem with the hooks - Stop hook error: Failed with non-blocking status code: No stderr output. Als
+← _The large Electron binaries (150+ MB) were added in commit `ae89abd` and deleted in `b416c01`, but GitHub still rejects because the blobs exist in the history being pushed. The cleanest fix is to squa_
 
 **[2026-03-23 00:55]** `claude_cli/claude`  
 → I think there is another issue , as I cannot see any uodate at the UI . I dod location.reload(true) using the dev tools 
@@ -206,15 +219,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 10:53]** `claude_cli/claude`  
 → Also I would like to have proper log mechanism for all the app. I do not see any logger used. usualy I buuild looger cla
 ← _Now update the auto-memory MEMORY.md with logging system details:_
-
-**[2026-03-22 10:44]** `claude_cli/claude`  
-→ OK .so when user update from ui / run role push (can run role [role_name] push or role push for all rules - there will b
-← _All components of the ReAct Agents implementation are in place:  - **DB migrations** — `tools JSONB`, `react BOOLEAN`, `max_iterations INT` columns added - **Agent tools** — `tool_memory.py` + `tool_w_
-
-**[2026-03-22 10:35]** `claude_cli/claude`  
-→ So when yaml is configured - is it suppose to load into the database ? 
-← _Now verify the SQL is syntactically correct by doing a dry import:_
-
-**[2026-03-22 10:32]** `claude_cli/claude`  
-→ I would like that manage agennts/roles only as an adming (so other customers can only see the role/agent name but cannot
-← _Quick verification:_

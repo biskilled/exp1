@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-23 01:07 UTC by aicli /memory_
+_Generated: 2026-03-26 21:49 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -103,7 +103,7 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(119 events, 102 commits)`
+- **hooks** `(120 events, 102 commits)`
 
 ### Doc_type
 
@@ -115,9 +115,9 @@ Reviewer: ```json
 
 ### Feature
 
+- **UI** `(106 events, 97 commits)`
 - **auth** `(105 events, 98 commits)`
 - **shared-memory** `(104 events, 97 commits)`
-- **UI** `(96 events, 87 commits)`
 - **graph-workflow** `(95 events, 87 commits)`
 - **workflow-runner** `(80 events, 77 commits)`
 - **billing** `(62 events, 60 commits)`

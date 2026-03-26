@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 01:07 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-26 21:49 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -56,8 +56,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-23] can you explain How should I force electorn to flash the memory as I do not see any change at the ui. is there is someth
-- [2026-03-23] I alway run using npm build dev (not npm run build) when I run npm run build I got errors regarding to old folder such a
-- [2026-03-23] When I run npm run build I still got an error - Error #1 ---------------------------------------------------------------
 - [2026-03-23] I think there is another issue , as I cannot see any uodate at the UI . I dod location.reload(true) using the dev tools 
 - [2026-03-23] There is again the problem with the hooks - Stop hook error: Failed with non-blocking status code: No stderr output. Als
+- [2026-03-23] yes
+- [2026-03-24] Can you proide short summery what is AiCli - I would like to add that into my website. it suppose to be the main tools I
+- [2026-03-26] The backend is not loading properly. Also I cannot upload the AiCli proejct
