@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-27 09:13 UTC — do not edit manually.
+> Auto-generated 2026-03-27 09:18 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 268
-- **Last active**: 2026-03-27T09:12:41Z
+- **Sessions**: 269
+- **Last active**: 2026-03-27T09:18:00Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-27 09:16]** `claude_cli/claude`  
+→ you ddid mention anything about the mcp that is used for memroy as well , how the mcp works, what data it extract ? 
+← _I have everything. Now let me add a comprehensive MCP section to the existing file:_
+
 **[2026-03-27 09:07]** `claude_cli/claude`  
 → Allworks as expected. I would like to have full review on all memroy layers - what you are haveing now, when do you summ
 ← _Created `/Users/user/Documents/gdrive_cellqlick/2026/aicli/aicli_memory.md`.  Here's the summary of what's covered:  **5 Layers:** - **Layer 1** — In-memory only (current session messages, lost on exi_
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-23 00:09]** `claude_cli/claude`  
 → Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
 ← _Good — `_plannerShowNewWorkItem` calls `_renderWorkItemTable()` directly, not `_renderTagTableFromCache()`. The refresh path is correct.  Now update memory to note `old/` should not be touched:_
-
-**[2026-03-22 23:48]** `claude_cli/claude`  
-→ Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
-← _Now do a quick syntax check on the backend file:_

@@ -638,3 +638,699 @@ for every `pr_` table.
 
 The files provide **passive context** (always there, static until next `/memory`).
 The MCP tools provide **active retrieval** (called on demand, always live from DB).
+
+---
+
+## When and How LLM Responses Are Summarized
+
+Every response you get from the LLM passes through several summarization checkpoints before
+it becomes permanent memory. Here is the exact sequence.
+
+### Step 1 — Immediate Write (no summarization yet)
+
+**Trigger**: Any prompt submitted (Claude Code, UI chat, CLI, Cursor)
+
+**What happens**:
+- `log_user_prompt.sh` (Claude Code hook) or `_append_history()` (UI) writes the raw entry:
+  ```json
+  {
+    "ts": "2026-03-27T14:30:00Z",
+    "source": "claude_cli",
+    "session_id": "abc-123",
+    "provider": "claude",
+    "user_input": "How should I wire the ReAct loop...",
+    "output": "",
+    "phase": "development",
+    "feature": "react-agents",
+    "tags": []
+  }
+  ```
+- Simultaneously inserted into `pr_interactions` (for memory pipeline) and `pr_events` (for tagging)
+- `output` field is empty at this point — filled in by `log_session_stop.sh` at session end
+- **No summarization happens here — this is raw data capture only**
+
+### Step 2 — Response Captured at Session End
+
+**Trigger**: Claude Code fires the `Stop` hook when you get a response
+
+**What `log_session_stop.sh` does**:
+1. Reads session JSON from `~/.claude/projects/{project-hash}/{session_id}.jsonl`
+2. Finds the last assistant message — extracts text content (skips tool_use blocks)
+3. Truncates to 2000 chars and writes it back into `history.jsonl` (fills `output` field)
+4. Updates `dev_runtime_state.json` (session_count++, last_session_id)
+5. Fires `POST /projects/{p}/memory` in background (non-blocking) to keep MEMORY.md fresh
+
+**Still no summarization** — this is raw capture of the full response text.
+
+### Step 3 — Session Summarization via `/memory` (Layer 5)
+
+**Trigger**: `POST /projects/{name}/memory` — either from the Stop hook background call,
+from the user running `/memory`, or from the UI amber banner.
+
+**Condition to trigger**: A session must have **≥3 interactions** in `pr_interactions` and
+**not yet have a row** in `pr_memory_items` for that session_id.
+
+**SQL that finds unsummarized sessions**:
+```sql
+SELECT i.session_id, COUNT(*) AS cnt,
+       STRING_AGG(
+         '[' || LEFT(i.created_at::text, 16) || '] Q: '
+         || LEFT(COALESCE(i.prompt,''), 300)
+         || CASE WHEN i.response != '' THEN E'\n A: ' || LEFT(i.response,200) ELSE '' END,
+         E'\n\n' ORDER BY i.created_at
+       ) AS history_text
+FROM pr_interactions i
+WHERE i.client_id=1 AND i.project=%s
+  AND i.event_type='prompt'
+  AND i.session_id IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM pr_memory_items m
+      WHERE m.scope='session' AND m.scope_ref=i.session_id
+  )
+GROUP BY i.session_id
+HAVING COUNT(*) >= 3
+LIMIT 10
+```
+
+**Haiku Call 1 — Initial Summary** (prompt/response pairs truncated to 300/200 chars):
+```
+Summarize this development session — focus on decisions and code changes
+(3-8 bullet points max, be specific):
+
+[2026-03-27T14:30] Q: How should I wire the ReAct loop...
+ A: The ReAct loop should...
+
+[2026-03-27T14:35] Q: What about the tool registry...
+ A: ...
+```
+Max tokens: 800
+
+**Haiku Call 2 — Trycycle Review** (fresh context, rates the summary):
+```
+Rate this session summary 1-10 for completeness and accuracy.
+Return ONLY valid JSON: {"score": N, "critique": "...", "improved_summary": "..."}.
+
+Original session:
+{raw history, 2000 chars}
+
+Summary to rate:
+{output of Call 1}
+```
+Max tokens: 600
+
+**Stored result** (uses `improved_summary` from Call 2 if score improved):
+```sql
+INSERT INTO pr_memory_items
+  (client_id, project, scope, scope_ref, content, source_ids, reviewer_score, reviewer_critique)
+VALUES (1, 'aicli', 'session', 'abc-123', '• Implemented ReAct loop...', '{uuid1,uuid2}', 8, 'Good coverage...')
+ON CONFLICT DO NOTHING
+```
+
+### Step 4 — Feature Summarization (Layer 5)
+
+**Trigger**: Work item `lifecycle_status` set to `'done'`
+
+**What `_summarize_feature_memory()` does**:
+1. Loads all `pr_memory_items` for sessions that were tagged to this work item
+2. Calls Haiku twice (same Trycycle pattern):
+
+**Haiku Call 1**:
+```
+Summarize the complete development history for feature '{name}': {description}.
+
+Session summaries:
+{combined session summaries, 2500 chars}
+
+Write a concise feature postmortem (decisions, implementation approach, outcome).
+```
+
+**Haiku Call 2**:
+```
+Rate this feature summary 1-10. Return ONLY JSON:
+{"score": N, "critique": "...", "improved_summary": "..."}.
+
+Summary: {output of Call 1}
+```
+
+**Stored** in `pr_memory_items(scope='feature', scope_ref=work_item_name)`.
+
+### Step 5 — Fact Extraction (Layer 5)
+
+**Trigger**: Background task spawned at the end of every `/memory` run
+
+**Source**: Recent 8 `pr_memory_items` + current `pr_project_facts`
+
+**Role**: Loaded from `mng_agent_roles` WHERE name=`'internal_project_fact'`
+(system_prompt is configurable per-client in the DB)
+
+**User message sent**:
+```
+Already-extracted facts (confirm if still true, update if changed, skip if unchanged):
+  auth_method: JWT + bcrypt
+  database: PostgreSQL 15 + pgvector
+  ...
+
+Development notes to analyze:
+{last 8 session summaries, 3500 chars}
+```
+
+**Expected response** (JSON array):
+```json
+[
+  {"key": "auth_method",  "value": "JWT + bcrypt",          "confidence": 0.95},
+  {"key": "frontend",     "value": "Electron + Vanilla JS", "confidence": 0.88},
+  {"key": "test_runner",  "value": "pytest",                "confidence": 0.72}
+]
+```
+Confidence threshold: **0.70** — facts below this are discarded.
+
+**Temporal upsert logic**:
+```sql
+-- Mark old value as expired
+UPDATE pr_project_facts SET valid_until = NOW()
+WHERE client_id=1 AND project=%s AND fact_key=%s AND valid_until IS NULL
+  AND fact_value != %s   -- only if value changed
+
+-- Insert new fact
+INSERT INTO pr_project_facts (client_id, project, fact_key, fact_value, valid_from, valid_until, source_memory_id)
+VALUES (1, %s, %s, %s, NOW(), NULL, %s)
+ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL DO NOTHING
+```
+
+### Step 6 — LLM Synthesis (Layer 3 output files)
+
+**Trigger**: Same `/memory` run, after sessions and facts are distilled
+
+**Input assembled**:
+- New `history.jsonl` entries since `last_memory_run`
+- `pr_project_facts` (WHERE valid_until IS NULL) — current facts
+- Recent 8 `pr_memory_items` — distilled summaries
+- `mng_entity_values` summary — active features/bugs/tasks
+- `project_state.json` tech_stack + key_decisions (prior synthesis)
+- `PROJECT.md` first section
+
+**Prompt sent to Haiku**:
+```
+You are analyzing development history for project "{project_name}".
+
+Current structured state:
+{current_state_json}
+
+{prior_block}  ← "Prior synthesis to merge with (keep stable decisions):" if prior exists
+
+Project intro (from PROJECT.md):
+{proj_intro_first_500_chars}
+
+{entity_block}  ← "Active entities: feature: X, Y | bug: Z"
+
+Development history ({N} entries, oldest→newest):
+{history_text}  ← raw entries OR distilled context if incremental mode
+
+Return ONLY valid JSON (no markdown fences) with exactly these fields:
+{
+  "key_decisions": ["up to 15 stable architectural/technical decisions any LLM must know"],
+  "in_progress": ["up to 6 items most recently worked on, based on last 5 sessions"],
+  "tech_stack": {"component": "technology or version"},
+  "memory_digest": "Markdown: synthesize the 10 most important recent work items...",
+  "project_summary": "2-3 sentence description of what this project is and its current state."
+}
+
+Rules:
+- key_decisions: permanent facts (tech choices, auth approach, architecture patterns)
+- in_progress: what was MOST RECENTLY worked on (infer from last 5 sessions)
+- tech_stack: merge existing + any new tech mentioned in history
+- memory_digest: synthesize meaningfully, don't just copy. Focus on decisions + features.
+- Return ONLY valid JSON, no explanation outside the JSON.
+```
+Max tokens: 2000
+
+**Incremental mode** (when `new_entries < 10` AND distilled memory exists):
+- Sends the 8 `pr_memory_items` summaries instead of raw history entries
+- `prior_block` contains the prior `memory_digest` to merge with
+- Reduces token cost ~8× on repeat `/memory` runs
+
+**Result merged** into `project_state.json`:
+```json
+{
+  "tech_stack": { "backend": "FastAPI", "db": "PostgreSQL 15 + pgvector", ... },
+  "key_decisions": ["JWT auth with bcrypt", "Flat table naming mng_/pr_", ...],
+  "in_progress": ["ReAct pipeline wiring", "UI prereq status", ...],
+  "_synthesis_cache": { "memory_digest": "...", "project_summary": "..." }
+}
+```
+
+### Step 7 — Tag Suggestions
+
+**Trigger**: End of every `/memory` run (non-blocking background call)
+
+**Input**: Last 5 raw history entries + all existing entity value names
+
+**System prompt**:
+```
+You are a JSON API. Respond with a valid JSON array only. No explanation, no preamble, no markdown.
+```
+
+**User message**:
+```
+Recent developer prompts:
+{last 5 entries, 150 chars each}
+
+Existing tags: react-agents, logging, auth-refactor, ...
+
+Suggest 2-3 relevant tags for these prompts. Prefer existing tags where applicable;
+propose new ones only if clearly needed.
+Respond ONLY as valid JSON array: [{"name":"tag","category":"feature|bug|task","is_new":true}]
+```
+Max tokens: 150
+
+**Returned** in `/memory` response as `suggested_tags` — shown in UI as amber suggestion chips.
+
+---
+
+## All Internal LLM Prompts — Location Reference
+
+| Prompt | File | Function | Model | Max tokens | Purpose |
+|--------|------|----------|-------|------------|---------|
+| Session summary (Call 1) | `backend/routers/route_projects.py` | `_summarize_session_memory()` | Haiku | 800 | Summarize raw interactions into 3-8 bullets |
+| Session review (Call 2) | `backend/routers/route_projects.py` | `_summarize_session_memory()` | Haiku | 600 | Trycycle: rate + improve the summary |
+| Feature summary (Call 1) | `backend/routers/route_projects.py` | `_summarize_feature_memory()` | Haiku | 600 | Feature postmortem when work item done |
+| Feature review (Call 2) | `backend/routers/route_projects.py` | `_summarize_feature_memory()` | Haiku | 500 | Trycycle: rate + improve feature summary |
+| Fact extraction | `backend/routers/route_projects.py` | `_extract_project_facts()` | Haiku (via DB role) | 600 | Extract `{key, value, confidence}` array |
+| Memory synthesis | `backend/routers/route_projects.py` | `_synthesize_with_llm()` | Haiku | 2000 | Full project synthesis → 5 output files |
+| Tag suggestions | `backend/routers/route_projects.py` | `_suggest_tags()` | Haiku | 150 | Suggest 2-3 entity tags from recent prompts |
+| ReAct base prompt | `backend/agents/agent.py` | `_REACT_SYSTEM_BASE` | (injected) | — | Rules injected into every pipeline agent |
+| PM agent | `workspace/_templates/roles/product_manager.yaml` | system_prompt | Claude Sonnet | — | PM role for pipeline stage 1 |
+| Architect agent | `workspace/_templates/roles/architect.yaml` | system_prompt | Claude Sonnet | — | Architecture role for pipeline stage 2 |
+| Developer agent | `workspace/_templates/roles/developer.yaml` | system_prompt | Claude Sonnet | — | Code role for pipeline stage 3 |
+| Reviewer agent | `workspace/_templates/roles/reviewer.yaml` | system_prompt | Claude Sonnet | — | Review role for pipeline stage 4 |
+| Security reviewer | `workspace/_templates/roles/security_reviewer.yaml` | system_prompt | Claude Sonnet | — | Security analysis role |
+| QA engineer | `workspace/_templates/roles/qa_engineer.yaml` | system_prompt | Claude Sonnet | — | Test + quality role |
+
+### The ReAct Base Prompt (injected into every pipeline agent)
+
+Defined in `backend/agents/agent.py` as `_REACT_SYSTEM_BASE`, prepended to every role's
+system_prompt when `react=True`:
+
+```
+You are an aicli AI agent. You operate in a strict ReAct loop.
+
+## ReAct Rules
+- ALWAYS write Thought: before any action
+- ONE action per step — never batch multiple tool calls
+- ALWAYS wait for the Observation before the next Thought
+- NEVER assume a tool result — wait for the actual observation
+- NEVER fabricate file contents, test results, or memory
+- If unsure, call a tool. Never guess.
+
+## Anti-Hallucination Rules
+- If you don't know something, say "I need to check this" and call a tool
+- Never describe code you haven't read this session
+- Never claim tests pass without running them or reading diff output
+- Never reference a past decision unless memory confirms it exists
+- If memory returns empty, say "no relevant memory found" — don't invent context
+- If a tool fails, reason about why before retrying
+
+## Handoff Rules
+- Your final output MUST be a structured JSON object (no markdown fences)
+- Never pass raw conversation — only structured, verified facts
+- Include "confidence" (0.0–1.0) reflecting how certain you are
+- Include "memory_references" citing exactly what memory returned
+- Include your "role" field so the next agent knows who produced this
+```
+
+---
+
+## Complete Tagging System
+
+Tagging connects every prompt, response, and commit to a named feature, bug, or task.
+Tags flow automatically through the system — you tag once, everything in that session
+gets linked.
+
+### What Is a Tag?
+
+A tag is a row in `mng_entity_values`:
+```
+id, client_id=1, project, category_id (FK → mng_entity_categories),
+name ("react-agents"), description, status (active/done/archived),
+lifecycle_status (idea→design→development→testing→review→done),
+due_date, parent_id (for nested tags)
+```
+
+Each category (`feature`, `bug`, `task`, `component`) has a color and icon (stored in
+`mng_entity_categories`). Features start at `#10000`, bugs at `#20000`, tasks at `#30000`.
+
+### The 4 Tag Tables
+
+| Table | Links | Auto? |
+|-------|-------|-------|
+| `mng_session_tags` | Current session → active feature/phase | Manual (user sets phase/feature) |
+| `pr_event_tags` | `pr_events` row → `mng_entity_values` row | Auto-propagated + manual |
+| `pr_interaction_tags` | `pr_interactions` row → `pr_work_items` row | Auto on bulk session tag |
+| `mng_entity_value_links` | `mng_entity_values` → `mng_entity_values` | Manual (dependency edges) |
+
+### How a Tag Gets Created and Linked
+
+#### Path 1: User sets phase/feature in UI tag bar or CLI
+
+1. UI sends `PUT /history/session-tags?project=X` with `{phase, feature, bug_ref}`
+2. Backend upserts `mng_session_tags` (one row per project — always current)
+3. All subsequent prompts written to `pr_events` and `pr_interactions` carry `phase` and `feature`
+4. At session end, `log_session_stop.sh` captures session_id
+
+#### Path 2: User clicks ⬡ Tag on a specific event in History tab
+
+1. UI sends `POST /entities/events/tag-by-source-id` with `{source_id, entity_value_id}`
+2. Backend looks up event in `pr_events` by `source_id` (timestamp string)
+3. If not found: imports from `history.jsonl` first (creates event row)
+4. `INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged=false) ON CONFLICT DO NOTHING`
+5. Background: runs Phase 4 auto-propagation → tags all commits in same session
+
+#### Path 3: User clicks ⬡ Tag on a session group in Chat tab (bulk tag)
+
+`POST /entities/session-tag` with `{session_id, entity_name, category_name}`:
+
+1. Resolve or create `mng_entity_values` row
+2. Find all events for this session:
+   ```sql
+   SELECT id FROM pr_events
+   WHERE client_id=1 AND project=%s
+     AND (metadata->>'session_id' = %s OR source_id = %s)
+   ```
+3. `INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged=false)` for each event
+4. Link all matching interactions to work_item:
+   ```sql
+   INSERT INTO pr_interaction_tags (interaction_id, work_item_id, auto_tagged=false)
+   SELECT i.id, %s::uuid FROM pr_interactions i
+   WHERE i.client_id=1 AND i.project=%s AND i.session_id=%s
+   ON CONFLICT DO NOTHING
+   ```
+
+#### Path 4: Auto-propagation — tag spreads from prompts to commits
+
+Runs inside `_do_sync_events()` (Phase 4) and as a background task after any manual tag:
+
+```sql
+INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged)
+SELECT DISTINCT commit_ev.id, pt.entity_value_id, TRUE
+FROM pr_events commit_ev
+JOIN pr_events prompt_ev
+     ON COALESCE(prompt_ev.session_id, prompt_ev.metadata->>'session_id')
+      = COALESCE(commit_ev.session_id, commit_ev.metadata->>'session_id')
+     AND session_id IS NOT NULL AND session_id != ''
+JOIN pr_event_tags pt ON pt.event_id = prompt_ev.id
+WHERE commit_ev.event_type = 'commit'
+  AND prompt_ev.event_type  = 'prompt'
+  AND commit_ev.client_id=1 AND commit_ev.project=%s
+ON CONFLICT DO NOTHING
+```
+
+Result: **every commit in a session automatically inherits all tags from prompts in that session.**
+
+#### Path 5: AI auto-detection (first prompt in session)
+
+`_auto_detect_session_feature()` in `chat.py`:
+- Fires on the first prompt of a new session if no feature tag is set
+- Haiku reads the prompt + last 5 history entries and detects which feature is being worked on
+- If confident, auto-sets `mng_session_tags.feature` and shows AI suggestion banner in UI
+- User can Accept or Dismiss the suggestion
+
+### Tag Lifecycle: idea → done
+
+Every `mng_entity_values` row has a `lifecycle_status` that tracks the feature through its
+development arc:
+
+```
+idea → design → development → testing → review → done
+```
+
+- **User clicks** lifecycle badge in Planner → cycles to next status
+- **Pipeline completion**: reviewer `verdict=approved` → backend sets lifecycle to `review`
+- **Work item marked done**: triggers `_summarize_feature_memory()` → permanent feature summary written to `pr_memory_items`
+
+### How `/memory` Uses Tags for Global Memory
+
+Tags are the bridge between raw history and the distilled memory layers:
+
+1. **During `_do_sync_events()`**:
+   - All events from `history.jsonl` are imported into `pr_events`
+   - Phase 4: tags auto-propagate from prompts → commits in same session
+   - The event→tag links make it possible to query "everything that touched feature X"
+
+2. **During `_summarize_session_memory()`**:
+   - The Haiku summary implicitly captures which feature was worked on (from the raw text)
+   - The `source_ids` array in `pr_memory_items` links back to the exact `pr_interactions` rows
+   - When `_summarize_feature_memory()` fires, it queries memory_items for the right session
+
+3. **During `_extract_project_facts()`**:
+   - Feature/bug names from tags appear in session summaries fed to the fact extractor
+   - Facts like `"authentication_feature: react-agents integration"` become `pr_project_facts`
+
+4. **In `get_project_state` (MCP)**:
+   - Calls `/entities/summary` → returns all `mng_entity_values` grouped by category
+   - Each entity shows `event_count` (how many `pr_event_tags` rows) and `commit_count`
+   - This gives every LLM a real-time view of which features are most active
+
+5. **In `get_tagged_context` (MCP)**:
+   - Joins `pr_events` + `pr_event_tags` + `mng_entity_values` to pull every prompt and commit
+     tagged with a specific feature or phase
+   - This is the most precise retrieval: not fuzzy search, but exact tag-based lookup
+
+6. **In `search_memory` (MCP)**:
+   - `phase` and `feature` filters narrow the pgvector cosine search to only chunks tagged
+     with that scope — dramatically improves precision when working on a known feature
+
+### Tag Data Flow Diagram
+
+```
+User prompt arrives
+        │
+        ├─► pr_events (event_type='prompt', source_id=ts, session_id)
+        │
+        ├─► pr_interactions (session_id, prompt, response, phase, feature)
+        │
+        └─► mng_session_tags (current: phase, feature, bug_ref)
+                │
+                │  [user sets tag bar / AI auto-detects]
+                ▼
+        pr_event_tags (event_id → entity_value_id)
+                │
+                │  [Phase 4 auto-propagation]
+                ▼
+        All commits in same session also get tagged
+        pr_event_tags (commit event_id → same entity_value_id, auto_tagged=true)
+                │
+                │  [/memory run]
+                ▼
+        _summarize_session_memory()
+        → pr_memory_items (scope='session', content=summary)
+                │
+                │  [work item done]
+                ▼
+        _summarize_feature_memory()
+        → pr_memory_items (scope='feature', content=postmortem)
+                │
+                │  [/memory → _extract_project_facts()]
+                ▼
+        pr_project_facts (fact_key, fact_value, valid_until=NULL)
+                │
+                │  [/memory → _synthesize_with_llm()]
+                ▼
+        MEMORY.md + CLAUDE.md + context.md + rules.md + copilot.md
+        (all 5 output files include entity names from mng_entity_values)
+```
+
+---
+
+## Complete Hook Logic — Step by Step
+
+### Hook 1: `log_user_prompt.sh` (UserPromptSubmit)
+
+**Fires**: Every time you submit a prompt in Claude Code
+
+```
+1. Read JSON from stdin:
+   {"hook_event_name":"UserPromptSubmit","session_id":"abc123","prompt":"user text"}
+
+2. Extract prompt text and session_id via python3 -c "import json,sys; ..."
+
+3. Detect active project from aicli.yaml:
+   python3 -c "import yaml; print(yaml.safe_load(open(config))['active_project'])"
+
+4. Filter noise — skip if prompt starts with:
+   <task-notification> | <tool-use-id> | <task-id> | <parameter>
+
+5. Skip empty prompts
+
+6. Write JSONL entry to workspace/{project}/_system/history.jsonl:
+   {ts, source:"claude_cli", session_id, provider:"claude", user_input, output:"", tags:[]}
+
+7. exit 0
+```
+
+**Does NOT** write to DB — that happens via the sync endpoint or `_append_history()`.
+
+---
+
+### Hook 2: `log_session_stop.sh` (Stop)
+
+**Fires**: When Claude Code finishes responding (one response = one Stop event)
+
+```
+1. Read JSON from stdin:
+   {"hook_event_name":"Stop","session_id":"abc123","stop_reason":"end_turn"}
+
+2. Extract session_id and stop_reason
+
+3. Detect active project from aicli.yaml
+
+4. Read Claude Code session file:
+   ~/.claude/projects/{project-hash}/{session_id}.jsonl
+   - Find the LAST assistant message (type='assistant')
+   - Extract text content blocks (skip tool_use, tool_result)
+   - Truncate to 2000 chars
+
+5. Update history.jsonl:
+   - Find the latest claude_cli entry for this session_id with empty output
+   - Fill in: output = response_text, stop_reason = stop_reason
+   - Write back entire file
+
+6. Update dev_runtime_state.json:
+   {last_updated, last_session_id, session_count++, last_provider:"claude", source:"claude_cli"}
+
+7. Fire background (non-blocking):
+   curl -sf -X POST {BACKEND_URL}/projects/{ACTIVE_PROJECT}/memory &
+
+8. exit 0
+```
+
+---
+
+### Hook 3: `auto_commit_push.sh` (Stop)
+
+**Fires**: Same Stop event as log_session_stop.sh (both run in sequence)
+
+```
+1. Read JSON from stdin (same Stop event JSON)
+
+2. Detect WORK_DIR from CLAUDE_PROJECT_DIR env var or pwd
+
+3. Check auto_commit_push in workspace/{project}/project.yaml
+   → If not "yes": exit 0 immediately
+
+4. Read CODE_DIR from project.yaml (default: WORK_DIR)
+
+5. Check .git directory exists in CODE_DIR → else exit 0
+
+6. Extract session_id from stdin JSON
+
+7. Try backend API:
+   curl -sf {BACKEND_URL}/health → BACKEND_OK=yes|no
+
+   If BACKEND_OK=yes:
+   → POST {BACKEND_URL}/git/{project}/commit-push
+     {message_hint: "after claude cli session {session_id[:8]}",
+      provider: "claude", skip_pull: false, session_id, source: "claude_cli"}
+   → If response has committed=true: log to commit_log.jsonl, echo success >&2
+   → If committed=false: log "skipped/no_changes" >&2
+   → exit 0
+
+   If BACKEND_OK=no (fallback: direct git):
+   → echo "[aicli] Backend unavailable — using direct git." >&2
+   → cd CODE_DIR
+   → git status --porcelain → if empty: log skipped, exit 0
+   → Load GIT_TOKEN, GIT_USERNAME, GITHUB_REPO, GIT_BRANCH from .git_token file
+   → git add -A
+   → git commit -m "chore(cli): auto-commit after AI session — {N} file(s) — {timestamp}"
+   → git push with authenticated URL (token in URL, never stored in .git/config)
+   → Log outcome (success or push failure) to commit_log.jsonl
+   → exit 0
+```
+
+---
+
+## Full `/memory` Workflow
+
+The complete end-to-end sequence when `POST /projects/{name}/memory` is called:
+
+```
+POST /projects/{name}/memory
+│
+├─ 1. Load config
+│    read project.yaml: history_max_rows (500), memory_threshold (20), code_dir
+│    read project_state.json: last_memory_run, tech_stack, key_decisions, in_progress
+│
+├─ 2. Load history
+│    read history.jsonl (last 120 entries)
+│    filter: skip noise (tool calls, empty, duplicates)
+│    keep: last 40 meaningful entries
+│
+├─ 3. Rotate history (if > history_max_rows)
+│    archive: history_{YYYYMMDDHHSS}.jsonl
+│    keep: most recent rows in history.jsonl
+│
+├─ 4. Load entity summary (mng_entity_values grouped by category)
+│    SELECT category, name, status, event_count, commit_count FROM mng_entity_values
+│    GROUP BY category — returns {feature:[...], bug:[...], task:[...]}
+│
+├─ 5. Session distillation (_summarize_session_memory)
+│    └─ SQL: find sessions ≥3 prompts not yet in pr_memory_items
+│    └─ For each session (up to 10 per run):
+│       └─ Haiku Call 1: "Summarize this session, 3-8 bullets, decisions + code changes"
+│       └─ Haiku Call 2: "Rate 1-10, return {score, critique, improved_summary}"
+│       └─ Store: INSERT pr_memory_items(scope='session', content, reviewer_score)
+│       └─ Embed: fire-and-forget embed_and_store() → pr_embeddings
+│
+├─ 6. Load distilled context
+│    pr_project_facts WHERE valid_until IS NULL (current facts)
+│    pr_memory_items ORDER BY created_at DESC LIMIT 8
+│
+├─ 7. LLM synthesis (_synthesize_with_llm)
+│    └─ Incremental check: new_entries < 10 AND distilled_memory exists?
+│       YES → send memory_items as context (8× fewer tokens)
+│       NO  → send raw history entries
+│    └─ Build prompt with: history/distilled + prior_synthesis + entities + facts + proj_intro
+│    └─ Haiku: returns {key_decisions, in_progress, tech_stack, memory_digest, project_summary}
+│    └─ Merge into project_state.json (stable decisions preserved, new ones added)
+│
+├─ 8. Write 5 output files (Layer 3)
+│    └─ MEMORY.md:   sections: summary, facts, tech_stack, decisions, in_progress, entities, recent_memory, digest
+│    └─ CLAUDE.md:   PROJECT.md intro + tech_stack + decisions + "See MEMORY.md"
+│    └─ rules.md:    project desc + tech_stack + decisions + recent context
+│    └─ context.md:  compact 600-char block: [Project Facts] | summary | stack | in_progress | entities
+│    └─ copilot.md:  project desc + tech_stack + architecture decisions
+│    └─ Copy each to code_dir (CLAUDE.md, .cursor/rules/, .github/, MEMORY.md)
+│
+├─ 9. Background tasks (asyncio.create_task — non-blocking, run after response sent)
+│    ├─ _extract_project_facts()
+│    │   └─ Load recent 8 memory_items + existing facts
+│    │   └─ internal_project_fact role (from mng_agent_roles) calls Haiku
+│    │   └─ Returns [{key, value, confidence}] filtered at confidence ≥ 0.70
+│    │   └─ Temporal upsert: expire old fact, insert new row in pr_project_facts
+│    │
+│    ├─ ingest_history() → embed new history entries → pr_embeddings
+│    ├─ ingest_roles()   → re-embed all YAML role files → pr_embeddings
+│    ├─ ingest_commits() → embed new commits → pr_embeddings
+│    │
+│    ├─ _do_sync_events() → sync history.jsonl → pr_events/pr_interactions
+│    │   Phase 1: import prompts from JSONL
+│    │   Phase 2: import commits from pr_commits
+│    │   Phase 3: backfill session_ids
+│    │   Phase 4: auto-propagate tags prompt → commits in same session
+│    │   Phase 5: detect commit→prompt causal links → pr_event_links
+│    │
+│    └─ _suggest_tags() → Haiku → 2-3 suggested entity names
+│       returned in response as "suggested_tags" (shown as amber chips in UI)
+│
+├─ 10. Update project_state.json
+│     last_memory_run = now()
+│     bust memory_status cache
+│
+└─ 11. Return response
+      {
+        "generated": ["MEMORY.md", "CLAUDE.md", "rules.md", "context.md", "copilot.md"],
+        "copied_to": ["{code_dir}/CLAUDE.md", "{code_dir}/MEMORY.md", ...],
+        "synthesized": true,
+        "run_ts": "2026-03-27T14:30:00Z",
+        "suggested_tags": [{"name": "react-agents", "category": "feature", "is_new": false}]
+      }
+```
