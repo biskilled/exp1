@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-27 09:35 UTC — do not edit manually.
+> Auto-generated 2026-03-27 09:42 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 270
-- **Last active**: 2026-03-27T09:34:44Z
+- **Sessions**: 271
+- **Last active**: 2026-03-27T09:42:04Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-27 09:41]** `claude_cli/claude`  
+→ Where is the file ? I cannnot see that in the folder
+← _`aicli_memory.md` is now 1336 lines covering everything. Here's what was added:  ---  **When responses are summarized** — exact 7-step chain: 1. Raw write (no summarization) — hooks capture prompt imm_
+
 **[2026-03-27 09:28]** `claude_cli/claude`  
 → I do see that in any llm repsonse is summerised - when is it happend, can you also add all the internal prompt you are u
 ← _Now I'll append the full detailed sections to the existing file:_
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-23 00:35]** `claude_cli/claude`  
 → can you explain How should I force electorn to flash the memory as I do not see any change at the ui. is there is someth
 ← _---  **On forcing Electron to reload:**  There is no magic — Electron's renderer is essentially Chromium. Here's what to try, in order:  1. **Hard reload while app is open**: `Cmd+Shift+R` (Mac) — cle_
-
-**[2026-03-23 00:21]** `claude_cli/claude`  
-→ It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that st
-← _Now quick syntax check:_
