@@ -1,7 +1,51 @@
 # Project Memory — aicli
-_Generated: 2026-03-26 21:58 UTC by aicli /memory_
+_Generated: 2026-03-26 22:00 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform built on Python + FastAPI backend with Electron + Vanilla JS frontend, providing semantic search via PostgreSQL pgvector, async DAG workflow execution, and MCP integration for work item management across multiple LLM providers. Currently in active development with 18+ feature/task/doc entities tracked; recent focus on frontend build stability, backend initialization robustness, and implementing status-driven task workflow in the UI Planner.
+
+## Project Facts
+
+- **auth_pattern**: login_as_first_level_hierarchy
+- **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
+- **data_model_hierarchy**: clients_contain_multiple_users
+- **data_persistence_issue**: tags_disappear_on_session_switch
+- **db_engine**: SQL
+- **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
+- **deployment_target**: Claude_CLI_and_LLM_platforms
+- **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
+- **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
+- **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
+- **memory_management_pattern**: load_once_on_access_update_on_save
+- **pending_implementation**: memory_items_and_project_facts_table_population
+- **pending_issues**: project_visibility_bug_active_project_not_displaying
+- **performance_optimization**: redundant_SQL_calls_eliminated
+- **pipeline/auth**: Acceptance criteria:
+# PM Analysis: Email Verification Feature
+
+---
+
+## Context Summary
+
+The tagged context reveals this work item is an **incremental enhancement** to an existing authentication system. Sign In and Create Account forms are already live and functional. The prior PM analysis identified email verification as the missing layer—the system currently accepts any email without confirming ownership. The analys
+
+Reviewer: ```json
+{
+  "passed": false,
+  "score": 4,
+  "issues": [
+    "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
+- **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
+- **stale_code_removed**: db_ensure_project_schema_call_replaced_with_ensure_shared_schema
+- **tagging_system**: nested_hierarchy_beyond_2_levels
+- **tagging_system_hierarchy**: nested_hierarchy_beyond_2_levels_approved
+- **ui_action_menu_pattern**: 3_dot_menu_for_action_visibility
+- **ui_library**: 3_dot_menu_pattern
+- **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
+- **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
 
 ## Tech Stack
 
@@ -19,7 +63,7 @@ _Generated: 2026-03-26 21:58 UTC by aicli /memory_
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
-- **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
+- **deployment**: Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
@@ -47,56 +91,126 @@ _Generated: 2026-03-26 21:58 UTC by aicli /memory_
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
-- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
 - _ensure_shared_schema pattern replaces old ensure_project_schema method; retry logic handles empty project list on first load
+- Backend startup via bash start_backend.sh; Electron app auto-connects to port 127.0.0.1:8000; keep terminal window open during dev
 
 ## In Progress
 
-- Frontend build tooling fix (2026-03-23) — Resolved `npm run build` failing on missing DMG background image in old/ folder; confirmed ui/node_modules missing and reinstalled dependencies; verified Vite dev server and dev tools shortcuts (Cmd+R, Cmd+Option+I) now functional
-- UI update visibility issue (2026-03-23) — Debugged changes not reflecting in browser; root cause was missing node_modules in ui/ directory; confirmed full setup sequence (kill processes, npm install, npm run dev) restores hot reload functionality
-- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; user reports status not visible in UI Planner tab; enforce missing data detection at creation and sync with database
-- Tag visibility and review (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
-- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; timing issue during backend initialization; requires further investigation and fix
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
+- Backend startup stability (2026-03-26) — Documented proper backend initialization sequence: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
+- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload working; confirmed full setup sequence (kill, npm install, npm run dev)
+- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; enforce missing data detection at creation and sync with database
+- Tag visibility and management (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
+- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; fixed stale db.ensure_project_schema() calls; backend startup race condition now handled by retry logic for empty project lists
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
 
-## Recent Work (last 10 exchanges)
+## Active Features / Bugs / Tasks
 
-**[2026-03-26 21:57]** `claude_cli/claude`
-Q: I do not see the backend starting
-A: Backend is clean — no errors. Now can you clarify what "upload the AiCli project" means? Is it:  1. **Creating a new project workspace** called "aicli" in the UI? 2. **The project selector** in the UI not showing/loading the project? 3. **Something specific** in the Settings or Admin tab?  Also — ar
+### Bug
 
-**[2026-03-26 21:48]** `claude_cli/claude`
-Q: The backend is not loading properly. Also I cannot upload the AiCli proejct
-A: Backend is clean — no errors. Now can you clarify what "upload the AiCli project" means? Is it:  1. **Creating a new project workspace** called "aicli" in the UI? 2. **The project selector** in the UI not showing/loading the project? 3. **Something specific** in the Settings or Admin tab?  Also — ar
+- **hooks** `(120 events, 102 commits)`
 
-**[2026-03-24 15:36]** `claude_cli/claude`
-Q: Can you proide short summery what is AiCli - I would like to add that into my website. it suppose to be the main tools I am using to help customer build project fast and scalblae. pleae explain (marke
-A: # aicli — AI-Powered Development Platform  **Stop re-explaining your project to every AI tool. aicli gives every LLM the same shared memory — so Claude CLI, Cursor, your web UI, and your agents all pick up exactly where you left off.**  ---  ## What Is aicli?  aicli is a development acceleration pla
+### Doc_type
 
-**[2026-03-23 01:21]** `claude_cli/claude`
-Q: yes
-A: Pushed successfully. Here's what was done:  1. **Hook fix** — Removed `set -euo pipefail` from `auto_commit_push.sh`. That was the root cause: any command silently redirecting stderr to `/dev/null` (like `git add -A 2>/dev/null`) would cause the script to exit 1 with no output — exactly the "No stde
+- **low-level-design** `(52 events, 50 commits)`
+- **Test** `(39 events, 37 commits)`
+- **high-level-design** `(1 events)`
+- **customer-meeting** — dsds
+- **retrospective**
 
-**[2026-03-23 01:06]** `claude_cli/claude`
-Q: There is again the problem with the hooks - Stop hook error: Failed with non-blocking status code: No stderr output. Also I remove the old folder from the project
-A: The large Electron binaries (150+ MB) were added in commit `ae89abd` and deleted in `b416c01`, but GitHub still rejects because the blobs exist in the history being pushed. The cleanest fix is to squash those 4 unpushed commits — since the large files were added then deleted, they'll cancel out in t
+### Feature
 
-**[2026-03-23 00:55]** `claude_cli/claude`
-Q: I think there is another issue , as I cannot see any uodate at the UI . I dod location.reload(true) using the dev tools - but nothing is changed
-A: `ui/` is missing `node_modules`. You need to install dependencies first. Here's the full sequence:  ```bash # 1. Kill the old/ui Vite process kill -9 45399  # 2. Install dependencies in the correct ui/ directory cd /Users/user/Documents/gdrive_cellqlick/2026/aicli/ui npm install  # 3. Start the app 
+- **UI** `(106 events, 97 commits)`
+- **auth** `(105 events, 98 commits)`
+- **shared-memory** `(104 events, 97 commits)`
+- **graph-workflow** `(95 events, 87 commits)`
+- **workflow-runner** `(80 events, 77 commits)`
+- **billing** `(62 events, 60 commits)`
+- **tagging** `(52 events, 50 commits)`
+- **mcp** `(51 events, 50 commits)`
+- **embeddings** `(39 events, 37 commits)`
+- **test-picker-feature** `(11 events, 10 commits)`
+- **dropbox**
+- **pagination**
 
-**[2026-03-23 00:48]** `claude_cli/claude`
-Q: When I run npm run build I still got an error - Error #1 -------------------------------------------------------------------------------- Error: ENOENT: no such file or directory, stat '/Users/user/Do
-A: ---  **What was wrong and how it's fixed:**  | Problem | Root cause | Fix | |---|---|---| | Can't open DevTools | No global shortcut registered; menu only | `globalShortcut.register(Cmd+Option+I)` + **auto-opens DevTools in dev mode** | | Changes don't show | Cmd+R not registered as global shortcut 
+### Phase
 
-**[2026-03-23 00:42]** `claude_cli/claude`
-Q: I alway run using npm build dev (not npm run build) when I run npm run build I got errors regarding to old folder such aicli/old/ui/static/dmg-bg.png is not exists - Error: ENOENT: no such file or dir
-A: ---  **What was wrong and how it's fixed:**  | Problem | Root cause | Fix | |---|---|---| | Can't open DevTools | No global shortcut registered; menu only | `globalShortcut.register(Cmd+Option+I)` + **auto-opens DevTools in dev mode** | | Changes don't show | Cmd+R not registered as global shortcut 
+- **discovery** `(103 events, 97 commits)`
+- **development** `(101 events, 89 commits)`
+- **prod**
 
-**[2026-03-23 00:35]** `claude_cli/claude`
-Q: can you explain How should I force electorn to flash the memory as I do not see any change at the ui. is there is something more distinct than task (I think its good for now). maybe it will be easier 
-A: ---  **On forcing Electron to reload:**  There is no magic — Electron's renderer is essentially Chromium. Here's what to try, in order:  1. **Hard reload while app is open**: `Cmd+Shift+R` (Mac) — clears the renderer cache for this session 2. **Open DevTools first** (`Cmd+Option+I`), then reload — D
+### Task
 
-**[2026-03-23 00:21]** `claude_cli/claude`
-Q: It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that status if there is missing data such as description . I annot see that in the UI /
-A: Now quick syntax check:
+- **memory** `(52 events, 47 commits)`
+- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
+
+## Recent Memory
+
+> Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `session: 5b19c863-f99a-439c-b595-b415d0d342ed` — 2026-03-16
+
+# Development Session Summary
+
+**Session Focus**: Architecture audit and capability assessment of memory management, tagging system, and MCP integration
+
+**Actions Completed**:
+• Executed `/memory` command to audit data storage layers and tagging system functionality
+• Reviewed how MCP integrates with memory layer for embedding and data retrieval
+• Validated tag system implementation for data organization across Claude CLI and other LLMs
+
+**Key Questions Addressed**:
+• Refactor impact on tag usage and memory efficiency from new summarization process
+• MCP's capability to answer work item management queries and generate workflows
+• Whether improved architecture enables better complex project delivery
+• Real-time MCP functionality and data retrieval accuracy within session
+
+**Findings/Outcomes**: [INCOMPLETE - Session summary ends mid-question; actual results, performance metrics, identified issues, and recommendations not documented]
+
+**Follow-up Needed**: Clarify final question intent and document concrete findings from /memory audit and MCP capability test
+
+### `session: 03f774e9-ad60-4cf3-8c0c-0191ba9a78d0` — 2026-03-16
+
+# Development Session Summary (2026-03-10)
+
+• **Database Performance Issue**: Identified multiple redundant SQL calls slowing the system; implemented strategy to load data once on project access (e.g., tags into memory) and only update DB on explicit save actions
+
+• **Tag Hierarchy Enhancement**: Approved nested tags feature to expand beyond current 2-level hierarchy (category → tag); confirmed login will be first-level only
+
+• **UI/UX Improvements for Planner**:
+  - Increased visibility of action options (currently too small)
+  - Replaced small action buttons with 3-dot menu button to improve clarity
+  - Added ability to unarchive archived items
+
+• **Data Persistence Bug**: Discovered tags saved in UI disappear when switching sessions—unclear if UI rendering issue or database save failure; requires investigation
+
+• **AI Suggestions UI**: Need to make `/memory` suggestions more visible and clearly labeled as "AI suggestions requiring approval," including which session they apply to and direct GitHub commit links
+
+• **Backend Stability**: Intermittent app restart failures due to port 127.0.0.1:8000 binding conflicts
+
+### `session: 8f29a8d3-13a3-42ed-9219-de7bfe53e3d2` — 2026-03-18
+
+# Development Session Summary (2026-03-18)
+
+## Issues Fixed
+
+• **AttributeError in `main.py`** — Removed stale `db.ensure_project_schema(settings.active_project)` call (method doesn't exist; should use `_ensure_shared_schema` instead)
+
+• **Memory endpoint CLAUDE.md template error** — Undefined `code_dir` variable at line 1120 causing runtime failure; variable now properly scoped/defined from config
+
+• **Backend startup race condition** — Modified `_continueToApp()` retry logic to handle edge case where projects load succeeds but returns empty list (prevents false "project not found" errors on first load)
+
+## Issues Identified but Unresolved
+
+• **Project visibility bug** — AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization; **PENDING: Further investigation**
+
+## Design Gaps Requiring Implementation
+
+• **memory_items and project_facts tables not updating** — Per original specification, these tables should be populated to enable improved memory/context mechanism, but update logic not implemented; **PENDING: Implementation and testing**
+
+## Data Model Clarification
+
+• Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-26]** `claude_cli` — Documented backend startup sequence: run `bash start_backend.sh` in terminal, keep open; Electron auto-connects to localhost:8000; fixes intermittent port 127.0.0.1:8000 binding conflicts that caused app restart failures. **[2026-03-23]** `frontend_tooling` — Restored Electron build: fixed missing DMG background image in old/ folder, reinstalled ui/node_modules, verified Vite dev server (Cmd+R, Cmd+Option+I shortcuts now working); resolved npm run build and hot reload failures. **[2026-03-23]** `feature_status_workflow` — Approved red 'add_info' status for missing descriptions and green 'active' status for complete work items; requires UI enforcement at creation and DB sync. **[2026-03-23]** `tag_management` — User requested tag review (bug/feature priority); plan to implement tag management UI in Planner tab for direct visibility and editing; confirm hierarchy persists across sessions. **[2026-03-18]** `project_visibility_bug` — Fixed stale `db.ensure_project_schema()` calls (replaced with `_ensure_shared_schema`); fixed memory endpoint template scoping (`code_dir` variable); improved backend startup retry logic to handle empty project lists on first load; AiCli visibility issue still pending investigation. **[pending]** `memory_persistence` — Tables memory_items_{p} and project_facts_{p} exist in schema but update logic not yet implemented; required for improved memory/context mechanism and MCP work item management capabilities.

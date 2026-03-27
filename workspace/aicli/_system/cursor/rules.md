@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-26 21:58 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-26 22:00 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -23,7 +23,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
-- **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
+- **deployment**: Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
@@ -51,13 +51,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
-- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
 - _ensure_shared_schema pattern replaces old ensure_project_schema method; retry logic handles empty project list on first load
+- Backend startup via bash start_backend.sh; Electron app auto-connects to port 127.0.0.1:8000; keep terminal window open during dev
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-23] There is again the problem with the hooks - Stop hook error: Failed with non-blocking status code: No stderr output. Als
 - [2026-03-23] yes
 - [2026-03-24] Can you proide short summery what is AiCli - I would like to add that into my website. it suppose to be the main tools I
 - [2026-03-26] The backend is not loading properly. Also I cannot upload the AiCli proejct
 - [2026-03-26] I do not see the backend starting
+- [2026-03-26] I closed all termianl , when I try to run, backend is not loading properly

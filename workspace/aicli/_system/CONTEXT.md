@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-26 21:58 UTC — do not edit manually.
+> Auto-generated 2026-03-27 09:04 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 266
-- **Last active**: 2026-03-26T21:58:10Z
+- **Sessions**: 267
+- **Last active**: 2026-03-26T22:00:05Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -28,7 +28,7 @@
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
-- **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
+- **deployment**: Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev; desktop: Electron-builder
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
@@ -43,12 +43,12 @@
 
 ## In Progress
 
-- Frontend build tooling fix (2026-03-23) — Resolved `npm run build` failing on missing DMG background image in old/ folder; confirmed ui/node_modules missing and reinstalled dependencies; verified Vite dev server and dev tools shortcuts (Cmd+R, Cmd+Option+I) now functional
-- UI update visibility issue (2026-03-23) — Debugged changes not reflecting in browser; root cause was missing node_modules in ui/ directory; confirmed full setup sequence (kill processes, npm install, npm run dev) restores hot reload functionality
-- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; user reports status not visible in UI Planner tab; enforce missing data detection at creation and sync with database
-- Tag visibility and review (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
-- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; timing issue during backend initialization; requires further investigation and fix
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
+- Backend startup stability (2026-03-26) — Documented proper backend initialization sequence: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
+- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload working; confirmed full setup sequence (kill, npm install, npm run dev)
+- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; enforce missing data detection at creation and sync with database
+- Tag visibility and management (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
+- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; fixed stale db.ensure_project_schema() calls; backend startup race condition now handled by retry logic for empty project lists
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
 
 ## Key Decisions
 
@@ -65,8 +65,8 @@
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
-- Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
 - _ensure_shared_schema pattern replaces old ensure_project_schema method; retry logic handles empty project list on first load
+- Backend startup via bash start_backend.sh; Electron app auto-connects to port 127.0.0.1:8000; keep terminal window open during dev
 
 ---
 
@@ -160,6 +160,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-26 22:02]** `claude_cli/claude`  
+→ how do I run the ui ? 
+
+**[2026-03-26 21:59]** `claude_cli/claude`  
+→ I closed all termianl , when I try to run, backend is not loading properly 
+← _Backend is running now. For next time, **open a terminal and run**:  ```bash cd /Users/user/Documents/gdrive_cellqlick/2026/aicli/backend bash start_backend.sh ```  Keep that terminal window open whil_
+
 **[2026-03-26 21:57]** `claude_cli/claude`  
 → I do not see the backend starting 
 ← _Backend is clean — no errors. Now can you clarify what "upload the AiCli project" means? Is it:  1. **Creating a new project workspace** called "aicli" in the UI? 2. **The project selector** in the UI_
@@ -211,11 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-22 23:35]** `claude_cli/claude`  
 → please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 
 ← _Good data. Here's the complete picture — what actually exists in memory for Auth, and what the Architect would do with it.  ---  ## Input to Sr. Architect  In the `standard` pipeline, the Architect re_
-
-**[2026-03-22 23:21]** `claude_cli/claude`  
-→ I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
-← _The skill loaded an old cached version — let me run this directly and also pull the auth history to give you a complete picture:_
-
-**[2026-03-22 22:48]** `claude_cli/claude`  
-→ I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
-← _Everything is working. Now update MEMORY.md:_
