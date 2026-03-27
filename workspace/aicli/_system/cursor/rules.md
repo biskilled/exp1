@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-26 22:00 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-27 09:12 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -56,8 +56,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-23] yes
-- [2026-03-24] Can you proide short summery what is AiCli - I would like to add that into my website. it suppose to be the main tools I
 - [2026-03-26] The backend is not loading properly. Also I cannot upload the AiCli proejct
 - [2026-03-26] I do not see the backend starting
 - [2026-03-26] I closed all termianl , when I try to run, backend is not loading properly
+- [2026-03-26] how do I run the ui ?
+- [2026-03-27] Allworks as expected. I would like to have full review on all memroy layers - what you are haveing now, when do you summ

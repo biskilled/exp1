@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-26 22:00 UTC by aicli /memory_
+_Generated: 2026-03-27 09:12 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform built on Python + FastAPI backend with Electron + Vanilla JS frontend, providing semantic search via PostgreSQL pgvector, async DAG workflow execution, and MCP integration for work item management across multiple LLM providers. Currently in active development with 18+ feature/task/doc entities tracked; recent focus on frontend build stability, backend initialization robustness, and implementing status-driven task workflow in the UI Planner.
 
 ## Project Facts
 
@@ -210,7 +206,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-26]** `claude_cli` — Documented backend startup sequence: run `bash start_backend.sh` in terminal, keep open; Electron auto-connects to localhost:8000; fixes intermittent port 127.0.0.1:8000 binding conflicts that caused app restart failures. **[2026-03-23]** `frontend_tooling` — Restored Electron build: fixed missing DMG background image in old/ folder, reinstalled ui/node_modules, verified Vite dev server (Cmd+R, Cmd+Option+I shortcuts now working); resolved npm run build and hot reload failures. **[2026-03-23]** `feature_status_workflow` — Approved red 'add_info' status for missing descriptions and green 'active' status for complete work items; requires UI enforcement at creation and DB sync. **[2026-03-23]** `tag_management` — User requested tag review (bug/feature priority); plan to implement tag management UI in Planner tab for direct visibility and editing; confirm hierarchy persists across sessions. **[2026-03-18]** `project_visibility_bug` — Fixed stale `db.ensure_project_schema()` calls (replaced with `_ensure_shared_schema`); fixed memory endpoint template scoping (`code_dir` variable); improved backend startup retry logic to handle empty project lists on first load; AiCli visibility issue still pending investigation. **[pending]** `memory_persistence` — Tables memory_items_{p} and project_facts_{p} exist in schema but update logic not yet implemented; required for improved memory/context mechanism and MCP work item management capabilities.

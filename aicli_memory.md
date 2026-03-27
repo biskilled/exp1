@@ -330,3 +330,311 @@ All 10 memory-related tables across the 25-table flat schema:
 | **Fire-and-forget background tasks** | Embeddings, fact extraction, auto-tag run async after `/memory` returns — user not blocked |
 | **Smart chunking** | Per-class/function code chunks + per-section markdown → precise semantic search (not just document-level) |
 | **Session-based tagging** | `mng_session_tags` tracks current phase+feature so all events in a session are automatically linked |
+
+---
+
+## MCP Server — How It Works
+
+### What Is the MCP Server?
+
+The **Model Context Protocol (MCP) server** is a bridge that exposes the full aicli memory system
+as callable tools inside **Claude Code** (this CLI) and **Cursor**. Every tool in this document's
+memory layers is accessible directly from within your AI coding session — no copy-pasting, no
+switching tabs.
+
+File: `backend/agents/mcp/server.py`
+
+### How It Is Registered
+
+**Claude Code** (`.claude/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "aicli_project": {
+      "command": "python3.12",
+      "args": ["/path/to/backend/agents/mcp/server.py"],
+      "env": {
+        "BACKEND_URL": "http://localhost:8000",
+        "ACTIVE_PROJECT": "aicli"
+      }
+    }
+  }
+}
+```
+
+**Cursor** (`.cursor/mcp.json`) — identical structure. Both point to the same server.py.
+
+### How It Works (Transport)
+
+```
+Claude Code / Cursor
+      │
+      │  stdio (JSON-RPC over stdin/stdout)
+      ▼
+server.py  (MCP Server process — spawned on IDE startup)
+      │
+      │  HTTP (httpx async)
+      ▼
+FastAPI backend  http://localhost:8000
+      │
+      ▼
+PostgreSQL + filesystem (history.jsonl, project_state.json, etc.)
+```
+
+1. The IDE spawns `server.py` as a subprocess on startup
+2. `server.py` communicates with the IDE via **stdio JSON-RPC** (MCP protocol)
+3. Every tool call translates to one or more **HTTP calls** to the FastAPI backend
+4. The backend handles all DB access, file reads, and LLM calls
+5. Results are returned as JSON text to the IDE's LLM context
+
+The MCP server has **no direct DB access** — it is a pure HTTP proxy. This means it works
+identically whether the backend is local or remote (Railway, AWS, etc.).
+
+---
+
+### The 13 MCP Tools — What Each Extracts
+
+#### 1. `search_memory` — Semantic Search
+**Backend call**: `POST /search/semantic`
+**Reads from**: `pr_embeddings` (pgvector cosine similarity, 1536-dim)
+
+**What it returns**:
+```json
+[
+  {
+    "score": 0.92,
+    "content": "chunk text...",
+    "source_type": "history|commit|code|role|doc",
+    "doc_type": "session_summary|commit_diff|code_file|role_prompt",
+    "chunk_type": "function|class|section|file_diff|summary|full",
+    "language": "python",
+    "file_path": "backend/agents/agent.py",
+    "phase": "development",
+    "feature": "react-agents"
+  }
+]
+```
+
+**Filters available**:
+- `source_types` — narrow to: `history`, `role`, `commit`, `doc`, `node_output`
+- `language` — `python`, `javascript`, etc.
+- `doc_type` — `role`, `commit`, `session_summary`, etc.
+- `file_path` — substring match on file path
+- `chunk_types` — `summary`, `function`, `class`, `section`, `file_diff`, `full`
+- `phase` — `discovery`, `development`, `testing`, `review`, `production`, `maintenance`, `bugfix`
+- `feature` — any feature tag name
+
+**When agents use it**: Every ReAct agent calls `search_memory` as its first tool — checking
+what was decided before for this area before reading or writing any files.
+
+---
+
+#### 2. `get_project_state` — Full Project Snapshot
+**Backend calls** (parallel): `GET /projects/{p}` + `GET /history/session-tags` + `GET /entities/summary` + `GET /work-items/facts` + `GET /work-items/memory-items`
+
+**Reads from**:
+- `project_state.json` — tech_stack, key_decisions, in_progress, description
+- `PROJECT.md` — first 3000 chars
+- `mng_entity_values` JOIN `mng_entity_categories` — all active features/bugs/tasks
+- `pr_project_facts` (WHERE valid_until IS NULL) — durable architectural facts
+- `pr_memory_items` — 3 most recent distilled session summaries
+- `mng_session_tags` — current phase, feature, bug_ref
+
+**What it returns**:
+```json
+{
+  "project": "aicli",
+  "project_md": "# aicli — Shared AI Memory...",
+  "description": "AI-powered development platform",
+  "default_provider": "claude",
+  "active_tags": { "phase": "development", "feature": "react-agents", "bug_ref": null },
+  "entities": {
+    "feature": [{ "name": "react-agents", "status": "active", "event_count": 12, "commit_count": 3 }],
+    "bug":     [{ "name": "hook-failure", "status": "done",   "event_count": 4,  "commit_count": 1 }]
+  },
+  "project_facts": {
+    "auth_method": "JWT + bcrypt",
+    "database": "PostgreSQL 15 + pgvector",
+    "frontend": "Electron + Vanilla JS"
+  },
+  "recent_memory": [
+    { "scope": "session", "ref": "abc-123", "summary": "Implemented ReAct agent tools..." }
+  ]
+}
+```
+
+**When to call it**: At the start of every new session. Gives the LLM a complete picture of
+what is being built, what's in progress, and what the current focus area is.
+
+---
+
+#### 3. `get_recent_history` — Last N Interactions
+**Backend call**: `GET /history/chat?project=X&limit=N`
+**Reads from**: `history.jsonl` (or `pr_interactions` if synced)
+
+**What it returns**:
+```json
+{
+  "entries": [
+    {
+      "ts": "2026-03-27T14:30",
+      "source": "claude_cli",
+      "provider": "claude",
+      "phase": "development",
+      "feature": "react-agents",
+      "prompt": "How should I wire the ReAct loop...",
+      "response_preview": "The ReAct loop should..."
+    }
+  ],
+  "total": 20
+}
+```
+
+**Filters**: `provider` (claude/openai/…), `phase`, `feature`
+**Prompt truncated to**: 300 chars | **Response truncated to**: 200 chars
+
+---
+
+#### 4. `get_commits` — Commit History with Tags
+**Backend call**: `GET /history/commits?project=X&limit=N`
+**Reads from**: `pr_commits` (or `commit_log.jsonl` fallback)
+
+**What it returns**: List of commits with `commit_hash`, `commit_msg`, `phase`, `feature`,
+`bug_ref`, `session_id`, `committed_at`. Also returns `untagged_count` — a red-flag counter
+for commits with no phase tag (these represent ungoverned work).
+
+---
+
+#### 5. `get_tagged_context` — Everything for a Phase or Feature
+**Backend call**: `GET /search/tagged?phase=X&feature=Y`
+**Reads from**: `pr_events` JOIN `pr_event_tags` JOIN `mng_entity_values` + `pr_commits`
+
+**What it returns**: All prompts, responses, and commits that were tagged with the specified
+phase or feature — the complete decision + implementation history for that area.
+
+**Use case**: Before starting work on feature X, call `get_tagged_context(feature="X")` to
+see every decision, design discussion, and commit that touched it.
+
+---
+
+#### 6. `get_session_tags` — Current Context
+**Backend call**: `GET /history/session-tags`
+**Reads from**: `mng_session_tags` (one row per client+project)
+
+**Returns**: `{ "phase": "development", "feature": "react-agents", "bug_ref": null }`
+
+These tags are injected into every prompt and event automatically, linking all work in the
+current session to the active feature.
+
+---
+
+#### 7. `set_session_tags` — Switch Working Context
+**Backend call**: `PUT /history/session-tags?project=X`
+**Writes to**: `mng_session_tags`
+
+Sets the active phase and feature. All subsequent prompts and commits in this session will
+carry these tags automatically. When you switch features, call this first.
+
+---
+
+#### 8. `commit_push` — Commit from Cursor
+**Backend call**: `POST /git/{project}/commit-push`
+
+Triggers the backend's git commit + push pipeline. Auto-generates a commit message using
+Claude Haiku, stages all changed files, commits, pushes, and logs to `commit_log.jsonl`
+with `source="cursor_mcp"`. The session_id is preserved so the commit is traceable to the
+Cursor session that made the changes.
+
+---
+
+#### 9. `create_entity` — Add to Planner
+**Backend calls**: `GET /entities/categories` → `POST /entities/values`
+**Writes to**: `mng_entity_values`
+
+Creates a new feature, bug, task, or component in the Planner. Returns `seq_num` (e.g. `#10005`)
+which becomes the permanent short reference for this item across all tools, commits, and agents.
+
+---
+
+#### 10. `list_work_items` — Structured Work Items
+**Backend call**: `GET /work-items?project=X&category=Y&status=Z`
+**Reads from**: `pr_work_items` JOIN `mng_entity_categories`
+
+**What it returns** per item: `seq_num` (#10005), `name`, `category`, `lifecycle_status`
+(idea→design→development→testing→review→done), `agent_status` (pipeline running/done/idle),
+`criteria_preview` (first 120 chars of acceptance_criteria), `due_date`.
+
+**Filters**: `category` (feature/bug/task), `status` (active/done/archived)
+
+---
+
+#### 11. `run_work_item_pipeline` — Trigger 4-Agent Pipeline
+**Backend call**: `POST /work-items/{id}/run-pipeline`
+
+Triggers the PM → Architect → Developer → Reviewer ReAct pipeline for a work item.
+Runs in background. Returns immediately with `status: "pipeline started"`. The pipeline
+writes `acceptance_criteria` and `implementation_plan` back to `pr_work_items` on completion.
+
+Can look up the item by `work_item_id` (UUID) or by `work_item_name` + `category`.
+
+---
+
+#### 12. `get_item_by_number` — Resolve #NNNNN Reference
+**Backend calls**: `GET /work-items/number/{seq}` → fallback `GET /entities/values/number/{seq}`
+
+Resolves a short sequential number to the full work item. Number ranges:
+- `#10000+` → features
+- `#20000+` → bugs
+- `#30000+` → tasks
+- `#40000+` → components
+
+Returns full item: `name`, `description`, `acceptance_criteria`, `implementation_plan`,
+`lifecycle_status`, `agent_status`, `due_date`.
+
+---
+
+#### 13. `get_db_schema` — Full Table Reference
+Returns the complete DDL reference for all 25 tables (10 `mng_` + 15 `pr_`), including
+key columns, indexes, FKs, and the `WHERE client_id=1 AND project=<name>` filter pattern
+for every `pr_` table.
+
+---
+
+### MCP Data Flow Summary
+
+```
+                        ┌──────────────────────────────┐
+  Claude Code /         │   MCP Server (server.py)     │
+  Cursor LLM            │   stdio JSON-RPC              │
+        │               │                              │
+        │  tool call    │  _dispatch(name, args)       │
+        ├──────────────►│         │                    │
+        │               │         ▼ HTTP               │
+        │               │  FastAPI  /search/semantic   │ ──► pr_embeddings (pgvector)
+        │               │          /projects/{p}       │ ──► project_state.json + PROJECT.md
+        │               │          /history/chat       │ ──► history.jsonl / pr_interactions
+        │               │          /history/commits    │ ──► pr_commits / commit_log.jsonl
+        │               │          /search/tagged      │ ──► pr_events + pr_event_tags
+        │               │          /work-items         │ ──► pr_work_items
+        │               │          /work-items/facts   │ ──► pr_project_facts
+        │               │          /work-items/memory  │ ──► pr_memory_items
+        │               │          /history/session-t  │ ──► mng_session_tags
+        │               │          /entities/summary   │ ──► mng_entity_values + categories
+        │               │          /entities/values    │ ──► mng_entity_values (write)
+        │               │          /git/{p}/commit     │ ──► git + pr_commits (write)
+        │◄──────────────│  JSON text result            │
+        │  tool result  └──────────────────────────────┘
+```
+
+### MCP vs Direct Context Files
+
+| Mechanism | When it runs | What provides |
+|-----------|-------------|---------------|
+| `CLAUDE.md` auto-load | Every Claude Code session start | Project intro + reference to MEMORY.md |
+| `MEMORY.md` (via CLAUDE.md) | Every Claude Code session start | Distilled history, tech stack, decisions |
+| MCP `get_project_state` | On demand (agent calls it) | Live state: active entities, facts, recent memory |
+| MCP `search_memory` | On demand (agent queries it) | Precise semantic matches from full history |
+| MCP `get_tagged_context` | On demand (when feature known) | Complete history for one phase/feature |
+
+The files provide **passive context** (always there, static until next `/memory`).
+The MCP tools provide **active retrieval** (called on demand, always live from DB).
