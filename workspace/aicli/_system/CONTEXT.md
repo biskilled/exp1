@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-27 09:18 UTC — do not edit manually.
+> Auto-generated 2026-03-27 09:35 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 269
-- **Last active**: 2026-03-27T09:18:00Z
+- **Sessions**: 270
+- **Last active**: 2026-03-27T09:34:44Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-27 09:28]** `claude_cli/claude`  
+→ I do see that in any llm repsonse is summerised - when is it happend, can you also add all the internal prompt you are u
+← _Now I'll append the full detailed sections to the existing file:_
+
 **[2026-03-27 09:16]** `claude_cli/claude`  
 → you ddid mention anything about the mcp that is used for memroy as well , how the mcp works, what data it extract ? 
 ← _I have everything. Now let me add a comprehensive MCP section to the existing file:_
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-23 00:21]** `claude_cli/claude`  
 → It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that st
 ← _Now quick syntax check:_
-
-**[2026-03-23 00:09]** `claude_cli/claude`  
-→ Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
-← _Good — `_plannerShowNewWorkItem` calls `_renderWorkItemTable()` directly, not `_renderTagTableFromCache()`. The refresh path is correct.  Now update memory to note `old/` should not be touched:_

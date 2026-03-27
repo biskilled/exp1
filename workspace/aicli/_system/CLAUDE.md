@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-26] `claude_cli`: I do not see the backend starting 
 - [2026-03-26] `claude_cli`: I closed all termianl , when I try to run, backend is not loading properly 
 - [2026-03-26] `claude_cli`: how do I run the ui ? 
 - [2026-03-27] `claude_cli`: Allworks as expected. I would like to have full review on all memroy layers - what you are haveing n
 - [2026-03-27] `claude_cli`: you ddid mention anything about the mcp that is used for memroy as well , how the mcp works, what da
+- [2026-03-27] `claude_cli`: I do see that in any llm repsonse is summerised - when is it happend, can you also add all the inter
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
