@@ -789,7 +789,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                                     "UNIQUE(client_id, project, category_name, name)"],
                     "filter": "WHERE client_id=1 AND project=%s",
                 },
-                "pr_interactions": {
+                "pr_prompts": {
                     "purpose": "Unified prompt/response log (distilled memory source)",
                     "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
                                     "work_item_id FK→pr_work_items", "session_id TEXT",
@@ -797,9 +797,9 @@ async def _dispatch(name: str, args: dict) -> Any:
                                     "prompt TEXT", "response TEXT", "phase TEXT", "metadata JSONB"],
                     "filter": "WHERE client_id=1 AND project=%s",
                 },
-                "pr_interaction_tags": {
-                    "purpose": "Links interactions to work items (junction table)",
-                    "key_columns": ["interaction_id UUID FK→pr_interactions",
+                "pr_prompt_tags": {
+                    "purpose": "Links prompts to work items (junction table)",
+                    "key_columns": ["interaction_id UUID FK→pr_prompts",
                                     "work_item_id UUID FK→pr_work_items",
                                     "auto_tagged BOOLEAN", "PK(interaction_id, work_item_id)"],
                 },

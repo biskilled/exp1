@@ -30,4 +30,4 @@ on_rejection:
 
 # Post-run actions
 on_completion:
-  save_memory: true            # persist full workflow result to pr_interactions
+  save_memory: true            # persist full workflow result to pr_prompts

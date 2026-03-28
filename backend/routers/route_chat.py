@@ -36,7 +36,7 @@ _SQL_INSERT_PROMPT_EVENT = """
 """
 
 _SQL_INSERT_INTERACTION = """
-    INSERT INTO pr_interactions
+    INSERT INTO pr_prompts
            (client_id, project, session_id, llm_source, event_type, source_id,
             prompt, response, phase, metadata, created_at)
        VALUES (1, %s, %s, %s, 'prompt', %s, %s, %s, %s, %s::jsonb, %s::timestamptz)

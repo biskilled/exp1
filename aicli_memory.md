@@ -19,7 +19,7 @@ Storage is **dual-track**: JSONL files (fast write, portable, no DB required) + 
 | Layer | Storage | Written by | Purpose |
 |-------|---------|------------|---------|
 | 1 — Immediate | In-memory (Python list) | LLM provider adapters | Current conversation window |
-| 2 — Working | `history.jsonl` + `pr_interactions` | Hooks + chat.py + pipeline | Raw prompts + responses |
+| 2 — Working | `history.jsonl` + `pr_prompts` | Hooks + chat.py + pipeline | Raw prompts + responses |
 | 3 — Project | `CLAUDE.md`, `MEMORY.md`, `context.md`, `rules.md`, `copilot.md` | `/memory` command | Synthesized files read by each AI tool |
 | 4 — Historical | `pr_events`, `pr_commits`, `pr_embeddings` | Background sync + hooks | Permanent tagged + searchable record |
 | 5 — Global | `pr_memory_items`, `pr_project_facts` | `/memory` distillation pipeline | Distilled facts + summaries |
@@ -51,7 +51,7 @@ The raw material that feeds all summarization. Every prompt and response ends up
 | `workspace/{p}/_system/dev_runtime_state.json` | `log_session_stop.sh` | last_session_id, session_count, last_provider |
 | `workspace/{p}/_system/project_state.json` | `/memory` command | tech_stack, key_decisions, in_progress, last_memory_run, _synthesis_cache |
 
-### Database — `pr_interactions`
+### Database — `pr_prompts`
 
 **Primary prompt/response log**. This is the table that feeds session summarization.
 
@@ -72,7 +72,7 @@ metadata        — JSONB extra fields
 **Written by**:
 - `route_chat._append_history()` — every UI chat response
 - `orchestrator.py` `AgentWorkflow` — after each pipeline stage completes
-- `session_bulk_tag()` also writes `pr_interaction_tags` linking interactions → work_items
+- `session_bulk_tag()` also writes `pr_prompt_tags` linking interactions → work_items
 
 **Read by**: `_summarize_session_memory()` — the session distillation pipeline
 
@@ -157,7 +157,7 @@ metadata        — JSONB: phase, feature, entity_tags ([{id, name, category}])
 
 The most common question: **why are there two "event" tables?**
 
-| Aspect | `pr_interactions` | `pr_events` |
+| Aspect | `pr_prompts` | `pr_events` |
 |--------|------------------|-------------|
 | Written by | `chat.py` (UI), `orchestrator.py` (pipeline) | `_do_sync_events()` (bulk import from JSONL) |
 | When written | Real-time, immediately after each prompt | Async, during `/memory` background sync |
@@ -168,17 +168,17 @@ The most common question: **why are there two "event" tables?**
 
 **The chain**:
 ```
-pr_interactions → _summarize_session_memory() → pr_memory_items → pr_project_facts
+pr_prompts → _summarize_session_memory() → pr_memory_items → pr_project_facts
 pr_events       → pr_event_tags               → pr_embeddings.metadata (entity filter)
 ```
 
 **Can they be merged?** Technically yes — both hold prompt text. In practice they serve
 different read patterns:
-- `pr_interactions` is optimized for `GROUP BY session_id HAVING COUNT(*) >= 3` (sequential scan of text)
+- `pr_prompts` is optimized for `GROUP BY session_id HAVING COUNT(*) >= 3` (sequential scan of text)
 - `pr_events` is optimized for `JOIN pr_event_tags ON event_id` (lookup by entity)
 
 A future refactor could unify them with a single `pr_events` table that gains the
-`response`, `work_item_id`, and `session_id` columns from `pr_interactions`. This would
+`response`, `work_item_id`, and `session_id` columns from `pr_prompts`. This would
 eliminate the sync step and simplify the architecture. The main risk: the bulk import
 pattern (`_do_sync_events`) would need to be replaced by real-time writes.
 
@@ -195,7 +195,7 @@ id (UUID), client_id=1, project
 scope           — 'session' | 'feature'
 scope_ref       — session_id (for session) | work_item name (for feature)
 content         — synthesized summary (Trycycle improved if score < 7)
-source_ids      — UUID[] — which pr_interactions rows were summarized
+source_ids      — UUID[] — which pr_prompts rows were summarized
 reviewer_score  — 1-10 Haiku quality rating
 reviewer_critique — Haiku critique text
 ```
@@ -203,12 +203,12 @@ reviewer_critique — Haiku critique text
 **Two scopes**:
 
 **`scope='session'`**: Created by `_summarize_session_memory()`. Triggered by `/memory`.
-Summarizes all `pr_interactions` for sessions with ≥3 prompts not yet in memory_items.
+Summarizes all `pr_prompts` for sessions with ≥3 prompts not yet in memory_items.
 Two Haiku calls (summarize → Trycycle review). One row per session_id.
 
 **`scope='feature'`**: Created by `_summarize_feature_memory()`. Triggered when a work item
 `lifecycle_status` is set to `'done'`. Collects session memory_items whose `source_ids`
-overlap with that work item's `pr_interaction_tags`, then uses two Haiku calls to write
+overlap with that work item's `pr_prompt_tags`, then uses two Haiku calls to write
 a permanent feature postmortem. One row per work item (scope_ref = work item name).
 
 Both scopes are immediately embedded into `pr_embeddings` (doc_type = 'session_summary'
@@ -235,7 +235,7 @@ Query what was true at any past timestamp: `WHERE valid_until IS NULL OR valid_u
 
 **The chain**:
 ```
-pr_interactions (≥3 prompts/session)
+pr_prompts (≥3 prompts/session)
         ↓  _summarize_session_memory()  [2× Haiku, Trycycle]
         ↓
 pr_memory_items (scope='session')
@@ -284,7 +284,7 @@ pr_project_facts
    - Formatted for LLM: "[feature] react-agents (active) | 12 events, 3 commits"
 
 5. Session distillation — _summarize_session_memory(project)   [AWAITED — runs before synthesis]
-   - Finds sessions in pr_interactions with ≥3 prompts, no pr_memory_items row yet
+   - Finds sessions in pr_prompts with ≥3 prompts, no pr_memory_items row yet
    - For each session (up to 10 per /memory run):
        Haiku Call 1: summarize → Haiku Call 2: Trycycle review
        INSERT pr_memory_items(scope='session', reviewer_score, source_ids)
@@ -381,7 +381,7 @@ SELECT i.session_id, COUNT(*) AS cnt,
            || CASE WHEN i.response != '' THEN E'\n A: ' || LEFT(i.response,200) ELSE '' END,
            E'\n\n' ORDER BY i.created_at
        ) AS history_text
-FROM pr_interactions i
+FROM pr_prompts i
 WHERE i.client_id=1 AND i.project=%s
   AND i.event_type='prompt'
   AND i.session_id IS NOT NULL
@@ -442,7 +442,7 @@ SELECT m.content
 FROM pr_memory_items m
 WHERE m.client_id=1 AND m.project=%s AND m.scope='session'
   AND EXISTS (
-      SELECT 1 FROM pr_interaction_tags it
+      SELECT 1 FROM pr_prompt_tags it
       WHERE it.work_item_id=%s::uuid
         AND it.interaction_id = ANY(m.source_ids)
   )
@@ -846,7 +846,7 @@ seq_num — unique sequential number per category (features: 10000+, bugs: 20000
 |-------|-------|--------|
 | `mng_session_tags` | Current session → phase + feature + bug_ref | User (tag bar / MCP set_session_tags) |
 | `pr_event_tags` | `pr_events` row → `mng_entity_values` row | Auto-propagation + manual History tagging |
-| `pr_interaction_tags` | `pr_interactions` row → `pr_work_items` row | Bulk session tag |
+| `pr_prompt_tags` | `pr_prompts` row → `pr_work_items` row | Bulk session tag |
 | `mng_entity_value_links` | `mng_entity_values` → `mng_entity_values` | Manual (dependency graph) |
 
 ### Tagging Paths
@@ -854,7 +854,7 @@ seq_num — unique sequential number per category (features: 10000+, bugs: 20000
 **Path 1 — Session tag bar**:
 1. User sets phase/feature in UI → `PUT /history/session-tags`
 2. Upserts `mng_session_tags` (one row per project)
-3. All subsequent `pr_events` and `pr_interactions` carry `phase` + `feature`
+3. All subsequent `pr_events` and `pr_prompts` carry `phase` + `feature`
 
 **Path 2 — Manual ⬡ Tag on History entry**:
 1. UI sends `POST /entities/events/tag-by-source-id` with `{source_id, entity_value_id}`
@@ -865,7 +865,7 @@ seq_num — unique sequential number per category (features: 10000+, bugs: 20000
 `POST /entities/session-tag` with `{session_id, entity_name, category_name}`:
 1. Resolve or create `mng_entity_values` row
 2. Tag all `pr_events` for the session → `pr_event_tags`
-3. Link all `pr_interactions` to work_item → `pr_interaction_tags`
+3. Link all `pr_prompts` to work_item → `pr_prompt_tags`
 
 **Path 4 — Auto-propagation** (runs in `_do_sync_events()`):
 ```sql
@@ -1021,7 +1021,7 @@ ReAct agents in the pipeline have these tools via `backend/agents/tools/`:
 | Tool | File | Reads from |
 |------|------|-----------|
 | `search_memory` | `tool_memory.py` | `pr_embeddings` (pgvector, direct DB) |
-| `get_recent_history` | `tool_memory.py` | `pr_interactions` (direct DB) |
+| `get_recent_history` | `tool_memory.py` | `pr_prompts` (direct DB) |
 | `get_project_facts` | `tool_memory.py` | `workspace/{p}/_system/project_state.json` |
 | `list_work_items` | `tool_workitems.py` | `pr_work_items JOIN mng_entity_categories` |
 | `create_work_item` | `tool_workitems.py` | `pr_work_items` + `mng_entity_values` (write) |
@@ -1043,8 +1043,8 @@ All 10 memory-related tables:
 
 | Table | Purpose | Written by | Read by |
 |-------|---------|-----------|---------|
-| `pr_interactions` | Prompt/response log (session summarization feed) | chat.py + pipeline | `_summarize_session_memory()` |
-| `pr_interaction_tags` | Links interactions → work items | `session_bulk_tag()` | `_summarize_feature_memory()` |
+| `pr_prompts` | Prompt/response log (session summarization feed) | chat.py + pipeline | `_summarize_session_memory()` |
+| `pr_prompt_tags` | Links interactions → work items | `session_bulk_tag()` | `_summarize_feature_memory()` |
 | `pr_events` | Typed event ledger (tagging + relationship layer) | `_do_sync_events()` | pr_event_tags, `get_tagged_context` MCP |
 | `pr_event_tags` | Events → entity values (Planner tags) | Auto-propagation + History tab | `backfill_entity_tags()`, entity summary |
 | `pr_event_links` | Causal event relationships | `_detect_relationships()` | Relationship queries |
@@ -1060,7 +1060,7 @@ All 10 memory-related tables:
 
 | Decision | Why |
 |----------|-----|
-| **Two event tables** (pr_events + pr_interactions) | Different read patterns: pr_interactions feeds sequential summarization; pr_events feeds JOIN-heavy entity tagging. Could be merged in a future refactor. |
+| **Two event tables** (pr_events + pr_prompts) | Different read patterns: pr_prompts feeds sequential summarization; pr_events feeds JOIN-heavy entity tagging. Could be merged in a future refactor. |
 | **Trycycle review** (2× Haiku per summary) | Quality gate: score < 7 → use improved_summary; ensures only high-quality content enters Layer 5 |
 | **Incremental synthesis** | Send only new entries if distilled context exists → ~8× token savings on repeat `/memory` runs |
 | **Temporal facts** (valid_until IS NULL) | Full audit trail: query what was true at any past timestamp; change detection without data loss |

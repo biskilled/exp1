@@ -299,6 +299,30 @@ _DDL_PR_TABLES = """
 -- pgvector extension (needed for embedding columns)
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- One-time idempotent rename: pr_interactions → pr_prompts
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_interactions' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='pr_prompts' AND schemaname='public') THEN
+    ALTER TABLE pr_interactions RENAME TO pr_prompts;
+    ALTER INDEX IF EXISTS idx_pr_i_cp      RENAME TO idx_pr_p_cp;
+    ALTER INDEX IF EXISTS idx_pr_i_session RENAME TO idx_pr_p_session;
+    ALTER INDEX IF EXISTS idx_pr_i_source  RENAME TO idx_pr_p_source;
+    ALTER INDEX IF EXISTS idx_pr_i_created RENAME TO idx_pr_p_created;
+    ALTER INDEX IF EXISTS idx_pr_i_wi      RENAME TO idx_pr_p_wi;
+  END IF;
+END $$;
+
+-- One-time idempotent rename: pr_interaction_tags → pr_prompt_tags
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_interaction_tags' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='pr_prompt_tags' AND schemaname='public') THEN
+    ALTER TABLE pr_interaction_tags RENAME TO pr_prompt_tags;
+    ALTER INDEX IF EXISTS idx_pr_itag_work RENAME TO idx_pr_ptag_work;
+  END IF;
+END $$;
+
 -- Commits
 CREATE TABLE IF NOT EXISTS pr_commits (
     id               SERIAL         PRIMARY KEY,
@@ -414,8 +438,8 @@ CREATE INDEX IF NOT EXISTS idx_pr_wi_cp     ON pr_work_items(client_id, project)
 CREATE INDEX IF NOT EXISTS idx_pr_wi_cat    ON pr_work_items(category_name);
 CREATE INDEX IF NOT EXISTS idx_pr_wi_status ON pr_work_items(status);
 
--- Interactions (unified prompt/response log)
-CREATE TABLE IF NOT EXISTS pr_interactions (
+-- Prompts (unified prompt/response log)
+CREATE TABLE IF NOT EXISTS pr_prompts (
     id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id           INT           NOT NULL REFERENCES mng_clients(id),
     project             VARCHAR(255)  NOT NULL,
@@ -433,21 +457,21 @@ CREATE TABLE IF NOT EXISTS pr_interactions (
     metadata            JSONB         NOT NULL DEFAULT '{}',
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS        idx_pr_i_cp      ON pr_interactions(client_id, project);
-CREATE INDEX IF NOT EXISTS        idx_pr_i_session ON pr_interactions(session_id) WHERE session_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_i_source  ON pr_interactions(client_id, project, source_id) WHERE source_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS        idx_pr_i_created ON pr_interactions(created_at DESC);
-CREATE INDEX IF NOT EXISTS        idx_pr_i_wi      ON pr_interactions(work_item_id) WHERE work_item_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS        idx_pr_p_cp      ON pr_prompts(client_id, project);
+CREATE INDEX IF NOT EXISTS        idx_pr_p_session ON pr_prompts(session_id) WHERE session_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_p_source  ON pr_prompts(client_id, project, source_id) WHERE source_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS        idx_pr_p_created ON pr_prompts(created_at DESC);
+CREATE INDEX IF NOT EXISTS        idx_pr_p_wi      ON pr_prompts(work_item_id) WHERE work_item_id IS NOT NULL;
 
--- Interaction tags (links interactions to work items; scoped via interaction FK)
-CREATE TABLE IF NOT EXISTS pr_interaction_tags (
-    interaction_id  UUID          NOT NULL REFERENCES pr_interactions(id)  ON DELETE CASCADE,
-    work_item_id    UUID          NOT NULL REFERENCES pr_work_items(id)     ON DELETE CASCADE,
+-- Prompt tags (links prompts to work items; scoped via prompt FK)
+CREATE TABLE IF NOT EXISTS pr_prompt_tags (
+    interaction_id  UUID          NOT NULL REFERENCES pr_prompts(id)      ON DELETE CASCADE,
+    work_item_id    UUID          NOT NULL REFERENCES pr_work_items(id)    ON DELETE CASCADE,
     auto_tagged     BOOLEAN       NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     PRIMARY KEY(interaction_id, work_item_id)
 );
-CREATE INDEX IF NOT EXISTS idx_pr_itag_work ON pr_interaction_tags(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_pr_ptag_work ON pr_prompt_tags(work_item_id);
 
 -- Memory items (distilled session/feature summaries)
 CREATE TABLE IF NOT EXISTS pr_memory_items (
@@ -1086,7 +1110,7 @@ class _Database:
                  prompt, resp, phase, tags, meta, ts) = row
                 try:
                     cur.execute(
-                        """INSERT INTO pr_interactions
+                        """INSERT INTO pr_prompts
                                (id, client_id, project, work_item_id, session_id,
                                 llm_source, event_type, source_id, prompt, response,
                                 phase, tags, metadata, created_at)
@@ -1099,15 +1123,15 @@ class _Database:
                     conn.rollback()
             conn.commit()
 
-        # Interaction tags — only copy rows whose interaction_id exists in pr_interactions
+        # Prompt tags — only copy rows whose interaction_id exists in pr_prompts
         if _exists(_tbl("interaction_tags")):
             _run(f"""
-                INSERT INTO pr_interaction_tags
+                INSERT INTO pr_prompt_tags
                     (interaction_id, work_item_id, auto_tagged, created_at)
                 SELECT it.interaction_id, it.work_item_id, it.auto_tagged, it.created_at
                 FROM {_tbl("interaction_tags")} it
                 WHERE EXISTS (
-                    SELECT 1 FROM pr_interactions i WHERE i.id = it.interaction_id
+                    SELECT 1 FROM pr_prompts i WHERE i.id = it.interaction_id
                 )
                 ON CONFLICT DO NOTHING
             """)
@@ -1136,10 +1160,10 @@ class _Database:
                 FROM {_tbl("project_facts")} ON CONFLICT DO NOTHING
             """)
 
-        # Backfill pr_interactions from history.jsonl if table is empty
+        # Backfill pr_prompts from history.jsonl if table is empty
         # (handles the case where old interactions table was empty or failed migration)
         cur.execute(
-            "SELECT 1 FROM pr_interactions WHERE client_id=1 AND project=%s LIMIT 1",
+            "SELECT 1 FROM pr_prompts WHERE client_id=1 AND project=%s LIMIT 1",
             (p,),
         )
         if not cur.fetchone():
@@ -1158,7 +1182,7 @@ class _Database:
                         continue
                     try:
                         cur.execute(
-                            """INSERT INTO pr_interactions
+                            """INSERT INTO pr_prompts
                                    (client_id, project, session_id, llm_source, event_type,
                                     source_id, prompt, response, phase, metadata, created_at)
                                VALUES (1,%s,%s,%s,'prompt',%s,%s,%s,%s,%s::jsonb,%s::timestamptz)
@@ -1175,7 +1199,7 @@ class _Database:
                     except Exception:
                         conn.rollback()
                 conn.commit()
-                log.info(f"Backfilled pr_interactions for '{p}' from history.jsonl")
+                log.info(f"Backfilled pr_prompts for '{p}' from history.jsonl")
 
         # Graph tables: schema changed too significantly (int → uuid IDs, column renames).
         # Skip data migration — just drop the old tables below.

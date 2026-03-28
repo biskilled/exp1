@@ -351,7 +351,7 @@ class AgentWorkflow:
         )
 
     async def _save_workflow_memory(self, wf: WorkflowResult) -> None:
-        """Persist the full workflow summary to pr_interactions."""
+        """Persist the full workflow summary to pr_prompts."""
         from core.database import db
         if not db.is_available():
             return
@@ -367,12 +367,12 @@ class AgentWorkflow:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO pr_interactions
+                        """INSERT INTO pr_prompts
                            (client_id, project, source, session_id, content, metadata, created_at)
                            VALUES (1, %s, %s, %s, %s, %s::jsonb, NOW())""",
                         (wf.project, f"pipeline:{wf.pipeline}", wf.run_id, content, metadata),
                     )
                 conn.commit()
-            log.debug("Workflow '%s' saved to pr_interactions (run_id=%s)", wf.pipeline, wf.run_id)
+            log.debug("Workflow '%s' saved to pr_prompts (run_id=%s)", wf.pipeline, wf.run_id)
         except Exception as e:
             log.warning("Failed to save workflow memory: %s", e)

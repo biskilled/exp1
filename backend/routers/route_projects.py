@@ -42,7 +42,7 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
                   || CASE WHEN i.response != '' THEN E'\n A: ' || LEFT(i.response,200) ELSE '' END,
                   E'\n\n' ORDER BY i.created_at
               ) AS history_text
-       FROM pr_interactions i
+       FROM pr_prompts i
        WHERE i.client_id=1 AND i.project=%s
          AND i.event_type='prompt'
          AND i.session_id IS NOT NULL
@@ -75,7 +75,7 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
        FROM pr_memory_items m
        WHERE m.client_id=1 AND m.project=%s AND m.scope='session'
          AND EXISTS (
-             SELECT 1 FROM pr_interaction_tags it
+             SELECT 1 FROM pr_prompt_tags it
              WHERE it.work_item_id=%s::uuid
                AND it.interaction_id = ANY(m.source_ids)
          )
@@ -220,11 +220,11 @@ _SQL_GET_UNEMBEDDED_COMMITS = (
 )
 
 _SQL_COUNT_INTERACTIONS_TOTAL = (
-    "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt'"
+    "SELECT COUNT(*) FROM pr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt'"
 )
 
 _SQL_COUNT_INTERACTIONS_SINCE = (
-    "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
+    "SELECT COUNT(*) FROM pr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1991,7 +1991,7 @@ async def memory_status(project_name: str, bust: bool = False):
         except Exception:
             pass
 
-    # Also count from pr_interactions table (new storage)
+    # Also count from pr_prompts table (new storage)
     interactions_total = 0
     interactions_since = 0
     if db.is_available():

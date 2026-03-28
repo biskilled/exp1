@@ -1272,9 +1272,9 @@ async def session_bulk_tag(body: SessionTagBody):
                     if wi_row:
                         work_item_id = str(wi_row[0])
                         cur.execute(
-                            """INSERT INTO pr_interaction_tags (interaction_id, work_item_id, auto_tagged)
+                            """INSERT INTO pr_prompt_tags (interaction_id, work_item_id, auto_tagged)
                                SELECT i.id, %s::uuid, false
-                               FROM pr_interactions i
+                               FROM pr_prompts i
                                WHERE i.client_id=1 AND i.project=%s AND i.session_id=%s
                                ON CONFLICT DO NOTHING""",
                             (work_item_id, p, body.session_id),
@@ -1470,7 +1470,7 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
             with conn.cursor() as cur:
                 # Find interaction by source_id
                 cur.execute(
-                    "SELECT id FROM pr_interactions WHERE client_id=1 AND project=%s AND source_id=%s LIMIT 1",
+                    "SELECT id FROM pr_prompts WHERE client_id=1 AND project=%s AND source_id=%s LIMIT 1",
                     (p, body.source_id),
                 )
                 int_row = cur.fetchone()
@@ -1485,7 +1485,7 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
                     wi_row = cur.fetchone()
                     if wi_row:
                         cur.execute(
-                            """INSERT INTO pr_interaction_tags (interaction_id, work_item_id, auto_tagged)
+                            """INSERT INTO pr_prompt_tags (interaction_id, work_item_id, auto_tagged)
                                VALUES (%s::uuid, %s::uuid, false) ON CONFLICT DO NOTHING""",
                             (str(int_row[0]), str(wi_row[0])),
                         )

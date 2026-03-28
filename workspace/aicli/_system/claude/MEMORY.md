@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-28 02:24 UTC by aicli /memory_
+_Generated: 2026-03-28 02:32 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -103,40 +103,40 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(134 events, 116 commits)`
+- **hooks** `(136 events, 118 commits)`
 
 ### Doc_type
 
-- **Test** `(53 events, 51 commits)`
+- **Test** `(55 events, 53 commits)`
 - **low-level-design** `(52 events, 50 commits)`
-- **retrospective** `(25 events, 24 commits)`
-- **high-level-design** `(2 events)`
+- **high-level-design** `(28 events, 26 commits)`
+- **retrospective** `(27 events, 26 commits)`
 - **customer-meeting** — dsds
 
 ### Feature
 
-- **UI** `(121 events, 111 commits)`
-- **shared-memory** `(120 events, 111 commits)`
-- **auth** `(120 events, 112 commits)`
-- **graph-workflow** `(109 events, 101 commits)`
+- **UI** `(123 events, 113 commits)`
+- **shared-memory** `(122 events, 113 commits)`
+- **auth** `(122 events, 114 commits)`
+- **graph-workflow** `(111 events, 103 commits)`
 - **workflow-runner** `(80 events, 77 commits)`
-- **tagging** `(77 events, 74 commits)`
-- **mcp** `(76 events, 74 commits)`
-- **billing** `(76 events, 74 commits)`
-- **embeddings** `(55 events, 51 commits)`
-- **test-picker-feature** `(25 events, 24 commits)`
+- **tagging** `(79 events, 76 commits)`
+- **mcp** `(78 events, 76 commits)`
+- **billing** `(78 events, 76 commits)`
+- **embeddings** `(57 events, 53 commits)`
+- **test-picker-feature** `(27 events, 26 commits)`
 - **pagination**
 - **dropbox**
 
 ### Phase
 
-- **discovery** `(117 events, 111 commits)`
-- **development** `(116 events, 103 commits)`
+- **discovery** `(119 events, 113 commits)`
+- **development** `(118 events, 105 commits)`
 - **prod**
 
 ### Task
 
-- **memory** `(73 events, 61 commits)`
+- **memory** `(75 events, 63 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
 
 ## Recent Memory

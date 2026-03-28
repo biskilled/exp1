@@ -3,7 +3,7 @@ tool_memory.py — Agent tools for reading project memory and history.
 
 Provides direct DB/filesystem access (no HTTP round-trip) for:
   - search_memory: cosine similarity over pr_embeddings + text search in pr_events
-  - get_recent_history: latest interactions from pr_interactions
+  - get_recent_history: latest prompts from pr_prompts
   - get_project_facts: reads project_state.json durable facts
 
 These tools are assigned to research-oriented roles (PM, Architect, Reviewer)
@@ -152,8 +152,8 @@ def _handle_get_recent_history(args: dict) -> str:
                     if feature:
                         cur.execute(
                             """SELECT i.role, i.content, i.created_at
-                               FROM pr_interactions i
-                               JOIN pr_interaction_tags it ON it.interaction_id = i.id
+                               FROM pr_prompts i
+                               JOIN pr_prompt_tags it ON it.interaction_id = i.id
                                JOIN mng_entity_values ev ON ev.id = it.entity_value_id
                                WHERE i.client_id=1 AND i.project=%s AND ev.name ILIKE %s
                                ORDER BY i.created_at DESC LIMIT %s""",
@@ -162,7 +162,7 @@ def _handle_get_recent_history(args: dict) -> str:
                     else:
                         cur.execute(
                             """SELECT role, content, created_at
-                               FROM pr_interactions
+                               FROM pr_prompts
                                WHERE client_id=1 AND project=%s
                                ORDER BY created_at DESC LIMIT %s""",
                             (project, limit),

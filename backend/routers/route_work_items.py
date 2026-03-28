@@ -45,7 +45,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.created_at, w.updated_at,
               w.seq_num, w.entity_value_id,
               ec.color, ec.icon,
-              (SELECT COUNT(*) FROM pr_interaction_tags it
+              (SELECT COUNT(*) FROM pr_prompt_tags it
                WHERE it.work_item_id = w.id) AS interaction_count
        FROM pr_work_items w
        LEFT JOIN mng_entity_categories ec ON ec.client_id=1 AND ec.project=w.project AND ec.name=w.category_name
@@ -96,8 +96,8 @@ _SQL_GET_CATEGORY_ID = (
 _SQL_GET_INTERACTIONS = (
     """SELECT i.id, i.session_id, i.event_type, i.source_id,
               i.prompt, i.response, i.phase, i.created_at
-       FROM pr_interaction_tags it
-       JOIN pr_interactions i ON i.id = it.interaction_id
+       FROM pr_prompt_tags it
+       JOIN pr_prompts i ON i.id = it.interaction_id
        WHERE it.work_item_id=%s::uuid AND i.client_id=1 AND i.project=%s
        ORDER BY i.created_at DESC LIMIT %s"""
 )
@@ -166,20 +166,20 @@ _SQL_INSERT_PIPELINE_FACT = (
 )
 
 _SQL_INSERT_PIPELINE_INTERACTION = (
-    """INSERT INTO pr_interactions
+    """INSERT INTO pr_prompts
        (id, client_id, project, role, content, source, session_id, work_item_id, created_at)
        VALUES (%s, 1, %s, 'assistant', %s, 'pipeline', %s, %s::uuid, NOW())"""
 )
 
 _SQL_INSERT_PIPELINE_INTERACTION_TAG = (
-    """INSERT INTO pr_interaction_tags (interaction_id, work_item_id, auto_tagged)
+    """INSERT INTO pr_prompt_tags (interaction_id, work_item_id, auto_tagged)
        VALUES (%s::uuid, %s::uuid, TRUE) ON CONFLICT DO NOTHING"""
 )
 
 _SQL_PIPELINE_TAGGED_INTERACTIONS = (
     """SELECT i.role, i.content, i.created_at
-       FROM pr_interactions i
-       JOIN pr_interaction_tags t ON t.interaction_id = i.id
+       FROM pr_prompts i
+       JOIN pr_prompt_tags t ON t.interaction_id = i.id
        WHERE t.work_item_id = %s::uuid
        ORDER BY i.created_at DESC LIMIT 30"""
 )
@@ -615,7 +615,7 @@ def _build_pipeline_context(
 def _save_pipeline_interaction(
     project: str, item_id: str, run_id: str, item_name: str, ac: str, reviewer_out: str
 ) -> None:
-    """Save the pipeline run as an interaction in pr_interactions + tag it to the work item."""
+    """Save the pipeline run as a prompt in pr_prompts + tag it to the work item."""
     if not db.is_available():
         return
     summary = f"Pipeline run for: {item_name}"

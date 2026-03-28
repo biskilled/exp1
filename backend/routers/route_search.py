@@ -31,11 +31,11 @@ _SQL_SEARCH_EMBEDDINGS_BASE = (
 )
 
 _SQL_COUNT_INTERACTIONS_TOTAL = (
-    "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt'"
+    "SELECT COUNT(*) FROM pr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt'"
 )
 
 _SQL_COUNT_INTERACTIONS_SINCE = (
-    "SELECT COUNT(*) FROM pr_interactions WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
+    "SELECT COUNT(*) FROM pr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
