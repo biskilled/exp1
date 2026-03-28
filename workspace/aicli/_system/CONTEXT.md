@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 01:52 UTC — do not edit manually.
+> Auto-generated 2026-03-28 02:07 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 276
-- **Last active**: 2026-03-28T01:51:50Z
+- **Sessions**: 277
+- **Last active**: 2026-03-28T02:06:49Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -43,11 +43,11 @@
 
 ## In Progress
 
-- Backend startup stability (2026-03-26) — Documented proper backend initialization sequence: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
-- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload working; confirmed full setup sequence (kill, npm install, npm run dev)
+- Embedding-to-tagging integration (2026-03-28) — User requested embeddings connected to tag metadata (e.g., 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes); current implementation unclear, requires validation and design refinement
+- Backend startup stability (2026-03-26) — Documented proper backend initialization: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
+- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload; confirmed full setup sequence (kill, npm install, npm run dev)
 - Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; enforce missing data detection at creation and sync with database
-- Tag visibility and management (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
-- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; fixed stale db.ensure_project_schema() calls; backend startup race condition now handled by retry logic for empty project lists
+- Tag visibility and management (2026-03-23) — Implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
 
 ## Key Decisions
@@ -66,7 +66,7 @@
 - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - _ensure_shared_schema pattern replaces old ensure_project_schema method; retry logic handles empty project list on first load
-- Backend startup via bash start_backend.sh; Electron app auto-connects to port 127.0.0.1:8000; keep terminal window open during dev
+- Embeddings linked to tags: tag metadata captures context (e.g., auth→all authentication prompts; feature/bug→relevant code changes)
 
 ---
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-28 02:02]** `claude_cli/claude`  
+→ I would embedding to be connected to the tagging. for example auth - will be meta data of all authentication prompts.. m
+← _Now update `aicli_memory.md` to document this properly and answer the user's questions:_
+
 **[2026-03-28 01:48]** `claude_cli/claude`  
 → I would like to understand more about the embedigng and chunk methods. I do understand it is happend only when using /me
 ← _Now I have the full picture. Let me give you a complete and accurate answer.  ---  ## Embedding and Chunking — Full Explanation  ### 1. Is embedding only triggered by `/memory`?  **No** — there are 4 _
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-24 15:36]** `claude_cli/claude`  
 → Can you proide short summery what is AiCli - I would like to add that into my website. it suppose to be the main tools I
 ← _# aicli — AI-Powered Development Platform  **Stop re-explaining your project to every AI tool. aicli gives every LLM the same shared memory — so Claude CLI, Cursor, your web UI, and your agents all pi_
-
-**[2026-03-23 01:21]** `claude_cli/claude`  
-→ yes
-← _Pushed successfully. Here's what was done:  1. **Hook fix** — Removed `set -euo pipefail` from `auto_commit_push.sh`. That was the root cause: any command silently redirecting stderr to `/dev/null` (l_

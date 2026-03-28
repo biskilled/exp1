@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Backend startup stability (2026-03-26) — Documented proper backend initialization sequence: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
-- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload working; confirmed full setup sequence (kill, npm install, npm run dev)
+- Embedding-to-tagging integration (2026-03-28) — User requested embeddings connected to tag metadata (e.g., 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes); current implementation unclear, requires validation and design refinement
+- Backend startup stability (2026-03-26) — Documented proper backend initialization: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
+- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload; confirmed full setup sequence (kill, npm install, npm run dev)
 - Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; enforce missing data detection at creation and sync with database
-- Tag visibility and management (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
-- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; fixed stale db.ensure_project_schema() calls; backend startup race condition now handled by retry logic for empty project lists
+- Tag visibility and management (2026-03-23) — Implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
