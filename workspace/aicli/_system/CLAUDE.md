@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-28] `claude_cli`: Can you please rewrite aicli_memory.md. make sure all flows are exatly as they are. all prompts are 
 - [2026-03-28] `claude_cli`: Is it reccomended to merge pr_events and pr_interactions ?
 - [2026-03-28] `claude_cli`: Can you update the table name from pr_interation to pr_prompts same to pr_interation_tags to pr_prom
 - [2026-03-28] `claude_cli`: Before you continue - I would like to understand why in pr_interaction name is not change to pr_prom
 - [2026-03-28] `claude_cli`: Yes please do that, and run /memory to check P0#1, and fix P1#5 and P1#3 . also is the system loadin
+- [2026-03-28] `claude_cli`: What event insert into event table except prompts and new commits 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

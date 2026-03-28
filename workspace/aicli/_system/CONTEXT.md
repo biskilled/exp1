@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 10:33 UTC — do not edit manually.
+> Auto-generated 2026-03-28 10:41 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 285
-- **Last active**: 2026-03-28T10:32:35Z
+- **Sessions**: 286
+- **Last active**: 2026-03-28T10:41:16Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-28 10:40]** `claude_cli/claude`  
+→ What event insert into event table except prompts and new commits 
+← _`pr_events` only ever gets **two event types**:  | `event_type` | Written by | Source | |---|---|---| | `prompt` | `route_chat.py` `_append_history()` | Every chat exchange (UI + hooks) | | `prompt` |_
+
 **[2026-03-28 10:13]** `claude_cli/claude`  
 → Yes please do that, and run /memory to check P0#1, and fix P1#5 and P1#3 . also is the system loading hidtory from pr_pr
 ← _All migrations applied successfully:  - **`pr_prompts`** exists (renamed from `pr_interactions`) — 75 rows - **No embedding columns** — `prompt_embedding` and `response_embedding` are gone - **`pr_mem_
@@ -215,7 +219,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-27 09:16]** `claude_cli/claude`  
 → you ddid mention anything about the mcp that is used for memroy as well , how the mcp works, what data it extract ? 
 ← _I have everything. Now let me add a comprehensive MCP section to the existing file:_
-
-**[2026-03-27 09:07]** `claude_cli/claude`  
-→ Allworks as expected. I would like to have full review on all memroy layers - what you are haveing now, when do you summ
-← _Created `/Users/user/Documents/gdrive_cellqlick/2026/aicli/aicli_memory.md`.  Here's the summary of what's covered:  **5 Layers:** - **Layer 1** — In-memory only (current session messages, lost on exi_
