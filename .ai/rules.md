@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 10:17 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 10:32 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -56,8 +56,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-28] Can you please rewrite aicli_memory.md. make sure all flows are exatly as they are. all prompts are writeen clear for ea
-- [2026-03-28] Is it reccomended to merge pr_events and pr_interactions ?
-- [2026-03-28] Can you update the table name from pr_interation to pr_prompts same to pr_interation_tags to pr_prompts_tags. also can g
-- [2026-03-28] Before you continue - I would like to understand why in pr_interaction name is not change to pr_prompts at the db ? Also
-- [2026-03-28] Yes please do that, and run /memory to check P0#1, and fix P1#5 and P1#3 . also is the system loading hidtory from pr_pr
+- [2026-03-18] That is correct. it is bed pattern to use clinet name. there is already mng_users table that can manage client as well (
+- [2026-03-18] it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did
+- [2026-03-18] There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
+- [2026-03-18] Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
+- [2026-03-18] Few more strucure - users are also part of client (client can have mutiple users). Also I would like to understand if yo

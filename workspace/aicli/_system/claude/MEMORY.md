@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-28 10:17 UTC by aicli /memory_
+_Generated: 2026-03-28 10:32 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining Claude CLI with LLM integrations, built on Python 3.12 backend (FastAPI), PostgreSQL semantic storage (pgvector), and Electron UI (Vanilla JS + xterm.js + Cytoscape.js). The system manages project development history, embeddings, workflows, and memory synthesis via async DAG execution and Claude Haiku summarization. Current focus is consolidating dual JSONL/database storage into DB-only approach while fixing critical issues with embedding-to-tagging integration and memory table population.
 
 ## Project Facts
 
@@ -140,7 +136,7 @@ Reviewer: ```json
 
 ### Task
 
-- **memory** `(78 events, 66 commits)`
+- **memory** `(79 events, 66 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
 
 ## Recent Memory
@@ -210,7 +206,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-28]** `claude_cli` — User requested migration from dual JSONL/database storage to DB-only approach; querying whether system currently loads from pr_prompts or JSONL; consolidation needed to simplify data persistence architecture. **[2026-03-28]** `claude_cli` — Requested /memory audit for P0#1 and fixes for P1#3 and P1#5; prioritized verification of embedding-to-tagging integration where tag metadata captures context (auth→authentication prompts, feature/bug→code changes). **[2026-03-26]** `development` — Backend startup race condition resolved via retry logic handling empty project list on first load; proper initialization documented as `bash start_backend.sh` with terminal window kept open to avoid port 127.0.0.1:8000 binding conflicts. **[2026-03-23]** `development` — Frontend npm build restored (missing DMG background fixed), node_modules recovered, Vite dev server and hot reload verified; full setup sequence confirmed functional. **[2026-03-18]** `development` — Fixed AttributeError in main.py by removing stale `db.ensure_project_schema()` call; replaced with `_ensure_shared_schema` pattern; fixed memory endpoint CLAUDE.md template error (undefined code_dir variable). **[2026-03-10]** `development` — Implemented tag hierarchy enhancement (nested tags beyond 2-level), data persistence bug identified (tags disappearing on session switch), and database performance optimization (load tags once on project access, update only on save).

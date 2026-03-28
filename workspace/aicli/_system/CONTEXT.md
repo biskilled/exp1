@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 10:26 UTC — do not edit manually.
+> Auto-generated 2026-03-28 10:33 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 283
-- **Last active**: 2026-03-28T09:46:57Z
+- **Sessions**: 285
+- **Last active**: 2026-03-28T10:32:35Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -162,6 +162,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-28 10:13]** `claude_cli/claude`  
 → Yes please do that, and run /memory to check P0#1, and fix P1#5 and P1#3 . also is the system loading hidtory from pr_pr
+← _All migrations applied successfully:  - **`pr_prompts`** exists (renamed from `pr_interactions`) — 75 rows - **No embedding columns** — `prompt_embedding` and `response_embedding` are gone - **`pr_mem_
 
 **[2026-03-28 09:45]** `claude_cli/claude`  
 → Before you continue - I would like to understand why in pr_interaction name is not change to pr_prompts at the db ? Also
