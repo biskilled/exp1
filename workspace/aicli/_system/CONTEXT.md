@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 02:07 UTC — do not edit manually.
+> Auto-generated 2026-03-28 02:14 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 277
-- **Last active**: 2026-03-28T02:06:49Z
+- **Sessions**: 278
+- **Last active**: 2026-03-28T02:13:48Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-28 02:13]** `claude_cli/claude`  
+→ Can you please rewrite aicli_memory.md. make sure all flows are exatly as they are. all prompts are writeen clear for ea
+← _This is a significant research task — I need to read every prompt and understand every table before rewriting. Let me do that thoroughly first._
+
 **[2026-03-28 02:02]** `claude_cli/claude`  
 → I would embedding to be connected to the tagging. for example auth - will be meta data of all authentication prompts.. m
 ← _Now update `aicli_memory.md` to document this properly and answer the user's questions:_
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-26 21:48]** `claude_cli/claude`  
 → The backend is not loading properly. Also I cannot upload the AiCli proejct 
 ← _Backend is clean — no errors. Now can you clarify what "upload the AiCli project" means? Is it:  1. **Creating a new project workspace** called "aicli" in the UI? 2. **The project selector** in the UI_
-
-**[2026-03-24 15:36]** `claude_cli/claude`  
-→ Can you proide short summery what is AiCli - I would like to add that into my website. it suppose to be the main tools I
-← _# aicli — AI-Powered Development Platform  **Stop re-explaining your project to every AI tool. aicli gives every LLM the same shared memory — so Claude CLI, Cursor, your web UI, and your agents all pi_

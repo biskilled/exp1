@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-28 02:06 UTC by aicli /memory_
+_Generated: 2026-03-28 02:13 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform integrating Claude and other LLMs with persistent project context via dual-layer storage (JSONL + PostgreSQL/pgvector). Current focus is connecting embeddings to tag metadata for semantic organization, stabilizing backend/frontend startup, implementing status workflows for features/tasks/bugs, and populating memory_items and project_facts tables for improved MCP work item management.
 
 ## Project Facts
 
@@ -107,40 +103,40 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(132 events, 114 commits)`
+- **hooks** `(133 events, 115 commits)`
 
 ### Doc_type
 
+- **Test** `(52 events, 50 commits)`
 - **low-level-design** `(52 events, 50 commits)`
-- **Test** `(51 events, 49 commits)`
-- **retrospective** `(23 events, 22 commits)`
+- **retrospective** `(24 events, 23 commits)`
 - **high-level-design** `(1 events)`
 - **customer-meeting** — dsds
 
 ### Feature
 
-- **UI** `(119 events, 109 commits)`
-- **shared-memory** `(118 events, 109 commits)`
-- **auth** `(117 events, 110 commits)`
-- **graph-workflow** `(107 events, 99 commits)`
+- **UI** `(120 events, 110 commits)`
+- **auth** `(119 events, 111 commits)`
+- **shared-memory** `(119 events, 110 commits)`
+- **graph-workflow** `(108 events, 100 commits)`
 - **workflow-runner** `(80 events, 77 commits)`
-- **billing** `(74 events, 72 commits)`
-- **mcp** `(74 events, 72 commits)`
-- **tagging** `(52 events, 50 commits)`
-- **embeddings** `(52 events, 49 commits)`
-- **test-picker-feature** `(23 events, 22 commits)`
+- **billing** `(75 events, 73 commits)`
+- **mcp** `(75 events, 73 commits)`
+- **embeddings** `(54 events, 50 commits)`
+- **tagging** `(53 events, 50 commits)`
+- **test-picker-feature** `(24 events, 23 commits)`
 - **dropbox**
 - **pagination**
 
 ### Phase
 
-- **discovery** `(115 events, 109 commits)`
-- **development** `(114 events, 101 commits)`
+- **discovery** `(116 events, 110 commits)`
+- **development** `(115 events, 102 commits)`
 - **prod**
 
 ### Task
 
-- **memory** `(70 events, 59 commits)`
+- **memory** `(71 events, 60 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
 
 ## Recent Memory
@@ -210,7 +206,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-28]** `claude_cli` — User identified critical gap: embeddings need direct connection to tag metadata so authentication prompts are tagged 'auth', feature changes tagged 'feature', bugs tagged 'bug+ui', etc.; current implementation status unclear, design requires clarification. **[2026-03-26]** `backend` — Documented backend startup stability fix: `bash start_backend.sh` in terminal window must remain open; Electron auto-connects to localhost:8000; resolves port binding race conditions during app initialization. **[2026-03-23]** `frontend` — Restored full build pipeline: fixed missing DMG background asset, npm install verified, Vite dev server hot reload confirmed working; confirmed sequence: kill process → npm install → npm run dev. **[2026-03-23]** `status-workflow` — Designed red 'add_info' status for incomplete items (missing description) and green 'active' for ready items; enforcement at creation + DB sync required. **[2026-03-23]** `tag-management` — User requested tag UI improvements: manage tags directly in Planner tab, improve visibility of tag hierarchy, verify persistence across session switches. **[2026-03-18]** `backend` — Fixed AttributeError from stale `db.ensure_project_schema()` calls; replaced with `_ensure_shared_schema()` pattern; fixed memory endpoint template variable scoping (`code_dir` undefined at line 1120); modified retry logic to handle edge case where project list loads but empty.

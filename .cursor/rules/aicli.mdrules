@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 02:06 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 02:13 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -56,8 +56,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-28] Based on what you wrote and understand about the current memoery layer, should I add mem0, zen or blackboard layer, woul
 - [2026-03-28] Can you fix that and update the aicli_memory.md with all changes you did
 - [2026-03-28] is the file aicli_memory.md shows the correct flow (including the one you have added) ?
 - [2026-03-28] I would like to understand more about the embedigng and chunk methods. I do understand it is happend only when using /me
 - [2026-03-28] I would embedding to be connected to the tagging. for example auth - will be meta data of all authentication prompts.. m
+- [2026-03-28] Can you please rewrite aicli_memory.md. make sure all flows are exatly as they are. all prompts are writeen clear for ea
