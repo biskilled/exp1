@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-27 09:44 UTC by aicli /memory_
+_Generated: 2026-03-28 01:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform built on FastAPI + PostgreSQL + Claude integration, providing a desktop app (Electron + Vanilla JS) and CLI for managing projects, tasks, and shared context across LLM interactions. The system features dual storage (JSONL history + semantic embeddings), async DAG workflows, MCP integration, and multi-provider LLM support. Current development focus is on backend stability, frontend tooling reliability, and implementing missing features like memory table population and tag management UI.
 
 ## Project Facts
 
@@ -103,46 +99,6 @@ Reviewer: ```json
 - Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; fixed stale db.ensure_project_schema() calls; backend startup race condition now handled by retry logic for empty project lists
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
 
-## Active Features / Bugs / Tasks
-
-### Bug
-
-- **hooks** `(127 events, 109 commits)`
-
-### Doc_type
-
-- **low-level-design** `(52 events, 50 commits)`
-- **Test** `(46 events, 44 commits)`
-- **retrospective** `(18 events, 17 commits)`
-- **high-level-design** `(1 events)`
-- **customer-meeting** — dsds
-
-### Feature
-
-- **UI** `(114 events, 104 commits)`
-- **auth** `(112 events, 105 commits)`
-- **shared-memory** `(111 events, 104 commits)`
-- **graph-workflow** `(102 events, 94 commits)`
-- **workflow-runner** `(80 events, 77 commits)`
-- **billing** `(69 events, 67 commits)`
-- **mcp** `(69 events, 67 commits)`
-- **tagging** `(52 events, 50 commits)`
-- **embeddings** `(46 events, 44 commits)`
-- **test-picker-feature** `(18 events, 17 commits)`
-- **dropbox**
-- **pagination**
-
-### Phase
-
-- **discovery** `(110 events, 104 commits)`
-- **development** `(109 events, 96 commits)`
-- **prod**
-
-### Task
-
-- **memory** `(61 events, 54 commits)`
-- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
-
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
@@ -210,7 +166,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-26]** `Backend startup stability` — Documented proper backend initialization sequence: run `bash start_backend.sh` in terminal and keep window open; Electron app auto-connects to localhost:8000, resolving port binding race conditions on first load. **[2026-03-23]** `Frontend build tooling` — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload functionality working; full setup now repeatable. **[2026-03-23]** `Status workflow implementation` — Designed red 'add_info' status when task description missing and green 'active' when complete; enforce missing data detection at creation and sync with database. **[2026-03-23]** `Tag management UI` — Prioritized tag visibility improvements in Planner tab to surface and edit tags directly; confirmed tag hierarchy must persist across sessions. **[2026-03-18]** `Project visibility debugging` — Fixed stale db.ensure_project_schema() calls in main.py; backend startup race condition handled by retry logic for empty project lists; AiCli now appears correctly in Recent projects. **[2026-03-18]** `Memory endpoint scoping fix` — Fixed undefined `code_dir` variable at line 1120 in CLAUDE.md memory template causing runtime failure; variable now properly scoped from config. **[2026-03-10]** `Database performance optimization` — Implemented load-once-on-access pattern for tags (loaded into memory on project access, updated only on explicit save) to reduce redundant SQL calls. **[2026-03-10]** `Tag hierarchy enhancement` — Approved nested tags feature expansion beyond current 2-level hierarchy (category → tag); confirmed login will be first-level only. **[2026-03-10]** `Data persistence bug identified` — Discovered tags saved in UI disappear on session switch; unclear if UI rendering issue or database save failure; requires investigation. **[Pending]** `Memory items/project_facts population` — Tables exist in schema but update logic not yet implemented; blocking improved memory/context mechanism and MCP data retrieval capability.

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-27 21:53 UTC — do not edit manually.
+> Auto-generated 2026-03-28 01:25 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 272
-- **Last active**: 2026-03-27T09:43:09Z
+- **Sessions**: 273
+- **Last active**: 2026-03-28T01:24:35Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-28 01:23]** `claude_cli/claude`  
+→ Based on what you wrote and understand about the current memoery layer, should I add mem0, zen or blackboard layer, woul
+← _There are **two different `/memory` systems** in play here — they serve different purposes.  ---  ## 1. Claude Code's Native Memory (built-in)  This is Claude Code's own memory system, separate from a_
+
 **[2026-03-27 09:42]** `claude_cli/claude`  
 → I do see that you have native /memory function as well. what is it ?
 ← _The file is at:  ``` /Users/user/Documents/gdrive_cellqlick/2026/aicli/aicli_memory.md ```  It's in the **root of the aicli project folder** — the same level as `backend/`, `ui/`, `workspace/`, `CLAUD_
@@ -213,8 +217,4 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-23 00:48]** `claude_cli/claude`  
 → When I run npm run build I still got an error - Error #1 ---------------------------------------------------------------
-← _---  **What was wrong and how it's fixed:**  | Problem | Root cause | Fix | |---|---|---| | Can't open DevTools | No global shortcut registered; menu only | `globalShortcut.register(Cmd+Option+I)` + *_
-
-**[2026-03-23 00:42]** `claude_cli/claude`  
-→ I alway run using npm build dev (not npm run build) when I run npm run build I got errors regarding to old folder such a
 ← _---  **What was wrong and how it's fixed:**  | Problem | Root cause | Fix | |---|---|---| | Can't open DevTools | No global shortcut registered; menu only | `globalShortcut.register(Cmd+Option+I)` + *_

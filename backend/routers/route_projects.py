@@ -176,6 +176,38 @@ _SQL_INSERT_EVENT_LINK = (
     "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING"
 )
 
+_SQL_GET_CATEGORIES_FOR_PROJECT = (
+    "SELECT id, name FROM mng_entity_categories WHERE client_id=1 AND project=%s ORDER BY name"
+)
+
+_SQL_INSERT_ENTITY_VALUE_AUTO = (
+    """INSERT INTO mng_entity_values
+           (client_id, category_id, project, name, description, lifecycle_status, seq_num)
+       VALUES (1, %s, %s, %s, %s, 'idea', %s)
+       ON CONFLICT (client_id, project, category_id, name) DO NOTHING
+       RETURNING id, name"""
+)
+
+_SQL_GET_RECENT_SESSION_PROMPTS = (
+    """SELECT title, content FROM pr_events
+       WHERE client_id=1 AND project=%s AND event_type='prompt'
+         AND created_at > NOW() - INTERVAL '24 hours'
+       ORDER BY created_at DESC LIMIT 20"""
+)
+
+_SQL_GET_EXISTING_BUG_NAMES = (
+    "SELECT LOWER(name) FROM pr_work_items WHERE client_id=1 AND project=%s AND category_name='bug'"
+)
+
+_SQL_INSERT_BUG_WORK_ITEM = (
+    """INSERT INTO pr_work_items
+           (client_id, project, category_name, category_id, name, description,
+            status, lifecycle_status, tags, seq_num)
+       VALUES (1, %s, 'bug', %s, %s, %s, 'prereq', 'idea', '{}', %s)
+       ON CONFLICT (client_id, project, category_name, name) DO NOTHING
+       RETURNING id, name, seq_num"""
+)
+
 _SQL_GET_UNEMBEDDED_COMMITS = (
     """SELECT c.commit_hash FROM pr_commits c
        WHERE c.client_id=1 AND c.project=%s
@@ -1846,6 +1878,7 @@ async def generate_memory(project_name: str):
         try:
             asyncio.create_task(_sync_and_autotag(project_name, since=last_memory_run))
             asyncio.create_task(_detect_relationships(project_name, since=last_memory_run))
+            asyncio.create_task(_auto_create_entities(project_name, since=last_memory_run))
         except Exception:
             pass
 
@@ -2199,6 +2232,230 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
 
     except Exception as e:
         _log.debug(f"_detect_relationships failed: {e}")
+
+
+async def _auto_create_entities(project: str, since: str | None = None) -> int:
+    """Auto-create new entity values from untagged events. Silent on error.
+
+    Scans recent untagged event titles with Haiku, identifies NEW features/bugs/tasks
+    not yet in mng_entity_values, and creates them (confidence >= 0.85 only).
+    Called from /memory as a background fire-and-forget task.
+    Returns count of newly created entity values.
+    """
+    _log = logging.getLogger(__name__)
+    if not db.is_available():
+        return 0
+    try:
+        from data.dl_api_keys import get_key
+        key = get_key("claude") or get_key("anthropic")
+        if not key:
+            return 0
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Get categories available for this project
+                cur.execute(_SQL_GET_CATEGORIES_FOR_PROJECT, (project,))
+                cat_rows = cur.fetchall()  # (id, name)
+                if not cat_rows:
+                    return 0
+                cat_by_name = {name.lower(): cid for cid, name in cat_rows}
+                known_cats = sorted(cat_by_name.keys())
+
+                # Get existing entity names to avoid duplicates
+                cur.execute(_SQL_GET_ACTIVE_ENTITY_VALUES_FOR_AUTOTAG, (project,))
+                existing = cur.fetchall()  # (id, category, name)
+                existing_names = {name.lower() for _, _, name in existing}
+
+                # Get untagged events since last /memory run
+                since_filter = "AND e.created_at > %s::timestamptz" if since else ""
+                params: list = [project]
+                if since:
+                    params.append(since)
+                sql_untagged = _SQL_GET_UNTAGGED_EVENTS.format(since_filter=since_filter)
+                cur.execute(sql_untagged, params)
+                untagged = cur.fetchall()  # (id, event_type, title)
+
+        if not untagged:
+            return 0
+
+        events_text = "\n".join(
+            f"  {eid}: [{etype}] {title[:120]}" for eid, etype, title in untagged[:25]
+        )
+        existing_block = (
+            "\n".join(f"  {cat}: {name}" for _, cat, name in existing[:40])
+            if existing else "(none yet)"
+        )
+
+        prompt = (
+            f"Analyze these project events and identify NEW entities that should be tracked.\n\n"
+            f"Available entity categories: {', '.join(known_cats)}\n\n"
+            f"Already tracked (do NOT re-create):\n{existing_block}\n\n"
+            f"Events:\n{events_text}\n\n"
+            "Return a JSON array of NEW entities only. Each item:\n"
+            "{\"category\": \"bug|feature|task\", \"name\": \"short descriptive name\", "
+            "\"description\": \"one sentence\", \"confidence\": 0.0-1.0}\n\n"
+            "Rules: confidence >= 0.85 required. Return [] if nothing clearly new."
+        )
+
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=key)
+        response = await client.messages.create(
+            model=settings.haiku_model,
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = (response.content[0].text if response.content else "").strip()
+
+        import re as _re
+        match = _re.search(r'\[.*?\]', text, _re.DOTALL)
+        if not match:
+            return 0
+        candidates: list = json.loads(match.group())
+        if not isinstance(candidates, list) or not candidates:
+            return 0
+
+        created = 0
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for item in candidates:
+                    try:
+                        if not isinstance(item, dict):
+                            continue
+                        cat_name = str(item.get("category", "")).lower().strip()
+                        name = str(item.get("name", "")).strip()[:120]
+                        desc = str(item.get("description", "")).strip()[:300]
+                        conf = float(item.get("confidence", 0.0))
+                        if not cat_name or not name or conf < 0.85:
+                            continue
+                        if name.lower() in existing_names:
+                            continue
+                        cat_id = cat_by_name.get(cat_name)
+                        if not cat_id:
+                            continue
+                        from data.dl_seq import next_seq
+                        seq = next_seq(cur, project, cat_name)
+                        cur.execute(_SQL_INSERT_ENTITY_VALUE_AUTO, (cat_id, project, name, desc, seq))
+                        if cur.fetchone():
+                            created += 1
+                            existing_names.add(name.lower())
+                    except Exception:
+                        pass
+
+        if created:
+            _log.debug(f"_auto_create_entities: {project} → created {created} new entities")
+        return created
+
+    except Exception as e:
+        logging.getLogger(__name__).debug(f"_auto_create_entities failed: {e}")
+        return 0
+
+
+@router.post("/{project_name}/auto-detect-bugs")
+async def auto_detect_bugs(project_name: str):
+    """Scan the last 24h of session events for bug mentions and auto-create work items.
+
+    Called by the Stop hook after each Claude Code session. Uses Haiku to detect
+    bugs described or encountered in recent prompts. Creates pr_work_items entries
+    (status=prereq, lifecycle=idea) for bugs not already tracked.
+    Returns {"created": N, "detected": M, "skipped": K}.
+    """
+    if not db.is_available():
+        return {"created": 0, "detected": 0, "skipped": 0, "reason": "db_unavailable"}
+
+    try:
+        from data.dl_api_keys import get_key
+        key = get_key("claude") or get_key("anthropic")
+        if not key:
+            return {"created": 0, "detected": 0, "skipped": 0, "reason": "no_api_key"}
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Recent prompt events
+                cur.execute(_SQL_GET_RECENT_SESSION_PROMPTS, (project_name,))
+                events = cur.fetchall()  # (title, content)
+                if not events:
+                    return {"created": 0, "detected": 0, "skipped": 0, "reason": "no_events"}
+
+                # Existing bug names (lowercase) to avoid duplicates
+                cur.execute(_SQL_GET_EXISTING_BUG_NAMES, (project_name,))
+                existing_bug_names = {r[0] for r in cur.fetchall()}
+
+                # Bug category id
+                cur.execute(
+                    "SELECT id FROM mng_entity_categories WHERE client_id=1 AND project=%s AND name='bug' LIMIT 1",
+                    (project_name,),
+                )
+                cat_row = cur.fetchone()
+                bug_cat_id = cat_row[0] if cat_row else None
+
+        event_text = "\n".join(
+            f"  [{title[:60]}] {(content or '')[:200]}" for title, content in events[:15]
+        )
+
+        prompt = (
+            "Analyze these developer session notes for bug reports or errors encountered.\n\n"
+            f"Session notes:\n{event_text}\n\n"
+            "Return a JSON array of bugs found. Each item:\n"
+            "{\"name\": \"short bug title\", \"description\": \"what went wrong and where\", "
+            "\"confidence\": 0.0-1.0}\n\n"
+            "Rules: confidence >= 0.80 required. Only real bugs/errors, not planned tasks. "
+            "Return [] if no bugs found."
+        )
+
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=key)
+        response = await client.messages.create(
+            model=settings.haiku_model,
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = (response.content[0].text if response.content else "").strip()
+
+        import re as _re
+        match = _re.search(r'\[.*?\]', text, _re.DOTALL)
+        if not match:
+            return {"created": 0, "detected": 0, "skipped": 0, "reason": "no_json"}
+        candidates: list = json.loads(match.group())
+        if not isinstance(candidates, list):
+            return {"created": 0, "detected": 0, "skipped": 0}
+
+        detected = len(candidates)
+        created = 0
+        skipped = 0
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for item in candidates:
+                    try:
+                        if not isinstance(item, dict):
+                            continue
+                        name = str(item.get("name", "")).strip()[:120]
+                        desc = str(item.get("description", "")).strip()[:500]
+                        conf = float(item.get("confidence", 0.0))
+                        if not name or conf < 0.80:
+                            skipped += 1
+                            continue
+                        if name.lower() in existing_bug_names:
+                            skipped += 1
+                            continue
+                        from data.dl_seq import next_seq
+                        seq = next_seq(cur, project_name, "bug")
+                        cur.execute(
+                            _SQL_INSERT_BUG_WORK_ITEM,
+                            (project_name, bug_cat_id, name, desc, seq),
+                        )
+                        if cur.fetchone():
+                            created += 1
+                            existing_bug_names.add(name.lower())
+                    except Exception:
+                        skipped += 1
+
+        log.debug(f"auto_detect_bugs: {project_name} detected={detected} created={created} skipped={skipped}")
+        return {"created": created, "detected": detected, "skipped": skipped}
+
+    except Exception as e:
+        log.debug(f"auto_detect_bugs failed: {e}")
+        return {"created": 0, "detected": 0, "skipped": 0, "error": str(e)}
 
 
 @router.get("/{project_name}")

@@ -1440,11 +1440,16 @@ class _Database:
             "user preferences, tasks/TODOs, events that happened, temporary workarounds.\n\n"
             "OUTPUT: Valid JSON array ONLY. No preamble, no markdown fences, no explanation.\n\n"
             'Format: [{"key": "snake_case_id", "value": "specific concrete value", "confidence": 0.0-1.0}]\n\n'
+            "ALSO extract architectural relationships as facts using key prefix 'rel:':\n"
+            '  {"key": "rel:component_a:component_b", "value": "implements|depends_on|causes|replaces|related_to", "confidence": 0.0-1.0}\n'
+            "Only include relationships with confidence >= 0.75 and clear structural meaning.\n\n"
             "Good examples:\n"
             '[{"key":"auth_method","value":"JWT via python-jose + bcrypt, no passlib","confidence":0.95},\n'
             ' {"key":"vector_db","value":"pgvector cosine similarity, replaced ChromaDB","confidence":0.92},\n'
             ' {"key":"frontend_pattern","value":"Vanilla JS ES modules, no framework, no bundler","confidence":0.98},\n'
-            ' {"key":"table_naming","value":"mng_ global, pr_ per-project, 25 fixed tables total","confidence":0.99}]\n\n'
+            ' {"key":"table_naming","value":"mng_ global, pr_ per-project, 25 fixed tables total","confidence":0.99},\n'
+            ' {"key":"rel:auth:jwt","value":"implements","confidence":0.90},\n'
+            ' {"key":"rel:vector_db:chromadb","value":"replaces","confidence":0.95}]\n\n'
             "Bad extractions — DO NOT produce:\n"
             '- {"key":"fixed_bug","value":"fixed login redirect"} — event\n'
             '- {"key":"todo","value":"add dark mode"} — task\n'

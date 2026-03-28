@@ -186,4 +186,10 @@ curl -sf --connect-timeout 2 --max-time 15 \
     -H "Content-Type: application/json" \
     -o /dev/null 2>/dev/null &   # run in background, don't block
 
+# Auto-detect bugs mentioned in this session → create work items
+curl -sf --connect-timeout 2 --max-time 30 \
+    -X POST "${BACKEND_URL}/projects/${ACTIVE_PROJECT}/auto-detect-bugs" \
+    -H "Content-Type: application/json" \
+    -o /dev/null 2>/dev/null &   # fire-and-forget
+
 exit 0

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-27 09:44 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 01:24 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -56,8 +56,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-27] Allworks as expected. I would like to have full review on all memroy layers - what you are haveing now, when do you summ
 - [2026-03-27] you ddid mention anything about the mcp that is used for memroy as well , how the mcp works, what data it extract ?
 - [2026-03-27] I do see that in any llm repsonse is summerised - when is it happend, can you also add all the internal prompt you are u
 - [2026-03-27] Where is the file ? I cannnot see that in the folder
 - [2026-03-27] I do see that you have native /memory function as well. what is it ?
+- [2026-03-28] Based on what you wrote and understand about the current memoery layer, should I add mem0, zen or blackboard layer, woul

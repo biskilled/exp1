@@ -1334,3 +1334,88 @@ POST /projects/{name}/memory
         "suggested_tags": [{"name": "react-agents", "category": "feature", "is_new": false}]
       }
 ```
+
+---
+
+## 12. Three Memory Enhancements (2026-03-28)
+
+Three targeted fixes that close the gaps between aicli's native memory and external tools like mem0/Zep.
+
+### Fix 1 — Auto-Create Entity Values (`_auto_create_entities`)
+
+**File**: `backend/routers/route_projects.py`
+**Called from**: `/memory` endpoint (fire-and-forget background task)
+
+Previously `_sync_and_autotag` only tagged events with EXISTING entities. It would not create a new
+feature/bug/task if one was mentioned but didn't exist yet.
+
+`_auto_create_entities(project, since)`:
+1. Loads all existing entity values and all entity categories for the project
+2. Gets untagged recent events (since last `/memory` run)
+3. Calls Haiku: "identify NEW entities not yet in the list" → `[{category, name, description, confidence}]`
+4. Creates `mng_entity_values` rows for entities with confidence ≥ 0.85
+5. Silent on all errors (fire-and-forget)
+
+**Threshold**: 0.85 (higher than fact extraction 0.70 — entity creation is permanent)
+
+**SQL added**:
+- `_SQL_GET_CATEGORIES_FOR_PROJECT` — gets available category id/name pairs
+- `_SQL_INSERT_ENTITY_VALUE_AUTO` — inserts with `lifecycle_status='idea'`, `ON CONFLICT DO NOTHING`
+
+---
+
+### Fix 2 — Relationship Extraction in `_extract_project_facts`
+
+**File**: `backend/core/database.py` → `_INTERNAL_FACT_PROMPT`
+**Called from**: `_extract_project_facts()` (already called from `/memory`)
+
+Extended the `internal_project_fact` agent role prompt to also extract architectural relationships
+stored as facts with a `rel:` key prefix:
+
+```json
+{"key": "rel:auth:jwt", "value": "implements", "confidence": 0.90}
+{"key": "rel:vector_db:chromadb", "value": "replaces", "confidence": 0.95}
+```
+
+These are stored in `pr_project_facts` alongside regular facts. The `rel:from:to` key format makes
+them queryable. Valid relation values: `implements`, `depends_on`, `causes`, `replaces`, `related_to`.
+
+Backward-compatible: `_extract_project_facts()` parsing is unchanged (still expects `[{key, value, confidence}]`).
+The `internal_project_fact` DB role is auto-updated at backend startup via `ON CONFLICT DO UPDATE SET system_prompt`.
+
+---
+
+### Fix 3 — Bug Auto-Detection Endpoint + Stop Hook
+
+**File**: `backend/routers/route_projects.py` + `workspace/aicli/_system/hooks/log_session_stop.sh`
+
+**New endpoint**: `POST /projects/{project_name}/auto-detect-bugs`
+1. Fetches last 24h of prompt events for the project
+2. Calls Haiku: "find bug reports or errors encountered" → `[{name, description, confidence}]`
+3. For each bug with confidence ≥ 0.80 that isn't already in `pr_work_items`:
+   - Creates a work item: `category_name='bug'`, `status='prereq'`, `lifecycle_status='idea'`
+   - Uses `ON CONFLICT DO NOTHING` — safe to call repeatedly
+4. Returns `{created: N, detected: M, skipped: K}`
+
+**Stop hook update** (`log_session_stop.sh`):
+```bash
+# After existing /memory call:
+curl -sf --connect-timeout 2 --max-time 30 \
+    -X POST "${BACKEND_URL}/projects/${ACTIVE_PROJECT}/auto-detect-bugs" \
+    -o /dev/null 2>/dev/null &   # fire-and-forget
+```
+
+**SQL added**:
+- `_SQL_GET_RECENT_SESSION_PROMPTS` — last 24h of prompt events
+- `_SQL_GET_EXISTING_BUG_NAMES` — all bug work item names (lowercase)
+- `_SQL_INSERT_BUG_WORK_ITEM` — insert with `ON CONFLICT DO NOTHING`
+
+---
+
+### Summary: What Each Gap Closes
+
+| Gap | Before | After |
+|-----|--------|-------|
+| New entities from session text | Only tagged to EXISTING entities | Auto-creates features/bugs/tasks at confidence ≥ 0.85 |
+| Architectural relationships | Not tracked in facts layer | Stored as `rel:X:Y` facts in `pr_project_facts` |
+| Bug auto-detection | Manual creation only | Haiku scans each session → creates `pr_work_items` automatically |
