@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 02:14 UTC — do not edit manually.
+> Auto-generated 2026-03-28 02:26 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 278
-- **Last active**: 2026-03-28T02:13:48Z
+- **Sessions**: 280
+- **Last active**: 2026-03-28T02:24:03Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -206,6 +206,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-26 22:02]** `claude_cli/claude`  
 → how do I run the ui ? 
+← _Now I have all the exact details. Let me write the complete rewrite._
 
 **[2026-03-26 21:59]** `claude_cli/claude`  
 → I closed all termianl , when I try to run, backend is not loading properly 
