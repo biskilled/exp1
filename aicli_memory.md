@@ -261,10 +261,11 @@ fires automatically: it collects all interactions tagged to that feature and cre
    - Merges into `project_state.json` (old decisions kept, new ones added)
 8. **Write 5 output files** (MEMORY.md, CLAUDE.md, rules.md, context.md, copilot.md)
 9. **Background tasks** (non-blocking, fire-and-forget):
-   - Extract project facts → `pr_project_facts` (Haiku)
+   - Extract project facts + `rel:` relationships → `pr_project_facts` (Haiku)
    - Embed new history + commits + roles → `pr_embeddings` (OpenAI text-embedding-3-small)
-   - Sync events history.jsonl → `pr_events` / `pr_interactions`
-   - Auto-tag untagged events (Haiku)
+   - Sync events history.jsonl → `pr_events`, then auto-tag with existing entities (Haiku)
+   - Detect event relationships by keyword + LLM → `pr_event_links`
+   - **Auto-create new entity values** from untagged events at confidence ≥ 0.85 (Haiku) ← NEW
    - Suggest 2-3 feature/bug tags (Haiku → returned in response)
 10. **Update `last_memory_run`** = NOW() in `project_state.json`
 11. **Return**: `{generated: [...files], synthesized: true, suggested_tags: [...]}`
@@ -1199,8 +1200,14 @@ User prompt arrives
 
 7. Fire background (non-blocking):
    curl -sf -X POST {BACKEND_URL}/projects/{ACTIVE_PROJECT}/memory &
+   → triggers full /memory pipeline (synthesis, facts, entity sync, embeddings)
 
-8. exit 0
+8. Fire background (non-blocking):  ← NEW (2026-03-28)
+   curl -sf -X POST {BACKEND_URL}/projects/{ACTIVE_PROJECT}/auto-detect-bugs &
+   → Haiku scans last 24h of prompts for bug mentions
+   → Creates pr_work_items (status=prereq, lifecycle=idea) for bugs not yet tracked
+
+9. exit 0
 ```
 
 ---
@@ -1305,18 +1312,30 @@ POST /projects/{name}/memory
 │    │   └─ Load recent 8 memory_items + existing facts
 │    │   └─ internal_project_fact role (from mng_agent_roles) calls Haiku
 │    │   └─ Returns [{key, value, confidence}] filtered at confidence ≥ 0.70
+│    │      Also returns rel: facts: {"key":"rel:auth:jwt","value":"implements","confidence":0.90}
 │    │   └─ Temporal upsert: expire old fact, insert new row in pr_project_facts
 │    │
 │    ├─ ingest_history() → embed new history entries → pr_embeddings
 │    ├─ ingest_roles()   → re-embed all YAML role files → pr_embeddings
 │    ├─ ingest_commits() → embed new commits → pr_embeddings
 │    │
-│    ├─ _do_sync_events() → sync history.jsonl → pr_events/pr_interactions
-│    │   Phase 1: import prompts from JSONL
-│    │   Phase 2: import commits from pr_commits
-│    │   Phase 3: backfill session_ids
-│    │   Phase 4: auto-propagate tags prompt → commits in same session
-│    │   Phase 5: detect commit→prompt causal links → pr_event_links
+│    ├─ _sync_and_autotag()   ← calls _do_sync_events() then auto-tags
+│    │   Phase 1: import prompts from history.jsonl → pr_events
+│    │   Phase 2: import commits from pr_commits → pr_events
+│    │   Phase 3: backfill session_ids on old events
+│    │   Phase 4: auto-propagate entity tags prompt → commits in same session
+│    │   Then: Haiku tags untagged events with EXISTING mng_entity_values
+│    │   Background: Phase 5 (commit→prompt causal links) → pr_event_links
+│    │
+│    ├─ _detect_relationships()
+│    │   Strategy 1 (keyword): commit messages with fix/close/resolve → pr_event_links
+│    │   Strategy 2 (LLM): Haiku identifies semantic links between events → pr_event_links
+│    │   link_types: implements, fixes, causes, relates_to, references, closes
+│    │
+│    ├─ _auto_create_entities()  ← NEW (2026-03-28)
+│    │   Scans untagged events since last_memory_run
+│    │   Haiku detects NEW features/bugs/tasks not yet in mng_entity_values
+│    │   Creates mng_entity_values at confidence ≥ 0.85 only
 │    │
 │    └─ _suggest_tags() → Haiku → 2-3 suggested entity names
 │       returned in response as "suggested_tags" (shown as amber chips in UI)

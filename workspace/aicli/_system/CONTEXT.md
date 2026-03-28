@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 01:25 UTC — do not edit manually.
+> Auto-generated 2026-03-28 01:44 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 273
-- **Last active**: 2026-03-28T01:24:35Z
+- **Sessions**: 274
+- **Last active**: 2026-03-28T01:43:42Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-28 01:31]** `claude_cli/claude`  
+→ Can you fix that and update the aicli_memory.md with all changes you did 
+← _Both files import cleanly. Now update `aicli_memory.md` with a summary of all 3 fixes:_
+
 **[2026-03-28 01:23]** `claude_cli/claude`  
 → Based on what you wrote and understand about the current memoery layer, should I add mem0, zen or blackboard layer, woul
 ← _There are **two different `/memory` systems** in play here — they serve different purposes.  ---  ## 1. Claude Code's Native Memory (built-in)  This is Claude Code's own memory system, separate from a_
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-23 00:55]** `claude_cli/claude`  
 → I think there is another issue , as I cannot see any uodate at the UI . I dod location.reload(true) using the dev tools 
 ← _`ui/` is missing `node_modules`. You need to install dependencies first. Here's the full sequence:  ```bash # 1. Kill the old/ui Vite process kill -9 45399  # 2. Install dependencies in the correct ui_
-
-**[2026-03-23 00:48]** `claude_cli/claude`  
-→ When I run npm run build I still got an error - Error #1 ---------------------------------------------------------------
-← _---  **What was wrong and how it's fixed:**  | Problem | Root cause | Fix | |---|---|---| | Can't open DevTools | No global shortcut registered; menu only | `globalShortcut.register(Cmd+Option+I)` + *_

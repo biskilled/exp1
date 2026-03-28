@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-28 01:24 UTC by aicli /memory_
+_Generated: 2026-03-28 01:43 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -98,6 +98,46 @@ Reviewer: ```json
 - Tag visibility and management (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
 - Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; fixed stale db.ensure_project_schema() calls; backend startup race condition now handled by retry logic for empty project lists
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
+
+## Active Features / Bugs / Tasks
+
+### Bug
+
+- **hooks** `(129 events, 111 commits)`
+
+### Doc_type
+
+- **low-level-design** `(52 events, 50 commits)`
+- **Test** `(48 events, 46 commits)`
+- **retrospective** `(20 events, 19 commits)`
+- **high-level-design** `(1 events)`
+- **customer-meeting** — dsds
+
+### Feature
+
+- **UI** `(116 events, 106 commits)`
+- **shared-memory** `(115 events, 106 commits)`
+- **auth** `(114 events, 107 commits)`
+- **graph-workflow** `(104 events, 96 commits)`
+- **workflow-runner** `(80 events, 77 commits)`
+- **billing** `(71 events, 69 commits)`
+- **mcp** `(71 events, 69 commits)`
+- **tagging** `(52 events, 50 commits)`
+- **embeddings** `(48 events, 46 commits)`
+- **test-picker-feature** `(20 events, 19 commits)`
+- **dropbox**
+- **pagination**
+
+### Phase
+
+- **discovery** `(112 events, 106 commits)`
+- **development** `(111 events, 98 commits)`
+- **prod**
+
+### Task
+
+- **memory** `(65 events, 56 commits)`
+- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
 
 ## Recent Memory
 

@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-27] `claude_cli`: you ddid mention anything about the mcp that is used for memroy as well , how the mcp works, what da
 - [2026-03-27] `claude_cli`: I do see that in any llm repsonse is summerised - when is it happend, can you also add all the inter
 - [2026-03-27] `claude_cli`: Where is the file ? I cannnot see that in the folder
 - [2026-03-27] `claude_cli`: I do see that you have native /memory function as well. what is it ?
 - [2026-03-28] `claude_cli`: Based on what you wrote and understand about the current memoery layer, should I add mem0, zen or bl
+- [2026-03-28] `claude_cli`: Can you fix that and update the aicli_memory.md with all changes you did 
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
