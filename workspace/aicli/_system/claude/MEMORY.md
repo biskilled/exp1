@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-03-28 02:32 UTC by aicli /memory_
+_Generated: 2026-03-28 02:51 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -103,40 +103,40 @@ Reviewer: ```json
 
 ### Bug
 
-- **hooks** `(136 events, 118 commits)`
+- **hooks** `(137 events, 119 commits)`
 
 ### Doc_type
 
-- **Test** `(55 events, 53 commits)`
+- **Test** `(56 events, 54 commits)`
 - **low-level-design** `(52 events, 50 commits)`
-- **high-level-design** `(28 events, 26 commits)`
-- **retrospective** `(27 events, 26 commits)`
+- **high-level-design** `(29 events, 27 commits)`
+- **retrospective** `(28 events, 27 commits)`
 - **customer-meeting** — dsds
 
 ### Feature
 
-- **UI** `(123 events, 113 commits)`
-- **shared-memory** `(122 events, 113 commits)`
-- **auth** `(122 events, 114 commits)`
-- **graph-workflow** `(111 events, 103 commits)`
+- **UI** `(124 events, 114 commits)`
+- **auth** `(123 events, 115 commits)`
+- **shared-memory** `(123 events, 114 commits)`
+- **graph-workflow** `(113 events, 104 commits)`
+- **tagging** `(80 events, 77 commits)`
 - **workflow-runner** `(80 events, 77 commits)`
-- **tagging** `(79 events, 76 commits)`
-- **mcp** `(78 events, 76 commits)`
-- **billing** `(78 events, 76 commits)`
-- **embeddings** `(57 events, 53 commits)`
-- **test-picker-feature** `(27 events, 26 commits)`
-- **pagination**
+- **billing** `(79 events, 77 commits)`
+- **mcp** `(79 events, 77 commits)`
+- **embeddings** `(58 events, 54 commits)`
+- **test-picker-feature** `(28 events, 27 commits)`
 - **dropbox**
+- **pagination**
 
 ### Phase
 
-- **discovery** `(119 events, 113 commits)`
-- **development** `(118 events, 105 commits)`
+- **discovery** `(120 events, 114 commits)`
+- **development** `(119 events, 106 commits)`
 - **prod**
 
 ### Task
 
-- **memory** `(75 events, 63 commits)`
+- **memory** `(76 events, 64 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
 
 ## Recent Memory

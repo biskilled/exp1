@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 02:33 UTC — do not edit manually.
+> Auto-generated 2026-03-28 02:55 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 281
-- **Last active**: 2026-03-28T02:32:59Z
+- **Sessions**: 282
+- **Last active**: 2026-03-28T02:51:09Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-28 02:38]** `claude_cli/claude`  
+→ Can you update the table name from pr_interation to pr_prompts same to pr_interation_tags to pr_prompts_tags. also can g
+← _Now I have a full picture. Here's a comprehensive design decision review with priority mapping:  ---  ## Design Decisions — Priority Map  ### P0 — Verify Core Functionality (must confirm before anythi_
+
 **[2026-03-28 02:32]** `claude_cli/claude`  
 → Is it reccomended to merge pr_events and pr_interactions ?
 ← _The background research agent completed — its findings confirm the rewrite is accurate. The document is ready at `/Users/user/Documents/gdrive_cellqlick/2026/aicli/aicli_memory.md`._
@@ -215,7 +219,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-26 21:59]** `claude_cli/claude`  
 → I closed all termianl , when I try to run, backend is not loading properly 
 ← _Backend is running now. For next time, **open a terminal and run**:  ```bash cd /Users/user/Documents/gdrive_cellqlick/2026/aicli/backend bash start_backend.sh ```  Keep that terminal window open whil_
-
-**[2026-03-26 21:57]** `claude_cli/claude`  
-→ I do not see the backend starting 
-← _Backend is clean — no errors. Now can you clarify what "upload the AiCli project" means? Is it:  1. **Creating a new project workspace** called "aicli" in the UI? 2. **The project selector** in the UI_
