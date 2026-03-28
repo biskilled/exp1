@@ -37,9 +37,17 @@ except:
 " "$WORK_DIR" 2>/dev/null || echo "aicli")
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-HIST_DIR="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system"
-HIST_FILE="${HIST_DIR}/history.jsonl"
-RUNTIME_FILE="${HIST_DIR}/dev_runtime_state.json"
+RUNTIME_FILE="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system/dev_runtime_state.json"
+
+BACKEND_URL=$(python3 -c "
+import yaml, sys, os
+config = os.path.join(sys.argv[1], 'aicli.yaml')
+try:
+    d = yaml.safe_load(open(config)) or {}
+    print(d.get('backend_url', 'http://localhost:8000').rstrip('/'))
+except:
+    print('http://localhost:8000')
+" "$WORK_DIR" 2>/dev/null || echo "http://localhost:8000")
 
 # ── Read assistant response from Claude Code session file ─────────────────────
 # Claude Code stores sessions at: ~/.claude/projects/{project-hash}/{session_id}.jsonl
@@ -111,37 +119,32 @@ for line in reversed(lines):
         sys.exit(0)
 " "$SESSION" "$WORK_DIR" 2>/dev/null || echo "")
 
-# ── Update history.jsonl: fill in output for this session's entry ────────────
-if [ -f "$HIST_FILE" ]; then
+# ── Update response in DB via backend ────────────────────────────────────────
+# Find the most recent hook-log entry for this session and set its response field.
+if [ -n "$RESPONSE_TEXT" ] && [ -n "$SESSION" ]; then
 python3 -c "
-import json, sys
-from pathlib import Path
+import json, sys, urllib.request
 
-hist_file   = Path(sys.argv[1])
-session_id  = sys.argv[2]
-response    = sys.argv[3]
-stop_reason = sys.argv[4]
+# Find the ts of the most recent prompt for this session
+# We POST to hook-response; the backend matches by session_id and empty response
+payload = json.dumps({
+    'ts':          '',    # empty = backend finds latest empty-response row for session
+    'session_id':  sys.argv[2],
+    'response':    sys.argv[3],
+    'stop_reason': sys.argv[4],
+}).encode()
 
-lines = hist_file.read_text(encoding='utf-8').strip().split('\n')
-updated = False
-# Walk backwards to find the latest claude_cli entry for this session without output
-for i in range(len(lines) - 1, -1, -1):
-    try:
-        e = json.loads(lines[i])
-    except Exception:
-        continue
-    if (e.get('source') == 'claude_cli'
-            and e.get('session_id') == session_id
-            and not e.get('output')):
-        e['output']      = response
-        e['stop_reason'] = stop_reason
-        lines[i] = json.dumps(e)
-        updated = True
-        break
-
-if updated:
-    hist_file.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-" "$HIST_FILE" "$SESSION" "$RESPONSE_TEXT" "$STOP_REASON" 2>/dev/null
+req = urllib.request.Request(
+    sys.argv[1] + '/chat/' + sys.argv[5] + '/hook-response',
+    data=payload,
+    headers={'Content-Type': 'application/json'},
+    method='POST',
+)
+try:
+    urllib.request.urlopen(req, timeout=3)
+except Exception:
+    pass
+" "$BACKEND_URL" "$SESSION" "$RESPONSE_TEXT" "$STOP_REASON" "$ACTIVE_PROJECT" 2>/dev/null
 fi
 
 # ── Update dev_runtime_state.json ────────────────────────────────────────────
@@ -169,18 +172,6 @@ runtime_file.write_text(json.dumps(state, indent=2))
 " "$RUNTIME_FILE" "$SESSION" 2>/dev/null
 
 # ── Auto-regenerate MEMORY.md so next session starts with fresh context ───────
-# Call the backend /memory endpoint if it's running.
-# This means Claude (and any LLM) always reads up-to-date history at next startup.
-BACKEND_URL=$(python3 -c "
-import yaml, sys, os
-config = os.path.join(sys.argv[1], 'aicli.yaml')
-try:
-    d = yaml.safe_load(open(config)) or {}
-    print(d.get('backend_url', 'http://localhost:8000').rstrip('/'))
-except:
-    print('http://localhost:8000')
-" "$WORK_DIR" 2>/dev/null || echo "http://localhost:8000")
-
 curl -sf --connect-timeout 2 --max-time 15 \
     -X POST "${BACKEND_URL}/projects/${ACTIVE_PROJECT}/memory" \
     -H "Content-Type: application/json" \

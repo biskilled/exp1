@@ -372,6 +372,16 @@ api.systemRoles = {
   detach:    (roleId, systemRoleId) => _del(`/system-roles/agent-roles/${roleId}/links/${systemRoleId}`),
 };
 
+// ── ReAct Agents API ─────────────────────────────────────────────────────────
+
+api.agents = {
+  listRoles:    ()           => _get('/agents/roles'),
+  listPipelines:()           => _get('/agents/pipelines'),
+  runAgent:     (body)       => _post('/agents/run', body),
+  runPipeline:  (body)       => _post('/agents/run-pipeline', body),
+  getRun:       (runId)      => _get(`/agents/runs/${enc(runId)}`),
+};
+
 // ── Graph Workflows API ───────────────────────────────────────────────────────
 
 api.graphWorkflows = {

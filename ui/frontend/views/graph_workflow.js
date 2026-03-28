@@ -302,6 +302,7 @@ export function renderGraphWorkflow(container) {
     <div class="gw-toolbar2">
       <button class="btn btn-primary btn-sm" id="gw-new-btn" onclick="window._gwNew()">+ New Pipeline</button>
       <button class="btn btn-ghost btn-sm" onclick="window._gwFromTemplate(event)" title="Create from template">From Template ▾</button>
+      <button class="btn btn-ghost btn-sm" id="gw-react-btn" onclick="window._gwOpenReActRunner()" title="Run a YAML-defined ReAct pipeline (PM → Architect → Developer → Reviewer)">▶ ReAct Run</button>
       <div id="gw-wf-name-wrap" style="display:none">
         <input class="gw-wf-name" id="gw-wf-name" placeholder="Flow name" onblur="window._gwSaveName(this.value)" />
       </div>
@@ -413,6 +414,7 @@ export function renderGraphWorkflow(container) {
   window._gwImportYAML   = _importYAML;
   window._gwCloseRunPanel = _closeRunPanel;
   window._gwOpenRun      = (runId) => _openRunById(runId);
+  window._gwOpenReActRunner = () => openReActRunner();
 
   _loadList().then(() => {
     // If navigation came from a pipeline trigger (entities.js), auto-open that run
@@ -1914,4 +1916,217 @@ async function _importYAML(input) {
 export function destroyGraphWorkflow() {
   if (_pollInterval)  { clearInterval(_pollInterval);  _pollInterval  = null; }
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+}
+
+// ── ReAct Pipeline Runner ─────────────────────────────────────────────────────
+// Renders a modal / full-screen overlay for running YAML-defined ReAct pipelines
+// (PM → Architect → Developer → Reviewer).  Accessible via the ▶ Run Pipeline button.
+
+let _reactPipelines = [];   // loaded once per session from GET /agents/pipelines
+
+/** Open the ReAct pipeline runner overlay. */
+export async function openReActRunner(container) {
+  // Build overlay if not already present
+  let overlay = document.getElementById('react-runner-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'react-runner-overlay';
+    overlay.style.cssText = `
+      position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.65);
+      display:flex;align-items:flex-start;justify-content:center;
+      padding:3rem 1rem;overflow-y:auto;
+    `;
+    overlay.innerHTML = `
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;
+                  width:100%;max-width:820px;display:flex;flex-direction:column;gap:0">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+          <div style="font-weight:700;font-size:1rem;letter-spacing:0.01em">
+            ▶ Run ReAct Pipeline
+          </div>
+          <button id="rr-close" style="background:none;border:none;cursor:pointer;
+            color:var(--muted);font-size:1.2rem;padding:0.2rem 0.5rem">✕</button>
+        </div>
+
+        <!-- Pipeline selector + task input -->
+        <div style="padding:1.25rem;display:flex;flex-direction:column;gap:1rem">
+          <div style="display:flex;gap:0.75rem;align-items:flex-end">
+            <div style="flex:0 0 200px">
+              <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:0.35rem">Pipeline</label>
+              <select id="rr-pipeline-select" style="width:100%;background:var(--bg-2);
+                border:1px solid var(--border);border-radius:5px;padding:0.4rem 0.6rem;
+                color:var(--fg);font-size:0.85rem">
+                <option value="">Loading…</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:0.35rem">Task</label>
+              <input id="rr-task-input" type="text" placeholder="Describe what the pipeline should do…"
+                style="width:100%;box-sizing:border-box;background:var(--bg-2);
+                  border:1px solid var(--border);border-radius:5px;padding:0.4rem 0.7rem;
+                  color:var(--fg);font-size:0.85rem" />
+            </div>
+            <button id="rr-run-btn" style="padding:0.4rem 1.1rem;background:var(--accent);
+              color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;
+              white-space:nowrap">▶ Run</button>
+          </div>
+          <div id="rr-pipeline-desc" style="font-size:0.78rem;color:var(--muted);min-height:1em"></div>
+        </div>
+
+        <!-- Results area -->
+        <div id="rr-results" style="border-top:1px solid var(--border);display:none;
+          padding:0;max-height:60vh;overflow-y:auto"></div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById('rr-close').onclick = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.getElementById('rr-run-btn').onclick = _rrRun;
+
+    // Load pipelines
+    try {
+      _reactPipelines = await api.agents.listPipelines();
+    } catch (_) { _reactPipelines = []; }
+
+    const sel = document.getElementById('rr-pipeline-select');
+    sel.innerHTML = _reactPipelines.length
+      ? _reactPipelines.map(p =>
+          `<option value="${p.name}">${p.name} — ${(p.stages || []).map(s => s.role).join(' → ')}</option>`
+        ).join('')
+      : '<option value="">No pipelines found</option>';
+    sel.onchange = _rrUpdateDesc;
+    _rrUpdateDesc();
+  } else {
+    overlay.style.display = 'flex';
+  }
+}
+
+function _rrUpdateDesc() {
+  const sel   = document.getElementById('rr-pipeline-select');
+  const desc  = document.getElementById('rr-pipeline-desc');
+  const found = _reactPipelines.find(p => p.name === sel?.value);
+  if (found) {
+    desc.textContent = found.description
+      || `${(found.stages || []).length} stages · max ${found.max_rejection_retries ?? 2} rejection retries`;
+  } else {
+    desc.textContent = '';
+  }
+}
+
+async function _rrRun() {
+  const pipeline = document.getElementById('rr-pipeline-select')?.value;
+  const task     = document.getElementById('rr-task-input')?.value?.trim();
+  const btn      = document.getElementById('rr-run-btn');
+  const results  = document.getElementById('rr-results');
+
+  if (!pipeline || !task) {
+    alert('Select a pipeline and enter a task description.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  results.style.display = 'block';
+  results.innerHTML = `
+    <div style="padding:1.25rem;color:var(--muted);font-size:0.85rem;text-align:center">
+      Running pipeline — this may take a few minutes…
+    </div>`;
+
+  try {
+    const result = await api.agents.runPipeline({
+      pipeline,
+      task,
+      project: _project || 'aicli',
+    });
+    _rrRenderResult(result);
+  } catch (err) {
+    results.innerHTML = `
+      <div style="padding:1.25rem;color:#e85d75;font-size:0.85rem">
+        ✗ Pipeline failed: ${err.message}
+      </div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Run';
+  }
+}
+
+function _rrRenderResult(result) {
+  const results = document.getElementById('rr-results');
+  const verdict = result.final_verdict || 'unknown';
+  const verdictColor = verdict === 'approved' ? '#3ecf8e'
+    : verdict === 'rejected' ? '#e85d75'
+    : verdict === 'error'    ? '#e85d75'
+    : '#f5a623';
+
+  const stagesHtml = Object.entries(result.stage_details || {}).map(([key, stage]) => {
+    const stepsHtml = (stage.steps || []).map(step => `
+      <div style="margin-bottom:0.6rem">
+        <div style="font-size:0.75rem;font-weight:600;color:var(--muted)">Step ${step.step}</div>
+        ${step.thought ? `<div style="font-size:0.8rem;color:var(--fg);opacity:0.9;margin-top:0.2rem">
+          <span style="color:#9b7ef8;font-weight:600">Thought:</span> ${_esc(step.thought)}</div>` : ''}
+        ${step.action  ? `<div style="font-size:0.8rem;margin-top:0.15rem">
+          <span style="color:#5b8ef0;font-weight:600">Action:</span>
+          <code style="background:var(--bg-2);padding:0.1rem 0.3rem;border-radius:3px;font-size:0.78rem">${_esc(step.action)}</code>
+          ${step.args ? `<span style="color:var(--muted);font-size:0.75rem"> ${JSON.stringify(step.args)}</span>` : ''}
+          </div>` : ''}
+        ${step.observation ? `<div style="font-size:0.78rem;color:var(--muted);margin-top:0.15rem;
+          max-height:4em;overflow:hidden;text-overflow:ellipsis">
+          <span style="color:#3ecf8e;font-weight:600">Obs:</span> ${_esc(step.observation.slice(0, 300))}
+          </div>` : ''}
+        ${step.guard_fired ? `<div style="font-size:0.72rem;color:#f5a623">⚠ Hallucination guard fired</div>` : ''}
+      </div>
+    `).join('');
+
+    const collapsed = stage.steps?.length > 3;
+    const stepsId = `rr-steps-${key}`;
+    return `
+      <div style="border-bottom:1px solid var(--border)">
+        <div style="padding:0.75rem 1.25rem;display:flex;align-items:center;gap:0.75rem;
+          cursor:pointer;user-select:none" onclick="
+            const el=document.getElementById('${stepsId}');
+            el.style.display=el.style.display==='none'?'block':'none'">
+          <span style="font-weight:600;font-size:0.85rem">${_esc(stage.role)}</span>
+          <span style="font-size:0.75rem;color:var(--muted)">${key}</span>
+          ${stage.attempt > 1 ? `<span style="font-size:0.72rem;color:#f5a623">retry #${stage.attempt}</span>` : ''}
+          <span style="font-size:0.75rem;color:${stage.status === 'done' ? '#3ecf8e' : '#e85d75'};margin-left:auto">
+            ${stage.status} · ${stage.steps?.length ?? 0} steps
+          </span>
+          <span style="font-size:0.75rem;color:var(--muted)">${collapsed ? '▼ expand' : '▲'}</span>
+        </div>
+        <div id="${stepsId}" style="display:${collapsed ? 'none' : 'block'};
+          padding:0 1.25rem 0.75rem;border-top:1px solid var(--border);background:var(--bg-2)">
+          ${stepsHtml || '<div style="color:var(--muted);font-size:0.8rem">No steps recorded.</div>'}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  results.innerHTML = `
+    <!-- Summary bar -->
+    <div style="padding:0.75rem 1.25rem;background:var(--bg-2);display:flex;
+      align-items:center;gap:1rem;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+      <span style="font-weight:700;color:${verdictColor};font-size:0.9rem">
+        ${verdict.toUpperCase()}
+      </span>
+      <span style="color:var(--muted);font-size:0.8rem">${result.total_stages ?? 0} stages</span>
+      <span style="color:var(--muted);font-size:0.8rem">${result.total_steps ?? 0} steps</span>
+      <span style="color:var(--muted);font-size:0.8rem">$${(result.total_cost_usd ?? 0).toFixed(4)}</span>
+      <span style="color:var(--muted);font-size:0.8rem">${(result.duration_s ?? 0).toFixed(1)}s</span>
+    </div>
+    <!-- Stage traces -->
+    ${stagesHtml}
+    <!-- Structured output of last stage -->
+    ${result.last_handoff ? `
+      <div style="padding:0.75rem 1.25rem;border-top:1px solid var(--border)">
+        <div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.4rem">Final structured output</div>
+        <pre style="font-size:0.75rem;background:var(--bg-2);border-radius:5px;
+          padding:0.6rem;overflow:auto;max-height:12rem;margin:0">${_esc(JSON.stringify(result.last_handoff, null, 2))}</pre>
+      </div>` : ''}
+  `;
+}
+
+function _esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }

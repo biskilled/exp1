@@ -450,13 +450,14 @@ CREATE TABLE IF NOT EXISTS pr_prompts (
     source_id           TEXT,
     prompt              TEXT          NOT NULL DEFAULT '',
     response            TEXT          NOT NULL DEFAULT '',
-    prompt_embedding    VECTOR(1536),
-    response_embedding  VECTOR(1536),
     phase               TEXT,
     tags                TEXT[]        NOT NULL DEFAULT '{}',
     metadata            JSONB         NOT NULL DEFAULT '{}',
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
+-- Drop legacy inline embedding columns (embeddings live in pr_embeddings table)
+ALTER TABLE pr_prompts DROP COLUMN IF EXISTS prompt_embedding;
+ALTER TABLE pr_prompts DROP COLUMN IF EXISTS response_embedding;
 CREATE INDEX IF NOT EXISTS        idx_pr_p_cp      ON pr_prompts(client_id, project);
 CREATE INDEX IF NOT EXISTS        idx_pr_p_session ON pr_prompts(session_id) WHERE session_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_p_source  ON pr_prompts(client_id, project, source_id) WHERE source_id IS NOT NULL;

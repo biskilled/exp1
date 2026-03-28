@@ -202,51 +202,96 @@ def _load_prompt_log_legacy() -> list[dict]:
 async def chat_history(
     project: str | None = Query(None),
     provider: str | None = Query(None),
-    limit: int = Query(500),    # default 500 newest; 0 = all
-    offset: int = Query(0),     # for pagination: skip first N entries
+    limit: int = Query(500),
+    offset: int = Query(0),
     current_user: Optional[dict] = Depends(get_optional_user),
 ):
-    """Return unified project history — all sources, all users.
+    """Return unified project history from pr_prompts (DB-primary).
 
-    Noise entries (user_input containing <task-notification>, <tool-use-id>, etc.)
-    are filtered out before returning.
-    Returns newest-first. limit+offset allow server-side pagination.
+    Falls back to history.jsonl when DB is unavailable.
+    Noise entries are filtered. Returns newest-first with pagination.
     """
+    p = project or settings.active_project or "default"
+
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    # Total count (excluding noise)
+                    noise_filter = " AND NOT (" + " OR ".join(
+                        f"prompt LIKE %s" for _ in range(4)
+                    ) + ")"
+                    noise_args = tuple(f"{pat}%" for pat in _NOISE_PATTERNS)
+
+                    provider_filter = " AND llm_source = %s" if provider else ""
+                    provider_arg    = (provider,) if provider else ()
+
+                    cur.execute(
+                        f"""SELECT COUNT(*) FROM pr_prompts
+                            WHERE client_id=1 AND project=%s
+                              AND event_type='prompt'
+                              AND prompt IS NOT NULL AND prompt != ''
+                              {noise_filter}{provider_filter}""",
+                        (p,) + noise_args + provider_arg,
+                    )
+                    total = cur.fetchone()[0]
+
+                    cur.execute(
+                        f"""SELECT source_id, session_id, llm_source, prompt,
+                                   response, phase, tags, metadata, created_at
+                            FROM pr_prompts
+                            WHERE client_id=1 AND project=%s
+                              AND event_type='prompt'
+                              AND prompt IS NOT NULL AND prompt != ''
+                              {noise_filter}{provider_filter}
+                            ORDER BY created_at DESC
+                            LIMIT %s OFFSET %s""",
+                        (p,) + noise_args + provider_arg + (limit if limit > 0 else 10000, offset),
+                    )
+                    rows = cur.fetchall()
+
+            entries = [
+                {
+                    "ts":         r[0] or (r[8].strftime("%Y-%m-%dT%H:%M:%SZ") if r[8] else ""),
+                    "source":     r[2] or "ui",
+                    "session_id": r[1],
+                    "provider":   r[2] or "unknown",
+                    "user_input": r[3],
+                    "output":     r[4] or "",
+                    "phase":      r[5],
+                    "tags":       r[6] or [],
+                    "metadata":   r[7] or {},
+                }
+                for r in rows
+            ]
+            return {
+                "entries": entries,
+                "total": total,
+                "filtered": 0,
+                "offset": offset,
+                "limit": limit,
+                "has_more": (offset + len(entries)) < total,
+            }
+        except Exception as e:
+            log.warning("chat_history DB read failed, falling back to JSONL: %s", e)
+
+    # Fallback: JSONL (when DB unavailable)
     entries = _load_unified_history(project, provider)
-
-    # Also merge legacy prompt_log.jsonl entries not yet in unified file
     if provider is None or provider == "claude":
-        legacy = _load_prompt_log_legacy()
-        entries.extend(legacy)
-
-    # Deduplicate by (ts, user_input[:80])
+        entries.extend(_load_prompt_log_legacy())
     seen: set[tuple] = set()
     deduped: list[dict] = []
     for e in entries:
         key = (e.get("ts", ""), e.get("user_input", "")[:80])
         if key not in seen:
             seen.add(key)
-            deduped.append(e)
-
-    total_raw = len(deduped)
-
-    # Filter out internal noise entries
-    deduped = [e for e in deduped if not _is_noisy(e)]
-
+            if not _is_noisy(e):
+                deduped.append(e)
     deduped.sort(key=lambda x: x.get("ts", ""), reverse=True)
     total = len(deduped)
-    filtered = total_raw - total
-
-    # Apply server-side pagination
-    page_entries = deduped[offset:offset + limit] if limit > 0 else deduped[offset:]
-    return {
-        "entries": page_entries,
-        "total": total,
-        "filtered": filtered,
-        "offset": offset,
-        "limit": limit,
-        "has_more": (offset + len(page_entries)) < total,
-    }
+    page = deduped[offset:offset + limit] if limit > 0 else deduped[offset:]
+    return {"entries": page, "total": total, "filtered": 0,
+            "offset": offset, "limit": limit, "has_more": (offset + len(page)) < total}
 
 
 class CommitPatch(BaseModel):

@@ -1420,20 +1420,37 @@ async def generate_memory(project_name: str):
 
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    # Load recent history (last 40 entries with user_input, excluding noisy entries)
+    # Load recent history from pr_prompts (DB-primary; JSONL no longer used)
     recent: list[dict] = []
-    hist_file = sys_dir / "history.jsonl"
-    if hist_file.exists():
-        with open(hist_file) as f:
-            raw_lines = [l.strip() for l in f if l.strip()]
-        for line in raw_lines[-120:]:
-            try:
-                e = json.loads(line)
-                if e.get("user_input") and not _is_noisy(e):
-                    recent.append(e)
-            except Exception:
-                pass
-        recent = recent[-40:]
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT source_id, session_id, llm_source, prompt,
+                                  response, phase, created_at
+                           FROM pr_prompts
+                           WHERE client_id=1 AND project=%s
+                             AND event_type='prompt'
+                             AND prompt IS NOT NULL AND prompt != ''
+                           ORDER BY created_at DESC LIMIT 120""",
+                        (project_name,),
+                    )
+                    rows = cur.fetchall()
+            for source_id, session_id, llm_source, prompt, response, phase, created_at in reversed(rows):
+                if prompt.strip().startswith(("<task-notification>", "<tool-use-id>", "<task-id>", "<parameter>")):
+                    continue
+                recent.append({
+                    "ts":         source_id or (created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if created_at else ""),
+                    "source":     llm_source or "ui",
+                    "session_id": session_id,
+                    "user_input": prompt,
+                    "output":     response or "",
+                    "phase":      phase,
+                })
+        except Exception as e:
+            log.warning("generate_memory: DB history read failed: %s", e)
+    recent = recent[-40:]
 
     # Load project_state.json (also reads last_memory_run for incremental processing)
     state_data: dict = {}

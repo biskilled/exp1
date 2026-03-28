@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 02:51 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 10:17 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -13,7 +13,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
+- **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl) — PENDING MIGRATION TO DB-ONLY
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
@@ -56,8 +56,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-28] I would like to understand more about the embedigng and chunk methods. I do understand it is happend only when using /me
-- [2026-03-28] I would embedding to be connected to the tagging. for example auth - will be meta data of all authentication prompts.. m
 - [2026-03-28] Can you please rewrite aicli_memory.md. make sure all flows are exatly as they are. all prompts are writeen clear for ea
 - [2026-03-28] Is it reccomended to merge pr_events and pr_interactions ?
 - [2026-03-28] Can you update the table name from pr_interation to pr_prompts same to pr_interation_tags to pr_prompts_tags. also can g
+- [2026-03-28] Before you continue - I would like to understand why in pr_interaction name is not change to pr_prompts at the db ? Also
+- [2026-03-28] Yes please do that, and run /memory to check P0#1, and fix P1#5 and P1#3 . also is the system loading hidtory from pr_pr

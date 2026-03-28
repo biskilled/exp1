@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 02:55 UTC — do not edit manually.
+> Auto-generated 2026-03-28 10:26 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 282
-- **Last active**: 2026-03-28T02:51:09Z
+- **Sessions**: 283
+- **Last active**: 2026-03-28T09:46:57Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -18,7 +18,7 @@
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
+- **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl) — PENDING MIGRATION TO DB-ONLY
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
@@ -43,11 +43,11 @@
 
 ## In Progress
 
+- JSONL vs. database storage consolidation (2026-03-28) — User questioning whether system loads history from pr_prompts or JSONL; request to migrate away from JSONL approach toward DB-only tables to simplify data persistence and eliminate dual-storage complexity
+- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues; priority order requested for immediate attention
 - Embedding-to-tagging integration (2026-03-28) — User requested embeddings connected to tag metadata (e.g., 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes); current implementation unclear, requires validation and design refinement
 - Backend startup stability (2026-03-26) — Documented proper backend initialization: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
-- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload; confirmed full setup sequence (kill, npm install, npm run dev)
-- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; enforce missing data detection at creation and sync with database
-- Tag visibility and management (2026-03-23) — Implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
+- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload; confirmed full setup sequence
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
 
 ## Key Decisions
@@ -160,6 +160,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-28 10:13]** `claude_cli/claude`  
+→ Yes please do that, and run /memory to check P0#1, and fix P1#5 and P1#3 . also is the system loading hidtory from pr_pr
+
+**[2026-03-28 09:45]** `claude_cli/claude`  
+→ Before you continue - I would like to understand why in pr_interaction name is not change to pr_prompts at the db ? Also
+← _Now I have the full picture. Let me give you clear answers to all four questions.  ---  ## 1. Why isn't `pr_interactions` renamed to `pr_prompts` in the DB yet?  The rename code IS in `database.py` as_
+
 **[2026-03-28 02:38]** `claude_cli/claude`  
 → Can you update the table name from pr_interation to pr_prompts same to pr_interation_tags to pr_prompts_tags. also can g
 ← _Now I have a full picture. Here's a comprehensive design decision review with priority mapping:  ---  ## Design Decisions — Priority Map  ### P0 — Verify Core Functionality (must confirm before anythi_
@@ -211,11 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-27 09:07]** `claude_cli/claude`  
 → Allworks as expected. I would like to have full review on all memroy layers - what you are haveing now, when do you summ
 ← _Created `/Users/user/Documents/gdrive_cellqlick/2026/aicli/aicli_memory.md`.  Here's the summary of what's covered:  **5 Layers:** - **Layer 1** — In-memory only (current session messages, lost on exi_
-
-**[2026-03-26 22:02]** `claude_cli/claude`  
-→ how do I run the ui ? 
-← _Now I have all the exact details. Let me write the complete rewrite._
-
-**[2026-03-26 21:59]** `claude_cli/claude`  
-→ I closed all termianl , when I try to run, backend is not loading properly 
-← _Backend is running now. For next time, **open a terminal and run**:  ```bash cd /Users/user/Documents/gdrive_cellqlick/2026/aicli/backend bash start_backend.sh ```  Keep that terminal window open whil_

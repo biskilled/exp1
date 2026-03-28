@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-28 02:51 UTC by aicli /memory_
+_Generated: 2026-03-28 10:17 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining Claude CLI with LLM integrations, built on Python 3.12 backend (FastAPI), PostgreSQL semantic storage (pgvector), and Electron UI (Vanilla JS + xterm.js + Cytoscape.js). The system manages project development history, embeddings, workflows, and memory synthesis via async DAG execution and Claude Haiku summarization. Current focus is consolidating dual JSONL/database storage into DB-only approach while fixing critical issues with embedding-to-tagging integration and memory table population.
 
 ## Project Facts
 
@@ -49,7 +53,7 @@ Reviewer: ```json
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
+- **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl) — PENDING MIGRATION TO DB-ONLY
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
@@ -92,51 +96,51 @@ Reviewer: ```json
 
 ## In Progress
 
+- JSONL vs. database storage consolidation (2026-03-28) — User questioning whether system loads history from pr_prompts or JSONL; request to migrate away from JSONL approach toward DB-only tables to simplify data persistence and eliminate dual-storage complexity
+- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues; priority order requested for immediate attention
 - Embedding-to-tagging integration (2026-03-28) — User requested embeddings connected to tag metadata (e.g., 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes); current implementation unclear, requires validation and design refinement
 - Backend startup stability (2026-03-26) — Documented proper backend initialization: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
-- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload; confirmed full setup sequence (kill, npm install, npm run dev)
-- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; enforce missing data detection at creation and sync with database
-- Tag visibility and management (2026-03-23) — Implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
+- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload; confirmed full setup sequence
 - Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
 
 ## Active Features / Bugs / Tasks
 
 ### Bug
 
-- **hooks** `(137 events, 119 commits)`
+- **hooks** `(139 events, 121 commits)`
 
 ### Doc_type
 
-- **Test** `(56 events, 54 commits)`
+- **Test** `(58 events, 56 commits)`
 - **low-level-design** `(52 events, 50 commits)`
-- **high-level-design** `(29 events, 27 commits)`
-- **retrospective** `(28 events, 27 commits)`
+- **high-level-design** `(31 events, 29 commits)`
+- **retrospective** `(30 events, 29 commits)`
 - **customer-meeting** — dsds
 
 ### Feature
 
-- **UI** `(124 events, 114 commits)`
-- **auth** `(123 events, 115 commits)`
-- **shared-memory** `(123 events, 114 commits)`
-- **graph-workflow** `(113 events, 104 commits)`
-- **tagging** `(80 events, 77 commits)`
+- **UI** `(126 events, 116 commits)`
+- **shared-memory** `(125 events, 116 commits)`
+- **auth** `(125 events, 117 commits)`
+- **graph-workflow** `(115 events, 106 commits)`
+- **tagging** `(82 events, 79 commits)`
+- **billing** `(82 events, 79 commits)`
+- **mcp** `(81 events, 79 commits)`
 - **workflow-runner** `(80 events, 77 commits)`
-- **billing** `(79 events, 77 commits)`
-- **mcp** `(79 events, 77 commits)`
-- **embeddings** `(58 events, 54 commits)`
-- **test-picker-feature** `(28 events, 27 commits)`
-- **dropbox**
+- **embeddings** `(60 events, 56 commits)`
+- **test-picker-feature** `(30 events, 29 commits)`
 - **pagination**
+- **dropbox**
 
 ### Phase
 
-- **discovery** `(120 events, 114 commits)`
-- **development** `(119 events, 106 commits)`
+- **discovery** `(122 events, 116 commits)`
+- **development** `(121 events, 108 commits)`
 - **prod**
 
 ### Task
 
-- **memory** `(76 events, 64 commits)`
+- **memory** `(78 events, 66 commits)`
 - **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
 
 ## Recent Memory
@@ -206,3 +210,7 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-28]** `claude_cli` — User requested migration from dual JSONL/database storage to DB-only approach; querying whether system currently loads from pr_prompts or JSONL; consolidation needed to simplify data persistence architecture. **[2026-03-28]** `claude_cli` — Requested /memory audit for P0#1 and fixes for P1#3 and P1#5; prioritized verification of embedding-to-tagging integration where tag metadata captures context (auth→authentication prompts, feature/bug→code changes). **[2026-03-26]** `development` — Backend startup race condition resolved via retry logic handling empty project list on first load; proper initialization documented as `bash start_backend.sh` with terminal window kept open to avoid port 127.0.0.1:8000 binding conflicts. **[2026-03-23]** `development` — Frontend npm build restored (missing DMG background fixed), node_modules recovered, Vite dev server and hot reload verified; full setup sequence confirmed functional. **[2026-03-18]** `development` — Fixed AttributeError in main.py by removing stale `db.ensure_project_schema()` call; replaced with `_ensure_shared_schema` pattern; fixed memory endpoint CLAUDE.md template error (undefined code_dir variable). **[2026-03-10]** `development` — Implemented tag hierarchy enhancement (nested tags beyond 2-level), data persistence bug identified (tags disappearing on session switch), and database performance optimization (load tags once on project access, update only on save).

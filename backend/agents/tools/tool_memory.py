@@ -206,16 +206,16 @@ def _handle_get_recent_history(args: dict) -> str:
 def _handle_get_project_facts(args: dict) -> str:
     project = args.get("project") or _get_active_project()
 
-    # Try DB first
+    # Primary: query pr_project_facts (temporal validity — valid_until IS NULL = current)
     try:
         from core.database import db
         if db.is_available():
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT key, value FROM pr_project_facts
-                           WHERE client_id=1 AND project=%s
-                           ORDER BY key""",
+                        """SELECT fact_key, fact_value FROM pr_project_facts
+                           WHERE client_id=1 AND project=%s AND valid_until IS NULL
+                           ORDER BY fact_key""",
                         (project,),
                     )
                     rows = cur.fetchall()
@@ -225,7 +225,7 @@ def _handle_get_project_facts(args: dict) -> str:
     except Exception as e:
         log.debug(f"get_project_facts DB error: {e}")
 
-    # Fallback: project_state.json
+    # Fallback: project_state.json (when DB unavailable)
     try:
         cfg_path = Path.home() / ".aicli" / "config.json"
         workspace = "workspace"
@@ -234,8 +234,11 @@ def _handle_get_project_facts(args: dict) -> str:
         state_path = Path(workspace) / project / "_system" / "project_state.json"
         if state_path.exists():
             state = json.loads(state_path.read_text())
-            facts = state.get("facts", {})
-            if facts:
+            # Try key_decisions first (more structured than raw facts)
+            facts = state.get("key_decisions", state.get("facts", {}))
+            if isinstance(facts, list):
+                return "Project Key Decisions:\n" + "\n".join(f"- {f}" for f in facts)
+            if isinstance(facts, dict) and facts:
                 lines = [f"{k}: {v}" for k, v in facts.items()]
                 return "Project Facts:\n" + "\n".join(lines)
     except Exception as e:

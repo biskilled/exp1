@@ -118,71 +118,42 @@ def _append_history(
     user_email: Optional[str] = None, ts: Optional[str] = None,
     tags: Optional[dict] = None,
 ) -> str:
-    """Append a completed exchange to workspace/{project}/_system/history.jsonl.
+    """Write a completed exchange to the DB (pr_prompts + pr_events).
 
-    Also upserts the event into the PostgreSQL events table (when available).
+    DB is the primary store. JSONL files are no longer written here.
     Returns the ts string so callers can correlate the event.
     """
     if ts is None:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    if not db.is_available():
+        return ts
+
+    phase = (tags or {}).get("phase") or None
+    meta  = json.dumps({"user": user_email or user_id, "source": "ui"})
+
     try:
-        sys_dir = Path(settings.workspace_dir) / project / "_system"
-        sys_dir.mkdir(parents=True, exist_ok=True)
-        path = sys_dir / "history.jsonl"
-        entry = {
-            "ts": ts,
-            "source": "ui",
-            "session_id": session_id,
-            "provider": provider,
-            "user_input": user_msg,
-            "output": response,
-            "user": user_email or user_id or None,
-            "phase": (tags or {}).get("phase") or None,
-            "feature": (tags or {}).get("feature") or None,
-            "bug_ref": (tags or {}).get("bug_ref") or None,
-            "tags": [],
-        }
-        with open(path, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # pr_prompts — feeds memory distillation pipeline
+                cur.execute(
+                    _SQL_INSERT_INTERACTION,
+                    (project, session_id, provider, ts,
+                     (user_msg or "")[:4000], (response or "")[:8000],
+                     phase, meta, ts),
+                )
+                # pr_events — feeds entity tagging + semantic search
+                cur.execute(
+                    _SQL_INSERT_PROMPT_EVENT,
+                    (project, ts, (user_msg or "")[:120],
+                     (user_msg or "")[:2000],
+                     json.dumps({"provider": provider, "source": "ui",
+                                 "user": user_email or user_id,
+                                 "session_id": session_id}),
+                     ts),
+                )
     except Exception:
         pass  # never break chat because of logging
-
-    # Upsert event in per-project PostgreSQL table so tag suggestions work immediately
-    if db.is_available():
-        try:
-            meta = json.dumps({
-                "provider": provider,
-                "source": "ui",
-                "user": user_email or user_id,
-                "session_id": session_id,
-            })
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        _SQL_INSERT_PROMPT_EVENT,
-                        (project, ts, (user_msg or "")[:120],
-                         (user_msg or "")[:2000], meta, ts),
-                    )
-        except Exception:
-            pass
-
-        # Mirror to shared interactions table (feeds memory distillation pipeline)
-        try:
-            phase = (tags or {}).get("phase") or None
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        _SQL_INSERT_INTERACTION,
-                        (
-                            project, session_id, provider, ts,
-                            (user_msg or "")[:4000], (response or "")[:8000],
-                            phase,
-                            json.dumps({"user": user_email or user_id, "source": "ui"}),
-                            ts,
-                        ),
-                    )
-        except Exception:
-            pass  # interactions table may not exist yet (pre-migration)
 
     return ts
 
@@ -523,6 +494,91 @@ async def _handle_run_command(pipeline_name: str, project: str, session_id: str)
 
     except Exception as e:
         return f"⚠ Failed to start pipeline: {e}"
+
+
+# ── Hook endpoints (unauthenticated — called by CLI hook scripts) ─────────────
+
+class HookLogRequest(BaseModel):
+    ts: str | None = None
+    session_id: str
+    prompt: str
+    source: str = "claude_cli"
+    provider: str = "claude"
+    phase: str | None = None
+    feature: str | None = None
+
+
+class HookResponseRequest(BaseModel):
+    ts: str                    # matches the ts from HookLogRequest
+    session_id: str
+    response: str
+    stop_reason: str = "end_turn"
+
+
+@router.post("/{project}/hook-log")
+async def hook_log_prompt(project: str, body: HookLogRequest):
+    """Unauthenticated endpoint — CLI hooks write prompts directly to pr_prompts.
+
+    Called by log_user_prompt.sh after every Claude Code prompt.
+    No auth required: runs on localhost, hook scripts have no JWT.
+    """
+    ts = body.ts or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if not db.is_available():
+        return {"ok": False, "reason": "db_unavailable"}
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    _SQL_INSERT_INTERACTION,
+                    (project, body.session_id, body.source, ts,
+                     (body.prompt or "")[:4000], "",
+                     body.phase,
+                     json.dumps({"source": body.source, "provider": body.provider,
+                                 "feature": body.feature}),
+                     ts),
+                )
+        return {"ok": True, "ts": ts}
+    except Exception as e:
+        return {"ok": False, "reason": str(e)}
+
+
+@router.post("/{project}/hook-response")
+async def hook_update_response(project: str, body: HookResponseRequest):
+    """Unauthenticated endpoint — CLI hooks update response text in pr_prompts.
+
+    Called by log_session_stop.sh after Claude Code finishes responding.
+    When ts is empty, finds the most recent empty-response row for the session.
+    """
+    if not db.is_available():
+        return {"ok": False, "reason": "db_unavailable"}
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                if body.ts:
+                    cur.execute(
+                        """UPDATE pr_prompts SET response = %s
+                           WHERE client_id=1 AND project=%s
+                             AND source_id = %s AND session_id = %s
+                             AND (response IS NULL OR response = '')""",
+                        ((body.response or "")[:8000], project, body.ts, body.session_id),
+                    )
+                else:
+                    # Find latest empty-response row for this session
+                    cur.execute(
+                        """UPDATE pr_prompts SET response = %s
+                           WHERE id = (
+                               SELECT id FROM pr_prompts
+                               WHERE client_id=1 AND project=%s
+                                 AND session_id = %s
+                                 AND (response IS NULL OR response = '')
+                               ORDER BY created_at DESC LIMIT 1
+                           )""",
+                        ((body.response or "")[:8000], project, body.session_id),
+                    )
+                updated = cur.rowcount
+        return {"ok": True, "updated": updated}
+    except Exception as e:
+        return {"ok": False, "reason": str(e)}
 
 
 @router.post("/stream")

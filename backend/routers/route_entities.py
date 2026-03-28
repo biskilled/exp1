@@ -648,56 +648,61 @@ async def list_events(
             return {"events": rows, "project": p, "total": len(rows)}
 
 
+_NOISE_PREFIXES = ("<task-notification>", "<tool-use-id>", "<task-id>", "<parameter>")
+
+
 def _do_sync_events(p: str) -> dict[str, int]:
     """Core sync logic — importable by other modules (e.g. projects.py /memory).
 
-    Imports history.jsonl + commits table into the events table. Idempotent.
+    Imports pr_prompts + commits table into the events table. Idempotent.
+    DB is the primary source; history.jsonl is no longer read.
     Returns {"prompt": N, "commit": N} counts of newly inserted rows.
     Requires db.is_available() to already be True; caller is responsible.
     """
-    ws = _workspace(p)
     imported = {"prompt": 0, "commit": 0}
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            # 1. history.jsonl → event_type="prompt"
-            hist = ws / "_system" / "history.jsonl"
-            if hist.exists():
-                for line in hist.read_text().splitlines():
-                    if not line.strip():
-                        continue
-                    try:
-                        e = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    sid = e.get("ts") or ""
-                    if not sid:
-                        continue
-                    title = (e.get("user_input") or "")[:120] or "(no input)"
-                    e_phase      = e.get("phase") or None
-                    e_feature    = e.get("feature") or None
-                    e_session_id = e.get("session_id") or e.get("session") or None
-                    meta = json.dumps({
-                        "provider":   e.get("provider"),
-                        "source":     e.get("source"),
-                        "phase":      e_phase,
-                        "feature":    e_feature,
-                        "session_id": e_session_id,
-                    })
-                    cur.execute(
-                        """INSERT INTO pr_events
-                               (client_id, project, event_type, source_id, title, content,
-                                phase, feature, session_id, metadata, created_at)
-                           VALUES (1, %s, 'prompt', %s, %s, %s, %s, %s, %s, %s, %s::timestamptz)
-                           ON CONFLICT (client_id, project, event_type, source_id) DO UPDATE SET
-                               phase      = EXCLUDED.phase,
-                               feature    = EXCLUDED.feature,
-                               session_id = EXCLUDED.session_id,
-                               metadata   = EXCLUDED.metadata""",
-                        (p, sid, title, (e.get("user_input") or "")[:2000],
-                         e_phase, e_feature, e_session_id, meta, sid),
-                    )
-                    imported["prompt"] += cur.rowcount
+            # 1. pr_prompts → event_type="prompt"  (DB-primary, replaces JSONL read)
+            cur.execute(
+                """SELECT source_id, session_id, llm_source, prompt, phase,
+                          metadata, created_at
+                   FROM pr_prompts
+                   WHERE client_id=1 AND project=%s
+                     AND event_type='prompt'
+                     AND prompt IS NOT NULL AND prompt != ''
+                   ORDER BY created_at""",
+                (p,),
+            )
+            for source_id, session_id, llm_source, prompt, phase, meta, created_at in cur.fetchall():
+                if not source_id:
+                    continue
+                # Skip internal Claude Code tool noise
+                if prompt.strip().startswith(_NOISE_PREFIXES):
+                    continue
+                title    = prompt[:120] or "(no input)"
+                feature  = (meta or {}).get("feature") if isinstance(meta, dict) else None
+                meta_out = json.dumps({
+                    "provider":   llm_source,
+                    "source":     llm_source or "ui",
+                    "phase":      phase,
+                    "feature":    feature,
+                    "session_id": session_id,
+                })
+                cur.execute(
+                    """INSERT INTO pr_events
+                           (client_id, project, event_type, source_id, title, content,
+                            phase, feature, session_id, metadata, created_at)
+                       VALUES (1, %s, 'prompt', %s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT (client_id, project, event_type, source_id) DO UPDATE SET
+                           phase      = EXCLUDED.phase,
+                           feature    = EXCLUDED.feature,
+                           session_id = EXCLUDED.session_id,
+                           metadata   = EXCLUDED.metadata""",
+                    (p, source_id, title, prompt[:2000],
+                     phase, feature, session_id, meta_out, created_at),
+                )
+                imported["prompt"] += cur.rowcount
 
             # 2. pr_commits table → event_type="commit"
             # session_id column may not exist on older DB — COALESCE guards.
