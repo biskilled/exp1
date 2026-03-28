@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-27 09:42 UTC — do not edit manually.
+> Auto-generated 2026-03-27 21:53 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 271
-- **Last active**: 2026-03-27T09:42:04Z
+- **Sessions**: 272
+- **Last active**: 2026-03-27T09:43:09Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-27 09:42]** `claude_cli/claude`  
+→ I do see that you have native /memory function as well. what is it ?
+← _The file is at:  ``` /Users/user/Documents/gdrive_cellqlick/2026/aicli/aicli_memory.md ```  It's in the **root of the aicli project folder** — the same level as `backend/`, `ui/`, `workspace/`, `CLAUD_
+
 **[2026-03-27 09:41]** `claude_cli/claude`  
 → Where is the file ? I cannnot see that in the folder
 ← _`aicli_memory.md` is now 1336 lines covering everything. Here's what was added:  ---  **When responses are summarized** — exact 7-step chain: 1. Raw write (no summarization) — hooks capture prompt imm_
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-23 00:42]** `claude_cli/claude`  
 → I alway run using npm build dev (not npm run build) when I run npm run build I got errors regarding to old folder such a
 ← _---  **What was wrong and how it's fixed:**  | Problem | Root cause | Fix | |---|---|---| | Can't open DevTools | No global shortcut registered; menu only | `globalShortcut.register(Cmd+Option+I)` + *_
-
-**[2026-03-23 00:35]** `claude_cli/claude`  
-→ can you explain How should I force electorn to flash the memory as I do not see any change at the ui. is there is someth
-← _---  **On forcing Electron to reload:**  There is no magic — Electron's renderer is essentially Chromium. Here's what to try, in order:  1. **Hard reload while app is open**: `Cmd+Shift+R` (Mac) — cle_
