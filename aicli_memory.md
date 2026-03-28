@@ -163,18 +163,67 @@ Indexes: `idx_pr_emb_cp`, `idx_pr_emb_src`, `idx_pr_emb_lang`
 ### Smart Chunking Strategy
 Before embedding, content is split into meaningful chunks:
 
-| Content type | Strategy | chunk_type values |
-|-------------|----------|-------------------|
-| Python / JS / TS code | Per-class / per-function + summary | `summary`, `class`, `function` |
-| Markdown docs | Per H2/H3 section | `summary`, `section` |
-| Git diffs | Per-file in the diff | `file_diff` |
-| Raw history | Full entry | `full` |
+| Content type | Chunker | Splits on | chunk_type values |
+|-------------|---------|-----------|-------------------|
+| Python / JS / TS code | `smart_chunk_code()` | `class` / `def` / `function` / `const` top-level symbols | `summary`, `class`, `function` |
+| Markdown docs / roles | `smart_chunk_markdown()` | `##` headings; sub-split at `###` if section > 3000 chars | `summary`, `section` |
+| Git diffs | `smart_chunk_diff()` | `diff --git a/... b/...` file boundaries in unified diff | `summary`, `file_diff` |
+| Raw history entries | none | — single blob: "Q: {input}\nA: {output}" | `full` |
+| Other files | fallback | — truncated to 8000 chars | `full` |
+
+**Important distinction**: `smart_chunk_code` (class/function level) is used for role files and
+`ingest_document()` calls — NOT for commits. Commit embeddings split by FILE (one chunk per changed
+file), not by class or function inside the file. The `+/-` diff lines within each file chunk show
+what actually changed.
+
+### How Many Rows Per Item?
+
+| Ingest function | Source | Rows created |
+|----------------|--------|--------------|
+| `ingest_history()` | history.jsonl | **1 per entry** (always `chunk_index=0, chunk_type="full"`) |
+| `ingest_roles()` | role `.md` files | **N per file** — 1 per H2/H3 section (1 file with 4 sections → 4 rows) |
+| `ingest_commit()` | git diff | **1 + N per commit** — 1 summary chunk + 1 per changed file |
+
+### What Triggers Embedding (Not Just /memory)
+
+| Trigger | What gets embedded | Timing |
+|---|---|---|
+| `/memory` (Stop hook or manual) | New history since `last_memory_run` + new commits + all roles | ~15s after session end |
+| Every chat UI response | The Q&A pair immediately | After each response |
+| Role file save (Roles tab) | The saved role content | On save |
+| `/search/ingest` (admin) | History + roles | On demand |
+| Graph run completion | Node output text | After each pipeline run |
+
+### How Embedding Connects to Commits and Prompts
+
+The `source_id` field in `pr_embeddings` is the FK bridge:
+
+```
+pr_embeddings
+  source_type="history"  source_id="2026-03-27T14:23:10Z"  → pr_events.source_id (same timestamp)
+  source_type="commit"   source_id="8a6d5cc1"              → pr_commits.commit_hash
+  source_type="role"     source_id="developer.md"          → workspace/_templates/roles/developer.md
+```
+
+Commit embeddings also carry `phase` and `feature` tags in the `metadata` JSONB field (read from
+`pr_commits.phase` and `pr_commits.feature`). This means semantic search can be filtered by phase:
+
+```
+POST /search/semantic
+{"query": "JWT auth", "source_types": ["commit"], "phase": "development"}
+→ finds commit diffs that touched JWT code during the development phase
+```
+
+**Deduplication**: unique key is `(client_id, project, source_type, source_id, chunk_index)` with
+`ON CONFLICT DO UPDATE SET content=..., embedding=..., created_at=NOW()`. Re-running `/memory` updates
+existing embeddings in-place rather than creating duplicates — so if you tag a commit with a feature
+and run `/memory` again, the embedding's metadata updates automatically.
 
 ### Background Embed Tasks
 Triggered at the end of every `/memory` run (fire-and-forget via `asyncio.create_task()`):
-- `ingest_history()` — embed new history entries since `last_memory_run`
-- `ingest_roles()` — re-embed all role YAML files (may have changed)
-- `ingest_commits()` — embed any commits not yet in `pr_embeddings`
+- `ingest_history(since=last_memory_run)` — only new entries, skips already-embedded ones
+- `ingest_roles()` — re-embeds all role files (upserts, so stale = overwritten)
+- `ingest_commits()` — only commits not yet in `pr_embeddings` (checked via NOT EXISTS subquery)
 
 ### Semantic Search
 `POST /search/semantic` queries `pr_embeddings` using pgvector cosine similarity.
