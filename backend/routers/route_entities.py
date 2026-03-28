@@ -919,23 +919,41 @@ class TagAdd(BaseModel):
 
 
 @router.post("/events/{event_id}/tag")
-async def add_event_tag(event_id: int, body: TagAdd, project: str | None = Query(None)):
+async def add_event_tag(
+    event_id: int, body: TagAdd, background: BackgroundTasks,
+    project: str | None = Query(None),
+):
     _require_db()
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(_SQL_INSERT_EVENT_TAG, (event_id, body.entity_value_id, body.auto_tagged))
+    # Propagate the new tag into the embedding metadata so search filters work immediately
+    background.add_task(_backfill_tags_bg, p)
     return {"ok": True}
 
 
 @router.delete("/events/{event_id}/tag/{value_id}")
-async def remove_event_tag(event_id: int, value_id: int, project: str | None = Query(None)):
+async def remove_event_tag(
+    event_id: int, value_id: int, background: BackgroundTasks,
+    project: str | None = Query(None),
+):
     _require_db()
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(_SQL_DELETE_EVENT_TAG, (event_id, value_id))
+    background.add_task(_backfill_tags_bg, p)
     return {"ok": True}
+
+
+async def _backfill_tags_bg(project: str) -> None:
+    """Fire-and-forget wrapper for backfill_entity_tags."""
+    try:
+        from memory.mem_embeddings import backfill_entity_tags
+        await backfill_entity_tags(project)
+    except Exception:
+        pass
 
 
 @router.get("/values/{val_id}/events")

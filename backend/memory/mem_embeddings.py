@@ -85,6 +85,27 @@ _SQL_GET_NODE_OUTPUTS = (
     "SELECT node_id, node_name, output FROM pr_graph_node_results WHERE run_id=%s AND status='done'"
 )
 
+# Propagate entity value tags from pr_event_tags into pr_embeddings.metadata.
+# The bridge is ev.source_id == e.source_id (timestamp for history, commit_hash for commit).
+# Uses || merge so existing metadata keys are preserved.
+_SQL_BACKFILL_ENTITY_TAGS = """
+    UPDATE pr_embeddings e
+    SET metadata = e.metadata || jsonb_build_object('entity_tags',
+        (SELECT jsonb_agg(jsonb_build_object('id', v.id, 'name', v.name, 'category', c.name))
+         FROM pr_events ev
+         JOIN pr_event_tags et ON et.event_id = ev.id
+         JOIN mng_entity_values v  ON v.id = et.entity_value_id AND v.client_id=1
+         JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
+         WHERE ev.client_id=1 AND ev.project=%s AND ev.source_id = e.source_id)
+    )
+    WHERE e.client_id=1 AND e.project=%s
+      AND EXISTS (
+          SELECT 1 FROM pr_events ev
+          JOIN pr_event_tags et ON et.event_id = ev.id
+          WHERE ev.client_id=1 AND ev.project=%s AND ev.source_id = e.source_id
+      )
+"""
+
 
 def _openai_key() -> str | None:
     try:
@@ -389,11 +410,15 @@ async def semantic_search(
     chunk_types: list[str] | None = None,
     phase: str | None = None,
     feature: str | None = None,
+    entity_name: str | None = None,
+    entity_category: str | None = None,
 ) -> list[dict]:
     """Search embeddings by cosine similarity. Returns empty list on any error.
 
     Optional metadata filters: language, doc_type, file_path, chunk_types, phase, feature.
-    phase/feature filter on metadata JSONB (embeddings store history context in metadata).
+    entity_name: restrict to embeddings tagged with this entity value name (e.g. 'auth').
+    entity_category: restrict to embeddings tagged with this category (e.g. 'bug', 'feature').
+    Entity filters use JSONB containment on metadata->entity_tags populated by backfill_entity_tags().
     """
     if not db.is_available():
         return []
@@ -432,6 +457,13 @@ async def semantic_search(
         if feature:
             filters.append("metadata->>'feature' = %s")
             params.append(feature)
+        if entity_name:
+            # JSONB containment: metadata @> '{"entity_tags":[{"name":"auth"}]}'
+            filters.append("metadata @> %s::jsonb")
+            params.append(json.dumps({"entity_tags": [{"name": entity_name}]}))
+        if entity_category:
+            filters.append("metadata @> %s::jsonb")
+            params.append(json.dumps({"entity_tags": [{"category": entity_category}]}))
 
         where = " AND ".join(filters)
         params += [str(query_vec), limit]
@@ -616,6 +648,30 @@ async def ingest_document(
             chunk["doc_type"] = doc_type
 
     return await embed_chunks(project, "doc", source_id, chunks)
+
+
+async def backfill_entity_tags(project: str) -> int:
+    """Propagate entity value tags from pr_event_tags into pr_embeddings.metadata.
+
+    Runs after any tagging operation so embeddings become searchable by entity.
+    Finds all embeddings whose source_id matches a tagged pr_events.source_id and
+    merges an 'entity_tags' list into the metadata JSONB:
+        {"entity_tags": [{"id": 5, "name": "auth", "category": "feature"}, ...]}
+
+    The || merge operator preserves existing metadata keys (phase, feature, etc.).
+    Safe to call repeatedly — idempotent. Silent on error.
+    Returns count of updated embedding rows.
+    """
+    if not db.is_available():
+        return 0
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_BACKFILL_ENTITY_TAGS, (project, project, project))
+                return cur.rowcount
+    except Exception as e:
+        log.debug(f"backfill_entity_tags failed ({project}): {e}")
+        return 0
 
 
 async def embed_node_outputs(run_id: str, project: str) -> None:

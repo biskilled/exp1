@@ -225,9 +225,76 @@ Triggered at the end of every `/memory` run (fire-and-forget via `asyncio.create
 - `ingest_roles()` — re-embeds all role files (upserts, so stale = overwritten)
 - `ingest_commits()` — only commits not yet in `pr_embeddings` (checked via NOT EXISTS subquery)
 
+### Entity Tags → Embedding Metadata (2026-03-28)
+
+**The problem**: The tagging system (`pr_event_tags`) and the embedding system (`pr_embeddings`) were
+completely disconnected. When you tagged a prompt with "auth feature" in the Planner, that tag had no
+effect on semantic search — searching for "auth" would still return everything.
+
+**The fix**: `backfill_entity_tags(project)` in `mem_embeddings.py`.
+
+A single SQL UPDATE joins `pr_event_tags` → `pr_events` → `pr_embeddings` via `source_id` and
+merges an `entity_tags` array into each embedding's `metadata` JSONB:
+
+```json
+{"phase": "development", "feature": "auth", "entity_tags": [
+  {"id": 5, "name": "auth", "category": "feature"},
+  {"id": 12, "name": "UI dropbox", "category": "bug"}
+]}
+```
+
+**When it runs** (automatically, fire-and-forget):
+- After every manual tag in History tab (`POST /entities/events/{id}/tag`)
+- After every manual un-tag (`DELETE /entities/events/{id}/tag/{value_id}`)
+- After `_sync_and_autotag()` completes (which runs on every `/memory`)
+
+**How to filter by entity in search**:
+
+```
+POST /search/semantic
+{
+  "query": "login error handling",
+  "entity_name": "auth",           ← only embeddings tagged with the "auth" entity
+  "entity_category": "bug",        ← only embeddings tagged in the "bug" category
+  "source_types": ["history", "commit"]
+}
+```
+
+**MCP `search_memory` tool** now accepts `entity_name` and `entity_category` parameters:
+```
+search_memory(query="dropbox error", entity_name="UI dropbox", entity_category="bug")
+→ returns only history entries and commits tagged with the "UI dropbox" bug entity
+```
+
+### Is One Table the Right Design?
+
+Yes — a single `pr_embeddings` table with `source_type` + `source_id` is the correct pgvector pattern:
+- Single vector index covers all content types (history, commit, role, doc)
+- `source_type = ANY(...)` filter is fast with the composite index
+- Cosine similarity across all content types finds the most relevant result regardless of origin
+
+The problem before this fix was **metadata quality**, not the table structure. Phase/feature from
+session tags were in the metadata, but entity-value tags (the ones you create in the Planner) were not.
+Now all three tag dimensions are in the metadata and filterable.
+
+### Does MCP Use Embeddings Efficiently?
+
+Before this fix: **partially**. MCP's `search_memory` could filter by `phase` and `feature` (session-level
+string tags), but not by entity values (the named features/bugs/tasks you create in the Planner).
+
+After this fix: **yes**. Claude Code can now:
+```
+search_memory(query="authentication", entity_name="auth")
+→ finds only history/commits specifically tagged to the "auth" feature entity
+```
+
+This means when you're working on auth, Claude can retrieve exactly the "auth-tagged" history without
+getting noise from unrelated sessions that happen to mention "auth" by chance.
+
 ### Semantic Search
 `POST /search/semantic` queries `pr_embeddings` using pgvector cosine similarity.
-Filters available: `source_type`, `language`, `doc_type`, `file_path`, `chunk_type`, `phase`, `feature`.
+Filters available: `source_type`, `language`, `doc_type`, `file_path`, `chunk_type`, `phase`, `feature`,
+`entity_name` (Planner entity value name), `entity_category` (Planner category: bug/feature/task).
 
 ---
 

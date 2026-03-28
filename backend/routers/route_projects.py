@@ -2125,6 +2125,13 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
     except Exception as e:
         logging.getLogger(__name__).debug(f"_sync_and_autotag auto-tag failed: {e}")
 
+    # Propagate all entity tags into embedding metadata so search_memory filters work
+    try:
+        from memory.mem_embeddings import backfill_entity_tags as _bfe
+        await _bfe(project)
+    except Exception:
+        pass
+
 
 async def _detect_relationships(project: str, since: str | None = None) -> None:
     """Detect and create relationships between new events. Silent on error.

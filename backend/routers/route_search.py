@@ -56,6 +56,9 @@ class SearchRequest(BaseModel):
     # Tag-aware filters — restrict results to events with this phase/feature
     phase: Optional[str] = None
     feature: Optional[str] = None
+    # Entity-tag filters — restrict to embeddings tagged with a specific entity value or category
+    entity_name: Optional[str] = None       # e.g. "auth", "UI dropbox"
+    entity_category: Optional[str] = None  # e.g. "bug", "feature", "task"
 
 
 @router.post("/semantic")
@@ -76,6 +79,8 @@ async def semantic_search(body: SearchRequest, user=Depends(get_optional_user)):
         chunk_types=body.chunk_types or None,
         phase=body.phase,
         feature=body.feature,
+        entity_name=body.entity_name,
+        entity_category=body.entity_category,
     )
     return {"results": results, "query": body.query, "total": len(results)}
 

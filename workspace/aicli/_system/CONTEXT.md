@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 01:47 UTC — do not edit manually.
+> Auto-generated 2026-03-28 01:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 275
-- **Last active**: 2026-03-28T01:46:35Z
+- **Sessions**: 276
+- **Last active**: 2026-03-28T01:51:50Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-28 01:48]** `claude_cli/claude`  
+→ I would like to understand more about the embedigng and chunk methods. I do understand it is happend only when using /me
+← _Now I have the full picture. Let me give you a complete and accurate answer.  ---  ## Embedding and Chunking — Full Explanation  ### 1. Is embedding only triggered by `/memory`?  **No** — there are 4 _
+
 **[2026-03-28 01:45]** `claude_cli/claude`  
 → is the file aicli_memory.md shows the correct flow (including the one you have added) ? 
 ← _The flow is fully consistent. Here's what `aicli_memory.md` now correctly documents:  **Stop hook (`log_session_stop.sh`)** — 9 steps, with step 8 being the new `auto-detect-bugs` fire-and-forget call_
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-23 01:21]** `claude_cli/claude`  
 → yes
 ← _Pushed successfully. Here's what was done:  1. **Hook fix** — Removed `set -euo pipefail` from `auto_commit_push.sh`. That was the root cause: any command silently redirecting stderr to `/dev/null` (l_
-
-**[2026-03-23 01:06]** `claude_cli/claude`  
-→ There is again the problem with the hooks - Stop hook error: Failed with non-blocking status code: No stderr output. Als
-← _The large Electron binaries (150+ MB) were added in commit `ae89abd` and deleted in `b416c01`, but GitHub still rejects because the blobs exist in the history being pushed. The cleanest fix is to squa_

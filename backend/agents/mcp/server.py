@@ -120,6 +120,14 @@ async def list_tools() -> list[mcp_types.Tool]:
                         "description": "Restrict results to history recorded during this phase",
                     },
                     "feature": {"type": "string", "description": "Restrict results to a specific feature tag"},
+                    "entity_name": {
+                        "type": "string",
+                        "description": "Restrict results to embeddings tagged with this entity value name (e.g. 'auth', 'UI dropbox'). Tags must be backfilled via /memory.",
+                    },
+                    "entity_category": {
+                        "type": "string",
+                        "description": "Restrict results to embeddings tagged with this entity category (e.g. 'bug', 'feature', 'task').",
+                    },
                     "project": {"type": "string"},
                 },
                 "required": ["query"],
@@ -381,6 +389,8 @@ async def _dispatch(name: str, args: dict) -> Any:
             "chunk_types": args.get("chunk_types"),
             "phase": args.get("phase"),
             "feature": args.get("feature"),
+            "entity_name": args.get("entity_name"),
+            "entity_category": args.get("entity_category"),
         })
 
     elif name == "get_project_state":
