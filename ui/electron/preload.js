@@ -12,6 +12,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 // ipcRenderer.sendSync is used here because contextBridge runs synchronously.
 const _serverUrl = ipcRenderer.sendSync("settings:getServerUrl");
 contextBridge.exposeInMainWorld("__BACKEND_URL__", _serverUrl);
+contextBridge.exposeInMainWorld("__PLATFORM__", process.platform);
 
 contextBridge.exposeInMainWorld("electronAPI", {
   // File system

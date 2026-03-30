@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-30 16:08 UTC — do not edit manually.
+> Auto-generated 2026-03-30 16:20 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 292
-- **Last active**: 2026-03-30T16:08:23Z
+- **Sessions**: 293
+- **Last active**: 2026-03-30T16:20:02Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,15 +40,17 @@
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
 - **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
+- **database_version**: PostgreSQL 15+
+- **build_tooling**: npm 8+ with webpack/Electron-builder; Vite dev server on localhost
 
 ## In Progress
 
-- Data persistence bug: tags disappear on session switch (2026-03-10) — Identified issue where tags saved in UI vanish when switching sessions; unclear if UI rendering or database save failure; requires investigation
-- Memory audit and critical fixes (2026-03-28) — Execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues in priority order; verify memory_items and project_facts table population
-- JSONL vs. database storage consolidation (2026-03-28) — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues
-- Embedding-to-tagging integration validation (2026-03-28) — Connect embeddings to tag metadata so 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes; validate current implementation
-- Backend startup stability fixes (2026-03-26) — Documented proper initialization sequence: run bash start_backend.sh, keep window open; Electron UI auto-connects; resolves port binding conflicts
-- Project visibility bug investigation (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
+- Data persistence bug: tags disappear on session switch — Identified root cause unclear (UI rendering vs database save failure); requires debugging and fix validation
+- Memory audit and critical fixes — Execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues; verify memory_items and project_facts table population
+- JSONL vs. database storage consolidation — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence
+- Backend startup stability fixes — Documented proper initialization sequence (bash start_backend.sh); resolved port 127.0.0.1:8000 binding conflicts
+- Project visibility bug investigation — AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
+- Embedding-to-tagging integration validation — Connect embeddings to tag metadata; validate auth/feature/bug tag categorization works end-to-end
 
 ## Key Decisions
 
@@ -160,6 +162,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-30 16:13]** `claude_cli/claude`  
+→ Looks better. Now UI is using exisitng backend, but UI is not loading properly. I dont see anything (backend is running)
+← _Good. Now let me also verify the Vite dev server is accessible — the UI will try to connect to `localhost:5173` when it can't find `dist`:_
+
 **[2026-03-30 16:02]** `claude_cli/claude`  
 → Can you recheck, ui is not loading well. please remove the developer tools when I start ui. also when I start ui - it is
 ← _Now I have the full file. Let me write the updated `aicli_memory.md`:_
@@ -214,7 +220,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-28 01:23]** `claude_cli/claude`  
 → Based on what you wrote and understand about the current memoery layer, should I add mem0, zen or blackboard layer, woul
 ← _There are **two different `/memory` systems** in play here — they serve different purposes.  ---  ## 1. Claude Code's Native Memory (built-in)  This is Claude Code's own memory system, separate from a_
-
-**[2026-03-27 09:42]** `claude_cli/claude`  
-→ I do see that you have native /memory function as well. what is it ?
-← _The file is at:  ``` /Users/user/Documents/gdrive_cellqlick/2026/aicli/aicli_memory.md ```  It's in the **root of the aicli project folder** — the same level as `backend/`, `ui/`, `workspace/`, `CLAUD_

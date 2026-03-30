@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-30 16:08 UTC by aicli /memory_
+_Generated: 2026-03-30 16:20 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform that integrates with Claude CLI and other LLM platforms, providing persistent work item tracking (bugs, features, tasks), tagging, and context-aware workflows via an async DAG executor. The system uses PostgreSQL with per-project schemas for data isolation, pgvector for semantic search, and an Electron desktop UI with graph-based workflow visualization. Current focus is on resolving data persistence bugs (tags disappearing on session switch), consolidating JSONL/database storage, and ensuring backend startup stability.
 
 ## Project Facts
 
@@ -71,6 +75,8 @@ Reviewer: ```json
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
 - **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
+- **database_version**: PostgreSQL 15+
+- **build_tooling**: npm 8+ with webpack/Electron-builder; Vite dev server on localhost
 
 ## Key Decisions
 
@@ -92,12 +98,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Data persistence bug: tags disappear on session switch (2026-03-10) — Identified issue where tags saved in UI vanish when switching sessions; unclear if UI rendering or database save failure; requires investigation
-- Memory audit and critical fixes (2026-03-28) — Execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues in priority order; verify memory_items and project_facts table population
-- JSONL vs. database storage consolidation (2026-03-28) — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues
-- Embedding-to-tagging integration validation (2026-03-28) — Connect embeddings to tag metadata so 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes; validate current implementation
-- Backend startup stability fixes (2026-03-26) — Documented proper initialization sequence: run bash start_backend.sh, keep window open; Electron UI auto-connects; resolves port binding conflicts
-- Project visibility bug investigation (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
+- Data persistence bug: tags disappear on session switch — Identified root cause unclear (UI rendering vs database save failure); requires debugging and fix validation
+- Memory audit and critical fixes — Execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues; verify memory_items and project_facts table population
+- JSONL vs. database storage consolidation — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence
+- Backend startup stability fixes — Documented proper initialization sequence (bash start_backend.sh); resolved port 127.0.0.1:8000 binding conflicts
+- Project visibility bug investigation — AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
+- Embedding-to-tagging integration validation — Connect embeddings to tag metadata; validate auth/feature/bug tag categorization works end-to-end
 
 ## Active Features / Bugs / Tasks
 
@@ -206,3 +212,7 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**[2026-03-28]** `in_progress` — Memory audit and critical fixes: execute /memory command to validate P0#1 item, fix P1#3 and P1#5 issues in priority order, verify memory_items and project_facts table population across per-project schemas. **[2026-03-28]** `in_progress` — JSONL vs. database storage consolidation: migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues between file-based and relational layers. **[2026-03-26]** `in_progress` — Backend startup stability fixes: documented proper initialization sequence (run bash start_backend.sh, keep window open; Electron UI auto-connects); resolved port 127.0.0.1:8000 binding conflicts preventing reliable app restart. **[2026-03-18]** `in_progress` — Project visibility bug investigation: AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization requires further investigation. **[2026-03-18]** `completed` — Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template error (code_dir variable scoping); modified _continueToApp() retry logic to handle empty project list edge case. **[2026-03-10]** `identified` — Data persistence bug: tags saved in UI disappear when switching sessions; unclear if UI rendering or database save failure; also identified database performance issues and approved nested tags feature expansion beyond current 2-level hierarchy.

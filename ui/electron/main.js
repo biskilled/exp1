@@ -157,16 +157,19 @@ function stopBackend() {
 
 async function waitForBackend(serverUrl, maxWaitMs = 15000) {
   const http = require("http");
-  const healthUrl = `${serverUrl}/health`;
+  // Backend: check /health for 200. Vite dev server: any response means it's up.
+  const isVite = serverUrl.includes("5173");
+  const checkUrl = isVite ? serverUrl + "/" : serverUrl + "/health";
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     const ok = await new Promise((resolve) => {
-      const req = http.get(healthUrl, (res) => resolve(res.statusCode === 200));
+      const req = http.get(checkUrl, (res) => resolve(isVite ? true : res.statusCode === 200));
       req.on("error", () => resolve(false));
+      req.setTimeout(1000, () => { req.destroy(); resolve(false); });
       req.end();
     });
     if (ok) return true;
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 300));
   }
   return false;
 }
@@ -182,6 +185,8 @@ async function createWindow(serverUrl) {
     minWidth: 900,
     minHeight: 600,
     titleBarStyle: "hiddenInset",
+    // Push traffic lights down a bit so they sit inside the custom titlebar
+    trafficLightPosition: { x: 12, y: 13 },
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -198,8 +203,19 @@ async function createWindow(serverUrl) {
   // Dev mode: explicit flag OR dist not built yet (auto-detect)
   const isDev = process.env.NODE_ENV === "development" ||
     !fs.existsSync(path.join(UI_ROOT, "dist", "index.html"));
+
   if (isDev) {
+    // Wait for the Vite dev server to be ready before loading — prevents blank white
+    // page when Electron starts faster than Vite after `npm start`.
+    await waitForBackend("http://localhost:5173", 20000);
     mainWindow.loadURL("http://localhost:5173");
+    // Retry on load failure (Vite HMR reconnect after file watch)
+    mainWindow.webContents.on("did-fail-load", (_, code, _desc, url) => {
+      if (url.startsWith("http://localhost:5173")) {
+        console.log("[main] Vite not ready, retrying in 1s…");
+        setTimeout(() => mainWindow && mainWindow.loadURL("http://localhost:5173"), 1000);
+      }
+    });
   } else {
     const indexPath = path.join(UI_ROOT, "dist", "index.html");
     mainWindow.loadFile(indexPath);

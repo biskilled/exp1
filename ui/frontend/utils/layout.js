@@ -258,6 +258,11 @@ export function initLayout() {
   applyLayoutClasses();
   initKeyboardDetection();
 
+  // Apply platform class so CSS can adjust for OS-specific chrome (e.g. macOS traffic lights)
+  if (typeof window !== 'undefined' && window.__PLATFORM__) {
+    document.documentElement.classList.add(`platform-${window.__PLATFORM__}`);
+  }
+
   // Re-apply on orientation change
   window.addEventListener('orientationchange', () => {
     setTimeout(applyLayoutClasses, 200);
