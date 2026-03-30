@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-30 16:44 UTC by aicli /memory_
+_Generated: 2026-03-30 16:52 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that enables Claude CLI and other LLM systems to maintain contextual awareness across development sessions by synthesizing code commits, events, and user interactions into structured memory. The project is currently in active development with 15+ features tracked (auth, UI, shared-memory, tagging, embeddings, workflows, billing, MCP integration), and is addressing critical data persistence issues around tag storage, memory table population, and backend startup stability.
+aicli is a shared AI memory platform enabling Claude CLI and other LLM platforms to access persistent work context across sessions through a hierarchical data model (Clients → Users → Projects) with PostgreSQL semantic storage, MCP integration for embedding-based retrieval, and async DAG workflow execution. Currently at v2.2.0 with 16 active features/tasks spanning UI, authentication, shared memory, tagging, billing, and embeddings; near-term focus on resolving data persistence bugs, completing memory table population, and consolidating JSONL/DB storage layers.
 
 ## Project Facts
 
@@ -81,7 +81,7 @@ Reviewer: ```json
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL currently used but migration planned
+- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL migration planned
 - Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys
 - All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none
@@ -98,12 +98,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure
-- Memory audit and critical fixes—execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues; verify memory_items and project_facts table population
-- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence
-- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh
+- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure; requires validation via /memory audit
+- Memory_items and project_facts table population not implemented—per specification these tables should update to enable improved memory/context mechanism; PENDING implementation and testing
 - Project visibility bug investigation—AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
-- Embedding-to-tagging integration validation—connect embeddings to tag metadata; validate auth/feature/bug tag categorization works end-to-end
+- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh; retry logic handles empty project list on first load
+- Memory endpoint CLAUDE.md template validation—code_dir variable scoped/fixed at line 1120 to resolve runtime failures; endpoint template variable scoping now correct
+- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate redundant calls
 
 ## Active Features / Bugs / Tasks
 
@@ -215,4 +215,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-18]** `session_summary` — Fixed AttributeError in main.py by removing stale `ensure_project_schema()` call and switching to `_ensure_shared_schema` pattern; resolved memory endpoint CLAUDE.md template variable scoping issue at line 1120; improved backend startup retry logic to handle empty project list edge case on first load. **[2026-03-14]** `project_facts` — Confirmed hierarchical data model (Clients contain multiple Users); identified that memory_items and project_facts tables are not being populated despite specification; documented pending implementation. **[2026-03-10]** `database_performance` — Implemented load-once-on-access pattern for tags to reduce redundant SQL calls; switch sessions now requires DB reload via cache invalidation. **[2026-03-10]** `data_persistence` — Discovered critical bug where tags saved in UI disappear on session switch; root cause unclear (UI rendering vs database save failure). **[2026-03-10]** `ux_improvements` — Enhanced planner visibility by replacing small action buttons with 3-dot menu; added unarchive functionality; made AI suggestions more prominent with session attribution and GitHub links. **[2026-03-10]** `backend_stability` — Resolved intermittent startup failures from port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence in bash start_backend.sh.
+**2026-03-18** `SESSION_SUMMARY` — Removed stale `ensure_project_schema()` call from main.py; fixed memory endpoint CLAUDE.md `code_dir` variable scoping at line 1120; enhanced backend startup retry logic to handle edge case where projects list returns empty on first load. **2026-03-14** `PROJECT_STATE` — Confirmed hierarchical data model (Clients → Users); identified 16 active feature/task/bug entities with 1,200+ total events/commits; documented memory management patterns and tag persistence issue requiring investigation. **2026-03-10** `ARCHITECTURE_AUDIT` — Implemented load-once tag caching strategy on project access to reduce redundant SQL calls; approved nested tag hierarchy expansion; discovered critical data persistence bug where tags disappear on session switch; identified UI visibility issues for memory suggestions and action buttons. **2026-03-10** `STABILITY_FIXES` — Resolved port 127.0.0.1:8000 binding conflicts through documented bash start_backend.sh initialization sequence; stabilized backend startup race condition handling. **PENDING** — memory_items and project_facts table update logic not yet implemented; project visibility bug requires further investigation; JSONL-to-DB migration needed to eliminate dual storage complexity.

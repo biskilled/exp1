@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure
-- Memory audit and critical fixes—execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues; verify memory_items and project_facts table population
-- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence
-- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh
+- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure; requires validation via /memory audit
+- Memory_items and project_facts table population not implemented—per specification these tables should update to enable improved memory/context mechanism; PENDING implementation and testing
 - Project visibility bug investigation—AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
-- Embedding-to-tagging integration validation—connect embeddings to tag metadata; validate auth/feature/bug tag categorization works end-to-end
+- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh; retry logic handles empty project list on first load
+- Memory endpoint CLAUDE.md template validation—code_dir variable scoped/fixed at line 1120 to resolve runtime failures; endpoint template variable scoping now correct
+- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate redundant calls

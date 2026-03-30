@@ -2,10 +2,10 @@
 PostgreSQL connection pool — flat table architecture.
 
 Two table namespaces only:
-  mng_  — global + client-scoped (10 tables, client_id FK)
-  pr_   — project-scoped (15 tables, client_id + project columns)
+  mng_  — global + client-scoped (9 tables, client_id FK)
+  pr_   — project-scoped (22 tables, client_id + project columns)
 
-Total: 25 fixed tables regardless of client or project count.
+Total: 31 fixed tables regardless of client or project count.
 
 Falls back gracefully when DATABASE_URL is not set — callers check `is_available()`.
 
@@ -176,54 +176,6 @@ ALTER TABLE mng_session_tags ADD COLUMN IF NOT EXISTS
     client_id INT NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
 CREATE INDEX IF NOT EXISTS idx_mst_cp ON mng_session_tags(client_id, project);
 
--- Entity categories per client+project
-CREATE TABLE IF NOT EXISTS mng_entity_categories (
-    id         SERIAL       PRIMARY KEY,
-    client_id  INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project    VARCHAR(255) NOT NULL,
-    name       VARCHAR(100) NOT NULL,
-    color      VARCHAR(30)  NOT NULL DEFAULT '#4a90e2',
-    icon       VARCHAR(10)  NOT NULL DEFAULT '⬡',
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-ALTER TABLE mng_entity_categories ADD COLUMN IF NOT EXISTS
-    client_id INT NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mec_cid_proj_name
-    ON mng_entity_categories(client_id, project, name);
-CREATE INDEX IF NOT EXISTS idx_mec_cp ON mng_entity_categories(client_id, project);
-
--- Entity values (features, bugs, tasks, docs)
-CREATE TABLE IF NOT EXISTS mng_entity_values (
-    id               SERIAL       PRIMARY KEY,
-    client_id        INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    category_id      INT          REFERENCES mng_entity_categories(id) ON DELETE CASCADE,
-    project          VARCHAR(255) NOT NULL,
-    name             VARCHAR(255) NOT NULL,
-    description      TEXT         NOT NULL DEFAULT '',
-    status           VARCHAR(20)  NOT NULL DEFAULT 'active',
-    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    due_date         DATE,
-    parent_id        INT          REFERENCES mng_entity_values(id) ON DELETE SET NULL,
-    lifecycle_status VARCHAR(20)  NOT NULL DEFAULT 'idea',
-    UNIQUE(client_id, project, name)
-);
-ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS
-    client_id INT NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
-CREATE INDEX IF NOT EXISTS idx_mev_cp  ON mng_entity_values(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_mev_cat ON mng_entity_values(category_id);
-CREATE INDEX IF NOT EXISTS idx_mev_par ON mng_entity_values(parent_id);
-
--- Entity value dependency links
-CREATE TABLE IF NOT EXISTS mng_entity_value_links (
-    from_value_id INT         NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
-    to_value_id   INT         NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
-    link_type     VARCHAR(50) NOT NULL DEFAULT 'blocks',
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY(from_value_id, to_value_id, link_type)
-);
-CREATE INDEX IF NOT EXISTS idx_mevl_from ON mng_entity_value_links(from_value_id);
-CREATE INDEX IF NOT EXISTS idx_mevl_to   ON mng_entity_value_links(to_value_id);
-
 -- Agent roles per client+project (templates + custom)
 CREATE TABLE IF NOT EXISTS mng_agent_roles (
     id            SERIAL       PRIMARY KEY,
@@ -346,28 +298,6 @@ CREATE INDEX IF NOT EXISTS idx_pr_c_cp       ON pr_commits(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_pr_c_comm     ON pr_commits(committed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_c_session  ON pr_commits(session_id) WHERE session_id IS NOT NULL;
 
--- Events (prompt/response log entries)
-CREATE TABLE IF NOT EXISTS pr_events (
-    id         SERIAL         PRIMARY KEY,
-    client_id  INT            NOT NULL REFERENCES mng_clients(id),
-    project    VARCHAR(255)   NOT NULL,
-    event_type VARCHAR(50)    NOT NULL,
-    source_id  VARCHAR(255)   NOT NULL,
-    title      TEXT           NOT NULL DEFAULT '',
-    content    TEXT           NOT NULL DEFAULT '',
-    phase      VARCHAR(20),
-    feature    VARCHAR(255),
-    session_id VARCHAR(255),
-    metadata   JSONB          NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-    UNIQUE(client_id, project, event_type, source_id)
-);
-CREATE INDEX IF NOT EXISTS idx_pr_e_cp      ON pr_events(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_e_type    ON pr_events(event_type);
-CREATE INDEX IF NOT EXISTS idx_pr_e_created ON pr_events(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_pr_e_session ON pr_events(session_id)   WHERE session_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_pr_e_phase   ON pr_events(phase)        WHERE phase IS NOT NULL;
-
 -- Embeddings (pgvector)
 CREATE TABLE IF NOT EXISTS pr_embeddings (
     id          SERIAL         PRIMARY KEY,
@@ -390,35 +320,12 @@ CREATE INDEX IF NOT EXISTS idx_pr_emb_cp   ON pr_embeddings(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_pr_emb_lang ON pr_embeddings(language) WHERE language IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pr_emb_src  ON pr_embeddings(source_type, source_id);
 
--- Event tags (links events to entity values; scoped via event FK)
-CREATE TABLE IF NOT EXISTS pr_event_tags (
-    event_id        INT         NOT NULL,
-    entity_value_id INT         NOT NULL REFERENCES mng_entity_values(id) ON DELETE CASCADE,
-    auto_tagged     BOOLEAN     NOT NULL DEFAULT FALSE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY(event_id, entity_value_id)
-);
-CREATE INDEX IF NOT EXISTS idx_pr_et_event ON pr_event_tags(event_id);
-CREATE INDEX IF NOT EXISTS idx_pr_et_value ON pr_event_tags(entity_value_id);
-
--- Event links (connections between events; scoped via event FKs)
-CREATE TABLE IF NOT EXISTS pr_event_links (
-    from_event_id INT         NOT NULL,
-    to_event_id   INT         NOT NULL,
-    link_type     VARCHAR(50) NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY(from_event_id, to_event_id, link_type)
-);
-CREATE INDEX IF NOT EXISTS idx_pr_el_from ON pr_event_links(from_event_id);
-CREATE INDEX IF NOT EXISTS idx_pr_el_to   ON pr_event_links(to_event_id);
-
 -- Work items (feature/bug/task pipeline tracking)
 CREATE TABLE IF NOT EXISTS pr_work_items (
     id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id           INT           NOT NULL REFERENCES mng_clients(id),
     project             VARCHAR(255)  NOT NULL,
     category_name       TEXT          NOT NULL,
-    category_id         INT           REFERENCES mng_entity_categories(id) ON DELETE SET NULL,
     name                TEXT          NOT NULL,
     description         TEXT          NOT NULL DEFAULT '',
     status              VARCHAR(20)   NOT NULL DEFAULT 'active',
@@ -464,36 +371,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_p_source  ON pr_prompts(client_id, proj
 CREATE INDEX IF NOT EXISTS        idx_pr_p_created ON pr_prompts(created_at DESC);
 CREATE INDEX IF NOT EXISTS        idx_pr_p_wi      ON pr_prompts(work_item_id) WHERE work_item_id IS NOT NULL;
 
--- Prompt tags (links prompts to work items; scoped via prompt FK)
-CREATE TABLE IF NOT EXISTS pr_prompt_tags (
-    interaction_id  UUID          NOT NULL REFERENCES pr_prompts(id)      ON DELETE CASCADE,
-    work_item_id    UUID          NOT NULL REFERENCES pr_work_items(id)    ON DELETE CASCADE,
-    auto_tagged     BOOLEAN       NOT NULL DEFAULT FALSE,
-    created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-    PRIMARY KEY(interaction_id, work_item_id)
-);
-CREATE INDEX IF NOT EXISTS idx_pr_ptag_work ON pr_prompt_tags(work_item_id);
-
--- Memory items (distilled session/feature summaries)
-CREATE TABLE IF NOT EXISTS pr_memory_items (
-    id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id        INT           NOT NULL REFERENCES mng_clients(id),
-    project          VARCHAR(255)  NOT NULL,
-    scope            TEXT          NOT NULL,
-    scope_ref        TEXT,
-    content          TEXT          NOT NULL,
-    embedding        VECTOR(1536),
-    source_ids       UUID[]        NOT NULL DEFAULT '{}',
-    tags             TEXT[]        NOT NULL DEFAULT '{}',
-    reviewer_score   INT,
-    reviewer_critique TEXT,
-    created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_pr_mi_cp      ON pr_memory_items(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_mi_scope   ON pr_memory_items(client_id, project, scope);
-CREATE INDEX IF NOT EXISTS idx_pr_mi_created ON pr_memory_items(created_at DESC);
-
 -- Project facts (durable extracted facts; valid_until NULL = current)
 CREATE TABLE IF NOT EXISTS pr_project_facts (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -503,7 +380,7 @@ CREATE TABLE IF NOT EXISTS pr_project_facts (
     fact_value       TEXT          NOT NULL,
     valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     valid_until      TIMESTAMPTZ,
-    source_memory_id UUID          REFERENCES pr_memory_items(id) ON DELETE SET NULL
+    source_memory_id UUID          -- was FK to pr_memory_items (dropped); kept for historical reference
 );
 CREATE INDEX IF NOT EXISTS        idx_pr_pf_cp      ON pr_project_facts(client_id, project) WHERE valid_until IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_pf_current ON pr_project_facts(client_id, project, fact_key) WHERE valid_until IS NULL;
@@ -611,11 +488,8 @@ CREATE TABLE IF NOT EXISTS pr_seq_counters (
     next_val  INT          NOT NULL DEFAULT 10000,
     PRIMARY KEY (client_id, project, category)
 );
-ALTER TABLE pr_work_items     ADD COLUMN IF NOT EXISTS seq_num         INT;
-ALTER TABLE mng_entity_values ADD COLUMN IF NOT EXISTS seq_num         INT;
-ALTER TABLE pr_work_items     ADD COLUMN IF NOT EXISTS entity_value_id INT REFERENCES mng_entity_values(id) ON DELETE SET NULL;
-CREATE INDEX IF NOT EXISTS idx_pr_wi_seq   ON pr_work_items(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_mev_seq     ON mng_entity_values(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
+ALTER TABLE pr_work_items ADD COLUMN IF NOT EXISTS seq_num INT;
+CREATE INDEX IF NOT EXISTS idx_pr_wi_seq ON pr_work_items(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
 """
 
 

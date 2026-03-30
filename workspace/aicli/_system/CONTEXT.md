@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-30 16:45 UTC — do not edit manually.
+> Auto-generated 2026-03-30 16:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 295
-- **Last active**: 2026-03-30T16:44:43Z
+- **Sessions**: 296
+- **Last active**: 2026-03-30T16:52:31Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -45,17 +45,17 @@
 
 ## In Progress
 
-- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure
-- Memory audit and critical fixes—execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues; verify memory_items and project_facts table population
-- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence
-- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh
+- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure; requires validation via /memory audit
+- Memory_items and project_facts table population not implemented—per specification these tables should update to enable improved memory/context mechanism; PENDING implementation and testing
 - Project visibility bug investigation—AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
-- Embedding-to-tagging integration validation—connect embeddings to tag metadata; validate auth/feature/bug tag categorization works end-to-end
+- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh; retry logic handles empty project list on first load
+- Memory endpoint CLAUDE.md template validation—code_dir variable scoped/fixed at line 1120 to resolve runtime failures; endpoint template variable scoping now correct
+- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate redundant calls
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL currently used but migration planned
+- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL migration planned
 - Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys
 - All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none
@@ -162,6 +162,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-30 16:49]** `claude_cli/claude`  
+→ Is all table strucure is implemeted properly ? I dont see the table strucure ? 
+← _All 9 new memory infra tables are now created. Here's the summary:  **✅ New tables (9/9 created):** - `mng_tags_categories` — global tag categories - `pr_tags` — per-project tag hierarchy - `pr_tag_me_
+
 **[2026-03-30 16:42]** `claude_cli/claude`  
 → It it still balnck. the error is Uncaught SyntaxError: Identifier '_esc' has already been declared there is also warning
 ← _Done. Two fixes applied:  1. **`graph_workflow.js`** — removed the duplicate `function _esc` at line 2130 (the one at line 431 is kept). This was the exact cause of `Uncaught SyntaxError: Identifier '_
@@ -216,7 +220,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-28 01:48]** `claude_cli/claude`  
 → I would like to understand more about the embedigng and chunk methods. I do understand it is happend only when using /me
 ← _Now I have the full picture. Let me give you a complete and accurate answer.  ---  ## Embedding and Chunking — Full Explanation  ### 1. Is embedding only triggered by `/memory`?  **No** — there are 4 _
-
-**[2026-03-28 01:45]** `claude_cli/claude`  
-→ is the file aicli_memory.md shows the correct flow (including the one you have added) ? 
-← _The flow is fully consistent. Here's what `aicli_memory.md` now correctly documents:  **Stop hook (`log_session_stop.sh`)** — 9 steps, with step 8 being the new `auto-detect-bugs` fire-and-forget call_
