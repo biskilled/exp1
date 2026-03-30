@@ -194,6 +194,24 @@ async function createWindow(serverUrl) {
     },
   });
 
+  // Content Security Policy — suppress the Electron security warning
+  const { session } = require("electron");
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [
+          "default-src 'self' http://localhost:* http://127.0.0.1:*; " +
+          "script-src 'self' 'unsafe-inline' http://localhost:*; " +
+          "style-src 'self' 'unsafe-inline'; " +
+          "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:*; " +
+          "img-src 'self' data: blob:; " +
+          "font-src 'self' data:;"
+        ],
+      },
+    });
+  });
+
   // Wait for backend before loading (local: already spawned; remote: may need a moment)
   const ready = await waitForBackend(serverUrl);
   if (!ready) {

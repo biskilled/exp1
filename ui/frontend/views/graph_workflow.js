@@ -2127,6 +2127,3 @@ function _rrRenderResult(result) {
   `;
 }
 
-function _esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
