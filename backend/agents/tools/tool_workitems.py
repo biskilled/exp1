@@ -75,28 +75,48 @@ def _handle_list_work_items(args: dict) -> str:
             with conn.cursor() as cur:
                 if category:
                     cur.execute(
-                        """SELECT ev.name, ec.name, ev.lifecycle_status, ev.description,
-                                  ev.seq_num
+                        """SELECT t.name, tc.name AS cat_name, t.lifecycle, tm.description, t.seq_num
                            FROM pr_work_items wi
-                           JOIN mng_entity_values ev ON ev.id = wi.entity_value_id
-                           JOIN mng_entity_categories ec ON ec.id = ev.category_id
+                           JOIN pr_tags t ON t.id = wi.tag_id
+                           LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
+                           LEFT JOIN pr_tag_meta tm ON tm.tag_id = t.id
                            WHERE wi.client_id=1 AND wi.project=%s
-                             AND ec.name ILIKE %s AND ev.status=%s
-                           ORDER BY ev.seq_num DESC LIMIT 50""",
+                             AND tc.name ILIKE %s AND t.status=%s
+                           ORDER BY t.seq_num DESC NULLS LAST LIMIT 50""",
                         (project, f"%{category}%", status),
                     )
                 else:
                     cur.execute(
-                        """SELECT ev.name, ec.name, ev.lifecycle_status, ev.description,
-                                  ev.seq_num
+                        """SELECT t.name, tc.name AS cat_name, t.lifecycle, tm.description, t.seq_num
                            FROM pr_work_items wi
-                           JOIN mng_entity_values ev ON ev.id = wi.entity_value_id
-                           JOIN mng_entity_categories ec ON ec.id = ev.category_id
-                           WHERE wi.client_id=1 AND wi.project=%s AND ev.status=%s
-                           ORDER BY ev.seq_num DESC LIMIT 50""",
+                           JOIN pr_tags t ON t.id = wi.tag_id
+                           LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
+                           LEFT JOIN pr_tag_meta tm ON tm.tag_id = t.id
+                           WHERE wi.client_id=1 AND wi.project=%s AND t.status=%s
+                           ORDER BY t.seq_num DESC NULLS LAST LIMIT 50""",
                         (project, status),
                     )
+                # Fallback: also query work items using category_name if tag_id is null
                 rows = cur.fetchall()
+                if not rows:
+                    if category:
+                        cur.execute(
+                            """SELECT w.name, w.category_name, w.lifecycle_status, w.description, w.seq_num
+                               FROM pr_work_items w
+                               WHERE w.client_id=1 AND w.project=%s
+                                 AND w.category_name ILIKE %s AND w.status=%s
+                               ORDER BY w.seq_num DESC NULLS LAST LIMIT 50""",
+                            (project, f"%{category}%", status),
+                        )
+                    else:
+                        cur.execute(
+                            """SELECT w.name, w.category_name, w.lifecycle_status, w.description, w.seq_num
+                               FROM pr_work_items w
+                               WHERE w.client_id=1 AND w.project=%s AND w.status=%s
+                               ORDER BY w.seq_num DESC NULLS LAST LIMIT 50""",
+                            (project, status),
+                        )
+                    rows = cur.fetchall()
     except Exception as e:
         return f"Error fetching work items: {e}"
 
@@ -126,43 +146,59 @@ def _handle_create_work_item(args: dict) -> str:
             return "Database not available."
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # Find or create category
+                # Find or create global tag category
                 cur.execute(
-                    """SELECT id FROM mng_entity_categories
+                    """SELECT id FROM mng_tags_categories
                        WHERE client_id=1 AND name ILIKE %s LIMIT 1""",
                     (category_name,),
                 )
                 cat_row = cur.fetchone()
                 if not cat_row:
                     cur.execute(
-                        """INSERT INTO mng_entity_categories (client_id, name)
-                           VALUES (1, %s) RETURNING id""",
+                        """INSERT INTO mng_tags_categories (client_id, name)
+                           VALUES (1, %s)
+                           ON CONFLICT (client_id, name) DO NOTHING
+                           RETURNING id""",
                         (category_name,),
                     )
                     cat_row = cur.fetchone()
-                category_id = cat_row[0]
+                    if not cat_row:
+                        cur.execute(
+                            "SELECT id FROM mng_tags_categories WHERE client_id=1 AND name ILIKE %s LIMIT 1",
+                            (category_name,),
+                        )
+                        cat_row = cur.fetchone()
+                category_id = cat_row[0] if cat_row else None
 
-                # Create entity value
+                # Create pr_tags row
                 cur.execute(
-                    """INSERT INTO mng_entity_values
-                           (client_id, category_id, name, description, status)
+                    """INSERT INTO pr_tags (client_id, project, name, category_id, status)
                        VALUES (1, %s, %s, %s, 'active')
-                       ON CONFLICT DO NOTHING
+                       ON CONFLICT (client_id, project, name) DO NOTHING
                        RETURNING id, seq_num""",
-                    (category_id, name, description),
+                    (project, name, category_id),
                 )
-                ev_row = cur.fetchone()
-                if not ev_row:
+                tag_row = cur.fetchone()
+                if not tag_row:
                     return f"Work item '{name}' already exists."
-                ev_id, seq_num = ev_row
+                tag_id, seq_num = tag_row
 
-                # Create work item link
+                # Insert tag_meta with description
+                if description:
+                    cur.execute(
+                        """INSERT INTO pr_tag_meta (tag_id, client_id, project, description)
+                           VALUES (%s::uuid, 1, %s, %s)
+                           ON CONFLICT (tag_id) DO NOTHING""",
+                        (tag_id, project, description),
+                    )
+
+                # Create work item linked to tag
                 cur.execute(
                     """INSERT INTO pr_work_items
-                           (client_id, project, entity_value_id)
-                       VALUES (1, %s, %s)
+                           (client_id, project, category_name, name, description, tag_id)
+                       VALUES (1, %s, %s, %s, %s, %s::uuid)
                        ON CONFLICT DO NOTHING""",
-                    (project, ev_id),
+                    (project, category_name, name, description, tag_id),
                 )
             conn.commit()
         ref = f"#{seq_num}" if seq_num else ""

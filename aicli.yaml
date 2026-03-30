@@ -23,6 +23,13 @@ memory_enabled: true
 memory_top_k: 5
 
 # ------------------------------------------------------------------
+# MEMORY BATCH SYSTEM
+# ------------------------------------------------------------------
+memory:
+  batch_size: 3        # generate pr_memory_events digest every N prompts in a session
+  auto_snapshot: false # auto-trigger feature snapshot when lifecycle→done
+
+# ------------------------------------------------------------------
 # LOGGING
 # ------------------------------------------------------------------
 logging:

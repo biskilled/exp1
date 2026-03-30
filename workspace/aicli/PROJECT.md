@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- JSONL vs. database storage consolidation (2026-03-28) — User questioning whether system loads history from pr_prompts or JSONL; request to migrate away from JSONL approach toward DB-only tables to simplify data persistence and eliminate dual-storage complexity
-- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues; priority order requested for immediate attention
-- Embedding-to-tagging integration (2026-03-28) — User requested embeddings connected to tag metadata (e.g., 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes); current implementation unclear, requires validation and design refinement
-- Backend startup stability (2026-03-26) — Documented proper backend initialization: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
-- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload; confirmed full setup sequence
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
+- JSONL vs. database storage consolidation (2026-03-28) — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues
+- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues in priority order
+- Embedding-to-tagging integration (2026-03-28) — Connect embeddings to tag metadata so 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes; validate current implementation
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
+- Backend startup stability (2026-03-26) — Documented proper initialization sequence: run bash start_backend.sh, keep window open; Electron UI auto-connects; resolves port binding conflicts
+- Data persistence bug: tags disappear on session switch (2026-03-10) — Identified issue where tags saved in UI vanish when switching sessions; unclear if UI rendering or database save failure; requires investigation

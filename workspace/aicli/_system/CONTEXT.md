@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 10:41 UTC — do not edit manually.
+> Auto-generated 2026-03-28 11:05 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 286
-- **Last active**: 2026-03-28T10:41:16Z
+- **Sessions**: 287
+- **Last active**: 2026-03-28T11:04:40Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -18,7 +18,7 @@
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl) — PENDING MIGRATION TO DB-ONLY
+- **storage_primary**: PostgreSQL 15+ (migration from JSONL planned)
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
@@ -35,7 +35,7 @@
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
-- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
+- **billing_storage**: data/provider_storage/ (provider_costs.json); pricing, coupons, user_logs in SQL tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
@@ -43,17 +43,17 @@
 
 ## In Progress
 
-- JSONL vs. database storage consolidation (2026-03-28) — User questioning whether system loads history from pr_prompts or JSONL; request to migrate away from JSONL approach toward DB-only tables to simplify data persistence and eliminate dual-storage complexity
-- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues; priority order requested for immediate attention
-- Embedding-to-tagging integration (2026-03-28) — User requested embeddings connected to tag metadata (e.g., 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes); current implementation unclear, requires validation and design refinement
-- Backend startup stability (2026-03-26) — Documented proper backend initialization: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
-- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload; confirmed full setup sequence
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
+- JSONL vs. database storage consolidation (2026-03-28) — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues
+- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues in priority order
+- Embedding-to-tagging integration (2026-03-28) — Connect embeddings to tag metadata so 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes; validate current implementation
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
+- Backend startup stability (2026-03-26) — Documented proper initialization sequence: run bash start_backend.sh, keep window open; Electron UI auto-connects; resolves port binding conflicts
+- Data persistence bug: tags disappear on session switch (2026-03-10) — Identified issue where tags saved in UI vanish when switching sessions; unclear if UI rendering or database save failure; requires investigation
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage: JSONL (history.jsonl with rotation) for primary history; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and per-project indexed tables
+- Dual storage model transitioning to DB-only: JSONL (history.jsonl with rotation) currently used for primary history; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and per-project indexed tables; migration away from JSONL planned
 - Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-28 11:03]** `claude_cli/claude`  
+→ What is the pr_event_links is used for ? how it is linking events?
+← _`api.entities.getLinks` exists in `api.js` but is **never called from any view** — so `pr_event_links` is populated (by commit/sync hooks) but never surfaced in the current UI.  ---  ## Summary  | Pur_
+
 **[2026-03-28 10:40]** `claude_cli/claude`  
 → What event insert into event table except prompts and new commits 
 ← _`pr_events` only ever gets **two event types**:  | `event_type` | Written by | Source | |---|---|---| | `prompt` | `route_chat.py` `_append_history()` | Every chat exchange (UI + hooks) | | `prompt` |_
@@ -215,7 +219,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-27 09:28]** `claude_cli/claude`  
 → I do see that in any llm repsonse is summerised - when is it happend, can you also add all the internal prompt you are u
 ← _Now I'll append the full detailed sections to the existing file:_
-
-**[2026-03-27 09:16]** `claude_cli/claude`  
-→ you ddid mention anything about the mcp that is used for memroy as well , how the mcp works, what data it extract ? 
-← _I have everything. Now let me add a comprehensive MCP section to the existing file:_

@@ -619,6 +619,171 @@ CREATE INDEX IF NOT EXISTS idx_mev_seq     ON mng_entity_values(client_id, proje
 """
 
 
+# ─── DDL: Memory Infrastructure tables (9 new tables) ────────────────────────
+
+_DDL_MEMORY_INFRA = """
+-- Global tag categories shared across all projects (replaces mng_entity_categories)
+CREATE TABLE IF NOT EXISTS mng_tags_categories (
+    id          SERIAL       PRIMARY KEY,
+    client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    name        VARCHAR(100) NOT NULL,
+    color       VARCHAR(30)  NOT NULL DEFAULT '#4a90e2',
+    icon        VARCHAR(10)  NOT NULL DEFAULT '⬡',
+    description TEXT         NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE(client_id, name)
+);
+
+-- Per-project tag hierarchy with merge support (replaces mng_entity_values)
+CREATE TABLE IF NOT EXISTS pr_tags (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project     VARCHAR(255) NOT NULL,
+    name        TEXT         NOT NULL,
+    category_id INT          REFERENCES mng_tags_categories(id) ON DELETE SET NULL,
+    parent_id   UUID         REFERENCES pr_tags(id) ON DELETE SET NULL,
+    merged_into UUID         REFERENCES pr_tags(id) ON DELETE SET NULL,
+    status      VARCHAR(20)  NOT NULL DEFAULT 'active',
+    lifecycle   VARCHAR(20)  NOT NULL DEFAULT 'idea',
+    seq_num     INT,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE(client_id, project, name)
+);
+CREATE INDEX IF NOT EXISTS idx_pr_tags_cp     ON pr_tags(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_pr_tags_parent ON pr_tags(parent_id);
+CREATE INDEX IF NOT EXISTS idx_pr_tags_cat    ON pr_tags(category_id);
+
+-- Work-item metadata for leaf tags
+CREATE TABLE IF NOT EXISTS pr_tag_meta (
+    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    tag_id       UUID         NOT NULL UNIQUE REFERENCES pr_tags(id) ON DELETE CASCADE,
+    client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project      VARCHAR(255) NOT NULL,
+    description  TEXT         NOT NULL DEFAULT '',
+    requirements TEXT         NOT NULL DEFAULT '',
+    due_date     DATE,
+    requester    TEXT,
+    priority     SMALLINT     NOT NULL DEFAULT 3,
+    extra        JSONB        NOT NULL DEFAULT '{}',
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pr_tag_meta_cp ON pr_tag_meta(client_id, project);
+
+-- Unified source → tag junction (replaces pr_event_tags + pr_prompt_tags)
+CREATE TABLE IF NOT EXISTS pr_source_tags (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    tag_id      UUID         NOT NULL REFERENCES pr_tags(id) ON DELETE CASCADE,
+    prompt_id   UUID         REFERENCES pr_prompts(id)  ON DELETE CASCADE,
+    commit_id   INT          REFERENCES pr_commits(id)  ON DELETE CASCADE,
+    item_id     UUID         REFERENCES pr_items(id)    ON DELETE CASCADE,
+    message_id  UUID         REFERENCES pr_messages(id) ON DELETE CASCADE,
+    auto_tagged BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    CONSTRAINT one_source_only CHECK (
+        (CASE WHEN prompt_id  IS NOT NULL THEN 1 ELSE 0 END +
+         CASE WHEN commit_id  IS NOT NULL THEN 1 ELSE 0 END +
+         CASE WHEN item_id    IS NOT NULL THEN 1 ELSE 0 END +
+         CASE WHEN message_id IS NOT NULL THEN 1 ELSE 0 END) = 1
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_pr_src_tags_tag    ON pr_source_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_pr_src_tags_prompt ON pr_source_tags(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_pr_src_tags_commit ON pr_source_tags(commit_id);
+
+-- General documents: requirements, decisions, client notes, meetings
+CREATE TABLE IF NOT EXISTS pr_items (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project     VARCHAR(255) NOT NULL,
+    item_type   TEXT         NOT NULL,
+    title       TEXT,
+    meeting_at  TIMESTAMPTZ,
+    attendees   TEXT[],
+    raw_text    TEXT         NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pr_items_cp   ON pr_items(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_pr_items_type ON pr_items(item_type);
+
+-- Chunked platform messages (Slack, Teams, Discord)
+CREATE TABLE IF NOT EXISTS pr_messages (
+    id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id  INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project    VARCHAR(255) NOT NULL,
+    platform   TEXT         NOT NULL,
+    channel    TEXT,
+    thread_ref TEXT,
+    messages   JSONB        NOT NULL,
+    date_range TSTZRANGE,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pr_messages_cp ON pr_messages(client_id, project);
+
+-- One digest + embedding per source event (replaces pr_memory_items)
+CREATE TABLE IF NOT EXISTS pr_memory_events (
+    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project      VARCHAR(255) NOT NULL,
+    source_type  TEXT         NOT NULL,
+    source_id    UUID         NOT NULL,
+    session_id   TEXT,
+    content      TEXT         NOT NULL,
+    embedding    VECTOR(1536),
+    importance   SMALLINT     NOT NULL DEFAULT 1,
+    processed_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE(client_id, project, source_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pr_me_cp      ON pr_memory_events(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_pr_me_session ON pr_memory_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_pr_me_pending ON pr_memory_events(processed_at) WHERE processed_at IS NULL;
+
+-- Tags on memory events
+CREATE TABLE IF NOT EXISTS pr_memory_tags (
+    id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id   UUID         NOT NULL REFERENCES pr_memory_events(id) ON DELETE CASCADE,
+    tag_id     UUID         NOT NULL REFERENCES pr_tags(id)          ON DELETE CASCADE,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE(event_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pr_memory_tags_event ON pr_memory_tags(event_id);
+CREATE INDEX IF NOT EXISTS idx_pr_memory_tags_tag   ON pr_memory_tags(tag_id);
+
+-- 4-layer feature snapshot per work item
+CREATE TABLE IF NOT EXISTS pr_feature_snapshots (
+    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id      INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project        VARCHAR(255) NOT NULL,
+    tag_id         UUID         NOT NULL REFERENCES pr_tags(id),
+    work_item_type TEXT         NOT NULL DEFAULT 'feature',
+    requirements   TEXT,
+    action_items   TEXT,
+    design         JSONB,
+    code_summary   JSONB,
+    prompt_ids     UUID[],
+    commit_hashes  TEXT[],
+    file_paths     TEXT[],
+    design_refs    TEXT[],
+    embedding      VECTOR(1536),
+    is_reusable    BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE(client_id, project, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pr_fs_cp  ON pr_feature_snapshots(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_pr_fs_tag ON pr_feature_snapshots(tag_id);
+"""
+
+# ─── Column additions to existing tables (memory infra) ──────────────────────
+
+_DDL_MEMORY_INFRA_ALTERS = """
+ALTER TABLE pr_commits ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES pr_prompts(id);
+ALTER TABLE pr_work_items ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES pr_tags(id);
+ALTER TABLE pr_project_facts ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
+"""
+
+
 # ─── Database class ───────────────────────────────────────────────────────────
 
 class _Database:
@@ -738,18 +903,18 @@ class _Database:
         _Database._seed_agent_roles(conn)
         _Database._seed_system_roles(conn)
         _Database._seed_role_system_links(conn)
+        _Database._seed_tag_categories(conn)
+        _Database._seed_memory_system_roles(conn)
 
     def _ensure_shared_schema(self, conn) -> None:
-        """Create all 15 pr_* flat tables. Runs once per process lifetime.
-
-        Uses statement-by-statement execution so one failed ALTER TABLE
-        (e.g. on an already-migrated DB) doesn't roll back all table creation.
-        """
+        """Create all pr_* flat tables + memory infra tables. Runs once per process lifetime."""
         if self._shared_schema_ready:
             return
         _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "pr_* flat tables")
+        _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA, "memory infra tables")
+        _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA_ALTERS, "memory infra column alters")
         self._shared_schema_ready = True
-        log.info("✅ pr_* flat tables ready")
+        log.info("✅ pr_* flat tables + memory infra ready")
 
     # ── One-time data migration ────────────────────────────────────────────────
 
@@ -970,6 +1135,78 @@ class _Database:
                         cur, conn, p, cat_id_map, ev_id_map, ar_id_map
                     )
                     log.info(f"✅ Migrated per-project tables for '{p}'")
+
+                # ── Step 9: Seed data migrations for memory infra ─────────────
+                # Migrate mng_entity_categories → mng_tags_categories
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema='public' AND table_name='mng_tags_categories'"
+                )
+                if cur.fetchone():
+                    cur.execute(
+                        """INSERT INTO mng_tags_categories (client_id, name, color, icon, created_at)
+                           SELECT DISTINCT ON (client_id, name) client_id, name, color, icon, created_at
+                           FROM mng_entity_categories
+                           ON CONFLICT (client_id, name) DO NOTHING"""
+                    )
+                    conn.commit()
+
+                # Migrate mng_entity_values → pr_tags
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema='public' AND table_name='pr_tags'"
+                )
+                if cur.fetchone():
+                    cur.execute(
+                        """INSERT INTO pr_tags (client_id, project, name, category_id, status, lifecycle, seq_num, created_at)
+                           SELECT ev.client_id, ev.project, ev.name,
+                                  tc.id,
+                                  CASE ev.status WHEN 'active' THEN 'active'
+                                                 WHEN 'done' THEN 'done'
+                                                 ELSE 'archived' END,
+                                  COALESCE(ev.lifecycle_status, 'idea'), ev.seq_num, ev.created_at
+                           FROM mng_entity_values ev
+                           LEFT JOIN mng_entity_categories ec ON ec.id = ev.category_id
+                           LEFT JOIN mng_tags_categories tc ON tc.client_id = ec.client_id AND tc.name = ec.name
+                           ON CONFLICT (client_id, project, name) DO NOTHING"""
+                    )
+                    conn.commit()
+
+                # Backfill pr_tag_meta from entity_values description/due_date
+                cur.execute(
+                    """SELECT 1 FROM information_schema.tables
+                       WHERE table_schema='public' AND table_name='pr_tag_meta'"""
+                )
+                if cur.fetchone():
+                    cur.execute(
+                        """INSERT INTO pr_tag_meta (tag_id, client_id, project, description, due_date, created_at)
+                           SELECT pt.id, pt.client_id, pt.project,
+                                  COALESCE(ev.description, ''), ev.due_date, ev.created_at
+                           FROM pr_tags pt
+                           JOIN mng_entity_values ev
+                               ON ev.client_id = pt.client_id
+                              AND ev.project = pt.project
+                              AND ev.name = pt.name
+                           WHERE (ev.description != '' OR ev.due_date IS NOT NULL)
+                           ON CONFLICT (tag_id) DO NOTHING"""
+                    )
+                    conn.commit()
+
+                # Backfill pr_commits.prompt_id
+                cur.execute(
+                    """SELECT 1 FROM information_schema.columns
+                       WHERE table_name='pr_commits' AND column_name='prompt_id'"""
+                )
+                if cur.fetchone():
+                    cur.execute(
+                        """UPDATE pr_commits c SET prompt_id = p.id
+                           FROM pr_prompts p
+                           WHERE c.prompt_source_id = p.source_id
+                             AND c.client_id = p.client_id
+                             AND c.project = p.project
+                             AND c.prompt_id IS NULL"""
+                    )
+                    conn.commit()
 
         except Exception as exc:
             conn.rollback()
@@ -1791,6 +2028,99 @@ class _Database:
         except Exception as e:
             conn.rollback()
             log.warning(f"Role-system links seed skipped: {e}")
+
+    @staticmethod
+    def _seed_tag_categories(conn) -> None:
+        """Seed default tag categories into mng_tags_categories."""
+        _SEED_CATS = [
+            ("feature",  "#22c55e", "⚡", "New functionality"),
+            ("bug",      "#ef4444", "🐛", "Defect or unexpected behaviour"),
+            ("task",     "#3b82f6", "✓",  "Process or maintenance work"),
+            ("design",   "#a855f7", "◈",  "Architecture or UX design"),
+            ("decision", "#f59e0b", "⚑",  "Architectural or product decision"),
+            ("meeting",  "#6b7280", "◷",  "Meeting summary"),
+        ]
+        try:
+            with conn.cursor() as cur:
+                # Only seed if table exists (schema may not be ready on first run)
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema='public' AND table_name='mng_tags_categories'"
+                )
+                if not cur.fetchone():
+                    return
+                for name, color, icon, desc in _SEED_CATS:
+                    cur.execute(
+                        """INSERT INTO mng_tags_categories (client_id, name, color, icon, description)
+                           VALUES (1, %s, %s, %s, %s) ON CONFLICT (client_id, name) DO NOTHING""",
+                        (name, color, icon, desc),
+                    )
+            conn.commit()
+            log.debug("✅ mng_tags_categories seeded")
+        except Exception as e:
+            conn.rollback()
+            log.debug(f"_seed_tag_categories skipped: {e}")
+
+    @staticmethod
+    def _seed_memory_system_roles(conn) -> None:
+        """Seed memory pipeline system prompts into mng_system_roles (category='memory')."""
+        _SEED_ROLES = [
+            (
+                "memory_batch_digest",
+                "memory",
+                "Given N sequential prompt/response pairs, extract a 1-2 sentence digest capturing "
+                "what was decided, built, or discovered. Return plain text only, no preamble.",
+            ),
+            (
+                "memory_session_summary",
+                "memory",
+                "Summarize this development session — focus on decisions and code changes "
+                "(3-8 bullet points). Return plain text only.",
+            ),
+            (
+                "memory_session_review",
+                "memory",
+                'Rate this session summary 1-10 for completeness and accuracy. Return ONLY valid JSON: '
+                '{"score": N, "critique": "...", "improved_summary": "..."}',
+            ),
+            (
+                "memory_feature_snapshot",
+                "memory",
+                "Given the following memory events for a feature, produce a 4-layer snapshot. "
+                "Return valid JSON with keys: requirements (str), action_items (str), "
+                "design ({high_level, low_level, patterns_used}), "
+                "code_summary ({files, key_classes, key_methods, dependencies_added, dependencies_removed}). "
+                "Base your answer only on the provided evidence.",
+            ),
+            (
+                "memory_synthesis",
+                "memory",
+                "You are a technical memory synthesizer. Given the project context below, produce a "
+                "concise developer digest (MEMORY.md format). Focus on: architecture decisions, "
+                "active features, recent changes, known issues, and next steps. "
+                "Be specific and actionable. Use markdown with clear sections.",
+            ),
+        ]
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema='public' AND table_name='mng_system_roles'"
+                )
+                if not cur.fetchone():
+                    return
+                for name, category, content in _SEED_ROLES:
+                    cur.execute(
+                        """INSERT INTO mng_system_roles (client_id, name, category, content, description)
+                           VALUES (1, %s, %s, %s, %s)
+                           ON CONFLICT (client_id, name) DO NOTHING""",
+                        (name, category, content, f"Memory pipeline: {name.replace('_', ' ')}"),
+                    )
+            conn.commit()
+            log.debug("✅ memory system roles seeded")
+        except Exception as e:
+            conn.rollback()
+            log.debug(f"_seed_memory_system_roles skipped: {e}")
 
     @staticmethod
     def _seed_client_defaults(client_id: int, conn) -> None:

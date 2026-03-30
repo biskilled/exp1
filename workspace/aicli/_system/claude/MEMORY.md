@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-28 10:41 UTC by aicli /memory_
+_Generated: 2026-03-28 11:04 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform providing centralized context management across Claude CLI, LLM platforms, and development workflows. The system combines a Python FastAPI backend with PostgreSQL semantic search (pgvector), an Electron UI with vanilla JS/xterm.js/Monaco editor, and a stdio MCP server for integrating AI agents into CI/CD pipelines. Currently transitioning from dual JSONL/database storage to DB-only persistence while fixing critical issues with tag persistence, memory table population, and embedding-to-tagging integration.
 
 ## Project Facts
 
@@ -49,7 +53,7 @@ Reviewer: ```json
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl) — PENDING MIGRATION TO DB-ONLY
+- **storage_primary**: PostgreSQL 15+ (migration from JSONL planned)
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
@@ -66,7 +70,7 @@ Reviewer: ```json
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
-- **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
+- **billing_storage**: data/provider_storage/ (provider_costs.json); pricing, coupons, user_logs in SQL tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized
@@ -75,7 +79,7 @@ Reviewer: ```json
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage: JSONL (history.jsonl with rotation) for primary history; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and per-project indexed tables
+- Dual storage model transitioning to DB-only: JSONL (history.jsonl with rotation) currently used for primary history; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and per-project indexed tables; migration away from JSONL planned
 - Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
 - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
@@ -92,12 +96,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- JSONL vs. database storage consolidation (2026-03-28) — User questioning whether system loads history from pr_prompts or JSONL; request to migrate away from JSONL approach toward DB-only tables to simplify data persistence and eliminate dual-storage complexity
-- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues; priority order requested for immediate attention
-- Embedding-to-tagging integration (2026-03-28) — User requested embeddings connected to tag metadata (e.g., 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes); current implementation unclear, requires validation and design refinement
-- Backend startup stability (2026-03-26) — Documented proper backend initialization: run `bash start_backend.sh` in terminal, keep window open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts
-- Frontend build and dev tooling (2026-03-23) — Fixed npm build failures (missing DMG background), restored ui/node_modules, verified Vite dev server and hot reload; confirmed full setup sequence
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval capability
+- JSONL vs. database storage consolidation (2026-03-28) — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues
+- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues in priority order
+- Embedding-to-tagging integration (2026-03-28) — Connect embeddings to tag metadata so 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes; validate current implementation
+- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
+- Backend startup stability (2026-03-26) — Documented proper initialization sequence: run bash start_backend.sh, keep window open; Electron UI auto-connects; resolves port binding conflicts
+- Data persistence bug: tags disappear on session switch (2026-03-10) — Identified issue where tags saved in UI vanish when switching sessions; unclear if UI rendering or database save failure; requires investigation
 
 ## Active Features / Bugs / Tasks
 
@@ -206,3 +210,7 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+
+## AI Synthesis
+
+**2026-03-28** `in_progress` — User identified JSONL vs. database storage as primary consolidation task; plan to migrate away from dual-storage complexity toward DB-only tables for simplified persistence. **2026-03-28** `in_progress` — P0#1 memory audit and P1#3, P1#5 fixes prioritized for immediate execution; user requested /memory command validation followed by critical bug resolution. **2026-03-28** `in_progress` — Embedding-to-tagging integration clarified: 'auth' tags should capture all authentication prompts, 'feature'/'bug' tags should organize code changes; current implementation status unclear, requires validation. **2026-03-26** `in_progress` — Backend startup stability documented: proper initialization requires bash start_backend.sh executed in terminal with window kept open; Electron UI auto-connects to localhost:8000; resolves intermittent port binding conflicts. **2026-03-18** `memory_summary` — Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call and using _ensure_shared_schema pattern instead; fixed undefined code_dir variable in CLAUDE.md template at line 1120; refined backend startup retry logic to handle empty project list edge case. **2026-03-10** `memory_summary` — Identified database performance issue: implemented strategy to load tags into memory on project access and update DB only on explicit save; discovered data persistence bug where tags disappear on session switch; approved nested tags feature expansion beyond 2-level hierarchy.

@@ -89,20 +89,36 @@ def _handle_search_memory(args: dict) -> str:
         if db.is_available():
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Text search in pr_events content
+                    # Text search in pr_memory_events (interaction search)
                     cur.execute(
-                        """SELECT source, content, created_at
-                           FROM pr_events
-                           WHERE client_id=1 AND project=%s
-                             AND content ILIKE %s
-                           ORDER BY created_at DESC
+                        """SELECT me.source_type, me.content, me.created_at
+                           FROM pr_memory_events me
+                           WHERE me.client_id=1 AND me.project=%s
+                             AND me.content ILIKE %s
+                           ORDER BY me.created_at DESC
                            LIMIT %s""",
                         (project, f"%{query}%", limit),
                     )
                     rows = cur.fetchall()
                     for row in rows:
                         ts = row[2].strftime("%Y-%m-%d") if row[2] else "?"
-                        results.append(f"[{ts}] {row[0]}: {(row[1] or '')[:300]}")
+                        results.append(f"[{ts}] memory({row[0]}): {(row[1] or '')[:300]}")
+
+                    # Fallback to pr_prompts if memory_events empty
+                    if not rows:
+                        cur.execute(
+                            """SELECT 'prompt' AS source, prompt, created_at
+                               FROM pr_prompts
+                               WHERE client_id=1 AND project=%s
+                                 AND prompt ILIKE %s
+                               ORDER BY created_at DESC
+                               LIMIT %s""",
+                            (project, f"%{query}%", limit),
+                        )
+                        rows2 = cur.fetchall()
+                        for row in rows2:
+                            ts = row[2].strftime("%Y-%m-%d") if row[2] else "?"
+                            results.append(f"[{ts}] {row[0]}: {(row[1] or '')[:300]}")
     except Exception as e:
         log.debug(f"search_memory DB error: {e}")
 
@@ -151,17 +167,17 @@ def _handle_get_recent_history(args: dict) -> str:
                 with conn.cursor() as cur:
                     if feature:
                         cur.execute(
-                            """SELECT i.role, i.content, i.created_at
-                               FROM pr_prompts i
-                               JOIN pr_prompt_tags it ON it.interaction_id = i.id
-                               JOIN mng_entity_values ev ON ev.id = it.entity_value_id
-                               WHERE i.client_id=1 AND i.project=%s AND ev.name ILIKE %s
-                               ORDER BY i.created_at DESC LIMIT %s""",
+                            """SELECT p.prompt, p.response, p.created_at
+                               FROM pr_prompts p
+                               JOIN pr_source_tags st ON st.prompt_id = p.id
+                               JOIN pr_tags t ON t.id = st.tag_id
+                               WHERE p.client_id=1 AND p.project=%s AND t.name ILIKE %s
+                               ORDER BY p.created_at DESC LIMIT %s""",
                             (project, f"%{feature}%", limit),
                         )
                     else:
                         cur.execute(
-                            """SELECT role, content, created_at
+                            """SELECT prompt, response, created_at
                                FROM pr_prompts
                                WHERE client_id=1 AND project=%s
                                ORDER BY created_at DESC LIMIT %s""",
@@ -170,7 +186,8 @@ def _handle_get_recent_history(args: dict) -> str:
                     rows = cur.fetchall()
                     for row in rows:
                         ts = row[2].strftime("%Y-%m-%d %H:%M") if row[2] else "?"
-                        results.append(f"[{ts}] {row[0]}: {(row[1] or '')[:400]}")
+                        preview = (row[0] or "")[:300]
+                        results.append(f"[{ts}] Q: {preview}")
     except Exception as e:
         log.debug(f"get_recent_history DB error: {e}")
 

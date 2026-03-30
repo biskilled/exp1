@@ -506,6 +506,7 @@ class HookLogRequest(BaseModel):
     provider: str = "claude"
     phase: str | None = None
     feature: str | None = None
+    context_tags: dict = {}   # {stage: "discovery", feature: "auth", ...} from .agent-context
 
 
 class HookResponseRequest(BaseModel):
@@ -515,17 +516,163 @@ class HookResponseRequest(BaseModel):
     stop_reason: str = "end_turn"
 
 
+def _count_session_prompts(project: str, session_id: str) -> int:
+    """Count how many prompts exist for this session (used for batch trigger)."""
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM pr_prompts "
+                    "WHERE client_id=1 AND project=%s AND session_id=%s",
+                    (project, session_id),
+                )
+                return cur.fetchone()[0]
+    except Exception:
+        return 0
+
+
+def _get_batch_size(project: str) -> int:
+    """Read memory.batch_size from aicli.yaml (default 3)."""
+    try:
+        from pathlib import Path as _Path
+        import yaml as _yaml
+        cfg = _Path(settings.workspace_dir).parent / "aicli.yaml"
+        if cfg.exists():
+            d = _yaml.safe_load(cfg.read_text()) or {}
+            return int((d.get("memory") or {}).get("batch_size", 3))
+    except Exception:
+        pass
+    return 3
+
+
+async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
+    """Generate a digest for the last N prompts in the session → pr_memory_events."""
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id, prompt, response FROM pr_prompts
+                       WHERE client_id=1 AND project=%s AND session_id=%s
+                         AND response != ''
+                       ORDER BY created_at DESC LIMIT %s""",
+                    (project, session_id, n),
+                )
+                prompts = list(reversed(cur.fetchall()))
+        if not prompts:
+            return
+
+        # Build prompt for Haiku
+        pairs = "\n\n".join(
+            f"Q: {(p[1] or '')[:500]}\nA: {(p[2] or '')[:800]}"
+            for p in prompts
+        )
+        # Load system role
+        sys_prompt = "Given N sequential prompt/response pairs, extract a 1-2 sentence digest capturing what was decided, built, or discovered. Return plain text only, no preamble."
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT content FROM mng_system_roles "
+                        "WHERE client_id=1 AND name='memory_batch_digest' AND is_active=TRUE LIMIT 1"
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        sys_prompt = row[0]
+        except Exception:
+            pass
+
+        from data.dl_api_keys import get_key
+        import anthropic
+        api_key = get_key("claude") or get_key("anthropic")
+        if not api_key:
+            return
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        resp = await client.messages.create(
+            model=settings.haiku_model,
+            max_tokens=200,
+            system=sys_prompt,
+            messages=[{"role": "user", "content": pairs}],
+        )
+        content = (resp.content[0].text if resp.content else "").strip()
+        if not content:
+            return
+
+        last_prompt_id = str(prompts[-1][0])
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO pr_memory_events
+                           (client_id, project, source_type, source_id, session_id, content, importance)
+                       VALUES (1, %s, 'prompt_batch', %s::uuid, %s, %s, 1)
+                       ON CONFLICT (client_id, project, source_type, source_id) DO NOTHING
+                       RETURNING id""",
+                    (project, last_prompt_id, session_id, content),
+                )
+        log.debug(f"Memory batch digest generated for {project}/{session_id}")
+    except Exception as e:
+        log.debug(f"_generate_memory_batch error: {e}")
+
+
+async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: dict) -> None:
+    """Create pr_source_tags rows for each key:value in context_tags (auto_tagged=True)."""
+    if not context_tags or not db.is_available():
+        return
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for key, value in context_tags.items():
+                    tag_name = f"{key}:{value}" if key not in ("feature", "bug_ref") else str(value)
+                    # get_or_create tag
+                    cur.execute(
+                        "SELECT id FROM pr_tags WHERE client_id=1 AND project=%s AND name=%s",
+                        (project, tag_name),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        tag_id = row[0]
+                    else:
+                        cur.execute(
+                            "INSERT INTO pr_tags (client_id, project, name, status) "
+                            "VALUES (1, %s, %s, 'active') "
+                            "ON CONFLICT (client_id, project, name) DO NOTHING RETURNING id",
+                            (project, tag_name),
+                        )
+                        ins = cur.fetchone()
+                        if not ins:
+                            cur.execute(
+                                "SELECT id FROM pr_tags WHERE client_id=1 AND project=%s AND name=%s",
+                                (project, tag_name),
+                            )
+                            ins = cur.fetchone()
+                        if ins:
+                            tag_id = ins[0]
+                        else:
+                            continue
+                    # Insert source-tag link
+                    cur.execute(
+                        """INSERT INTO pr_source_tags (tag_id, prompt_id, auto_tagged)
+                           VALUES (%s::uuid, %s::uuid, TRUE)
+                           ON CONFLICT DO NOTHING""",
+                        (tag_id, prompt_id),
+                    )
+    except Exception as e:
+        log.debug(f"_tag_prompt_from_context error: {e}")
+
+
 @router.post("/{project}/hook-log")
 async def hook_log_prompt(project: str, body: HookLogRequest):
     """Unauthenticated endpoint — CLI hooks write prompts directly to pr_prompts.
 
     Called by log_user_prompt.sh after every Claude Code prompt.
     No auth required: runs on localhost, hook scripts have no JWT.
+    Also triggers memory batch digest every N prompts.
     """
     ts = body.ts or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if not db.is_available():
         return {"ok": False, "reason": "db_unavailable"}
     try:
+        prompt_id = None
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -534,9 +681,29 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
                      (body.prompt or "")[:4000], "",
                      body.phase,
                      json.dumps({"source": body.source, "provider": body.provider,
-                                 "feature": body.feature}),
+                                 "feature": body.feature,
+                                 "context_tags": body.context_tags}),
                      ts),
                 )
+                # Fetch the inserted prompt id
+                cur.execute(
+                    "SELECT id FROM pr_prompts WHERE client_id=1 AND project=%s AND source_id=%s",
+                    (project, ts),
+                )
+                row = cur.fetchone()
+                if row:
+                    prompt_id = str(row[0])
+
+        # Fire memory batch digest every N prompts (fire-and-forget)
+        count = _count_session_prompts(project, body.session_id)
+        batch_size = _get_batch_size(project)
+        if count > 0 and count % batch_size == 0:
+            asyncio.create_task(_generate_memory_batch(project, body.session_id, batch_size))
+
+        # Tag prompt with context_tags if provided
+        if body.context_tags and prompt_id:
+            asyncio.create_task(_tag_prompt_from_context(project, prompt_id, body.context_tags))
+
         return {"ok": True, "ts": ts}
     except Exception as e:
         return {"ok": False, "reason": str(e)}

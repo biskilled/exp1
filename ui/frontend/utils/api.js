@@ -304,9 +304,31 @@ api.entities = {
 };
 
 
-// ── Work Items API ────────────────────────────────────────────────────────────
+// ── Tags API ──────────────────────────────────────────────────────────────────
 
 function enc(v) { return encodeURIComponent(v || ''); }
+
+api.tags = {
+  list:           (proj)         => _get(`/tags?project=${enc(proj)}`),
+  create:         (body)         => _post('/tags', body),
+  update:         (id, body)     => fetch(_base() + `/tags/${id}`, { method:'PATCH', headers:_headers(), body:JSON.stringify(body) }).then(r=>r.ok?r.json():r.json().then(e=>Promise.reject(new Error(e.detail)))),
+  delete:         (id, proj, force=false) => _del(`/tags/${enc(id)}?project=${enc(proj)}${force?'&force=true':''}`),
+  merge:          (body)         => _post('/tags/merge', body),
+  getSources:     (id, proj)     => _get(`/tags/${enc(id)}/sources?project=${enc(proj)}`),
+  addSource:      (body)         => _post('/tags/source', body),
+  removeSource:   (id)           => _del(`/tags/source/${enc(id)}`),
+  sessionContext: (proj)         => _get(`/tags/session-context?project=${enc(proj)}`),
+  saveContext:    (proj, body)   => _post(`/tags/session-context?project=${enc(proj)}`, body),
+  categories: {
+    list:   ()         => _get('/tags/categories'),
+    create: (body)     => _post('/tags/categories', body),
+    update: (id, body) => fetch(_base() + `/tags/categories/${id}`, { method:'PATCH', headers:_headers(), body:JSON.stringify(body) }).then(r=>r.ok?r.json():r.json().then(e=>Promise.reject(new Error(e.detail)))),
+    delete: (id)       => _del(`/tags/categories/${id}`),
+  },
+};
+
+
+// ── Work Items API ────────────────────────────────────────────────────────────
 
 api.workItems = {
   list:            (projectOrOpts, category, status) => {
