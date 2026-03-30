@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-30 15:45 UTC by aicli /memory_
+_Generated: 2026-03-30 15:47 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates with Claude CLI and other LLM platforms to manage development projects through intelligent tagging, embeddings, and workflow automation. It uses PostgreSQL with pgvector for semantic search, FastAPI backend with JWT authentication (3-tier roles), and an Electron+Vanilla JS frontend with Cytoscape.js for DAG workflow visualization. Current focus is consolidating JSONL/database dual storage into DB-only persistence, fixing data persistence bugs (tags disappearing on session switch), and validating embedding-to-tagging integration for improved context management.
+aicli is a shared AI memory platform enabling Claude CLI and other LLM environments to maintain persistent context across sessions through PostgreSQL storage with pgvector embeddings, semantic tagging, and DAG-based workflow automation. The system separates engine logic (aicli/ backend), project content (workspace/), and state (_system/), with Electron-based UI providing xterm.js terminal, Monaco editor, and Cytoscape.js workflow visualization. Current development focuses on consolidating JSONL/database dual storage into DB-only persistence, fixing tag persistence bugs on session switches, and validating embedding-to-tagging integration for improved memory synthesis.
 
 ## Project Facts
 
@@ -53,7 +53,7 @@ Reviewer: ```json
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: PostgreSQL 15+ with per-project schema (migration from JSONL planned)
+- **storage_primary**: PostgreSQL 15+ with per-project schema
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
@@ -79,20 +79,20 @@ Reviewer: ```json
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL (history.jsonl) currently used but migration planned to eliminate consistency issues
-- Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
-- All LLM providers as independent adapters (Claude Haiku for synthesis, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
-- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel
+- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL currently used but migration planned
+- Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys
+- All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none
+- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage/billing tables
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage tables
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
-- Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
+- Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
-- _ensure_shared_schema pattern replaces old ensure_project_schema method; retry logic handles empty project list on first load
-- Embeddings linked to tags: tag metadata captures context (e.g., auth→all authentication prompts; feature/bug→relevant code changes)
+- _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
+- Embeddings linked to tags: tag metadata captures context (auth→all authentication prompts; feature/bug→relevant code changes)
 
 ## In Progress
 
@@ -213,4 +213,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-28]** `in_progress` — Executing /memory audit to validate P0#1 memory items and fix critical P1#3, P1#5 issues; embedding-to-tagging integration under validation to ensure 'auth' tags all authentication prompts and 'feature'/'bug' categorizes code changes. **[2026-03-28]** `architecture` — JSONL-to-database consolidation initiated to eliminate dual storage consistency issues; targeting DB-only persistence model with proper memory_items and project_facts table population. **[2026-03-26]** `backend` — Backend startup stability documented: proper sequence is bash start_backend.sh (keep window open) → Electron UI auto-connects; resolves port 127.0.0.1:8000 binding conflicts affecting intermittent app restarts. **[2026-03-18]** `bug_fixes` — Fixed AttributeError in main.py (removed stale db.ensure_project_schema call, replaced with _ensure_shared_schema); fixed Memory endpoint CLAUDE.md template error (undefined code_dir variable at line 1120 now properly scoped from config); fixed backend startup race condition (retry logic now handles empty projects list on first load). **[2026-03-10]** `data_model` — Confirmed hierarchical structure where Clients contain multiple Users; identified tag persistence bug where UI-saved tags disappear on session switch (unclear if rendering or DB save failure); documented database performance optimization strategy (load tags once on project access, update only on explicit save). **[2026-03-18]** `pending` — Project visibility bug: AiCli appears in Recent projects but not displaying as current active project in main view; memory_items and project_facts tables exist in schema but update logic not implemented (blocks improved memory/context mechanism).
+**[2026-03-28]** `in_progress` — Memory audit initiated with /memory command; P0#1 validation, P1#3/P1#5 fixes, and memory_items/project_facts table population pending. **[2026-03-28]** `in_progress` — JSONL vs. database storage consolidation identified; migration to DB-only tables required to eliminate consistency issues and simplify persistence. **[2026-03-28]** `in_progress` — Embedding-to-tagging integration validation in progress; ensuring 'auth' tags authentication prompts and 'feature'/'bug' tags categorize code changes. **[2026-03-26]** `in_progress` — Backend startup stability documented; bash start_backend.sh initialization sequence required, Electron UI auto-connects; port 127.0.0.1:8000 binding conflicts resolved. **[2026-03-18]** `key_decisions` — AttributeError in main.py fixed by removing stale db.ensure_project_schema() call and using _ensure_shared_schema instead. **[2026-03-18]** `key_decisions` — Memory endpoint CLAUDE.md template error resolved; code_dir variable properly scoped at line 1120. **[2026-03-18]** `in_progress` — Backend startup race condition fixed; retry logic now handles edge case where projects load succeeds but returns empty list. **[2026-03-18]** `key_decisions` — Data model hierarchy clarified: Clients contain multiple Users; authentication pattern login_as_first_level_hierarchy confirmed. **[2026-03-10]** `in_progress` — Data persistence bug identified: tags saved in UI disappear when switching sessions; unclear if UI rendering or database save failure. **[2026-03-10]** `key_decisions` — Database performance improved with load-once-on-access pattern; tags loaded into memory on project access, updated only on explicit save actions.
