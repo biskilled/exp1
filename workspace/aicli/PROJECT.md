@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- JSONL vs. database storage consolidation (2026-03-28) — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues
-- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues in priority order
-- Embedding-to-tagging integration (2026-03-28) — Connect embeddings to tag metadata so 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes; validate current implementation
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
-- Backend startup stability (2026-03-26) — Documented proper initialization sequence: run bash start_backend.sh, keep window open; Electron UI auto-connects; resolves port binding conflicts
 - Data persistence bug: tags disappear on session switch (2026-03-10) — Identified issue where tags saved in UI vanish when switching sessions; unclear if UI rendering or database save failure; requires investigation
+- Memory audit and critical fixes (2026-03-28) — Execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues in priority order; verify memory_items and project_facts table population
+- JSONL vs. database storage consolidation (2026-03-28) — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues
+- Embedding-to-tagging integration validation (2026-03-28) — Connect embeddings to tag metadata so 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes; validate current implementation
+- Backend startup stability fixes (2026-03-26) — Documented proper initialization sequence: run bash start_backend.sh, keep window open; Electron UI auto-connects; resolves port binding conflicts
+- Project visibility bug investigation (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization

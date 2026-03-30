@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-28 11:05 UTC — do not edit manually.
+> Auto-generated 2026-03-30 15:46 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 287
-- **Last active**: 2026-03-28T11:04:40Z
+- **Sessions**: 289
+- **Last active**: 2026-03-30T15:46:19Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -18,13 +18,13 @@
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: PostgreSQL 15+ (migration from JSONL planned)
+- **storage_primary**: PostgreSQL 15+ with per-project schema (migration from JSONL planned)
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
-- **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files)
 - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
 - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
@@ -43,23 +43,23 @@
 
 ## In Progress
 
-- JSONL vs. database storage consolidation (2026-03-28) — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues
-- P0#1 memory audit and P1#3, P1#5 fixes (2026-03-28) — Execute /memory command to validate P0#1 item, then fix two critical P1 issues in priority order
-- Embedding-to-tagging integration (2026-03-28) — Connect embeddings to tag metadata so 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes; validate current implementation
-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
-- Backend startup stability (2026-03-26) — Documented proper initialization sequence: run bash start_backend.sh, keep window open; Electron UI auto-connects; resolves port binding conflicts
 - Data persistence bug: tags disappear on session switch (2026-03-10) — Identified issue where tags saved in UI vanish when switching sessions; unclear if UI rendering or database save failure; requires investigation
+- Memory audit and critical fixes (2026-03-28) — Execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues in priority order; verify memory_items and project_facts table population
+- JSONL vs. database storage consolidation (2026-03-28) — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues
+- Embedding-to-tagging integration validation (2026-03-28) — Connect embeddings to tag metadata so 'auth' tags all authentication prompts; 'feature'/'bug' tags categorize code changes; validate current implementation
+- Backend startup stability fixes (2026-03-26) — Documented proper initialization sequence: run bash start_backend.sh, keep window open; Electron UI auto-connects; resolves port binding conflicts
+- Project visibility bug investigation (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage model transitioning to DB-only: JSONL (history.jsonl with rotation) currently used for primary history; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and per-project indexed tables; migration away from JSONL planned
+- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL (history.jsonl) currently used but migration planned to eliminate consistency issues
 - Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
-- All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
+- All LLM providers as independent adapters (Claude Haiku for synthesis, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage tables
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage/billing tables
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
@@ -160,6 +160,9 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-30 15:10]** `claude_cli/claude`  
+→ I would like to update my memory infrastrucutre, in order to have more reliable layers, better prompting capabilties and
+
 **[2026-03-28 11:03]** `claude_cli/claude`  
 → What is the pr_event_links is used for ? how it is linking events?
 ← _`api.entities.getLinks` exists in `api.js` but is **never called from any view** — so `pr_event_links` is populated (by commit/sync hooks) but never surfaced in the current UI.  ---  ## Summary  | Pur_
@@ -215,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-27 09:41]** `claude_cli/claude`  
 → Where is the file ? I cannnot see that in the folder
 ← _`aicli_memory.md` is now 1336 lines covering everything. Here's what was added:  ---  **When responses are summarized** — exact 7-step chain: 1. Raw write (no summarization) — hooks capture prompt imm_
-
-**[2026-03-27 09:28]** `claude_cli/claude`  
-→ I do see that in any llm repsonse is summerised - when is it happend, can you also add all the internal prompt you are u
-← _Now I'll append the full detailed sections to the existing file:_

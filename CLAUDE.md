@@ -27,13 +27,13 @@ You are a senior Python software architect with deep expertise in:
 ## Key Architectural Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage model transitioning to DB-only: JSONL (history.jsonl with rotation) currently used for primary history; PostgreSQL 15+ with pgvector (1536-dim) for semantic search and per-project indexed tables; migration away from JSONL planned
+- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL (history.jsonl) currently used but migration planned to eliminate consistency issues
 - Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server for local development
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
-- All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
+- All LLM providers as independent adapters (Claude Haiku for synthesis, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage tables
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage/billing tables
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-28] `claude_cli`: Can you update the table name from pr_interation to pr_prompts same to pr_interation_tags to pr_prom
 - [2026-03-28] `claude_cli`: Before you continue - I would like to understand why in pr_interaction name is not change to pr_prom
 - [2026-03-28] `claude_cli`: Yes please do that, and run /memory to check P0#1, and fix P1#5 and P1#3 . also is the system loadin
 - [2026-03-28] `claude_cli`: What event insert into event table except prompts and new commits 
 - [2026-03-28] `claude_cli`: What is the pr_event_links is used for ? how it is linking events?
+- [2026-03-30] `claude_cli`: I would like to update my memory infrastrucutre, in order to have more reliable layers, better promp
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
