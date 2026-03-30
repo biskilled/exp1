@@ -195,8 +195,9 @@ async function createWindow(serverUrl) {
     console.error(`[main] Backend not reachable at ${serverUrl}`);
   }
 
-  // In development, load Vite dev server; in production, load built index.html
-  const isDev = process.env.NODE_ENV === "development";
+  // Dev mode: explicit flag OR dist not built yet (auto-detect)
+  const isDev = process.env.NODE_ENV === "development" ||
+    !fs.existsSync(path.join(UI_ROOT, "dist", "index.html"));
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173");
   } else {

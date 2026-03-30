@@ -112,11 +112,11 @@ Layer 5 — Global Knowledge
 
 ## Recent Work (last 5 prompts)
 
-- [2026-03-28] `claude_cli`: Before you continue - I would like to understand why in pr_interaction name is not change to pr_prom
 - [2026-03-28] `claude_cli`: Yes please do that, and run /memory to check P0#1, and fix P1#5 and P1#3 . also is the system loadin
 - [2026-03-28] `claude_cli`: What event insert into event table except prompts and new commits 
 - [2026-03-28] `claude_cli`: What is the pr_event_links is used for ? how it is linking events?
 - [2026-03-30] `claude_cli`: I would like to update my memory infrastrucutre, in order to have more reliable layers, better promp
+- [2026-03-30] `claude_cli`: Can you recheck, ui is not loading well. please remove the developer tools when I start ui. also whe
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*

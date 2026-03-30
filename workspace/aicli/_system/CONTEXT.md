@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-30 15:50 UTC — do not edit manually.
+> Auto-generated 2026-03-30 16:08 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 291
-- **Last active**: 2026-03-30T15:47:53Z
+- **Sessions**: 292
+- **Last active**: 2026-03-30T16:08:23Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -160,6 +160,10 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-30 16:02]** `claude_cli/claude`  
+→ Can you recheck, ui is not loading well. please remove the developer tools when I start ui. also when I start ui - it is
+← _Now I have the full file. Let me write the updated `aicli_memory.md`:_
+
 **[2026-03-30 15:10]** `claude_cli/claude`  
 → I would like to update my memory infrastrucutre, in order to have more reliable layers, better prompting capabilties and
 
@@ -214,7 +218,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-27 09:42]** `claude_cli/claude`  
 → I do see that you have native /memory function as well. what is it ?
 ← _The file is at:  ``` /Users/user/Documents/gdrive_cellqlick/2026/aicli/aicli_memory.md ```  It's in the **root of the aicli project folder** — the same level as `backend/`, `ui/`, `workspace/`, `CLAUD_
-
-**[2026-03-27 09:41]** `claude_cli/claude`  
-→ Where is the file ? I cannnot see that in the folder
-← _`aicli_memory.md` is now 1336 lines covering everything. Here's what was added:  ---  **When responses are summarized** — exact 7-step chain: 1. Raw write (no summarization) — hooks capture prompt imm_
