@@ -199,10 +199,6 @@ async function createWindow(serverUrl) {
   const isDev = process.env.NODE_ENV === "development";
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173");
-    // Auto-open DevTools in dev mode so Cmd+R / console are always accessible
-    mainWindow.webContents.once("did-finish-load", () => {
-      mainWindow.webContents.openDevTools({ mode: "detach" });
-    });
   } else {
     const indexPath = path.join(UI_ROOT, "dist", "index.html");
     mainWindow.loadFile(indexPath);
@@ -344,10 +340,14 @@ app.whenReady().then(async () => {
   const serverUrl = getServerUrl();
 
   if (isLocalServer(serverUrl)) {
-    // Local mode: kill stale process on port, then spawn fresh backend
-    await freePort(BACKEND_PORT);
-    startBackend();
-    console.log(`[main] Local backend starting at ${serverUrl}`);
+    // Local mode: reuse existing backend if already running (e.g. start_backend.sh),
+    // otherwise spawn a fresh one. Never kill a process we didn't start.
+    if (await isPortBusy(BACKEND_PORT)) {
+      console.log(`[main] Backend already running on port ${BACKEND_PORT} — reusing it`);
+    } else {
+      startBackend();
+      console.log(`[main] Local backend starting at ${serverUrl}`);
+    }
   } else {
     // Remote mode: skip backend spawn entirely
     console.log(`[main] Connecting to remote server: ${serverUrl}`);

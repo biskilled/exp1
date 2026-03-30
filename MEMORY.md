@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-03-30 15:47 UTC by aicli /memory_
+_Generated: 2026-03-30 15:49 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform enabling Claude CLI and other LLM environments to maintain persistent context across sessions through PostgreSQL storage with pgvector embeddings, semantic tagging, and DAG-based workflow automation. The system separates engine logic (aicli/ backend), project content (workspace/), and state (_system/), with Electron-based UI providing xterm.js terminal, Monaco editor, and Cytoscape.js workflow visualization. Current development focuses on consolidating JSONL/database dual storage into DB-only persistence, fixing tag persistence bugs on session switches, and validating embedding-to-tagging integration for improved memory synthesis.
 
 ## Project Facts
 
@@ -210,7 +206,3 @@ Reviewer: ```json
 ## Data Model Clarification
 
 • Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
-
-## AI Synthesis
-
-**[2026-03-28]** `in_progress` — Memory audit initiated with /memory command; P0#1 validation, P1#3/P1#5 fixes, and memory_items/project_facts table population pending. **[2026-03-28]** `in_progress` — JSONL vs. database storage consolidation identified; migration to DB-only tables required to eliminate consistency issues and simplify persistence. **[2026-03-28]** `in_progress` — Embedding-to-tagging integration validation in progress; ensuring 'auth' tags authentication prompts and 'feature'/'bug' tags categorize code changes. **[2026-03-26]** `in_progress` — Backend startup stability documented; bash start_backend.sh initialization sequence required, Electron UI auto-connects; port 127.0.0.1:8000 binding conflicts resolved. **[2026-03-18]** `key_decisions` — AttributeError in main.py fixed by removing stale db.ensure_project_schema() call and using _ensure_shared_schema instead. **[2026-03-18]** `key_decisions` — Memory endpoint CLAUDE.md template error resolved; code_dir variable properly scoped at line 1120. **[2026-03-18]** `in_progress` — Backend startup race condition fixed; retry logic now handles edge case where projects load succeeds but returns empty list. **[2026-03-18]** `key_decisions` — Data model hierarchy clarified: Clients contain multiple Users; authentication pattern login_as_first_level_hierarchy confirmed. **[2026-03-10]** `in_progress` — Data persistence bug identified: tags saved in UI disappear when switching sessions; unclear if UI rendering or database save failure. **[2026-03-10]** `key_decisions` — Database performance improved with load-once-on-access pattern; tags loaded into memory on project access, updated only on explicit save actions.
