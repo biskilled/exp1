@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-30 16:20 UTC by aicli /memory_
+_Generated: 2026-03-30 16:44 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates with Claude CLI and other LLM platforms, providing persistent work item tracking (bugs, features, tasks), tagging, and context-aware workflows via an async DAG executor. The system uses PostgreSQL with per-project schemas for data isolation, pgvector for semantic search, and an Electron desktop UI with graph-based workflow visualization. Current focus is on resolving data persistence bugs (tags disappearing on session switch), consolidating JSONL/database storage, and ensuring backend startup stability.
+aicli is a shared AI memory platform that enables Claude CLI and other LLM systems to maintain contextual awareness across development sessions by synthesizing code commits, events, and user interactions into structured memory. The project is currently in active development with 15+ features tracked (auth, UI, shared-memory, tagging, embeddings, workflows, billing, MCP integration), and is addressing critical data persistence issues around tag storage, memory table population, and backend startup stability.
 
 ## Project Facts
 
@@ -91,19 +91,19 @@ Reviewer: ```json
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
-- Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
 - Embeddings linked to tags: tag metadata captures context (auth→all authentication prompts; feature/bug→relevant code changes)
+- Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 
 ## In Progress
 
-- Data persistence bug: tags disappear on session switch — Identified root cause unclear (UI rendering vs database save failure); requires debugging and fix validation
-- Memory audit and critical fixes — Execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues; verify memory_items and project_facts table population
-- JSONL vs. database storage consolidation — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence
-- Backend startup stability fixes — Documented proper initialization sequence (bash start_backend.sh); resolved port 127.0.0.1:8000 binding conflicts
-- Project visibility bug investigation — AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
-- Embedding-to-tagging integration validation — Connect embeddings to tag metadata; validate auth/feature/bug tag categorization works end-to-end
+- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure
+- Memory audit and critical fixes—execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues; verify memory_items and project_facts table population
+- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence
+- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh
+- Project visibility bug investigation—AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
+- Embedding-to-tagging integration validation—connect embeddings to tag metadata; validate auth/feature/bug tag categorization works end-to-end
 
 ## Active Features / Bugs / Tasks
 
@@ -215,4 +215,4 @@ Reviewer: ```json
 
 ## AI Synthesis
 
-**[2026-03-28]** `in_progress` — Memory audit and critical fixes: execute /memory command to validate P0#1 item, fix P1#3 and P1#5 issues in priority order, verify memory_items and project_facts table population across per-project schemas. **[2026-03-28]** `in_progress` — JSONL vs. database storage consolidation: migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate consistency issues between file-based and relational layers. **[2026-03-26]** `in_progress` — Backend startup stability fixes: documented proper initialization sequence (run bash start_backend.sh, keep window open; Electron UI auto-connects); resolved port 127.0.0.1:8000 binding conflicts preventing reliable app restart. **[2026-03-18]** `in_progress` — Project visibility bug investigation: AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization requires further investigation. **[2026-03-18]** `completed` — Fixed AttributeError in main.py by removing stale db.ensure_project_schema() call; fixed memory endpoint CLAUDE.md template error (code_dir variable scoping); modified _continueToApp() retry logic to handle empty project list edge case. **[2026-03-10]** `identified` — Data persistence bug: tags saved in UI disappear when switching sessions; unclear if UI rendering or database save failure; also identified database performance issues and approved nested tags feature expansion beyond current 2-level hierarchy.
+**[2026-03-18]** `session_summary` — Fixed AttributeError in main.py by removing stale `ensure_project_schema()` call and switching to `_ensure_shared_schema` pattern; resolved memory endpoint CLAUDE.md template variable scoping issue at line 1120; improved backend startup retry logic to handle empty project list edge case on first load. **[2026-03-14]** `project_facts` — Confirmed hierarchical data model (Clients contain multiple Users); identified that memory_items and project_facts tables are not being populated despite specification; documented pending implementation. **[2026-03-10]** `database_performance` — Implemented load-once-on-access pattern for tags to reduce redundant SQL calls; switch sessions now requires DB reload via cache invalidation. **[2026-03-10]** `data_persistence` — Discovered critical bug where tags saved in UI disappear on session switch; root cause unclear (UI rendering vs database save failure). **[2026-03-10]** `ux_improvements` — Enhanced planner visibility by replacing small action buttons with 3-dot menu; added unarchive functionality; made AI suggestions more prominent with session attribution and GitHub links. **[2026-03-10]** `backend_stability` — Resolved intermittent startup failures from port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence in bash start_backend.sh.

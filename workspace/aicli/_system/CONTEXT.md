@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-30 16:44 UTC — do not edit manually.
+> Auto-generated 2026-03-30 16:45 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 294
-- **Last active**: 2026-03-30T16:40:37Z
+- **Sessions**: 295
+- **Last active**: 2026-03-30T16:44:43Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -45,12 +45,12 @@
 
 ## In Progress
 
-- Data persistence bug: tags disappear on session switch — Identified root cause unclear (UI rendering vs database save failure); requires debugging and fix validation
-- Memory audit and critical fixes — Execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues; verify memory_items and project_facts table population
-- JSONL vs. database storage consolidation — Migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence
-- Backend startup stability fixes — Documented proper initialization sequence (bash start_backend.sh); resolved port 127.0.0.1:8000 binding conflicts
-- Project visibility bug investigation — AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
-- Embedding-to-tagging integration validation — Connect embeddings to tag metadata; validate auth/feature/bug tag categorization works end-to-end
+- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure
+- Memory audit and critical fixes—execute /memory command to validate P0#1 item; fix P1#3 and P1#5 issues; verify memory_items and project_facts table population
+- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence
+- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh
+- Project visibility bug investigation—AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
+- Embedding-to-tagging integration validation—connect embeddings to tag metadata; validate auth/feature/bug tag categorization works end-to-end
 
 ## Key Decisions
 
@@ -65,10 +65,10 @@
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
-- Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
 - Embeddings linked to tags: tag metadata captures context (auth→all authentication prompts; feature/bug→relevant code changes)
+- Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
 
 ---
 
@@ -164,6 +164,7 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 **[2026-03-30 16:42]** `claude_cli/claude`  
 → It it still balnck. the error is Uncaught SyntaxError: Identifier '_esc' has already been declared there is also warning
+← _Done. Two fixes applied:  1. **`graph_workflow.js`** — removed the duplicate `function _esc` at line 2130 (the one at line 431 is kept). This was the exact cause of `Uncaught SyntaxError: Identifier '_
 
 **[2026-03-30 16:24]** `claude_cli/claude`  
 → Backend looks like it is running. when I run npm start - it looks like electron app is running, but nothing is showing a

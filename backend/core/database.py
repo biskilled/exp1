@@ -670,7 +670,39 @@ CREATE TABLE IF NOT EXISTS pr_tag_meta (
 );
 CREATE INDEX IF NOT EXISTS idx_pr_tag_meta_cp ON pr_tag_meta(client_id, project);
 
+-- General documents: requirements, decisions, client notes, meetings
+-- (must be defined before pr_source_tags which references it)
+CREATE TABLE IF NOT EXISTS pr_items (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project     VARCHAR(255) NOT NULL,
+    item_type   TEXT         NOT NULL,
+    title       TEXT,
+    meeting_at  TIMESTAMPTZ,
+    attendees   TEXT[],
+    raw_text    TEXT         NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pr_items_cp   ON pr_items(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_pr_items_type ON pr_items(item_type);
+
+-- Chunked platform messages (Slack, Teams, Discord)
+-- (must be defined before pr_source_tags which references it)
+CREATE TABLE IF NOT EXISTS pr_messages (
+    id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id  INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project    VARCHAR(255) NOT NULL,
+    platform   TEXT         NOT NULL,
+    channel    TEXT,
+    thread_ref TEXT,
+    messages   JSONB        NOT NULL,
+    date_range TSTZRANGE,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pr_messages_cp ON pr_messages(client_id, project);
+
 -- Unified source → tag junction (replaces pr_event_tags + pr_prompt_tags)
+-- Exactly one of prompt_id|commit_id|item_id|message_id is non-null per row
 CREATE TABLE IF NOT EXISTS pr_source_tags (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     tag_id      UUID         NOT NULL REFERENCES pr_tags(id) ON DELETE CASCADE,
@@ -690,35 +722,11 @@ CREATE TABLE IF NOT EXISTS pr_source_tags (
 CREATE INDEX IF NOT EXISTS idx_pr_src_tags_tag    ON pr_source_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_pr_src_tags_prompt ON pr_source_tags(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_pr_src_tags_commit ON pr_source_tags(commit_id);
-
--- General documents: requirements, decisions, client notes, meetings
-CREATE TABLE IF NOT EXISTS pr_items (
-    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project     VARCHAR(255) NOT NULL,
-    item_type   TEXT         NOT NULL,
-    title       TEXT,
-    meeting_at  TIMESTAMPTZ,
-    attendees   TEXT[],
-    raw_text    TEXT         NOT NULL,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_pr_items_cp   ON pr_items(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_items_type ON pr_items(item_type);
-
--- Chunked platform messages (Slack, Teams, Discord)
-CREATE TABLE IF NOT EXISTS pr_messages (
-    id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id  INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project    VARCHAR(255) NOT NULL,
-    platform   TEXT         NOT NULL,
-    channel    TEXT,
-    thread_ref TEXT,
-    messages   JSONB        NOT NULL,
-    date_range TSTZRANGE,
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_pr_messages_cp ON pr_messages(client_id, project);
+-- Partial unique indexes (one per source type — avoids NULLS NOT DISTINCT syntax need)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_src_prompt  ON pr_source_tags(tag_id, prompt_id)  WHERE prompt_id  IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_src_commit  ON pr_source_tags(tag_id, commit_id)  WHERE commit_id  IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_src_item    ON pr_source_tags(tag_id, item_id)    WHERE item_id    IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_src_message ON pr_source_tags(tag_id, message_id) WHERE message_id IS NOT NULL;
 
 -- One digest + embedding per source event (replaces pr_memory_items)
 CREATE TABLE IF NOT EXISTS pr_memory_events (
