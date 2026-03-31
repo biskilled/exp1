@@ -23,7 +23,7 @@ Tools:
 Database naming convention:
     mng_TABLE  — global/shared tables (users, billing, entity categories, agent roles, etc.)
     pr_TABLE   — flat per-project tables with client_id=1 AND project=<name> filters
-                 (e.g. mem_mrr_commits, pr_events, mem_ai_events, pr_work_items)
+                 (e.g. mem_mrr_commits, mem_ai_events, mem_ai_work_items, mem_ai_features)
 """
 from __future__ import annotations
 
@@ -778,11 +778,11 @@ async def _dispatch(name: str, args: dict) -> Any:
                     "key_columns": ["id SERIAL PK", "run_id FK→pr_graph_runs", "node_id FK→pr_graph_nodes",
                                     "status TEXT", "output TEXT", "cost NUMERIC"],
                 },
-                "pr_work_items": {
+                "mem_ai_work_items": {
                     "purpose": "Structured feature/bug/task items with 4-agent pipeline tracking",
                     "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
-                                    "category_name TEXT", "category_id FK→mng_entity_categories",
-                                    "name TEXT", "description TEXT", "status (active/done/archived)",
+                                    "category_name TEXT", "name TEXT", "description TEXT",
+                                    "status (active/done/archived)",
                                     "lifecycle_status (idea/design/development/testing/review/done)",
                                     "due_date DATE", "acceptance_criteria TEXT", "implementation_plan TEXT",
                                     "agent_run_id FK→pr_graph_runs", "agent_status TEXT", "tags TEXT[]",
@@ -792,30 +792,17 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "mem_mrr_prompts": {
                     "purpose": "Unified prompt/response log (distilled memory source)",
                     "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
-                                    "work_item_id FK→pr_work_items", "session_id TEXT",
+                                    "work_item_id FK→mem_ai_work_items", "session_id TEXT",
                                     "event_type (prompt/commit/etc.)", "source_id TEXT",
                                     "prompt TEXT", "response TEXT", "phase TEXT", "metadata JSONB"],
                     "filter": "WHERE client_id=1 AND project=%s",
                 },
-                "pr_prompt_tags": {
-                    "purpose": "Links prompts to work items (junction table)",
-                    "key_columns": ["interaction_id UUID FK→mem_mrr_prompts",
-                                    "work_item_id UUID FK→pr_work_items",
-                                    "auto_tagged BOOLEAN", "PK(interaction_id, work_item_id)"],
-                },
-                "pr_memory_items": {
-                    "purpose": "Trycycle-reviewed session/feature summaries (distilled memory layer 2)",
-                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
-                                    "scope (session/feature)", "scope_ref TEXT", "content TEXT",
-                                    "reviewer_score INT", "reviewer_critique TEXT", "source_ids UUID[]"],
-                    "filter": "WHERE client_id=1 AND project=%s",
-                },
-                "pr_project_facts": {
+                "mem_ai_project_facts": {
                     "purpose": "Durable extracted facts; valid_until NULL = current fact",
                     "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
-                                    "fact_key TEXT", "fact_value TEXT",
+                                    "fact_key TEXT", "fact_value TEXT", "category TEXT",
                                     "valid_from TIMESTAMPTZ", "valid_until TIMESTAMPTZ",
-                                    "source_memory_id FK→pr_memory_items",
+                                    "conflict_status TEXT", "conflict_with UUID",
                                     "UNIQUE(client_id, project, fact_key) WHERE valid_until IS NULL"],
                     "filter": "WHERE client_id=1 AND project=%s AND valid_until IS NULL",
                 },

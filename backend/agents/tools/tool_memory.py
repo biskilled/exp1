@@ -223,14 +223,14 @@ def _handle_get_recent_history(args: dict) -> str:
 def _handle_get_project_facts(args: dict) -> str:
     project = args.get("project") or _get_active_project()
 
-    # Primary: query pr_project_facts (temporal validity — valid_until IS NULL = current)
+    # Primary: query mem_ai_project_facts (temporal validity — valid_until IS NULL = current)
     try:
         from core.database import db
         if db.is_available():
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT fact_key, fact_value FROM pr_project_facts
+                        """SELECT fact_key, fact_value FROM mem_ai_project_facts
                            WHERE client_id=1 AND project=%s AND valid_until IS NULL
                            ORDER BY fact_key""",
                         (project,),

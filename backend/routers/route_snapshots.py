@@ -4,9 +4,9 @@ route_snapshots.py — 4-layer feature snapshot generation endpoint.
 Generates structured knowledge artifacts from memory events:
   1. Load all mem_ai_events for a tag
   2. Call Sonnet with memory_feature_snapshot prompt from mng_system_roles
-  3. Parse JSON → upsert pr_feature_snapshots
-  4. Extract project_facts → upsert pr_project_facts
-  5. Embed requirements+action_items → pr_feature_snapshots.embedding
+  3. Parse JSON → upsert mem_ai_features
+  4. Extract project_facts → upsert mem_ai_project_facts
+  5. Embed requirements+action_items → mem_ai_features.embedding
   6. Mark contributing mem_ai_events.processed_at = NOW()
 
 Endpoints:
@@ -53,7 +53,7 @@ _SQL_GET_SYSTEM_ROLE = """
 """
 
 _SQL_UPSERT_SNAPSHOT = """
-    INSERT INTO pr_feature_snapshots
+    INSERT INTO mem_ai_features
         (client_id, project, tag_id, work_item_type, requirements, action_items,
          design, code_summary, prompt_ids, commit_hashes, file_paths, design_refs,
          embedding, is_reusable, created_at, updated_at)
@@ -86,14 +86,14 @@ _SQL_GET_SNAPSHOT = """
            fs.design, fs.code_summary, fs.prompt_ids, fs.commit_hashes,
            fs.file_paths, fs.is_reusable, fs.created_at, fs.updated_at,
            t.name AS tag_name
-    FROM pr_feature_snapshots fs
+    FROM mem_ai_features fs
     JOIN planner_tags t ON t.id = fs.tag_id
     WHERE fs.client_id = 1 AND fs.project = %s AND t.name = %s
     LIMIT 1
 """
 
 _SQL_UPSERT_FACT = """
-    INSERT INTO pr_project_facts (client_id, project, fact_key, fact_value, valid_from)
+    INSERT INTO mem_ai_project_facts (client_id, project, fact_key, fact_value, valid_from)
     VALUES (1, %s, %s, %s, NOW())
     ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL
     DO UPDATE SET fact_value = EXCLUDED.fact_value

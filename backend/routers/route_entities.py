@@ -411,7 +411,7 @@ async def entity_summary(project: str | None = Query(None)):
                     cur.execute(
                         """SELECT name, agent_status, acceptance_criteria,
                                   implementation_plan, lifecycle_status
-                           FROM pr_work_items
+                           FROM mem_ai_work_items
                            WHERE client_id=1 AND project=%s AND category_name=%s AND status != 'archived'""",
                         (p, cat_name),
                     )

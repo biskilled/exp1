@@ -2,7 +2,7 @@
 tool_workitems.py — Agent tools for reading and creating work items.
 
 Provides direct DB access for:
-  - list_work_items: query pr_work_items JOIN mng_entity_values
+  - list_work_items: query mem_ai_work_items JOIN mng_entity_values
   - create_work_item: insert a new work item + entity value
 
 Assigned to Product Manager and QA Engineer roles so they can triage
@@ -76,7 +76,7 @@ def _handle_list_work_items(args: dict) -> str:
                 if category:
                     cur.execute(
                         """SELECT t.name, tc.name AS cat_name, t.lifecycle, tm.description, t.seq_num
-                           FROM pr_work_items wi
+                           FROM mem_ai_work_items wi
                            JOIN planner_tags t ON t.id = wi.tag_id
                            LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
                            LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
@@ -88,7 +88,7 @@ def _handle_list_work_items(args: dict) -> str:
                 else:
                     cur.execute(
                         """SELECT t.name, tc.name AS cat_name, t.lifecycle, tm.description, t.seq_num
-                           FROM pr_work_items wi
+                           FROM mem_ai_work_items wi
                            JOIN planner_tags t ON t.id = wi.tag_id
                            LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
                            LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
@@ -102,7 +102,7 @@ def _handle_list_work_items(args: dict) -> str:
                     if category:
                         cur.execute(
                             """SELECT w.name, w.category_name, w.lifecycle_status, w.description, w.seq_num
-                               FROM pr_work_items w
+                               FROM mem_ai_work_items w
                                WHERE w.client_id=1 AND w.project=%s
                                  AND w.category_name ILIKE %s AND w.status=%s
                                ORDER BY w.seq_num DESC NULLS LAST LIMIT 50""",
@@ -111,7 +111,7 @@ def _handle_list_work_items(args: dict) -> str:
                     else:
                         cur.execute(
                             """SELECT w.name, w.category_name, w.lifecycle_status, w.description, w.seq_num
-                               FROM pr_work_items w
+                               FROM mem_ai_work_items w
                                WHERE w.client_id=1 AND w.project=%s AND w.status=%s
                                ORDER BY w.seq_num DESC NULLS LAST LIMIT 50""",
                             (project, status),
@@ -194,7 +194,7 @@ def _handle_create_work_item(args: dict) -> str:
 
                 # Create work item linked to tag
                 cur.execute(
-                    """INSERT INTO pr_work_items
+                    """INSERT INTO mem_ai_work_items
                            (client_id, project, category_name, name, description, tag_id)
                        VALUES (1, %s, %s, %s, %s, %s::uuid)
                        ON CONFLICT DO NOTHING""",

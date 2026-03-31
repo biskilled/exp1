@@ -101,19 +101,76 @@
     Focus on: architecture decisions, active features, recent changes, known issues, and next steps.
     Be specific and actionable. Use markdown with clear sections.
 
+- name: work_item_promotion
+  category: memory
+  description: "Summarise a work item into a 2-4 sentence status digest"
+  content: |
+    Given a work item's name, description, lifecycle status, acceptance criteria, and implementation plan,
+    produce a 2-4 sentence summary capturing: what the item is, current status, and any notable progress.
+    Return JSON only: {"summary": "...", "status": "<lifecycle_status>"}
+    No preamble, no markdown fences.
+
+- name: conflict_detection
+  category: memory
+  description: "Detect and resolve conflicts between two versions of a project fact"
+  content: |
+    You are a project memory conflict resolver.
+    Given an old fact value and a new fact value for the same key, decide the correct resolution.
+
+    Resolution types:
+      supersede  — new value completely replaces the old (old is stale/wrong)
+      merge      — both values are partially correct; provide a merged_value combining them
+      flag       — values are contradictory and require human review
+
+    Return JSON only:
+    {
+      "conflict": true|false,
+      "conflicting_fact_key": "fact key name",
+      "resolution": "supersede|merge|flag",
+      "merged_value": "combined value (only for merge resolution, else null)",
+      "reasoning": "one sentence explaining the decision"
+    }
+    No preamble, no markdown fences.
+
 - name: feature_snapshot
   category: memory
-  description: "Generate a 4-layer feature snapshot from memory events"
+  description: "Generate a 4-layer feature snapshot from all 6 batch types of memory events"
   content: |
-    Given the following memory events for a feature, produce a 4-layer snapshot.
+    Given memory events for a feature (from prompt batches, commits, requirements/decisions/meetings,
+    messages, sessions, and agent actions), plus current project facts and work item status,
+    produce a comprehensive 4-layer snapshot.
+
+    Input sections you may receive:
+      ## Prompt Batches — summaries of developer prompts
+      ## Commits — git commit digests
+      ## Requirements / Decisions / Meetings — items and meeting notes
+      ## Messages — Slack/Teams thread summaries
+      ## Sessions — session-level summaries
+      ## Agent Actions — workflow agent outputs
+      ## Current Project Facts — durable facts (stack, conventions, constraints)
+      Work Item Status: lifecycle_status of associated work item
+
     Return valid JSON with these keys:
-      requirements (str): what the feature must do
-      action_items (str): remaining work items
-      design (object): {high_level, low_level, patterns_used}
-      code_summary (object): {files, key_classes, key_methods, dependencies_added, dependencies_removed}
+      requirements (str): what the feature must do — synthesised from all evidence
+      action_items (str): remaining work items and next steps
+      work_item_status (str): current lifecycle status (pass through from input)
+      design (object): {
+        high_level: "architectural overview",
+        low_level: "implementation details",
+        patterns_used: ["pattern1", "pattern2"]
+      }
+      code_summary (object): {
+        files: ["path/to/file.py"],
+        key_classes: ["ClassName"],
+        key_methods: ["method_name"],
+        dependencies_added: ["package"],
+        dependencies_removed: ["package"]
+      }
+      project_facts (object): key facts from context relevant to this feature {key: value}
       relations (array): relationships detected between this and other features/modules.
         Each item: {"from": "tag-slug", "relation": "part_of|depends_on|blocks|relates_to|replaces|extracted_from", "to": "tag-slug", "note": "brief reason"}
         Use empty array if no clear relationships detected.
+
     Base your answer only on the provided evidence. Return ONLY valid JSON, no preamble.
 
 # Legacy aliases (kept for backward compatibility with existing DB queries)
@@ -145,9 +202,11 @@
   category: memory
   description: "Alias for feature_snapshot"
   content: |
-    Given the following memory events for a feature, produce a 4-layer snapshot.
-    Return valid JSON with keys: requirements (str), action_items (str),
+    Given memory events for a feature (prompt batches, commits, items, messages, sessions, agent actions),
+    plus current project facts and work item status, produce a 4-layer snapshot.
+    Return valid JSON with keys: requirements (str), action_items (str), work_item_status (str),
     design ({high_level, low_level, patterns_used}),
     code_summary ({files, key_classes, key_methods, dependencies_added, dependencies_removed}),
+    project_facts (object of relevant key/value facts),
     relations (array of {from, relation, to, note} — empty array if none detected).
     Base your answer only on the provided evidence. Return ONLY valid JSON.

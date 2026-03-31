@@ -47,7 +47,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               tc.color, tc.icon,
               (SELECT COUNT(*) FROM mem_mrr_prompts p
                WHERE p.work_item_id = w.id) AS interaction_count
-       FROM pr_work_items w
+       FROM mem_ai_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.category_name
        WHERE {where}
        ORDER BY w.created_at DESC
@@ -55,7 +55,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 )
 
 _SQL_INSERT_WORK_ITEM = (
-    """INSERT INTO pr_work_items
+    """INSERT INTO mem_ai_work_items
            (client_id, project, category_name, name, description,
             status, lifecycle_status, due_date, parent_id,
             acceptance_criteria, implementation_plan, tags, seq_num)
@@ -70,12 +70,12 @@ _SQL_GET_WORK_ITEM = (
               w.acceptance_criteria, w.implementation_plan,
               w.agent_run_id, w.agent_status, w.tags,
               w.created_at, w.updated_at, w.seq_num
-       FROM pr_work_items w
+       FROM mem_ai_work_items w
        WHERE w.client_id=1 AND w.project=%s AND w.id=%s::uuid"""
 )
 
 _SQL_DELETE_WORK_ITEM = (
-    "DELETE FROM pr_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id"
+    "DELETE FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id"
 )
 
 _SQL_GET_WORK_ITEM_BY_SEQ = (
@@ -84,7 +84,7 @@ _SQL_GET_WORK_ITEM_BY_SEQ = (
               w.acceptance_criteria, w.implementation_plan,
               w.agent_run_id, w.agent_status, w.tags,
               w.created_at, w.updated_at, w.seq_num
-       FROM pr_work_items w
+       FROM mem_ai_work_items w
        WHERE w.client_id=1 AND w.project=%s AND w.seq_num=%s
        LIMIT 1"""
 )
@@ -103,7 +103,7 @@ _SQL_GET_INTERACTIONS = (
 
 _SQL_GET_FACTS = (
     """SELECT id, fact_key, fact_value, valid_from
-       FROM pr_project_facts
+       FROM mem_ai_project_facts
        WHERE client_id=1 AND project=%s AND valid_until IS NULL
        ORDER BY fact_key"""
 )
@@ -116,7 +116,7 @@ _SQL_GET_MEMORY_ITEMS = (
 )
 
 _SQL_GET_WORK_ITEM_FOR_PIPELINE = (
-    "SELECT name, description, acceptance_criteria FROM pr_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s"
+    "SELECT name, description, acceptance_criteria FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s"
 )
 
 _SQL_INSERT_PIPELINE_RUN = (
@@ -125,19 +125,19 @@ _SQL_INSERT_PIPELINE_RUN = (
 )
 
 _SQL_UPDATE_WORK_ITEM_RUNNING = (
-    "UPDATE pr_work_items SET agent_status='running', agent_run_id=%s::uuid, updated_at=NOW() WHERE id=%s::uuid"
+    "UPDATE mem_ai_work_items SET agent_status='running', agent_run_id=%s::uuid, updated_at=NOW() WHERE id=%s::uuid"
 )
 
 _SQL_UPDATE_WORK_ITEM_ERROR = (
-    "UPDATE pr_work_items SET agent_status='error', updated_at=NOW() WHERE id=%s::uuid"
+    "UPDATE mem_ai_work_items SET agent_status='error', updated_at=NOW() WHERE id=%s::uuid"
 )
 
 _SQL_UPDATE_WORK_ITEM_AGENT_RUNNING = (
-    "UPDATE pr_work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid"
+    "UPDATE mem_ai_work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid"
 )
 
 _SQL_UPDATE_WORK_ITEM_DONE = (
-    """UPDATE pr_work_items
+    """UPDATE mem_ai_work_items
        SET agent_status='done',
            acceptance_criteria=COALESCE(NULLIF(%s,''), acceptance_criteria),
            implementation_plan=COALESCE(NULLIF(%s,''), implementation_plan),
@@ -146,22 +146,22 @@ _SQL_UPDATE_WORK_ITEM_DONE = (
 )
 
 _SQL_UPDATE_WORK_ITEM_LIFECYCLE_DONE = (
-    """UPDATE pr_work_items
+    """UPDATE mem_ai_work_items
        SET lifecycle_status='done', updated_at=NOW()
        WHERE id=%s::uuid AND lifecycle_status != 'done'"""
 )
 
 _SQL_UPDATE_WORK_ITEM_LIFECYCLE = (
-    "UPDATE pr_work_items SET lifecycle_status=%s, updated_at=NOW() WHERE id=%s::uuid"
+    "UPDATE mem_ai_work_items SET lifecycle_status=%s, updated_at=NOW() WHERE id=%s::uuid"
 )
 
 _SQL_EXPIRE_PIPELINE_FACT = (
-    """UPDATE pr_project_facts SET valid_until=NOW()
+    """UPDATE mem_ai_project_facts SET valid_until=NOW()
        WHERE client_id=1 AND project=%s AND fact_key=%s AND valid_until IS NULL"""
 )
 
 _SQL_INSERT_PIPELINE_FACT = (
-    "INSERT INTO pr_project_facts (client_id, project, fact_key, fact_value) VALUES (1, %s, %s, %s)"
+    "INSERT INTO mem_ai_project_facts (client_id, project, fact_key, fact_value) VALUES (1, %s, %s, %s)"
 )
 
 _SQL_INSERT_PIPELINE_INTERACTION = (
@@ -384,7 +384,7 @@ async def patch_work_item(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT status FROM pr_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s",
+                    "SELECT status FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s",
                     (item_id, p),
                 )
                 row = cur.fetchone()
@@ -399,7 +399,7 @@ async def patch_work_item(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE pr_work_items SET {','.join(fields)} WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id, status",
+                f"UPDATE mem_ai_work_items SET {','.join(fields)} WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id, status",
                 params,
             )
             result = cur.fetchone()

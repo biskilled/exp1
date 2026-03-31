@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-31 20:41 UTC — do not edit manually.
+> Auto-generated 2026-03-31 20:48 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 303
-- **Last active**: 2026-03-31T20:41:22Z
+- **Sessions**: 304
+- **Last active**: 2026-03-31T20:48:14Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -46,12 +46,12 @@
 
 ## In Progress
 
-- Table naming fix: corrected mem_ai_tags_relations (was incorrectly referenced as mng_ai_tags_relations); validation of tagging functionality implementation
-- Tagging functionality validation: Review mem_ai_tags_relations table implementation and verify all tagging prompts work as documented
-- Table consolidation design: pr_embeddings and pr_memory_events merging into single mem_ai_events table; Phase 2 blocker
-- Memory table population logic: memory_items and project_facts tables require clarification on intended update behavior; currently not populating per spec
-- Data persistence validation: tags disappearing on session switch; root cause investigation needed (UI rendering vs. database save failure)
-- Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay documented
+- Tagging functionality validation: Verify mem_ai_tags_relations table implementation and all tagging prompts per spec; core feature completeness check
+- Relation management design: Manual relations (developer-declared via CLI/admin UI/SQL) vs. automatic detection; depends_on, relates_to, blocks, implements types
+- Table consolidation: pr_embeddings and pr_memory_events merging into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)
+- Memory table population logic: memory_items and project_facts require clarification on update behavior; currently not populating per spec
+- Data persistence validation: Tags disappearing on session switch; root cause investigation (UI rendering vs. database save failure)
+- Backend startup race condition: AiCli appears in Recent projects but unavailable as selectable; dev environment delay documented
 
 ## Key Decisions
 
@@ -69,7 +69,7 @@
 - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
 - Embeddings linked to tags: tag metadata captures context (auth→all authentication prompts; feature/bug→relevant code changes)
 - Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- pr_embeddings and pr_memory_events tables to merge into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)
+- Manual relations managed by developers via CLI/admin UI; relation types: depends_on, relates_to, blocks, implements
 
 ---
 

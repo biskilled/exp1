@@ -5,8 +5,8 @@ Table namespaces:
   mng_         — global + client-scoped (management tables)
   planner_     — project tag hierarchy (planner_tags, planner_tags_meta)
   mem_mrr_     — mirroring layer (raw source data: prompts, commits, items, messages, tags)
-  mem_ai_      — AI/embedding layer (mem_ai_events, mem_ai_tags)
-  pr_          — project-scoped misc (work_items, graph_*, project_facts, feature_snapshots, seq_counters)
+  mem_ai_      — AI/embedding layer (mem_ai_events, mem_ai_tags, mem_ai_work_items, mem_ai_project_facts, mem_ai_features)
+  pr_          — project-scoped misc (graph_*, seq_counters)
 
 Falls back gracefully when DATABASE_URL is not set — callers check `is_available()`.
 
@@ -306,7 +306,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id           INT           NOT NULL REFERENCES mng_clients(id),
     project             VARCHAR(255)  NOT NULL,
-    work_item_id        UUID          REFERENCES pr_work_items(id) ON DELETE SET NULL,
+    work_item_id        UUID          REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
     session_id          TEXT,
     session_src_id      TEXT,
     session_src_desc    TEXT,
@@ -362,8 +362,21 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_c_cp       ON mem_mrr_commits(client_id, pro
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm     ON mem_mrr_commits(committed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_session  ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
 
+-- One-time idempotent rename: pr_work_items → mem_ai_work_items
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_work_items' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_ai_work_items' AND schemaname='public') THEN
+    ALTER TABLE pr_work_items RENAME TO mem_ai_work_items;
+    ALTER INDEX IF EXISTS idx_pr_wi_cp     RENAME TO idx_mem_ai_wi_cp;
+    ALTER INDEX IF EXISTS idx_pr_wi_cat    RENAME TO idx_mem_ai_wi_cat;
+    ALTER INDEX IF EXISTS idx_pr_wi_status RENAME TO idx_mem_ai_wi_status;
+    ALTER INDEX IF EXISTS idx_pr_wi_seq    RENAME TO idx_mem_ai_wi_seq;
+  END IF;
+END $$;
+
 -- Work items (feature/bug/task pipeline tracking)
-CREATE TABLE IF NOT EXISTS pr_work_items (
+CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id           INT           NOT NULL REFERENCES mng_clients(id),
     project             VARCHAR(255)  NOT NULL,
@@ -373,7 +386,7 @@ CREATE TABLE IF NOT EXISTS pr_work_items (
     status              VARCHAR(20)   NOT NULL DEFAULT 'active',
     lifecycle_status    VARCHAR(20)   NOT NULL DEFAULT 'idea',
     due_date            DATE,
-    parent_id           UUID          REFERENCES pr_work_items(id) ON DELETE SET NULL,
+    parent_id           UUID          REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
     acceptance_criteria TEXT          NOT NULL DEFAULT '',
     implementation_plan TEXT          NOT NULL DEFAULT '',
     agent_run_id        UUID,
@@ -383,23 +396,37 @@ CREATE TABLE IF NOT EXISTS pr_work_items (
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project, category_name, name)
 );
-CREATE INDEX IF NOT EXISTS idx_pr_wi_cp     ON pr_work_items(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_wi_cat    ON pr_work_items(category_name);
-CREATE INDEX IF NOT EXISTS idx_pr_wi_status ON pr_work_items(status);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cp     ON mem_ai_work_items(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat    ON mem_ai_work_items(category_name);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_status ON mem_ai_work_items(status);
+
+-- One-time idempotent rename: pr_project_facts → mem_ai_project_facts
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_project_facts' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_ai_project_facts' AND schemaname='public') THEN
+    ALTER TABLE pr_project_facts RENAME TO mem_ai_project_facts;
+    ALTER INDEX IF EXISTS idx_pr_pf_cp      RENAME TO idx_mem_ai_pf_cp;
+    ALTER INDEX IF EXISTS idx_pr_pf_current RENAME TO idx_mem_ai_pf_current;
+  END IF;
+END $$;
 
 -- Project facts (durable extracted facts; valid_until NULL = current)
-CREATE TABLE IF NOT EXISTS pr_project_facts (
+CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id        INT           NOT NULL REFERENCES mng_clients(id),
     project          VARCHAR(255)  NOT NULL,
     fact_key         TEXT          NOT NULL,
     fact_value       TEXT          NOT NULL,
+    category         TEXT          DEFAULT NULL,   -- 'stack'|'pattern'|'convention'|'constraint'|'client'
     valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     valid_until      TIMESTAMPTZ,
-    source_memory_id UUID          -- was FK to pr_memory_items (dropped); kept for historical reference
+    source_memory_id UUID,         -- historical reference (pr_memory_items dropped)
+    conflict_status  TEXT          DEFAULT NULL,   -- NULL|'ok'|'superseded'|'pending_review'
+    conflict_with    UUID          REFERENCES mem_ai_project_facts(id) ON DELETE SET NULL
 );
-CREATE INDEX IF NOT EXISTS        idx_pr_pf_cp      ON pr_project_facts(client_id, project) WHERE valid_until IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_pf_current ON pr_project_facts(client_id, project, fact_key) WHERE valid_until IS NULL;
+CREATE INDEX IF NOT EXISTS        idx_mem_ai_pf_cp      ON mem_ai_project_facts(client_id, project) WHERE valid_until IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_ai_pf_current ON mem_ai_project_facts(client_id, project, fact_key) WHERE valid_until IS NULL;
 
 -- Graph workflow definitions
 CREATE TABLE IF NOT EXISTS pr_graph_workflows (
@@ -504,8 +531,8 @@ CREATE TABLE IF NOT EXISTS pr_seq_counters (
     next_val  INT          NOT NULL DEFAULT 10000,
     PRIMARY KEY (client_id, project, category)
 );
-ALTER TABLE pr_work_items ADD COLUMN IF NOT EXISTS seq_num INT;
-CREATE INDEX IF NOT EXISTS idx_pr_wi_seq ON pr_work_items(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS seq_num INT;
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq ON mem_ai_work_items(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
 """
 
 
@@ -691,7 +718,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_tags (
     event_id         UUID,
     event_created    TIMESTAMPTZ,
     event_updated    TIMESTAMPTZ,
-    work_item_id     UUID         REFERENCES pr_work_items(id) ON DELETE SET NULL,
+    work_item_id     UUID         REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
     work_item_created TIMESTAMPTZ,
     work_item_updated TIMESTAMPTZ,
     snapshot_id      UUID,
@@ -720,7 +747,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_tags (
     event_id           UUID         NOT NULL REFERENCES mem_ai_events(id) ON DELETE CASCADE,
     tag_id             UUID         NOT NULL REFERENCES planner_tags(id)  ON DELETE CASCADE,
     event_updated      TIMESTAMPTZ,
-    work_item_id       UUID         REFERENCES pr_work_items(id) ON DELETE SET NULL,
+    work_item_id       UUID         REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
     work_item_updated  TIMESTAMPTZ,
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(event_id, tag_id)
@@ -742,29 +769,42 @@ CREATE TABLE IF NOT EXISTS mem_ai_tags_relations (
 CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_from ON mem_ai_tags_relations(from_tag_id);
 CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_to   ON mem_ai_tags_relations(to_tag_id);
 
--- ── 4-layer feature snapshots ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS pr_feature_snapshots (
-    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id      INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project        VARCHAR(255) NOT NULL,
-    tag_id         UUID         NOT NULL REFERENCES planner_tags(id),
-    work_item_type TEXT         NOT NULL DEFAULT 'feature',
-    requirements   TEXT,
-    action_items   TEXT,
-    design         JSONB,
-    code_summary   JSONB,
-    prompt_ids     UUID[],
-    commit_hashes  TEXT[],
-    file_paths     TEXT[],
-    design_refs    TEXT[],
-    embedding      VECTOR(1536),
-    is_reusable    BOOLEAN      NOT NULL DEFAULT FALSE,
-    created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+-- One-time idempotent rename: pr_feature_snapshots → mem_ai_features
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_feature_snapshots' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_ai_features' AND schemaname='public') THEN
+    ALTER TABLE pr_feature_snapshots RENAME TO mem_ai_features;
+    ALTER INDEX IF EXISTS idx_pr_fs_cp  RENAME TO idx_mem_ai_feat_cp;
+    ALTER INDEX IF EXISTS idx_pr_fs_tag RENAME TO idx_mem_ai_feat_tag;
+  END IF;
+END $$;
+
+-- ── 4-layer feature snapshots (mem_ai_features) ───────────────────────────────
+CREATE TABLE IF NOT EXISTS mem_ai_features (
+    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project         VARCHAR(255) NOT NULL,
+    tag_id          UUID         NOT NULL REFERENCES planner_tags(id),
+    work_item_type  TEXT         NOT NULL DEFAULT 'feature',
+    work_item_status TEXT,       -- lifecycle_status from mem_ai_work_items at snapshot time
+    requirements    TEXT,
+    action_items    TEXT,
+    design          JSONB,
+    code_summary    JSONB,
+    project_facts   JSONB,       -- key project facts at snapshot time (for context)
+    prompt_ids      UUID[],
+    commit_hashes   TEXT[],
+    file_paths      TEXT[],
+    design_refs     TEXT[],
+    embedding       VECTOR(1536),
+    is_reusable     BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project, tag_id)
 );
-CREATE INDEX IF NOT EXISTS idx_pr_fs_cp  ON pr_feature_snapshots(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_fs_tag ON pr_feature_snapshots(tag_id);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_feat_cp  ON mem_ai_features(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_feat_tag ON mem_ai_features(tag_id);
 
 -- ── Data migration: pr_source_tags → mem_mrr_tags ───────────────────────────
 DO $$
@@ -829,15 +869,20 @@ END $$;
 # ─── Column additions to existing tables (memory infra) ──────────────────────
 
 _DDL_MEMORY_INFRA_ALTERS = """
-ALTER TABLE planner_tags         ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-ALTER TABLE mem_mrr_commits      ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
-ALTER TABLE mem_mrr_commits      ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
-ALTER TABLE pr_work_items        ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
-ALTER TABLE pr_feature_snapshots ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
-ALTER TABLE pr_project_facts     ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
-ALTER TABLE mem_ai_tags          ADD COLUMN IF NOT EXISTS event_updated   TIMESTAMPTZ;
-ALTER TABLE mem_ai_tags          ADD COLUMN IF NOT EXISTS work_item_id    UUID REFERENCES pr_work_items(id) ON DELETE SET NULL;
-ALTER TABLE mem_ai_tags          ADD COLUMN IF NOT EXISTS work_item_updated TIMESTAMPTZ;
+ALTER TABLE planner_tags            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE mem_mrr_commits         ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
+ALTER TABLE mem_mrr_commits         ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_ai_work_items       ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
+ALTER TABLE mem_ai_features         ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
+ALTER TABLE mem_ai_features         ADD COLUMN IF NOT EXISTS work_item_status TEXT;
+ALTER TABLE mem_ai_features         ADD COLUMN IF NOT EXISTS project_facts JSONB;
+ALTER TABLE mem_ai_project_facts    ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
+ALTER TABLE mem_ai_project_facts    ADD COLUMN IF NOT EXISTS category TEXT DEFAULT NULL;
+ALTER TABLE mem_ai_project_facts    ADD COLUMN IF NOT EXISTS conflict_status TEXT DEFAULT NULL;
+ALTER TABLE mem_ai_project_facts    ADD COLUMN IF NOT EXISTS conflict_with UUID REFERENCES mem_ai_project_facts(id) ON DELETE SET NULL;
+ALTER TABLE mem_ai_tags             ADD COLUMN IF NOT EXISTS event_updated   TIMESTAMPTZ;
+ALTER TABLE mem_ai_tags             ADD COLUMN IF NOT EXISTS work_item_id    UUID REFERENCES mem_ai_work_items(id) ON DELETE SET NULL;
+ALTER TABLE mem_ai_tags             ADD COLUMN IF NOT EXISTS work_item_updated TIMESTAMPTZ;
 """
 
 
@@ -969,7 +1014,7 @@ class _Database:
         """
         if self._shared_schema_ready:
             return
-        _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "mem_mrr_prompts/commits + pr_work_items")
+        _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "mem_mrr_* + mem_ai_work_items + mem_ai_project_facts + graph tables")
         _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA, "planner_tags + mem_mrr_* + mem_ai_* tables")
         _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA_ALTERS, "memory infra column alters")
         self._shared_schema_ready = True
@@ -1737,7 +1782,7 @@ def build_where(*conditions: tuple[str, any] | None) -> tuple[str, list]:
             ("project = %s", project),
             ("status = %s", status) if status else None,
         )
-        cur.execute(f"SELECT * FROM pr_work_items {where} ORDER BY created_at", params)
+        cur.execute(f"SELECT * FROM mem_ai_work_items {where} ORDER BY created_at", params)
     """
     active = [c for c in conditions if c is not None]
     if not active:

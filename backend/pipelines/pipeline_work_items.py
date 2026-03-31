@@ -40,11 +40,11 @@ _SQL_LOAD_ROLE = """
 """
 
 _SQL_GET_WORK_ITEM = (
-    "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid"
+    "SELECT category_name, name FROM mem_ai_work_items WHERE id=%s::uuid"
 )
 
 _SQL_GET_FACTS = (
-    "SELECT fact_key, fact_value FROM pr_project_facts "
+    "SELECT fact_key, fact_value FROM mem_ai_project_facts "
     "WHERE client_id=1 AND project=%s AND valid_until IS NULL ORDER BY fact_key"
 )
 
@@ -56,7 +56,7 @@ _SQL_GET_MEMORY = (
 # _SQL_UPDATE_AGENT_STATUS and _SQL_UPDATE_PIPELINE_RESULTS are both handled
 # via build_update() — the table and WHERE clause are shared here as a template.
 _SQL_UPDATE_WORK_ITEM_WHERE = (
-    "UPDATE pr_work_items SET {set_clause}, updated_at=NOW() WHERE id=%s::uuid"
+    "UPDATE mem_ai_work_items SET {set_clause}, updated_at=NOW() WHERE id=%s::uuid"
 )
 
 # ── Fallback prompts ───────────────────────────────────────────────────────────

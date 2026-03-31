@@ -68,7 +68,7 @@ _SQL_INSERT_MEMORY_ITEM_SESSION = (
 )
 
 _SQL_GET_WORK_ITEM_FOR_FEATURE_MEMORY = (
-    "SELECT name, description FROM pr_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s"
+    "SELECT name, description FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s"
 )
 
 _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
@@ -80,7 +80,7 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
              SELECT 1 FROM mem_mrr_tags st
              JOIN mem_mrr_prompts p ON p.id = st.prompt_id
              WHERE st.tag_id = (
-                 SELECT tag_id FROM pr_work_items WHERE id=%s::uuid AND client_id=1
+                 SELECT tag_id FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1
              )
              AND p.session_id = me.session_id
              AND p.client_id=1
@@ -112,20 +112,20 @@ _SQL_GET_RECENT_MEMORY_ITEMS = (
 )
 
 _SQL_GET_CURRENT_FACTS = (
-    """SELECT fact_key, fact_value FROM pr_project_facts
+    """SELECT fact_key, fact_value FROM mem_ai_project_facts
        WHERE client_id=1 AND project=%s AND valid_until IS NULL
        ORDER BY fact_key"""
 )
 
 _SQL_EXPIRE_OLD_FACT = (
-    """UPDATE pr_project_facts SET valid_until=NOW()
+    """UPDATE mem_ai_project_facts SET valid_until=NOW()
        WHERE client_id=1 AND project=%s
          AND fact_key=%s AND valid_until IS NULL
          AND fact_value != %s"""
 )
 
 _SQL_INSERT_NEW_FACT = (
-    """INSERT INTO pr_project_facts
+    """INSERT INTO mem_ai_project_facts
            (client_id, project, fact_key, fact_value, source_memory_id)
        VALUES (1, %s, %s, %s, %s::uuid)
        ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL
@@ -133,7 +133,7 @@ _SQL_INSERT_NEW_FACT = (
 )
 
 _SQL_GET_DISTILLED_FACTS = (
-    """SELECT fact_key, fact_value FROM pr_project_facts
+    """SELECT fact_key, fact_value FROM mem_ai_project_facts
        WHERE client_id=1 AND project=%s AND valid_until IS NULL
        ORDER BY fact_key"""
 )
@@ -184,11 +184,11 @@ _SQL_GET_RECENT_SESSION_PROMPTS = (
 )
 
 _SQL_GET_EXISTING_BUG_NAMES = (
-    "SELECT LOWER(name) FROM pr_work_items WHERE client_id=1 AND project=%s AND category_name='bug'"
+    "SELECT LOWER(name) FROM mem_ai_work_items WHERE client_id=1 AND project=%s AND category_name='bug'"
 )
 
 _SQL_INSERT_BUG_WORK_ITEM = (
-    """INSERT INTO pr_work_items
+    """INSERT INTO mem_ai_work_items
            (client_id, project, category_name, name, description,
             status, lifecycle_status, tags, seq_num)
        VALUES (1, %s, 'bug', %s, %s, 'prereq', 'idea', '{}', %s)
@@ -2407,7 +2407,7 @@ async def auto_detect_bugs(project_name: str):
     """Scan the last 24h of session events for bug mentions and auto-create work items.
 
     Called by the Stop hook after each Claude Code session. Uses Haiku to detect
-    bugs described or encountered in recent prompts. Creates pr_work_items entries
+    bugs described or encountered in recent prompts. Creates mem_ai_work_items entries
     (status=prereq, lifecycle=idea) for bugs not already tracked.
     Returns {"created": N, "detected": M, "skipped": K}.
     """

@@ -118,7 +118,7 @@ _SQL_UPDATE_RUN_CURRENT_NODE = (
 )
 
 _SQL_GET_WORK_ITEM_NAME = (
-    "SELECT category_name, name FROM pr_work_items WHERE id=%s::uuid"
+    "SELECT category_name, name FROM mem_ai_work_items WHERE id=%s::uuid"
 )
 
 _SQL_GET_RUN_RESUME = (

@@ -49,7 +49,7 @@
     "_ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load",
     "Embeddings linked to tags: tag metadata captures context (auth\u2192all authentication prompts; feature/bug\u2192relevant code changes)",
     "Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic",
-    "pr_embeddings and pr_memory_events tables to merge into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)"
+    "Manual relations managed by developers via CLI/admin UI; relation types: depends_on, relates_to, blocks, implements"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -78,12 +78,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Table naming fix: corrected mem_ai_tags_relations (was incorrectly referenced as mng_ai_tags_relations); validation of tagging functionality implementation",
-    "Tagging functionality validation: Review mem_ai_tags_relations table implementation and verify all tagging prompts work as documented",
-    "Table consolidation design: pr_embeddings and pr_memory_events merging into single mem_ai_events table; Phase 2 blocker",
-    "Memory table population logic: memory_items and project_facts tables require clarification on intended update behavior; currently not populating per spec",
-    "Data persistence validation: tags disappearing on session switch; root cause investigation needed (UI rendering vs. database save failure)",
-    "Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay documented"
+    "Tagging functionality validation: Verify mem_ai_tags_relations table implementation and all tagging prompts per spec; core feature completeness check",
+    "Relation management design: Manual relations (developer-declared via CLI/admin UI/SQL) vs. automatic detection; depends_on, relates_to, blocks, implements types",
+    "Table consolidation: pr_embeddings and pr_memory_events merging into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)",
+    "Memory table population logic: memory_items and project_facts require clarification on update behavior; currently not populating per spec",
+    "Data persistence validation: Tags disappearing on session switch; root cause investigation (UI rendering vs. database save failure)",
+    "Backend startup race condition: AiCli appears in Recent projects but unavailable as selectable; dev environment delay documented"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -115,7 +115,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-31T20:41:50Z",
+  "last_memory_run": "2026-03-31T20:48:46Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
@@ -132,15 +132,15 @@
       "_ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load",
       "Embeddings linked to tags: tag metadata captures context (auth\u2192all authentication prompts; feature/bug\u2192relevant code changes)",
       "Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic",
-      "pr_embeddings and pr_memory_events tables to merge into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)"
+      "Manual relations managed by developers via CLI/admin UI; relation types: depends_on, relates_to, blocks, implements"
     ],
     "in_progress": [
-      "Table naming fix: corrected mem_ai_tags_relations (was incorrectly referenced as mng_ai_tags_relations); validation of tagging functionality implementation",
-      "Tagging functionality validation: Review mem_ai_tags_relations table implementation and verify all tagging prompts work as documented",
-      "Table consolidation design: pr_embeddings and pr_memory_events merging into single mem_ai_events table; Phase 2 blocker",
-      "Memory table population logic: memory_items and project_facts tables require clarification on intended update behavior; currently not populating per spec",
-      "Data persistence validation: tags disappearing on session switch; root cause investigation needed (UI rendering vs. database save failure)",
-      "Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay documented"
+      "Tagging functionality validation: Verify mem_ai_tags_relations table implementation and all tagging prompts per spec; core feature completeness check",
+      "Relation management design: Manual relations (developer-declared via CLI/admin UI/SQL) vs. automatic detection; depends_on, relates_to, blocks, implements types",
+      "Table consolidation: pr_embeddings and pr_memory_events merging into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)",
+      "Memory table population logic: memory_items and project_facts require clarification on update behavior; currently not populating per spec",
+      "Data persistence validation: Tags disappearing on session switch; root cause investigation (UI rendering vs. database save failure)",
+      "Backend startup race condition: AiCli appears in Recent projects but unavailable as selectable; dev environment delay documented"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -156,12 +156,9 @@
       "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)",
       "deployment": "Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev; desktop: Electron-builder",
-      "database_version": "PostgreSQL 15+",
-      "build_tooling": "npm 8+ with webpack/Electron-builder; Vite dev server on localhost",
-      "dev_environment": "PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root",
-      "db_consolidation": "mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)"
+      "config_management": "config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support"
     },
-    "project_summary": "aicli is a shared AI memory platform built on PostgreSQL 15+, FastAPI, and Electron with Claude Haiku synthesis. It provides per-project semantic search via pgvector, async DAG workflows with visual approval panels, and MCP-based tool integration. Current focus is on fixing table naming conventions (mem_ai_tags_relations), validating tagging functionality, and designing Phase 2 table consolidation to merge embeddings and memory events into a unified schema.",
-    "memory_digest": "**[2026-03-31]** `claude_cli` \u2014 Corrected table naming: mem_ai_tags_relations (not mng_ai_tags_relations) in database schema; critical for tagging functionality validation. **[2026-03-31]** `session_302` \u2014 Updated db_consolidation design decision: pr_embeddings and pr_memory_events tables slated for merge into unified mem_ai_events table (id, project_id, session_id, session_desc, event_summary). **[2026-03-18]** `claude_cli` \u2014 Resolved backend startup race condition: _ensure_shared_schema pattern replacing ensure_project_schema; retry logic now handles empty project list on first load. **[2026-03-18]** `claude_cli` \u2014 Completed hierarchical data model clarification: Clients contain multiple Users; authentication pattern is login_as_first_level_hierarchy. **[Ongoing]** \u2014 Phase 2 blocker: Memory table population (memory_items, project_facts) not populating per spec; data persistence issue (tags disappearing on session switch) requires root cause analysis of UI rendering vs. database save failure."
+    "project_summary": "aicli is a shared AI memory platform enabling developers to integrate with Claude and other LLM providers via a Python CLI, with PostgreSQL semantic storage, per-project schema organization, and a web-based UI with workflow visualization. Currently in Phase 2 preparation, addressing tagging functionality validation, relation management design, and critical data persistence issues (tags disappearing on session switch) before embedding logic refactoring.",
+    "memory_digest": "**[2026-03-31]** `claude_cli` \u2014 Identified tagging functionality validation gap: mem_ai_tags_relations table needs verification and all tagging prompts must be tested for core feature completeness. **[2026-03-31]** `claude_cli` \u2014 User initiated relation management design phase: manual relations (developer-declared via CLI/admin/SQL) with types: depends_on, relates_to, blocks, implements. **[2026-03-31]** `project_state` \u2014 Table consolidation blocker confirmed: pr_embeddings and pr_memory_events must merge into mem_ai_events (id, project_id, session_id, session_desc, event_summary) before Phase 2 embedding refactor. **[2026-03-31]** `project_state` \u2014 Memory table population issue: memory_items and project_facts tables not populating per spec; update behavior requires clarification before Phase 2. **[2026-03-31]** `project_state` \u2014 Data persistence bug: tags disappear on session switch; root cause under investigation (UI rendering vs. database save). **[2026-03-18]** `dev_runtime` \u2014 Backend startup race condition documented: AiCli appears in Recent projects but unavailable as selectable; development environment delay acknowledged with retry logic in place."
   }
 }

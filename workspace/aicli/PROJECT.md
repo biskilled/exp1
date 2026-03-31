@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Table naming fix: corrected mem_ai_tags_relations (was incorrectly referenced as mng_ai_tags_relations); validation of tagging functionality implementation
-- Tagging functionality validation: Review mem_ai_tags_relations table implementation and verify all tagging prompts work as documented
-- Table consolidation design: pr_embeddings and pr_memory_events merging into single mem_ai_events table; Phase 2 blocker
-- Memory table population logic: memory_items and project_facts tables require clarification on intended update behavior; currently not populating per spec
-- Data persistence validation: tags disappearing on session switch; root cause investigation needed (UI rendering vs. database save failure)
-- Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay documented
+- Tagging functionality validation: Verify mem_ai_tags_relations table implementation and all tagging prompts per spec; core feature completeness check
+- Relation management design: Manual relations (developer-declared via CLI/admin UI/SQL) vs. automatic detection; depends_on, relates_to, blocks, implements types
+- Table consolidation: pr_embeddings and pr_memory_events merging into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)
+- Memory table population logic: memory_items and project_facts require clarification on update behavior; currently not populating per spec
+- Data persistence validation: Tags disappearing on session switch; root cause investigation (UI rendering vs. database save failure)
+- Backend startup race condition: AiCli appears in Recent projects but unavailable as selectable; dev environment delay documented
