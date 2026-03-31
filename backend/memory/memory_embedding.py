@@ -59,12 +59,12 @@ _EXT_LANG: dict[str, str] = {
 
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
-           (client_id, project, source_type, source_id, session_id, session_desc,
+           (client_id, project, event_type, source_id, session_id, session_desc,
             chunk, chunk_type, content, embedding, cnt_prompts, summary,
             doc_type, language, file_path, metadata, importance)
        VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s,
                %s, %s, %s, %s::jsonb, %s)
-       ON CONFLICT (client_id, project, source_type, source_id, chunk)
+       ON CONFLICT (client_id, project, event_type, source_id, chunk)
        DO UPDATE SET
            content      = EXCLUDED.content,
            embedding    = EXCLUDED.embedding,
@@ -93,7 +93,7 @@ _SQL_LOAD_PROMPT = """
 """
 
 _SQL_SEARCH_TPL = """
-    SELECT source_type, source_id, chunk, chunk_type, content,
+    SELECT event_type, source_id, chunk, chunk_type, content,
            language, file_path, doc_type, metadata, session_id,
            1 - (embedding <=> %s::vector) AS score
     FROM mem_ai_events
@@ -232,7 +232,7 @@ class MemoryEmbedding:
         1. Load last N prompts from mem_mrr_prompts
         2. Load prompt_batch_digest system role → Haiku digest
         3. Embed digest → VECTOR(1536)
-        4. INSERT mem_ai_events (source_type='prompt_batch', cnt_prompts=n)
+        4. INSERT mem_ai_events (event_type='prompt_batch', cnt_prompts=n)
         Returns the mem_ai_events UUID.
         """
         prompts = self._mirroring.get_last_n_prompts(project, session_id, n)
@@ -473,7 +473,7 @@ class MemoryEmbedding:
 
         if source_types:
             placeholders = ",".join(["%s"] * len(source_types))
-            conditions.append(f"source_type IN ({placeholders})")
+            conditions.append(f"event_type IN ({placeholders})")
             params.extend(source_types)
 
         if tag_id:
@@ -492,7 +492,7 @@ class MemoryEmbedding:
                     rows = cur.fetchall()
             return [
                 {
-                    "source_type": r[0],
+                    "event_type": r[0],
                     "source_id":   r[1],
                     "chunk":       r[2],
                     "chunk_type":  r[3],

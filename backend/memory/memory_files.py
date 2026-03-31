@@ -64,8 +64,8 @@ _SQL_ACTIVE_WORK_ITEMS = """
 
 _SQL_LATEST_SESSION = """
     SELECT summary, open_threads, next_steps, created_at, session_id
-    FROM pr_session_summaries
-    WHERE client_id=1 AND project=%s
+    FROM mem_ai_events
+    WHERE client_id=1 AND project=%s AND event_type='session_summary'
     ORDER BY created_at DESC
     LIMIT 1
 """
@@ -107,7 +107,7 @@ _SQL_BLOCKED_TAGS = """
 """
 
 _SQL_TOP_EVENTS = """
-    SELECT content, source_type, importance, created_at,
+    SELECT content, event_type, importance, created_at,
            importance * EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance
     FROM mem_ai_events
     WHERE client_id=1 AND project=%s
@@ -260,7 +260,7 @@ class MemoryFiles:
                     return [
                         {
                             "content":     r[0],
-                            "source_type": r[1],
+                            "event_type": r[1],
                             "importance":  r[2],
                             "created_at":  r[3].isoformat() if r[3] else "",
                             "relevance":   float(r[4]) if r[4] else 0.0,
@@ -678,7 +678,7 @@ class MemoryFiles:
             "",
         ]
         for i, ev in enumerate(events, 1):
-            stype = ev["source_type"]
+            stype = ev["event_type"]
             rel = f"{ev['relevance']:.1f}"
             content = ev["content"][:200].replace("\n", " ")
             lines.append(f"{i}. **[{stype} | relevance={rel}]** {content}")

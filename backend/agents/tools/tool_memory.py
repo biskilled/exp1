@@ -91,7 +91,7 @@ def _handle_search_memory(args: dict) -> str:
                 with conn.cursor() as cur:
                     # Text search in mem_ai_events (interaction search)
                     cur.execute(
-                        """SELECT me.source_type, me.content, me.created_at
+                        """SELECT me.event_type, me.content, me.created_at
                            FROM mem_ai_events me
                            WHERE me.client_id=1 AND me.project=%s
                              AND me.content ILIKE %s

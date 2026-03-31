@@ -51,7 +51,7 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
          AND NOT EXISTS (
              SELECT 1 FROM mem_ai_events m
              WHERE m.client_id=1 AND m.project=i.project
-               AND m.source_type='prompt_batch'
+               AND m.event_type='prompt_batch'
                AND m.session_id=i.session_id
          )
        GROUP BY i.session_id
@@ -61,9 +61,9 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
 
 _SQL_INSERT_MEMORY_ITEM_SESSION = (
     """INSERT INTO mem_ai_events
-           (client_id, project, source_type, source_id, session_id, content, importance)
+           (client_id, project, event_type, source_id, session_id, content, importance)
        VALUES (1, %s, 'prompt_batch', %s::uuid, %s, %s, %s)
-       ON CONFLICT (client_id, project, source_type, source_id) DO NOTHING
+       ON CONFLICT (client_id, project, event_type, source_id) DO NOTHING
        RETURNING id"""
 )
 
@@ -75,7 +75,7 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
     """SELECT me.content
        FROM mem_ai_events me
        WHERE me.client_id=1 AND me.project=%s
-         AND me.source_type='prompt_batch'
+         AND me.event_type='prompt_batch'
          AND EXISTS (
              SELECT 1 FROM mem_mrr_tags st
              JOIN mem_mrr_prompts p ON p.id = st.prompt_id
@@ -91,9 +91,9 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
 
 _SQL_INSERT_MEMORY_ITEM_FEATURE = (
     """INSERT INTO mem_ai_events
-           (client_id, project, source_type, source_id, session_id, content, importance)
+           (client_id, project, event_type, source_id, session_id, content, importance)
        VALUES (1, %s, 'feature_summary', %s::uuid, %s, %s, %s)
-       ON CONFLICT (client_id, project, source_type, source_id) DO UPDATE
+       ON CONFLICT (client_id, project, event_type, source_id) DO UPDATE
            SET content=EXCLUDED.content, importance=EXCLUDED.importance
        RETURNING id"""
 )
@@ -139,7 +139,7 @@ _SQL_GET_DISTILLED_FACTS = (
 )
 
 _SQL_GET_DISTILLED_MEMORY_ITEMS = (
-    """SELECT content, source_type, session_id, created_at FROM mem_ai_events
+    """SELECT content, event_type, session_id, created_at FROM mem_ai_events
        WHERE client_id=1 AND project=%s
        ORDER BY created_at DESC LIMIT 8"""
 )
@@ -202,7 +202,7 @@ _SQL_GET_UNEMBEDDED_COMMITS = (
          AND NOT EXISTS (
            SELECT 1 FROM mem_ai_events e
            WHERE e.client_id=1 AND e.project=%s
-             AND e.source_type='commit' AND e.source_id=c.commit_hash
+             AND e.event_type='commit' AND e.source_id=c.commit_hash
        )
        ORDER BY c.committed_at DESC LIMIT 30"""
 )

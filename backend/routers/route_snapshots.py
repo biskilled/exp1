@@ -39,7 +39,7 @@ _SQL_GET_TAG_ID = """
 """
 
 _SQL_GET_MEMORY_EVENTS = """
-    SELECT me.id, me.source_type, me.source_id, me.session_id, me.content, me.importance
+    SELECT me.id, me.event_type, me.source_id, me.session_id, me.content, me.importance
     FROM mem_ai_events me
     JOIN mem_ai_tags mt ON mt.event_id = me.id
     WHERE mt.tag_id = %s::uuid

@@ -1,6 +1,10 @@
 """
 route_memory.py — Memory file generation and session summary endpoints.
 
+Session summaries are stored directly in mem_ai_events (event_type='session_summary')
+with the structured fields open_threads, next_steps, summary_tags.
+No separate pr_session_summaries table.
+
 Endpoints:
     GET  /memory/{project}/top-events           — top-N events by relevance_score
     POST /memory/{project}/session-summary      — generate + store session summary
@@ -31,7 +35,7 @@ _SQL_GET_SESSION_PROMPTS = """
     SELECT prompt, response, created_at
     FROM mem_mrr_prompts
     WHERE client_id=1 AND project=%s AND session_id=%s
-      AND event_type='prompt' AND prompt IS NOT NULL AND prompt != ''
+      AND prompt IS NOT NULL AND prompt != ''
     ORDER BY created_at
 """
 
@@ -42,40 +46,34 @@ _SQL_GET_SYSTEM_ROLE = """
 """
 
 _SQL_UPSERT_SESSION_SUMMARY = """
-    INSERT INTO pr_session_summaries
-        (client_id, project, session_id, summary, open_threads, next_steps, tags)
-    VALUES (1, %s, %s, %s, %s, %s, %s)
-    ON CONFLICT (client_id, project, session_id)
+    INSERT INTO mem_ai_events
+        (client_id, project, event_type, source_id, session_id,
+         chunk, chunk_type, content, summary, open_threads, next_steps,
+         summary_tags, importance, created_at)
+    VALUES (1, %s, 'session_summary', %s, %s,
+            0, 'full', %s, %s, %s, %s, %s, 2, NOW())
+    ON CONFLICT (client_id, project, event_type, source_id, chunk)
     DO UPDATE SET
+        content      = EXCLUDED.content,
         summary      = EXCLUDED.summary,
         open_threads = EXCLUDED.open_threads,
         next_steps   = EXCLUDED.next_steps,
-        tags         = EXCLUDED.tags
+        summary_tags = EXCLUDED.summary_tags
     RETURNING id
 """
 
-_SQL_INSERT_AI_EVENT_SUMMARY = """
-    INSERT INTO mem_ai_events
-        (client_id, project, source_type, source_id, session_id,
-         chunk, chunk_type, content, summary_desc, importance, created_at)
-    VALUES (1, %s, 'session_summary', %s, %s, 0, 'full', %s, %s, 2, NOW())
-    ON CONFLICT (client_id, project, source_type, source_id, chunk)
-    DO UPDATE SET
-        content      = EXCLUDED.content,
-        summary_desc = EXCLUDED.summary_desc
-"""
-
 _SQL_LIST_SESSION_SUMMARIES = """
-    SELECT id, session_id, summary, open_threads, next_steps, tags, created_at
-    FROM pr_session_summaries
-    WHERE client_id=1 AND project=%s
+    SELECT id, session_id, summary, open_threads, next_steps, summary_tags, created_at
+    FROM mem_ai_events
+    WHERE client_id=1 AND project=%s AND event_type='session_summary'
     ORDER BY created_at DESC
     LIMIT %s
 """
 
 _SQL_GET_EXISTING_SUMMARY = """
-    SELECT id FROM pr_session_summaries
-    WHERE client_id=1 AND project=%s AND session_id=%s
+    SELECT id FROM mem_ai_events
+    WHERE client_id=1 AND project=%s AND event_type='session_summary'
+      AND source_id=%s
     LIMIT 1
 """
 
@@ -226,7 +224,7 @@ async def create_session_summary(
 ):
     """
     Generate a structured session summary from session prompts.
-    Stores in pr_session_summaries AND mem_ai_events.
+    Stores directly in mem_ai_events (event_type='session_summary').
     Triggers root files regeneration as a background task.
     """
     _require_db()
@@ -244,37 +242,31 @@ async def create_session_summary(
     if not result:
         return {"status": "no_data", "session_id": session_id}
 
-    # Store in pr_session_summaries
     summary_text = result["summary"]
-    combined_content = "\n".join(filter(None, [
-        "Summary:", summary_text,
-        "\nOpen Threads:", result["open_threads"],
-        "\nNext Steps:", result["next_steps"],
+    combined_content = "\n\n".join(filter(None, [
+        f"Summary:\n{summary_text}",
+        f"Open Threads:\n{result['open_threads']}" if result["open_threads"] else "",
+        f"Next Steps:\n{result['next_steps']}" if result["next_steps"] else "",
     ]))
 
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_UPSERT_SESSION_SUMMARY,
-                (project, session_id, summary_text,
+                (project, session_id, session_id,
+                 combined_content, summary_text,
                  result["open_threads"], result["next_steps"], []),
             )
-            ss_row = cur.fetchone()
-            ss_id = str(ss_row[0]) if ss_row else None
-
-            # Also insert into mem_ai_events for semantic search
-            cur.execute(
-                _SQL_INSERT_AI_EVENT_SUMMARY,
-                (project, session_id, session_id, combined_content, summary_text[:200]),
-            )
+            row = cur.fetchone()
+            event_id = str(row[0]) if row else None
 
     # Regenerate root files in background
     background.add_task(_trigger_root_regen, project)
 
-    log.info(f"Session summary generated for '{project}' session={session_id}")
+    log.info(f"Session summary stored in mem_ai_events for '{project}' session={session_id}")
     return {
-        "status":    "created",
-        "id":        ss_id,
+        "status":     "created",
+        "id":         event_id,
         "session_id": session_id,
         **result,
     }
@@ -285,7 +277,7 @@ async def list_session_summaries(
     project: str,
     limit: int = Query(10, ge=1, le=50),
 ):
-    """Return recent session summaries for a project."""
+    """Return recent session summaries (from mem_ai_events where event_type='session_summary')."""
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:

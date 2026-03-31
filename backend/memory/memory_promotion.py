@@ -47,7 +47,7 @@ _SQL_GET_WORK_ITEM_BY_NAME = """
 """
 
 _SQL_GET_MEMORY_EVENTS = """
-    SELECT me.id, me.source_type, me.source_id, me.session_id, me.content,
+    SELECT me.id, me.event_type, me.source_id, me.session_id, me.content,
            me.importance, me.created_at
     FROM mem_ai_events me
     JOIN mem_ai_tags mt ON mt.event_id = me.id

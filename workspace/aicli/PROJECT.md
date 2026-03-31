@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md + system prompts for all LLM providers auto-regenerated from project_facts, work_items, sessions (Layer 1 priority)
-- Manual relation management design: Developer-declared relations via CLI/admin UI/SQL with types (depends_on, relates_to, blocks, implements) vs. automatic detection
-- Table consolidation: pr_embeddings + pr_memory_events → mem_ai_events; pr_project_facts → mem_ai_project_facts; pr_work_items → mem_ai_work_items; add mem_ai_features
-- Tagging functionality validation: Verify mem_ai_tags_relations table implementation (naming corrected from mng_ai_tags_relations) and all tagging prompts per spec
-- Data persistence validation: Tags disappearing on session switch; investigate root cause (UI rendering vs. database save failure)
-- Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay documented
+- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md + system prompts for all LLM providers auto-regenerated from mem_ai_project_facts, mem_ai_work_items, sessions (Layer 1 priority)
+- Unified memory structure review: clarifying relationships between tagging mechanism (mem_ai_tags_relations), mem_ai_project_facts, and mem_ai_work_items population flow
+- Table consolidation completion: verify mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features schema implementation and data migration
+- Tagging functionality validation: confirm mem_ai_tags_relations table implementation and ensure all tagging prompts align with feature classification (feature/bug/task types)
+- Data persistence validation: investigate tags disappearing on session switch (UI rendering vs. database save failure root cause analysis)
+- Backend startup race condition: resolve AiCli appearing in Recent projects but remaining unselectable due to dev environment initialization delay

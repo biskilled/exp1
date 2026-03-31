@@ -729,10 +729,10 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "mem_ai_events": {
                     "purpose": "Smart-chunked embeddings for semantic search (pgvector)",
                     "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT",
-                                    "source_type VARCHAR(50)", "source_id VARCHAR(255)",
+                                    "event_type VARCHAR(50)", "source_id VARCHAR(255)",
                                     "chunk_index INT", "content TEXT", "embedding vector(1536)",
                                     "chunk_type (full/summary/function/class/section)", "language TEXT", "file_path TEXT",
-                                    "UNIQUE(client_id, project, source_type, source_id, chunk_index)"],
+                                    "UNIQUE(client_id, project, event_type, source_id, chunk_index)"],
                     "filter": "WHERE client_id=1 AND project=%s",
                 },
                 "pr_event_tags": {

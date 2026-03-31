@@ -534,21 +534,6 @@ CREATE TABLE IF NOT EXISTS pr_seq_counters (
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS seq_num INT;
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq ON mem_ai_work_items(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
 
--- Session summaries (structured synthesis written by Stop hook)
-CREATE TABLE IF NOT EXISTS pr_session_summaries (
-    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project      VARCHAR(255) NOT NULL,
-    session_id   TEXT         NOT NULL,
-    summary      TEXT         NOT NULL DEFAULT '',
-    open_threads TEXT         NOT NULL DEFAULT '',
-    next_steps   TEXT         NOT NULL DEFAULT '',
-    tags         TEXT[]       NOT NULL DEFAULT '{}',
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE(client_id, project, session_id)
-);
-CREATE INDEX IF NOT EXISTS idx_pr_ss_cp      ON pr_session_summaries(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_ss_created ON pr_session_summaries(created_at DESC);
 """
 
 
@@ -685,8 +670,8 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project         VARCHAR(255) NOT NULL,
-    source_type     TEXT         NOT NULL,
-    source_id       TEXT         NOT NULL,
+    event_type      TEXT         NOT NULL,  -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
+    source_id       TEXT         NOT NULL,  -- UUID or commit hash or session_id
     session_id      TEXT,
     session_desc    TEXT,
     chunk           INT          NOT NULL DEFAULT 0,
@@ -695,6 +680,9 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     embedding       VECTOR(1536),
     cnt_prompts     INT,
     summary         TEXT,
+    open_threads    TEXT         NOT NULL DEFAULT '',
+    next_steps      TEXT         NOT NULL DEFAULT '',
+    summary_tags    TEXT[]       NOT NULL DEFAULT '{}',
     summary_max_resolution_hrs INT  DEFAULT 24,
     summary_cnt_msg             INT  DEFAULT 20,
     summary_desc                TEXT,
@@ -705,11 +693,11 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     importance      SMALLINT     NOT NULL DEFAULT 1,
     processed_at    TIMESTAMPTZ,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE(client_id, project, source_type, source_id, chunk)
+    UNIQUE(client_id, project, event_type, source_id, chunk)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_cp      ON mem_ai_events(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_session ON mem_ai_events(session_id);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_events_type    ON mem_ai_events(source_type);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_events_type    ON mem_ai_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pending ON mem_ai_events(processed_at) WHERE processed_at IS NULL;
 
 -- ── Tagging: mem_mrr_tags (wide junction — all source FKs) ──────────────────
@@ -842,14 +830,14 @@ END $$;
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_memory_events' AND schemaname='public') THEN
-    INSERT INTO mem_ai_events (id, client_id, project, source_type, source_id,
+    INSERT INTO mem_ai_events (id, client_id, project, event_type, source_id,
                                 session_id, chunk, chunk_type, content, embedding,
                                 importance, processed_at, created_at)
     SELECT id, client_id, project, source_type, source_id::text,
            session_id, 0, 'full', content, embedding,
            importance, processed_at, created_at
     FROM pr_memory_events
-    ON CONFLICT (client_id, project, source_type, source_id, chunk) DO NOTHING;
+    ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
     DROP TABLE IF EXISTS pr_memory_events CASCADE;
   END IF;
 END $$;
@@ -858,14 +846,14 @@ END $$;
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_embeddings' AND schemaname='public') THEN
-    INSERT INTO mem_ai_events (client_id, project, source_type, source_id,
+    INSERT INTO mem_ai_events (client_id, project, event_type, source_id,
                                 chunk, chunk_type, content, embedding,
                                 doc_type, language, file_path, metadata, created_at)
     SELECT client_id, project, source_type, source_id,
            chunk_index, chunk_type, content, embedding,
            doc_type, language, file_path, metadata, created_at
     FROM pr_embeddings
-    ON CONFLICT (client_id, project, source_type, source_id, chunk) DO NOTHING;
+    ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
     DROP TABLE IF EXISTS pr_embeddings CASCADE;
   END IF;
 END $$;
@@ -885,6 +873,30 @@ END $$;
 # ─── Column additions to existing tables (memory infra) ──────────────────────
 
 _DDL_MEMORY_INFRA_ALTERS = """
+-- Rename source_type → event_type (idempotent via DO block)
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='mem_ai_events' AND column_name='source_type') THEN
+        ALTER TABLE mem_ai_events RENAME COLUMN source_type TO event_type;
+    END IF;
+END $$;
+-- Add session-summary columns to mem_ai_events (merged from pr_session_summaries)
+ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS open_threads TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS next_steps   TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS summary_tags TEXT[] NOT NULL DEFAULT '{}';
+-- Migrate any existing pr_session_summaries rows into mem_ai_events
+INSERT INTO mem_ai_events (client_id, project, event_type, source_id, session_id,
+                            chunk, chunk_type, content, summary, open_threads, next_steps,
+                            summary_tags, importance, created_at)
+SELECT client_id, project, 'session_summary', session_id, session_id,
+       0, 'full',
+       COALESCE(NULLIF(summary,''), '') || E'\n\nOpen Threads:\n' || COALESCE(NULLIF(open_threads,''), 'None')
+           || E'\n\nNext Steps:\n' || COALESCE(NULLIF(next_steps,''), 'None'),
+       summary, open_threads, next_steps, COALESCE(tags, '{}'), 2, created_at
+FROM pr_session_summaries
+ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
+-- Drop pr_session_summaries (data migrated above)
+DROP TABLE IF EXISTS pr_session_summaries CASCADE;
 ALTER TABLE planner_tags            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE mem_mrr_commits         ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
 ALTER TABLE mem_mrr_commits         ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
