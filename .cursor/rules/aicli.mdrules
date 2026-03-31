@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 22:53 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 23:08 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -60,8 +60,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-31] I would like to make sure relation is managed properly.  relation can be managed entries by developers.   Manual relatio
 - [2026-03-31] I would like to make sure that the final layer include Work Items, Feature Snapshots and Project Facts is well managed  
 - [2026-03-31] This task is related to current memory update (layer 1)  Create all memory files - I would like to make sure that all fi
 - [2026-03-31] perfect. I would like to have an updated aicli_memory with all updated memory strucuture. Also please advise about the n
 - [2026-03-31] Is it advised to merge pr_session_summeries into mem_ai_events. make sure there is column event_type (in this case event
+- [2026-03-31] I think llm_source is missing in mem_ai_events. I also see columns that I am not sure are used anymore like language or 

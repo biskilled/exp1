@@ -888,19 +888,23 @@ ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS llm_source   VARCHAR(100) DEF
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_max_resolution_hrs;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_cnt_msg;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_desc;
--- Migrate any existing pr_session_summaries rows into mem_ai_events
-INSERT INTO mem_ai_events (client_id, project, event_type, source_id, session_id,
-                            chunk, chunk_type, content, summary, open_threads, next_steps,
-                            summary_tags, importance, created_at)
-SELECT client_id, project, 'session_summary', session_id, session_id,
-       0, 'full',
-       COALESCE(NULLIF(summary,''), '') || E'\n\nOpen Threads:\n' || COALESCE(NULLIF(open_threads,''), 'None')
-           || E'\n\nNext Steps:\n' || COALESCE(NULLIF(next_steps,''), 'None'),
-       summary, open_threads, next_steps, COALESCE(tags, '{}'), 2, created_at
-FROM pr_session_summaries
-ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
--- Drop pr_session_summaries (data migrated above)
-DROP TABLE IF EXISTS pr_session_summaries CASCADE;
+-- Migrate pr_session_summaries → mem_ai_events (idempotent: only if table still exists)
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_session_summaries' AND schemaname='public') THEN
+    INSERT INTO mem_ai_events (client_id, project, event_type, source_id, session_id,
+                                chunk, chunk_type, content, summary, open_threads, next_steps,
+                                summary_tags, importance, created_at)
+    SELECT client_id, project, 'session_summary', session_id, session_id,
+           0, 'full',
+           COALESCE(NULLIF(summary,''), '') || E'\n\nOpen Threads:\n' || COALESCE(NULLIF(open_threads,''), 'None')
+               || E'\n\nNext Steps:\n' || COALESCE(NULLIF(next_steps,''), 'None'),
+           summary, open_threads, next_steps, COALESCE(tags, '{}'), 2, created_at
+    FROM pr_session_summaries
+    ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
+    DROP TABLE pr_session_summaries CASCADE;
+  END IF;
+END $$;
 ALTER TABLE planner_tags            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE mem_mrr_commits         ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
 ALTER TABLE mem_mrr_commits         ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
@@ -985,6 +989,39 @@ class _Database:
     # ── Schema creation ────────────────────────────────────────────────────────
 
     @staticmethod
+    @staticmethod
+    def _split_ddl(sql: str) -> list[str]:
+        """Split SQL into individual statements, correctly handling DO $$ ... $$ blocks.
+
+        Simple `;` split breaks dollar-quoted blocks (DO blocks contain internal
+        semicolons). This method splits on `$$` boundaries first, keeping dollar-
+        quoted content intact, then splits outer segments on `;`.
+        """
+        import re
+        parts = re.split(r"(\$\$)", sql)
+        result: list[str] = []
+        current: list[str] = []
+        in_quote = False
+        for part in parts:
+            if part == "$$":
+                current.append("$$")
+                in_quote = not in_quote
+            elif in_quote:
+                current.append(part)
+            else:
+                segments = part.split(";")
+                current.append(segments[0])
+                for seg in segments[1:]:
+                    stmt = "".join(current).strip()
+                    if stmt and not stmt.lstrip().startswith("--"):
+                        result.append(stmt)
+                    current = [seg]
+        if remaining := "".join(current).strip():
+            if remaining and not remaining.lstrip().startswith("--"):
+                result.append(remaining)
+        return result
+
+    @staticmethod
     def _run_ddl_statements(conn, sql: str, label: str) -> None:
         """Run the entire DDL block in a single server round trip.
 
@@ -1002,10 +1039,7 @@ class _Database:
             # lose all progress. Per-statement commits are slow over remote DB
             # but this path is only hit on schema conflicts, not normal operation.
             conn.rollback()
-            for stmt in sql.split(";"):
-                stmt = stmt.strip()
-                if not stmt or stmt.startswith("--"):
-                    continue
+            for stmt in _Database._split_ddl(sql):
                 try:
                     with conn.cursor() as cur:
                         cur.execute(stmt)
