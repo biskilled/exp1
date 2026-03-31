@@ -51,10 +51,10 @@ _EXT_LANG: dict[str, str] = {
 # ── SQL ───────────────────────────────────────────────────────────────────────
 
 _SQL_UPSERT_EMBEDDING = """INSERT INTO mem_ai_events
-                           (client_id, project, source_type, source_id, chunk, content,
+                           (client_id, project, event_type, source_id, chunk, content,
                             embedding, chunk_type, doc_type, language, file_path, metadata)
                        VALUES (1, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
-                       ON CONFLICT (client_id, project, source_type, source_id, chunk)
+                       ON CONFLICT (client_id, project, event_type, source_id, chunk)
                        DO UPDATE SET
                            content=EXCLUDED.content,
                            embedding=EXCLUDED.embedding,
@@ -66,9 +66,9 @@ _SQL_UPSERT_EMBEDDING = """INSERT INTO mem_ai_events
                            created_at=NOW()"""
 
 # Base search template — client_id=1 and project=%s are listed first to match
-# the (client_id, project, source_type) index. Dynamic WHERE filters are appended
+# the (client_id, project, event_type) index. Dynamic WHERE filters are appended
 # at runtime; %s placeholders for query_vec and limit are appended by the caller.
-_SQL_SEARCH_EMBEDDINGS_TPL = """SELECT source_type, source_id, chunk, chunk_type,
+_SQL_SEARCH_EMBEDDINGS_TPL = """SELECT event_type, source_id, chunk, chunk_type,
                                content, language, file_path, doc_type, metadata,
                                1 - (embedding <=> %s::vector) AS score
                         FROM mem_ai_events
@@ -437,7 +437,7 @@ async def semantic_search(
         params: list = [project, str(query_vec)]
 
         if source_types:
-            filters.append("source_type = ANY(%s)")
+            filters.append("event_type = ANY(%s)")
             params.append(source_types)
         if language:
             filters.append("language=%s")
@@ -478,7 +478,7 @@ async def semantic_search(
 
         return [
             {
-                "source_type": r[0], "source_id": r[1],
+                "event_type": r[0], "source_id": r[1],
                 "chunk_index": r[2], "chunk_type": r[3],
                 "content": r[4], "language": r[5],
                 "file_path": r[6], "doc_type": r[7],

@@ -49,16 +49,17 @@ _SQL_UPSERT_SESSION_SUMMARY = """
     INSERT INTO mem_ai_events
         (client_id, project, event_type, source_id, session_id,
          chunk, chunk_type, content, summary, open_threads, next_steps,
-         summary_tags, importance, created_at)
+         summary_tags, llm_source, importance, created_at)
     VALUES (1, %s, 'session_summary', %s, %s,
-            0, 'full', %s, %s, %s, %s, %s, 2, NOW())
+            0, 'full', %s, %s, %s, %s, %s, %s, 2, NOW())
     ON CONFLICT (client_id, project, event_type, source_id, chunk)
     DO UPDATE SET
         content      = EXCLUDED.content,
         summary      = EXCLUDED.summary,
         open_threads = EXCLUDED.open_threads,
         next_steps   = EXCLUDED.next_steps,
-        summary_tags = EXCLUDED.summary_tags
+        summary_tags = EXCLUDED.summary_tags,
+        llm_source   = EXCLUDED.llm_source
     RETURNING id
 """
 
@@ -249,13 +250,14 @@ async def create_session_summary(
         f"Next Steps:\n{result['next_steps']}" if result["next_steps"] else "",
     ]))
 
+    haiku_model = getattr(settings, "haiku_model", "claude-haiku-4-5-20251001")
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_UPSERT_SESSION_SUMMARY,
                 (project, session_id, session_id,
                  combined_content, summary_text,
-                 result["open_threads"], result["next_steps"], []),
+                 result["open_threads"], result["next_steps"], [], haiku_model),
             )
             row = cur.fetchone()
             event_id = str(row[0]) if row else None

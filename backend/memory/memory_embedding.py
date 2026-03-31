@@ -60,9 +60,9 @@ _EXT_LANG: dict[str, str] = {
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
            (client_id, project, event_type, source_id, session_id, session_desc,
-            chunk, chunk_type, content, embedding, cnt_prompts, summary,
+            llm_source, chunk, chunk_type, content, embedding, cnt_prompts, summary,
             doc_type, language, file_path, metadata, importance)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s,
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s,
                %s, %s, %s, %s::jsonb, %s)
        ON CONFLICT (client_id, project, event_type, source_id, chunk)
        DO UPDATE SET
@@ -70,6 +70,7 @@ _SQL_UPSERT_EVENT = """
            embedding    = EXCLUDED.embedding,
            summary      = EXCLUDED.summary,
            cnt_prompts  = EXCLUDED.cnt_prompts,
+           llm_source   = EXCLUDED.llm_source,
            metadata     = EXCLUDED.metadata
     RETURNING id
 """
@@ -183,6 +184,7 @@ def _upsert_event(
     *,
     session_id: Optional[str] = None,
     session_desc: Optional[str] = None,
+    llm_source: Optional[str] = None,
     cnt_prompts: Optional[int] = None,
     summary: Optional[str] = None,
     doc_type: Optional[str] = None,
@@ -201,7 +203,7 @@ def _upsert_event(
                 cur.execute(
                     _SQL_UPSERT_EVENT,
                     (project, source_type, source_id, session_id, session_desc,
-                     chunk, chunk_type, content, vec_str, cnt_prompts, summary,
+                     llm_source, chunk, chunk_type, content, vec_str, cnt_prompts, summary,
                      doc_type, language, file_path,
                      json.dumps(metadata or {}), importance),
                 )
@@ -258,6 +260,7 @@ class MemoryEmbedding:
         return _upsert_event(
             project, "prompt_batch", last_id, 0, "full", digest, embedding,
             session_id=session_id, session_desc=session_desc,
+            llm_source=settings.haiku_model,
             cnt_prompts=n, summary=digest, importance=1,
         )
 
@@ -305,6 +308,7 @@ class MemoryEmbedding:
         return _upsert_event(
             project, "commit", source_id, 0, "full", digest, embedding,
             session_id=session_id, session_desc=session_desc,
+            llm_source=settings.haiku_model,
             summary=digest,
             metadata={"commit_hash": commit_hash, "phase": phase,
                       "feature": feature, "bug_ref": bug_ref},

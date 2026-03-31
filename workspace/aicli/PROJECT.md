@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md + system prompts for all LLM providers auto-regenerated from mem_ai_project_facts, mem_ai_work_items, sessions (Layer 1 priority)
-- Unified memory structure review: clarifying relationships between tagging mechanism (mem_ai_tags_relations), mem_ai_project_facts, and mem_ai_work_items population flow
-- Table consolidation completion: verify mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features schema implementation and data migration
-- Tagging functionality validation: confirm mem_ai_tags_relations table implementation and ensure all tagging prompts align with feature classification (feature/bug/task types)
-- Data persistence validation: investigate tags disappearing on session switch (UI rendering vs. database save failure root cause analysis)
+- Session summaries consolidation: merge pr_session_summaries into mem_ai_events with event_type=session_summary column for unified AI event storage
+- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts, mem_ai_work_items, sessions
+- Table consolidation completion: verify mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features schema and data migration
+- Tagging functionality validation: confirm mem_ai_tags_relations table implementation and ensure all tagging prompts align with feature classification
+- Data persistence validation: investigate tags disappearing on session switch (UI rendering vs. database save failure root cause)
 - Backend startup race condition: resolve AiCli appearing in Recent projects but remaining unselectable due to dev environment initialization delay

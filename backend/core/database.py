@@ -671,24 +671,22 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project         VARCHAR(255) NOT NULL,
     event_type      TEXT         NOT NULL,  -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
-    source_id       TEXT         NOT NULL,  -- UUID or commit hash or session_id
+    source_id       TEXT         NOT NULL,  -- UUID, commit hash, or session_id
     session_id      TEXT,
-    session_desc    TEXT,
+    session_desc    TEXT,                   -- 'claude_cli'|'cursor'|'aicli'
+    llm_source      VARCHAR(100) DEFAULT NULL, -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
     chunk           INT          NOT NULL DEFAULT 0,
-    chunk_type      TEXT         NOT NULL DEFAULT 'full',
+    chunk_type      TEXT         NOT NULL DEFAULT 'full',  -- 'full'|'section'|'function'|'diff_file'
     content         TEXT         NOT NULL,
     embedding       VECTOR(1536),
-    cnt_prompts     INT,
-    summary         TEXT,
-    open_threads    TEXT         NOT NULL DEFAULT '',
-    next_steps      TEXT         NOT NULL DEFAULT '',
-    summary_tags    TEXT[]       NOT NULL DEFAULT '{}',
-    summary_max_resolution_hrs INT  DEFAULT 24,
-    summary_cnt_msg             INT  DEFAULT 20,
-    summary_desc                TEXT,
-    doc_type        TEXT,
-    language        TEXT,
-    file_path       TEXT,
+    cnt_prompts     INT,                    -- prompt_batch: how many prompts this covers
+    summary         TEXT,                   -- Haiku digest or session summary bullets
+    open_threads    TEXT         NOT NULL DEFAULT '',   -- session_summary only
+    next_steps      TEXT         NOT NULL DEFAULT '',   -- session_summary only
+    summary_tags    TEXT[]       NOT NULL DEFAULT '{}', -- session_summary only
+    doc_type        TEXT,                   -- item: 'requirement'|'decision'|'meeting'
+    language        TEXT,                   -- code chunk: 'python'|'javascript'|…
+    file_path       TEXT,                   -- code/commit chunk: source file path
     metadata        JSONB        NOT NULL DEFAULT '{}',
     importance      SMALLINT     NOT NULL DEFAULT 1,
     processed_at    TIMESTAMPTZ,
@@ -884,6 +882,12 @@ END $$;
 ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS open_threads TEXT NOT NULL DEFAULT '';
 ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS next_steps   TEXT NOT NULL DEFAULT '';
 ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS summary_tags TEXT[] NOT NULL DEFAULT '{}';
+-- Add llm_source: which model produced this event
+ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS llm_source   VARCHAR(100) DEFAULT NULL;
+-- Drop unused legacy message-resolution columns
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_max_resolution_hrs;
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_cnt_msg;
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_desc;
 -- Migrate any existing pr_session_summaries rows into mem_ai_events
 INSERT INTO mem_ai_events (client_id, project, event_type, source_id, session_id,
                             chunk, chunk_type, content, summary, open_threads, next_steps,
