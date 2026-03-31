@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
 - Embeddings linked to tags: tag metadata captures context (auth→all authentication prompts; feature/bug→relevant code changes)
 - Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- pr_embeddings and pr_memory_events tables to be merged into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)
+- pr_embeddings and pr_memory_events tables to merge into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)
 
 ---
 

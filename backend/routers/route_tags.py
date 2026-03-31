@@ -612,7 +612,7 @@ class RelationCreate(BaseModel):
 
 @router.get("/relations")
 async def list_tag_relations(project: str = Query(...)):
-    """List mng_ai_tags_relations for tags belonging to a project."""
+    """List mem_ai_tags_relations for tags belonging to a project."""
     _require_db()
     from memory.memory_tagging import MemoryTagging
     return MemoryTagging().get_relations(project)

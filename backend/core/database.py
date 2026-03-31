@@ -729,7 +729,7 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_tags_event ON mem_ai_tags(event_id);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_tags_tag   ON mem_ai_tags(tag_id);
 
 -- ── AI tag relations (global) ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS mng_ai_tags_relations (
+CREATE TABLE IF NOT EXISTS mem_ai_tags_relations (
     id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     from_tag_id  UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
     relation     TEXT         NOT NULL,
@@ -739,8 +739,8 @@ CREATE TABLE IF NOT EXISTS mng_ai_tags_relations (
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE (from_tag_id, relation, to_tag_id)
 );
-CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_from ON mng_ai_tags_relations(from_tag_id);
-CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_to   ON mng_ai_tags_relations(to_tag_id);
+CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_from ON mem_ai_tags_relations(from_tag_id);
+CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_to   ON mem_ai_tags_relations(to_tag_id);
 
 -- ── 4-layer feature snapshots ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS pr_feature_snapshots (

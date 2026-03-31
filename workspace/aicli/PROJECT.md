@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Table consolidation design: pr_embeddings and pr_memory_events merging into single mem_ai_events table with event summary schema
-- Memory table population logic: memory_items and project_facts tables require clarification on intended update behavior before Phase 2 embedding refactor
-- Data persistence validation: tags disappearing on session switch—root cause under investigation (UI rendering vs. database save failure)
-- Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay acknowledged
-- Embedding logic refactoring blocked: Phase 2 work pending clarification on memory table update logic and table consolidation design
-- Port binding stability: 127.0.0.1:8000 conflicts resolved; bash start_backend.sh initialization sequence documented
+- Tagging functionality validation: Review mng_ai_tags_relations table implementation and verify all tagging prompts work as documented; core feature completeness check
+- Table consolidation design: pr_embeddings and pr_memory_events merging into single mem_ai_events table with event summary schema; Phase 2 blocker
+- Memory table population logic: memory_items and project_facts tables require clarification on intended update behavior; currently not populating per spec
+- Data persistence validation: tags disappearing on session switch; root cause investigation needed (UI rendering vs. database save failure)
+- Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay documented
+- Embedding logic refactoring blocked: Phase 2 work pending table consolidation design and memory table population clarification

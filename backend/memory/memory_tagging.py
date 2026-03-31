@@ -163,7 +163,7 @@ _SQL_INSERT_AI_TAG = """
 """
 
 _SQL_INSERT_RELATION = """
-    INSERT INTO mng_ai_tags_relations (from_tag_id, relation, to_tag_id, note, source)
+    INSERT INTO mem_ai_tags_relations (from_tag_id, relation, to_tag_id, note, source)
     VALUES (%s::uuid, %s, %s::uuid, %s, %s)
     ON CONFLICT (from_tag_id, relation, to_tag_id) DO NOTHING
 """
@@ -212,7 +212,7 @@ _SQL_REMAP_MRR_TAGS = """
 
 _SQL_GET_RELATIONS = """
     SELECT id, from_tag_id, relation, to_tag_id, note, source, created_at
-    FROM mng_ai_tags_relations
+    FROM mem_ai_tags_relations
     WHERE from_tag_id IN (
         SELECT id FROM planner_tags WHERE client_id=1 AND project=%s
     )
@@ -220,7 +220,7 @@ _SQL_GET_RELATIONS = """
 """
 
 _SQL_DELETE_RELATION = """
-    DELETE FROM mng_ai_tags_relations WHERE id=%s::uuid
+    DELETE FROM mem_ai_tags_relations WHERE id=%s::uuid
     RETURNING id
 """
 
