@@ -592,9 +592,9 @@ async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
             with conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO mem_ai_events
-                           (client_id, project, source_type, source_id, session_id, content, importance)
-                       VALUES (1, %s, 'prompt_batch', %s::uuid, %s, %s, 1)
-                       ON CONFLICT (client_id, project, source_type, source_id) DO NOTHING
+                           (client_id, project, source_type, source_id, chunk, session_id, content, importance)
+                       VALUES (1, %s, 'prompt_batch', %s::uuid, 0, %s, %s, 1)
+                       ON CONFLICT (client_id, project, source_type, source_id, chunk) DO NOTHING
                        RETURNING id""",
                     (project, last_prompt_id, session_id, content),
                 )

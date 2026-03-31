@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 16:33 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 16:36 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -41,13 +41,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL migration planned
+- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; JSONL migration planned
 - Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys
 - All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval
-- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage tables
+- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); reduces token overhead
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
@@ -58,8 +58,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-18] That is correct. it is bed pattern to use clinet name. there is already mng_users table that can manage client as well (
 - [2026-03-18] it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did
 - [2026-03-18] There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
 - [2026-03-18] Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
 - [2026-03-18] Few more strucure - users are also part of client (client can have mutiple users). Also I would like to understand if yo
+- [2026-03-31] Is it makes more sense, before I continue to the secopnd phase (refactor embedding logic) . is there is anything else yo

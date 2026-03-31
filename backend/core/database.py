@@ -711,10 +711,13 @@ CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit  ON mem_mrr_tags(commit_id);
 
 -- ── AI tags on embedding events ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_tags (
-    id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id   UUID         NOT NULL REFERENCES mem_ai_events(id) ON DELETE CASCADE,
-    tag_id     UUID         NOT NULL REFERENCES planner_tags(id)  ON DELETE CASCADE,
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id           UUID         NOT NULL REFERENCES mem_ai_events(id) ON DELETE CASCADE,
+    tag_id             UUID         NOT NULL REFERENCES planner_tags(id)  ON DELETE CASCADE,
+    event_updated      TIMESTAMPTZ,
+    work_item_id       UUID         REFERENCES pr_work_items(id) ON DELETE SET NULL,
+    work_item_updated  TIMESTAMPTZ,
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(event_id, tag_id)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_tags_event ON mem_ai_tags(event_id);
@@ -821,13 +824,14 @@ END $$;
 # ─── Column additions to existing tables (memory infra) ──────────────────────
 
 _DDL_MEMORY_INFRA_ALTERS = """
-ALTER TABLE mem_mrr_commits  ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
-ALTER TABLE mem_mrr_commits  ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
-ALTER TABLE pr_work_items    DROP COLUMN IF EXISTS tag_id;
-ALTER TABLE pr_work_items    ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
-ALTER TABLE pr_feature_snapshots DROP COLUMN IF EXISTS tag_id;
+ALTER TABLE mem_mrr_commits      ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
+ALTER TABLE mem_mrr_commits      ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE pr_work_items        ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
 ALTER TABLE pr_feature_snapshots ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
-ALTER TABLE pr_project_facts ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
+ALTER TABLE pr_project_facts     ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
+ALTER TABLE mem_ai_tags          ADD COLUMN IF NOT EXISTS event_updated   TIMESTAMPTZ;
+ALTER TABLE mem_ai_tags          ADD COLUMN IF NOT EXISTS work_item_id    UUID REFERENCES pr_work_items(id) ON DELETE SET NULL;
+ALTER TABLE mem_ai_tags          ADD COLUMN IF NOT EXISTS work_item_updated TIMESTAMPTZ;
 """
 
 

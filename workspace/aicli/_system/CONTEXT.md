@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-31 16:34 UTC — do not edit manually.
+> Auto-generated 2026-03-31 16:37 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 299
-- **Last active**: 2026-03-31T16:33:38Z
+- **Sessions**: 300
+- **Last active**: 2026-03-31T16:36:40Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -45,23 +45,23 @@
 
 ## In Progress
 
-- Memory table implementation: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior and completion of update logic
-- Project visibility timing issue: AiCli appears in Recent projects but not selectable as current active project; backend startup delay acknowledged, expected to resolve in production
-- Data persistence bug investigation: tags disappear on session switch; root cause unclear (UI rendering vs. database save failure); requires validation via /memory audit endpoint
-- Backend startup stability: resolved port 127.0.0.1:8000 binding conflicts; documented initialization sequence via bash start_backend.sh; retry logic handles empty project list
-- Memory endpoint template variable scoping: fixed code_dir variable at line 1120 in CLAUDE.md template to resolve runtime failures
-- User-client schema relationship: confirmed hierarchical structure (clients have multiple users) but schema modifications status unclear; may require database migration
+- Memory table population design review: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior before Phase 2 embedding refactor
+- Backend startup race condition partially resolved: AiCli now appears in Recent projects but remains unavailable as selectable current project; acknowledged as dev environment delay
+- Data persistence validation: tags disappearing on session switch—root cause under investigation (UI rendering vs. database save failure); /memory audit endpoint testing pending
+- Embedding logic refactoring planned: Phase 2 work blocked pending clarification on memory table update logic and completion of existing issues
+- Port binding stability confirmed: 127.0.0.1:8000 conflicts resolved; bash start_backend.sh initialization sequence documented
+- User-client schema relationship confirmed: hierarchical structure validated (clients have multiple users); schema modification status unclear, may require database migration
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage model transitioning to DB-only: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; JSONL migration planned
+- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; JSONL migration planned
 - Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys
 - All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval
-- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared auth/usage tables
+- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); reduces token overhead
+- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
 - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval

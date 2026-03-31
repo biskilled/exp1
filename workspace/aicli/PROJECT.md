@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Memory table implementation: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior and completion of update logic
-- Project visibility timing issue: AiCli appears in Recent projects but not selectable as current active project; backend startup delay acknowledged, expected to resolve in production
-- Data persistence bug investigation: tags disappear on session switch; root cause unclear (UI rendering vs. database save failure); requires validation via /memory audit endpoint
-- Backend startup stability: resolved port 127.0.0.1:8000 binding conflicts; documented initialization sequence via bash start_backend.sh; retry logic handles empty project list
-- Memory endpoint template variable scoping: fixed code_dir variable at line 1120 in CLAUDE.md template to resolve runtime failures
-- User-client schema relationship: confirmed hierarchical structure (clients have multiple users) but schema modifications status unclear; may require database migration
+- Memory table population design review: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior before Phase 2 embedding refactor
+- Backend startup race condition partially resolved: AiCli now appears in Recent projects but remains unavailable as selectable current project; acknowledged as dev environment delay
+- Data persistence validation: tags disappearing on session switch—root cause under investigation (UI rendering vs. database save failure); /memory audit endpoint testing pending
+- Embedding logic refactoring planned: Phase 2 work blocked pending clarification on memory table update logic and completion of existing issues
+- Port binding stability confirmed: 127.0.0.1:8000 conflicts resolved; bash start_backend.sh initialization sequence documented
+- User-client schema relationship confirmed: hierarchical structure validated (clients have multiple users); schema modification status unclear, may require database migration

@@ -51,10 +51,10 @@ _EXT_LANG: dict[str, str] = {
 # ── SQL ───────────────────────────────────────────────────────────────────────
 
 _SQL_UPSERT_EMBEDDING = """INSERT INTO mem_ai_events
-                           (client_id, project, source_type, source_id, chunk_index, content,
+                           (client_id, project, source_type, source_id, chunk, content,
                             embedding, chunk_type, doc_type, language, file_path, metadata)
                        VALUES (1, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
-                       ON CONFLICT (client_id, project, source_type, source_id, chunk_index)
+                       ON CONFLICT (client_id, project, source_type, source_id, chunk)
                        DO UPDATE SET
                            content=EXCLUDED.content,
                            embedding=EXCLUDED.embedding,
@@ -68,7 +68,7 @@ _SQL_UPSERT_EMBEDDING = """INSERT INTO mem_ai_events
 # Base search template — client_id=1 and project=%s are listed first to match
 # the (client_id, project, source_type) index. Dynamic WHERE filters are appended
 # at runtime; %s placeholders for query_vec and limit are appended by the caller.
-_SQL_SEARCH_EMBEDDINGS_TPL = """SELECT source_type, source_id, chunk_index, chunk_type,
+_SQL_SEARCH_EMBEDDINGS_TPL = """SELECT source_type, source_id, chunk, chunk_type,
                                content, language, file_path, doc_type, metadata,
                                1 - (embedding <=> %s::vector) AS score
                         FROM mem_ai_events
