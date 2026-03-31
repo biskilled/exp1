@@ -211,17 +211,38 @@ _SQL_REMAP_MRR_TAGS = """
 """
 
 _SQL_GET_RELATIONS = """
-    SELECT id, from_tag_id, relation, to_tag_id, note, source, created_at
-    FROM mem_ai_tags_relations
-    WHERE from_tag_id IN (
+    WITH project_tags AS (
         SELECT id FROM planner_tags WHERE client_id=1 AND project=%s
     )
-    ORDER BY created_at DESC
+    SELECT r.id, r.from_tag_id, f.name AS from_name,
+           r.relation,
+           r.to_tag_id,   t.name AS to_name,
+           r.note, r.source, r.created_at
+    FROM mem_ai_tags_relations r
+    JOIN planner_tags f ON f.id = r.from_tag_id
+    JOIN planner_tags t ON t.id = r.to_tag_id
+    WHERE r.from_tag_id IN (SELECT id FROM project_tags)
+       OR r.to_tag_id   IN (SELECT id FROM project_tags)
+    ORDER BY r.created_at DESC
 """
 
 _SQL_DELETE_RELATION = """
     DELETE FROM mem_ai_tags_relations WHERE id=%s::uuid
     RETURNING id
+"""
+
+_SQL_GET_BLOCKERS = """
+    WITH project_tags AS (
+        SELECT id, name FROM planner_tags WHERE client_id=1 AND project=%s AND status='active'
+    )
+    SELECT f.name AS from_name, r.relation, t.name AS to_name, r.note
+    FROM mem_ai_tags_relations r
+    JOIN planner_tags f ON f.id = r.from_tag_id
+    JOIN planner_tags t ON t.id = r.to_tag_id
+    WHERE r.relation IN ('blocks', 'depends_on')
+      AND (r.from_tag_id IN (SELECT id FROM project_tags)
+        OR r.to_tag_id   IN (SELECT id FROM project_tags))
+    ORDER BY r.relation, f.name
 """
 
 
@@ -483,8 +504,71 @@ class MemoryTagging:
         except Exception as e:
             log.debug(f"MemoryTagging.tag_from_context error: {e}")
 
+    def add_relation_by_name(
+        self,
+        project: str,
+        from_name: str,
+        relation: str,
+        to_name: str,
+        note: Optional[str] = None,
+        source: str = "manual",
+    ) -> bool:
+        """Add a relation using tag names instead of UUIDs (creates tags if missing).
+
+        Useful from CLI, snapshot promotion, and relation extraction flows.
+        Returns True if the relation was created/already existed.
+        """
+        from_id = self.get_or_create_tag(project, from_name)
+        to_id   = self.get_or_create_tag(project, to_name)
+        if not from_id or not to_id:
+            return False
+        self.add_relation(from_id, relation, to_id, note=note, source=source)
+        return True
+
+    def upsert_relations_from_list(
+        self,
+        project: str,
+        relations: list[dict],
+        source: str = "ai_snapshot",
+    ) -> int:
+        """Batch-upsert relations extracted by LLM (from snapshot, item, or session).
+
+        Each dict: {from: str, relation: str, to: str, note: str|None}.
+        Creates tags via get_or_create_tag if they don't exist.
+        Returns count of relations upserted.
+        """
+        count = 0
+        for rel in relations:
+            from_name = (rel.get("from") or rel.get("from_tag") or "").strip()
+            to_name   = (rel.get("to")   or rel.get("to_tag")   or "").strip()
+            relation  = (rel.get("relation") or "relates_to").strip()
+            note      = rel.get("note")
+            if not from_name or not to_name:
+                continue
+            if self.add_relation_by_name(project, from_name, relation, to_name,
+                                          note=note, source=source):
+                count += 1
+        return count
+
+    def get_blockers_and_deps(self, project: str) -> list[dict]:
+        """Return only blocks/depends_on relations for CLAUDE.md surface."""
+        if not db.is_available():
+            return []
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_GET_BLOCKERS, (project,))
+                    rows = cur.fetchall()
+            return [
+                {"from": r[0], "relation": r[1], "to": r[2], "note": r[3] or ""}
+                for r in rows
+            ]
+        except Exception as e:
+            log.debug(f"MemoryTagging.get_blockers_and_deps error: {e}")
+            return []
+
     def get_relations(self, project: str) -> list[dict]:
-        """Return all tag relations for tags belonging to a project."""
+        """Return all tag relations (both directions) for a project, with tag names."""
         if not db.is_available():
             return []
         try:
@@ -494,13 +578,15 @@ class MemoryTagging:
                     rows = cur.fetchall()
             return [
                 {
-                    "id":           str(r[0]),
-                    "from_tag_id":  str(r[1]),
-                    "relation":     r[2],
-                    "to_tag_id":    str(r[3]),
-                    "note":         r[4],
-                    "source":       r[5],
-                    "created_at":   r[6].isoformat() if r[6] else None,
+                    "id":          str(r[0]),
+                    "from_tag_id": str(r[1]),
+                    "from_name":   r[2],
+                    "relation":    r[3],
+                    "to_tag_id":   str(r[4]),
+                    "to_name":     r[5],
+                    "note":        r[6],
+                    "source":      r[7],
+                    "created_at":  r[8].isoformat() if r[8] else None,
                 }
                 for r in rows
             ]

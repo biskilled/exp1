@@ -360,7 +360,7 @@ class MemoryEmbedding:
                 )
                 if i == 0:
                     first_id = event_id
-            return first_id
+            result_id = first_id
         else:
             sys_prompt = await _load_system_role("item_digest") or (
                 "Summarise this document in 1-2 sentences. Return plain text only."
@@ -369,10 +369,31 @@ class MemoryEmbedding:
             if not digest:
                 digest = (summary or raw_text)[:300]
             emb = await _embed(digest)
-            return _upsert_event(
+            result_id = _upsert_event(
                 project, "item", item_id, 0, "full", digest, emb,
                 doc_type=item_type, summary=digest,
             )
+
+        # Relation extraction — lightweight Haiku call to detect tag relationships
+        rel_prompt = await _load_system_role("relation_extraction") or (
+            "Given a text snippet, identify explicit relationships between features/bugs/tasks. "
+            'Return ONLY JSON: {"relations": [{"from": "slug", "relation": "part_of|depends_on|blocks|relates_to|replaces|extracted_from", "to": "slug", "note": "..."}]} '
+            "If none found, return {\"relations\": []}"
+        )
+        rel_raw = await _haiku(rel_prompt, raw_text[:3000], max_tokens=400)
+        if rel_raw:
+            try:
+                rel_parsed = json.loads(rel_raw)
+                relations = rel_parsed.get("relations", [])
+                if relations:
+                    from memory.memory_tagging import MemoryTagging
+                    MemoryTagging().upsert_relations_from_list(
+                        project, relations, source="item_extraction"
+                    )
+            except Exception:
+                pass
+
+        return result_id
 
     async def process_messages(
         self,

@@ -47,6 +47,28 @@
     Return JSON only: {"tag": "tag-name", "is_new": true|false, "reasoning": "one sentence"}
     No preamble, no markdown fences.
 
+- name: relation_extraction
+  category: memory
+  description: "Extract tag relationships from item/meeting text"
+  content: |
+    You are a technical project memory assistant.
+    Given a text snippet, identify any explicit or strongly implied relationships between features, bugs, or tasks.
+    Return ONLY valid JSON. If no relationships found, return {"relations": []}
+
+    Relation types:
+      part_of        — belongs to a larger feature or module
+      depends_on     — cannot start or complete without
+      blocks         — prevents progress on another item
+      relates_to     — shares context, loosely coupled
+      replaces       — supersedes an older item
+      extracted_from — fact or item derived from this feature
+
+    Output format:
+    {"relations": [{"from": "tag-slug", "relation": "part_of|depends_on|blocks|relates_to|replaces|extracted_from", "to": "tag-slug", "note": "brief reason"}]}
+
+    Use lowercase-hyphenated slugs for tag names. Map to the closest known tag if possible.
+    No preamble, no markdown fences — just the JSON.
+
 - name: session_summary
   category: memory
   description: "Summarise a development session in 3-8 bullets"
@@ -56,10 +78,20 @@
 
 - name: session_review
   category: memory
-  description: "Rate a session summary 1-10 and provide an improved version"
+  description: "Rate a session summary 1-10, improve it, and extract any detected relations"
   content: |
-    Rate this session summary 1-10 for completeness and accuracy.
-    Return ONLY valid JSON: {"score": N, "critique": "...", "improved_summary": "..."}
+    Rate this session summary 1-10 for completeness and accuracy. Also detect any relationships
+    between features, bugs, or tasks that are mentioned or implied.
+    Return ONLY valid JSON:
+    {
+      "score": N,
+      "critique": "...",
+      "improved_summary": "...",
+      "relations": [
+        {"from": "tag-slug", "relation": "part_of|depends_on|blocks|relates_to|replaces|extracted_from", "to": "tag-slug", "note": "brief reason"}
+      ]
+    }
+    Use empty array for relations if none detected. No preamble, no markdown fences.
 
 - name: memory_synthesis
   category: memory
@@ -74,12 +106,15 @@
   description: "Generate a 4-layer feature snapshot from memory events"
   content: |
     Given the following memory events for a feature, produce a 4-layer snapshot.
-    Return valid JSON with keys:
+    Return valid JSON with these keys:
       requirements (str): what the feature must do
       action_items (str): remaining work items
       design (object): {high_level, low_level, patterns_used}
       code_summary (object): {files, key_classes, key_methods, dependencies_added, dependencies_removed}
-    Base your answer only on the provided evidence.
+      relations (array): relationships detected between this and other features/modules.
+        Each item: {"from": "tag-slug", "relation": "part_of|depends_on|blocks|relates_to|replaces|extracted_from", "to": "tag-slug", "note": "brief reason"}
+        Use empty array if no clear relationships detected.
+    Base your answer only on the provided evidence. Return ONLY valid JSON, no preamble.
 
 # Legacy aliases (kept for backward compatibility with existing DB queries)
 - name: memory_batch_digest
@@ -100,8 +135,11 @@
   category: memory
   description: "Alias for session_review"
   content: |
-    Rate this session summary 1-10 for completeness and accuracy.
-    Return ONLY valid JSON: {"score": N, "critique": "...", "improved_summary": "..."}
+    Rate this session summary 1-10 for completeness and accuracy. Also detect any relationships
+    between features, bugs, or tasks that are mentioned or implied.
+    Return ONLY valid JSON:
+    {"score": N, "critique": "...", "improved_summary": "...", "relations": [{"from": "tag-slug", "relation": "...", "to": "tag-slug", "note": "..."}]}
+    Use empty array for relations if none detected.
 
 - name: memory_feature_snapshot
   category: memory
@@ -110,5 +148,6 @@
     Given the following memory events for a feature, produce a 4-layer snapshot.
     Return valid JSON with keys: requirements (str), action_items (str),
     design ({high_level, low_level, patterns_used}),
-    code_summary ({files, key_classes, key_methods, dependencies_added, dependencies_removed}).
-    Base your answer only on the provided evidence.
+    code_summary ({files, key_classes, key_methods, dependencies_added, dependencies_removed}),
+    relations (array of {from, relation, to, note} — empty array if none detected).
+    Base your answer only on the provided evidence. Return ONLY valid JSON.

@@ -756,6 +756,27 @@ async def get_project_context(project_name: str, save: bool = False):
         for d in state_data["key_decisions"]:
             claude_lines.append(f"- {d}")
 
+    # Blockers and dependencies from mem_ai_tags_relations
+    if db.is_available():
+        try:
+            from memory.memory_tagging import MemoryTagging
+            blockers = MemoryTagging().get_blockers_and_deps(project_name)
+            if blockers:
+                blocks = [r for r in blockers if r["relation"] == "blocks"]
+                deps   = [r for r in blockers if r["relation"] == "depends_on"]
+                if blocks:
+                    claude_lines.append("\n## Current Blockers\n")
+                    for r in blocks:
+                        note = f" — {r['note']}" if r["note"] else ""
+                        claude_lines.append(f"- `{r['from']}` blocks `{r['to']}`{note}")
+                if deps:
+                    claude_lines.append("\n## Dependencies\n")
+                    for r in deps:
+                        note = f" — {r['note']}" if r["note"] else ""
+                        claude_lines.append(f"- `{r['from']}` depends on `{r['to']}`{note}")
+        except Exception:
+            pass
+
     # Abridged PROJECT.md (first 60 lines)
     if project_md:
         claude_lines.append("\n---\n\n## Project Documentation\n")

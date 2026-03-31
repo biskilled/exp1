@@ -610,9 +610,19 @@ class RelationCreate(BaseModel):
     source: str = "manual"
 
 
+class RelationCreateByName(BaseModel):
+    """Create a relation using tag names — tags are created if they don't exist."""
+    project: str
+    from_name: str
+    relation: str
+    to_name: str
+    note: Optional[str] = None
+    source: str = "manual"
+
+
 @router.get("/relations")
 async def list_tag_relations(project: str = Query(...)):
-    """List mem_ai_tags_relations for tags belonging to a project."""
+    """List mem_ai_tags_relations for a project (both directions) with tag names."""
     _require_db()
     from memory.memory_tagging import MemoryTagging
     return MemoryTagging().get_relations(project)
@@ -620,13 +630,32 @@ async def list_tag_relations(project: str = Query(...)):
 
 @router.post("/relations")
 async def create_tag_relation(body: RelationCreate):
-    """Add a relationship between two planner_tags."""
+    """Add a relationship between two planner_tags (by UUID)."""
     _require_db()
     from memory.memory_tagging import MemoryTagging
     MemoryTagging().add_relation(
         body.from_tag_id, body.relation, body.to_tag_id,
         note=body.note, source=body.source,
     )
+
+
+@router.post("/relations/by-name")
+async def create_tag_relation_by_name(body: RelationCreateByName):
+    """Add a relationship using tag names — tags are created if missing.
+
+    Example: {"project": "aicli", "from_name": "retry-dashboard",
+               "relation": "depends_on", "to_name": "retry-backend",
+               "note": "Dashboard cannot ship without backend retry API"}
+    """
+    _require_db()
+    from memory.memory_tagging import MemoryTagging
+    ok = MemoryTagging().add_relation_by_name(
+        body.project, body.from_name, body.relation, body.to_name,
+        note=body.note, source=body.source,
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail="Could not resolve or create tags")
+    return {"ok": True}
     return {"ok": True}
 
 

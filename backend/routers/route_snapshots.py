@@ -208,6 +208,9 @@ async def generate_snapshot(project: str, tag_name: str):
     if not parsed:
         raise HTTPException(status_code=502, detail=f"Could not parse LLM JSON: {raw[:200]}")
 
+    # Extract AI-detected relations before consuming the rest of the dict
+    ai_relations: list[dict] = parsed.pop("relations", []) or []
+
     embed_text = " ".join(filter(None, [
         parsed.get("requirements", ""),
         parsed.get("action_items", ""),
@@ -257,19 +260,33 @@ async def generate_snapshot(project: str, tag_name: str):
         except Exception as e:
             log.debug(f"fact upsert error: {e}")
 
+    # Upsert AI-detected relations (source='ai_snapshot')
+    relations_upserted = 0
+    if ai_relations:
+        try:
+            from memory.memory_tagging import MemoryTagging
+            relations_upserted = MemoryTagging().upsert_relations_from_list(
+                project, ai_relations, source="ai_snapshot"
+            )
+        except Exception as e:
+            log.debug(f"relation upsert error: {e}")
+
     log.info(f"Snapshot generated for '{tag_name}' in '{project}': "
-             f"{len(event_ids)} events, {facts_extracted} facts")
+             f"{len(event_ids)} events, {facts_extracted} facts, "
+             f"{relations_upserted} relations")
 
     return {
-        "snapshot_id":       snap_id,
-        "tag_name":          tag_name,
-        "project":           project,
-        "requirements":      parsed.get("requirements", ""),
-        "action_items":      parsed.get("action_items", ""),
-        "design":            design,
-        "code_summary":      code_summary,
-        "events_processed":  len(event_ids),
-        "facts_extracted":   facts_extracted,
+        "snapshot_id":        snap_id,
+        "tag_name":           tag_name,
+        "project":            project,
+        "requirements":       parsed.get("requirements", ""),
+        "action_items":       parsed.get("action_items", ""),
+        "design":             design,
+        "code_summary":       code_summary,
+        "events_processed":   len(event_ids),
+        "facts_extracted":    facts_extracted,
+        "relations_upserted": relations_upserted,
+        "relations":          ai_relations,
     }
 
 
