@@ -110,19 +110,20 @@ _SQL_MIGRATE_CHECK_TABLE = (
     "WHERE table_schema='public' AND table_name=%s"
 )
 
+# Updated to new tag tables (memory-infra migration)
 _SQL_INSERT_CATEGORY = """
-    INSERT INTO mng_entity_categories (client_id, name, color, icon)
+    INSERT INTO mng_tags_categories (client_id, name, color, icon)
     VALUES (1, %s, %s, %s)
     ON CONFLICT (client_id, name) DO NOTHING
     RETURNING id
 """
 
-_SQL_UPSERT_ENTITY_VALUE = """
-    INSERT INTO mng_entity_values
-        (client_id, category_id, name, description, lifecycle_status, created_at)
+_SQL_UPSERT_TAG = """
+    INSERT INTO pr_tags
+        (client_id, project, category_id, name, status, created_at)
     VALUES (1, %s, %s, %s, 'active', NOW())
-    ON CONFLICT (client_id, category_id, name) DO UPDATE
-        SET description = EXCLUDED.description
+    ON CONFLICT (client_id, project, name) DO UPDATE
+        SET category_id = EXCLUDED.category_id
     RETURNING id
 """
 
@@ -710,84 +711,9 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
                     )
                     counts["commits"] = cur.rowcount
 
-                # Migrate events (build a mapping old_id → new_id for FK resolution)
-                old_to_new_event: dict[int, int] = {}
-                if _table_exists(cur, "events"):
-                    cur.execute(
-                        "SELECT id, event_type, source_id, title, content, metadata, created_at "
-                        "FROM events WHERE project=%s",
-                        (project,),
-                    )
-                    event_rows = cur.fetchall()
-                    inserted_events = 0
-                    for old_id, et, sid, title, content, meta, created_at in event_rows:
-                        cur.execute(
-                            """INSERT INTO pr_events
-                                   (client_id, project, event_type, source_id, title, content, metadata, created_at)
-                                VALUES (1,%s,%s,%s,%s,%s,%s,%s)
-                                ON CONFLICT (client_id, project, event_type, source_id) DO NOTHING
-                                RETURNING id""",
-                            (project, et, sid, title, content, meta, created_at),
-                        )
-                        row = cur.fetchone()
-                        if row:
-                            old_to_new_event[old_id] = row[0]
-                            inserted_events += 1
-                        else:
-                            # Already existed — look up new id
-                            cur.execute(
-                                "SELECT id FROM pr_events WHERE client_id=1 AND project=%s AND event_type=%s AND source_id=%s",
-                                (project, et, sid),
-                            )
-                            r2 = cur.fetchone()
-                            if r2:
-                                old_to_new_event[old_id] = r2[0]
-                    counts["events"] = inserted_events
-
-                # Migrate event_tags
-                if _table_exists(cur, "event_tags") and old_to_new_event:
-                    cur.execute(
-                        "SELECT et.event_id, et.entity_value_id, et.auto_tagged "
-                        "FROM event_tags et "
-                        "JOIN events e ON e.id = et.event_id "
-                        "WHERE e.project=%s",
-                        (project,),
-                    )
-                    et_rows = cur.fetchall()
-                    inserted_tags = 0
-                    for old_eid, val_id, auto in et_rows:
-                        new_eid = old_to_new_event.get(old_eid)
-                        if new_eid:
-                            cur.execute(
-                                "INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged) "
-                                "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
-                                (new_eid, val_id, auto),
-                            )
-                            inserted_tags += cur.rowcount
-                    counts["event_tags"] = inserted_tags
-
-                # Migrate event_links
-                if _table_exists(cur, "event_links") and old_to_new_event:
-                    cur.execute(
-                        "SELECT el.from_event_id, el.to_event_id, el.link_type "
-                        "FROM event_links el "
-                        "JOIN events e ON e.id = el.from_event_id "
-                        "WHERE e.project=%s",
-                        (project,),
-                    )
-                    el_rows = cur.fetchall()
-                    inserted_links = 0
-                    for old_from, old_to, ltype in el_rows:
-                        new_from = old_to_new_event.get(old_from)
-                        new_to   = old_to_new_event.get(old_to)
-                        if new_from and new_to:
-                            cur.execute(
-                                "INSERT INTO pr_event_links (from_event_id, to_event_id, link_type) "
-                                "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
-                                (new_from, new_to, ltype),
-                            )
-                            inserted_links += cur.rowcount
-                    counts["event_links"] = inserted_links
+                # pr_events / pr_event_tags / pr_event_links were dropped in the
+                # 2026-03-30 memory-infra migration. Old "events" rows are now
+                # in pr_prompts (written by the CLI hooks). Skip these steps.
 
                 # Migrate embeddings
                 if _table_exists(cur, "embeddings"):

@@ -18,15 +18,17 @@ from core.database import db
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
-# Base template for tagged-context queries — dynamic WHERE clauses are built
-# in get_tagged_context() and appended to this template.
-_SQL_SEARCH_EMBEDDINGS_BASE = (
-    """SELECT ev.id, ev.event_type, ev.source_id, ev.title,
-              ev.phase, ev.feature, ev.session_id,
-              ev.created_at, ev.metadata
-         FROM pr_events ev
+# Base template for tagged-context queries over pr_prompts (replaces pr_events).
+# pr_prompts has no title/feature column; left(prompt,120) serves as title.
+# {where} is injected at call site.
+_SQL_SEARCH_PROMPTS_BASE = (
+    """SELECT p.id, 'prompt' AS event_type, p.source_id,
+              left(p.prompt, 120) AS title,
+              p.phase, p.session_id,
+              p.created_at, p.metadata
+         FROM pr_prompts p
          {where}
-        ORDER BY ev.created_at DESC
+        ORDER BY p.created_at DESC
         LIMIT %s"""
 )
 
@@ -90,45 +92,63 @@ async def get_tagged_context(
     project: str = Query(""),
     phase: Optional[str] = Query(None),
     feature: Optional[str] = Query(None),
-    entity_value_id: Optional[int] = Query(None),
+    tag_id: Optional[str] = Query(None),        # pr_tags UUID — replaces entity_value_id
+    entity_value_id: Optional[int] = Query(None),  # deprecated alias; ignored if tag_id given
     limit: int = Query(20),
     user=Depends(get_optional_user),
 ):
-    """Return events (prompts + commits) filtered by phase, feature, or entity tag.
+    """Return prompts filtered by phase, feature, or tag.
 
     Used by MCP get_tagged_context tool to retrieve structured context for a feature/phase.
+    Queries pr_prompts (replaces old pr_events) and pr_source_tags (replaces pr_event_tags).
     """
     if not db.is_available():
         raise HTTPException(503, "PostgreSQL required")
 
     p = project or settings.active_project or "default"
 
-    filters: list[str] = ["ev.client_id=1", "ev.project=%s"]
+    filters: list[str] = ["p.client_id=1", "p.project=%s"]
     params: list = [p]
 
-    if entity_value_id:
-        # Filter by applied entity tag — join through event_tags
+    effective_tag_id = tag_id
+    if not effective_tag_id and entity_value_id:
+        # Legacy: try to resolve entity_value_id → pr_tags UUID by seq_num / int PK
+        # (mng_entity_values was merged into pr_tags; seq_num may match)
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT id::text FROM pr_tags WHERE client_id=1 AND project=%s AND seq_num=%s LIMIT 1",
+                        (p, entity_value_id),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        effective_tag_id = row[0]
+        except Exception:
+            pass
+
+    if effective_tag_id:
+        # Filter by applied source tag — join through pr_source_tags
         filters.append(
-            "ev.id IN (SELECT event_id FROM pr_event_tags WHERE entity_value_id = %s)"
+            "p.id IN (SELECT prompt_id FROM pr_source_tags WHERE tag_id=%s::uuid AND prompt_id IS NOT NULL)"
         )
-        params.append(entity_value_id)
+        params.append(effective_tag_id)
     else:
         # Filter by phase / feature columns (fast indexed lookup)
         if phase:
-            filters.append(
-                "COALESCE(ev.phase, ev.metadata->>'phase') = %s"
-            )
+            filters.append("p.phase = %s")
             params.append(phase)
         if feature:
+            # feature is stored in metadata JSONB or mng_session_tags (not a direct column)
             filters.append(
-                "COALESCE(ev.feature, ev.metadata->>'feature') = %s"
+                "p.metadata->>'feature' = %s"
             )
             params.append(feature)
 
     where = "WHERE " + " AND ".join(filters)
     params.append(limit)
 
-    sql = _SQL_SEARCH_EMBEDDINGS_BASE.format(where=where)
+    sql = _SQL_SEARCH_PROMPTS_BASE.format(where=where)
 
     try:
         with db.conn() as conn:
@@ -137,11 +157,11 @@ async def get_tagged_context(
                 rows = cur.fetchall()
         events = [
             {
-                "id": r[0], "event_type": r[1], "source_id": r[2],
-                "title": r[3], "phase": r[4], "feature": r[5],
-                "session_id": r[6],
-                "created_at": r[7].isoformat() if r[7] else None,
-                "metadata": r[8] or {},
+                "id": str(r[0]), "event_type": r[1], "source_id": r[2],
+                "title": r[3], "phase": r[4],
+                "session_id": r[5],
+                "created_at": r[6].isoformat() if r[6] else None,
+                "metadata": r[7] or {},
             }
             for r in rows
         ]

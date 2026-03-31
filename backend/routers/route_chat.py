@@ -28,12 +28,8 @@ from memory.mem_sessions import SessionStore
 
 # ── SQL ─────────────────────────────────────────────────────────────────────────
 
-_SQL_INSERT_PROMPT_EVENT = """
-    INSERT INTO pr_events
-           (client_id, project, event_type, source_id, title, content, metadata, created_at)
-       VALUES (1, %s, 'prompt', %s, %s, %s, %s::jsonb, %s::timestamptz)
-       ON CONFLICT (client_id, project, event_type, source_id) DO NOTHING
-"""
+# Removed: _SQL_INSERT_PROMPT_EVENT wrote to pr_events (dropped in memory infra migration).
+# Prompt logging now uses _SQL_INSERT_INTERACTION (pr_prompts) only.
 
 _SQL_INSERT_INTERACTION = """
     INSERT INTO pr_prompts
@@ -49,9 +45,10 @@ _SQL_INSERT_TRANSACTION = """
        VALUES (%s, %s, %s, %s, %s, %s)
 """
 
-_SQL_GET_EVENT_BY_SOURCE = """
-    SELECT id FROM pr_events
+_SQL_GET_PROMPT_BY_SOURCE = """
+    SELECT id::text FROM pr_prompts
     WHERE client_id=1 AND project=%s AND event_type='prompt' AND source_id=%s
+    LIMIT 1
 """
 
 _SQL_GET_SESSION_FEATURE = """
@@ -59,10 +56,10 @@ _SQL_GET_SESSION_FEATURE = """
 """
 
 _SQL_GET_ACTIVE_FEATURES = """
-    SELECT v.name FROM mng_entity_values v
-       JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
-       WHERE v.client_id=1 AND v.project=%s AND c.name='feature' AND v.status='active'
-       ORDER BY v.name
+    SELECT t.name FROM pr_tags t
+       JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
+       WHERE t.client_id=1 AND t.project=%s AND tc.name='feature' AND t.status='active'
+       ORDER BY t.name
 """
 
 _SQL_UPSERT_SESSION_FEATURE = """
@@ -142,16 +139,7 @@ def _append_history(
                      (user_msg or "")[:4000], (response or "")[:8000],
                      phase, meta, ts),
                 )
-                # pr_events — feeds entity tagging + semantic search
-                cur.execute(
-                    _SQL_INSERT_PROMPT_EVENT,
-                    (project, ts, (user_msg or "")[:120],
-                     (user_msg or "")[:2000],
-                     json.dumps({"provider": provider, "source": "ui",
-                                 "user": user_email or user_id,
-                                 "session_id": session_id}),
-                     ts),
-                )
+                # pr_events was removed — pr_prompts is the only log now.
     except Exception:
         pass  # never break chat because of logging
 
@@ -346,11 +334,11 @@ async def _stream_response(
 
 
 async def _auto_suggest_tags_for_event(ts: str, project: str, user_msg: str) -> None:
-    """Look up the event_id by ts then fire auto-tag suggestions. Silent on error."""
+    """Look up the prompt by source_id then apply session tags. Silent on error."""
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_EVENT_BY_SOURCE, (project, ts))
+                cur.execute(_SQL_GET_PROMPT_BY_SOURCE, (project, ts))
                 row = cur.fetchone()
         if row:
             from routers.route_entities import _auto_suggest_tags

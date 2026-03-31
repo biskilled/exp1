@@ -20,17 +20,19 @@ from core.database import db
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
 _SQL_GET_ENTITY_SUMMARY = (
-    """SELECT c.name AS category, c.icon,
-              v.id, v.name, v.description, v.status, v.due_date, v.parent_id,
-              COUNT(DISTINCT et.event_id)                                          AS event_count,
-              COUNT(DISTINCT CASE WHEN ev.event_type='commit' THEN et.event_id END) AS commit_count
-       FROM mng_entity_categories c
-       JOIN mng_entity_values v ON v.category_id = c.id
-       LEFT JOIN pr_event_tags et ON et.entity_value_id = v.id
-       LEFT JOIN pr_events ev ON ev.id = et.event_id AND ev.client_id=1 AND ev.project=%s
-       WHERE c.client_id=1 AND v.project=%s AND v.status != 'archived'
-       GROUP BY c.name, c.icon, v.id, v.name, v.description, v.status, v.due_date, v.parent_id
-       ORDER BY c.name, v.status, COUNT(DISTINCT et.event_id) DESC"""
+    """SELECT tc.name AS category, tc.icon,
+              t.id::text, t.name,
+              COALESCE(tm.description, '') AS description,
+              t.status, tm.due_date, t.parent_id::text,
+              COUNT(DISTINCT st.id)                                          AS event_count,
+              COUNT(DISTINCT CASE WHEN st.commit_id IS NOT NULL THEN st.id END) AS commit_count
+       FROM mng_tags_categories tc
+       JOIN pr_tags t ON t.category_id = tc.id AND t.client_id=1 AND t.project=%s
+       LEFT JOIN pr_tag_meta tm ON tm.tag_id = t.id
+       LEFT JOIN pr_source_tags st ON st.tag_id = t.id
+       WHERE tc.client_id=1 AND t.status != 'archived'
+       GROUP BY tc.name, tc.icon, t.id, t.name, tm.description, t.status, tm.due_date, t.parent_id
+       ORDER BY tc.name, t.status, COUNT(DISTINCT st.id) DESC"""
 )
 
 _SQL_GET_SESSIONS_UNSUMMARIZED = (
@@ -47,10 +49,10 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
          AND i.event_type='prompt'
          AND i.session_id IS NOT NULL
          AND NOT EXISTS (
-             SELECT 1 FROM pr_memory_items m
+             SELECT 1 FROM pr_memory_events m
              WHERE m.client_id=1 AND m.project=i.project
-               AND m.scope='session'
-               AND m.scope_ref=i.session_id
+               AND m.source_type='prompt_batch'
+               AND m.session_id=i.session_id
          )
        GROUP BY i.session_id
        HAVING COUNT(*) >= 3
@@ -58,11 +60,10 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
 )
 
 _SQL_INSERT_MEMORY_ITEM_SESSION = (
-    """INSERT INTO pr_memory_items
-           (client_id, project, scope, scope_ref, content, source_ids,
-            reviewer_score, reviewer_critique)
-       VALUES (1, %s,'session',%s,%s,%s::uuid[],%s,%s)
-       ON CONFLICT DO NOTHING
+    """INSERT INTO pr_memory_events
+           (client_id, project, source_type, source_id, session_id, content, importance)
+       VALUES (1, %s, 'prompt_batch', %s::uuid, %s, %s, %s)
+       ON CONFLICT (client_id, project, source_type, source_id) DO NOTHING
        RETURNING id"""
 )
 
@@ -71,22 +72,29 @@ _SQL_GET_WORK_ITEM_FOR_FEATURE_MEMORY = (
 )
 
 _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
-    """SELECT m.content
-       FROM pr_memory_items m
-       WHERE m.client_id=1 AND m.project=%s AND m.scope='session'
+    """SELECT me.content
+       FROM pr_memory_events me
+       WHERE me.client_id=1 AND me.project=%s
+         AND me.source_type='prompt_batch'
          AND EXISTS (
-             SELECT 1 FROM pr_prompt_tags it
-             WHERE it.work_item_id=%s::uuid
-               AND it.interaction_id = ANY(m.source_ids)
+             SELECT 1 FROM pr_source_tags st
+             JOIN pr_prompts p ON p.id = st.prompt_id
+             WHERE st.tag_id = (
+                 SELECT tag_id FROM pr_work_items WHERE id=%s::uuid AND client_id=1
+             )
+             AND p.session_id = me.session_id
+             AND p.client_id=1
          )
-       ORDER BY m.created_at
+       ORDER BY me.created_at
        LIMIT 10"""
 )
 
 _SQL_INSERT_MEMORY_ITEM_FEATURE = (
-    """INSERT INTO pr_memory_items
-           (client_id, project, scope, scope_ref, content, reviewer_score, reviewer_critique)
-       VALUES (1, %s,'feature',%s,%s,%s,%s)
+    """INSERT INTO pr_memory_events
+           (client_id, project, source_type, source_id, session_id, content, importance)
+       VALUES (1, %s, 'feature_summary', %s::uuid, %s, %s, %s)
+       ON CONFLICT (client_id, project, source_type, source_id) DO UPDATE
+           SET content=EXCLUDED.content, importance=EXCLUDED.importance
        RETURNING id"""
 )
 
@@ -98,7 +106,7 @@ _SQL_GET_FACT_EXTRACTOR_ROLE = (
 )
 
 _SQL_GET_RECENT_MEMORY_ITEMS = (
-    """SELECT id::text, content FROM pr_memory_items
+    """SELECT id::text, content FROM pr_memory_events
        WHERE client_id=1 AND project=%s
        ORDER BY created_at DESC LIMIT 6"""
 )
@@ -131,65 +139,45 @@ _SQL_GET_DISTILLED_FACTS = (
 )
 
 _SQL_GET_DISTILLED_MEMORY_ITEMS = (
-    """SELECT content, scope, scope_ref, created_at FROM pr_memory_items
+    """SELECT content, source_type, session_id, created_at FROM pr_memory_events
        WHERE client_id=1 AND project=%s
        ORDER BY created_at DESC LIMIT 8"""
 )
 
 _SQL_GET_EXISTING_ENTITY_VALUES = (
-    """SELECT id, name FROM mng_entity_values
+    """SELECT id::text, name FROM pr_tags
        WHERE client_id=1 AND project=%s AND status='active'
        ORDER BY name LIMIT 50"""
 )
 
 _SQL_GET_ACTIVE_ENTITY_VALUES_FOR_AUTOTAG = (
-    """SELECT v.id, c.name AS category, v.name
-       FROM mng_entity_values v
-       JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
-       WHERE v.client_id=1 AND v.project=%s AND v.status='active'
-       ORDER BY c.name, v.name"""
+    """SELECT t.id::text, tc.name AS category, t.name
+       FROM pr_tags t
+       JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
+       WHERE t.client_id=1 AND t.project=%s AND t.status='active'
+       ORDER BY tc.name, t.name"""
 )
 
-_SQL_GET_UNTAGGED_EVENTS = (
-    """SELECT e.id, e.event_type, e.title
-       FROM pr_events e
-       WHERE e.client_id=1 AND e.project=%s
-         AND NOT EXISTS (SELECT 1 FROM pr_event_tags et WHERE et.event_id=e.id)
-         {since_filter}
-       ORDER BY e.created_at DESC LIMIT 30"""
-)
-
-_SQL_INSERT_EVENT_TAG = (
-    "INSERT INTO pr_event_tags (event_id, entity_value_id, auto_tagged) "
-    "VALUES (%s,%s,TRUE) ON CONFLICT DO NOTHING"
-)
-
-_SQL_GET_NEW_EVENTS_FOR_RELATIONSHIPS = (
-    """SELECT id, event_type, source_id, title, content, metadata
-       FROM pr_events
-       WHERE client_id=1 AND project=%s {where_clause}
-       ORDER BY created_at DESC LIMIT 50"""
-)
-
-_SQL_INSERT_EVENT_LINK = (
-    "INSERT INTO pr_event_links (from_event_id, to_event_id, link_type) "
-    "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING"
-)
+# Removed: _SQL_GET_UNTAGGED_EVENTS (queried pr_events — dropped)
+# Removed: _SQL_INSERT_EVENT_TAG (inserted into pr_event_tags — dropped)
+# Removed: _SQL_GET_NEW_EVENTS_FOR_RELATIONSHIPS (queried pr_events — dropped)
+# Removed: _SQL_INSERT_EVENT_LINK (inserted into pr_event_links — dropped)
+# Tagging now uses pr_source_tags. Relationship detection and auto-tagging are no-ops.
 
 _SQL_GET_CATEGORIES_FOR_PROJECT = (
-    "SELECT id, name FROM mng_entity_categories WHERE client_id=1 AND project=%s ORDER BY name"
+    "SELECT id, name FROM mng_tags_categories WHERE client_id=1 ORDER BY name"
 )
 
 _SQL_INSERT_ENTITY_VALUE_AUTO = (
-    """INSERT INTO mng_entity_values
-           (client_id, category_id, project, name, description, lifecycle_status, seq_num)
-       VALUES (1, %s, %s, %s, %s, 'idea', %s)
-       ON CONFLICT (client_id, project, category_id, name) DO NOTHING
-       RETURNING id, name"""
+    """INSERT INTO pr_tags
+           (client_id, project, category_id, name, lifecycle, seq_num)
+       VALUES (1, %s, %s, %s, 'idea', %s)
+       ON CONFLICT (client_id, project, name) DO NOTHING
+       RETURNING id::text, name"""
 )
 
 _SQL_GET_RECENT_SESSION_PROMPTS = (
-    """SELECT title, content FROM pr_events
+    """SELECT left(prompt,120), prompt FROM pr_prompts
        WHERE client_id=1 AND project=%s AND event_type='prompt'
          AND created_at > NOW() - INTERVAL '24 hours'
        ORDER BY created_at DESC LIMIT 20"""
@@ -201,9 +189,9 @@ _SQL_GET_EXISTING_BUG_NAMES = (
 
 _SQL_INSERT_BUG_WORK_ITEM = (
     """INSERT INTO pr_work_items
-           (client_id, project, category_name, category_id, name, description,
+           (client_id, project, category_name, name, description,
             status, lifecycle_status, tags, seq_num)
-       VALUES (1, %s, 'bug', %s, %s, %s, 'prereq', 'idea', '{}', %s)
+       VALUES (1, %s, 'bug', %s, %s, 'prereq', 'idea', '{}', %s)
        ON CONFLICT (client_id, project, category_name, name) DO NOTHING
        RETURNING id, name, seq_num"""
 )
@@ -1113,22 +1101,23 @@ async def _summarize_session_memory(project: str) -> int:
                 except Exception:
                     pass
 
-                # Store in memory_items
-                # interaction_ids from ARRAY_AGG may come back as a PG array string
-                # like '{uuid1,uuid2}' — normalise to a proper uuid[] literal
+                # Store in pr_memory_events — use last prompt_id as source_id
                 if isinstance(interaction_ids, str):
                     _raw = interaction_ids.strip('{}')
                     _ids = [x.strip() for x in _raw.split(',') if x.strip()]
                 else:
                     _ids = [str(i) for i in (interaction_ids or [])]
-                source_ids_pg = '{' + ','.join(_ids) + '}'
+                last_prompt_id = _ids[-1] if _ids else None
+                if not last_prompt_id:
+                    continue  # no source_id available, skip
+
+                importance = min(5, max(1, (score + 1) // 2))  # convert 1-10 → 1-5
 
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
                             _SQL_INSERT_MEMORY_ITEM_SESSION,
-                            (project, session_id, final_summary,
-                             source_ids_pg, score, critique or None),
+                            (project, last_prompt_id, session_id, final_summary, importance),
                         )
                         row = cur.fetchone()
                         if row:
@@ -1229,9 +1218,11 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
 
         with db.conn() as conn:
             with conn.cursor() as cur:
+                # source_id = work_item UUID; session_id stores the feature/work-item name
+                importance = min(5, max(1, (score + 1) // 2))
                 cur.execute(
                     _SQL_INSERT_MEMORY_ITEM_FEATURE,
-                    (project, wi_name, final_summary, score, critique or None),
+                    (project, work_item_id, wi_name, final_summary, importance),
                 )
                 row = cur.fetchone()
                 if not row:
@@ -2059,14 +2050,29 @@ async def _ingest_new_commits(project: str, code_dir: str, ingest_commit_fn) -> 
 
 
 async def _sync_and_autotag(project: str, since: str | None = None) -> None:
-    """Sync events then LLM-auto-tag untagged events. Silent on error.
+    """No-op stub — pr_events + pr_event_tags removed. Auto-tagging via pr_source_tags.
 
-    since: ISO timestamp — only auto-tag events created after this time.
+    The new tagging flow is:
+      - session-level: POST /entities/session-tag
+      - per-entry: POST /entities/events/tag-by-source-id
+      - memory batch: _generate_memory_batch() in route_chat.py (future)
+    Only propagates entity tags into embedding metadata (non-destructive).
+    """
+    try:
+        from memory.mem_embeddings import backfill_entity_tags as _bfe
+        await _bfe(project)
+    except Exception:
+        pass
+
+
+async def _REMOVED_sync_and_autotag_LEGACY(project: str, since: str | None = None) -> None:
+    """Legacy code preserved for reference — DO NOT CALL — uses dropped tables.
+
+    TODO: remove this after confirming _sync_and_autotag stub is sufficient.
     """
     _log = logging.getLogger(__name__)
     try:
-        from routers.route_entities import _do_sync_events
-        _do_sync_events(project)
+        pass  # was: _do_sync_events(project)
     except Exception as e:
         _log.debug(f"_sync_and_autotag sync failed: {e}")
         return
@@ -2151,28 +2157,29 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
 
 
 async def _detect_relationships(project: str, since: str | None = None) -> None:
-    """Detect and create relationships between new events. Silent on error.
+    """No-op stub — pr_events + pr_event_links removed. Commit→prompt linking via pr_commits.prompt_id.
 
-    Two strategies:
-    1. Keyword: commit messages containing fix/close/resolve → links to bug events
-    2. LLM: Haiku analyzes batches of new events and suggests semantic relationships
+    Relationship detection will be reimplemented using pr_source_tags in a future iteration.
     """
+    pass
+
+
+async def _REMOVED_detect_relationships_LEGACY(project: str, since: str | None = None) -> None:
+    """Legacy code preserved for reference — DO NOT CALL — uses dropped tables."""
     _log = logging.getLogger(__name__)
     if not db.is_available():
         return
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # Get new events (after since)
                 if since:
                     where_clause = "AND created_at > %s::timestamptz"
                     params: list = [project, since]
                 else:
                     where_clause = ""
                     params = [project]
-                sql_events = _SQL_GET_NEW_EVENTS_FOR_RELATIONSHIPS.format(where_clause=where_clause)
-                cur.execute(sql_events, params)
-                new_events = cur.fetchall()  # (id, type, source_id, title, content, meta)
+                # was: sql_events = _SQL_GET_NEW_EVENTS_FOR_RELATIONSHIPS.format(...)
+                new_events = []  # placeholder
 
                 if not new_events:
                     return
@@ -2405,12 +2412,7 @@ async def auto_detect_bugs(project_name: str):
                 existing_bug_names = {r[0] for r in cur.fetchall()}
 
                 # Bug category id
-                cur.execute(
-                    "SELECT id FROM mng_entity_categories WHERE client_id=1 AND project=%s AND name='bug' LIMIT 1",
-                    (project_name,),
-                )
-                cat_row = cur.fetchone()
-                bug_cat_id = cat_row[0] if cat_row else None
+                # category_name='bug' is hardcoded in _SQL_INSERT_BUG_WORK_ITEM; no id needed.
 
         event_text = "\n".join(
             f"  [{title[:60]}] {(content or '')[:200]}" for title, content in events[:15]
@@ -2466,7 +2468,7 @@ async def auto_detect_bugs(project_name: str):
                         seq = next_seq(cur, project_name, "bug")
                         cur.execute(
                             _SQL_INSERT_BUG_WORK_ITEM,
-                            (project_name, bug_cat_id, name, desc, seq),
+                            (project_name, name, desc, seq),
                         )
                         if cur.fetchone():
                             created += 1

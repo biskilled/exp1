@@ -598,7 +598,7 @@ Before embedding, content is split into meaningful chunks via `backend/memory/me
 
 ## Complete Table Reference
 
-All 27 tables (10 mng_ global + 17 pr_ project-scoped):
+All 27 tables (9 mng_ global + 18 pr_ project-scoped):
 
 ### `mng_` Tables (Global, Client-Scoped)
 

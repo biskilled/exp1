@@ -26,55 +26,28 @@ log = logging.getLogger(__name__)
 
 _SQL_UPSERT_COMMIT = """
     INSERT INTO pr_commits
-            (client_id, project, commit_hash, session_id, commit_msg, committed_at, source)
-        VALUES (1, %s, %s, %s, %s, %s, %s)
+            (client_id, project, commit_hash, session_id, commit_msg, diff_summary, committed_at, source)
+        VALUES (1, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
-            SET session_id  = COALESCE(EXCLUDED.session_id, pr_commits.session_id),
-                commit_msg  = COALESCE(EXCLUDED.commit_msg,  pr_commits.commit_msg),
-                committed_at= COALESCE(EXCLUDED.committed_at,pr_commits.committed_at)
+            SET session_id   = COALESCE(EXCLUDED.session_id,   pr_commits.session_id),
+                commit_msg   = COALESCE(EXCLUDED.commit_msg,   pr_commits.commit_msg),
+                diff_summary = COALESCE(EXCLUDED.diff_summary, pr_commits.diff_summary),
+                committed_at = COALESCE(EXCLUDED.committed_at, pr_commits.committed_at)
 """
 
-_SQL_INSERT_COMMIT_EVENT = """
-    INSERT INTO pr_events (client_id, project, source_id, event_type, metadata)
-        VALUES (1, %s, %s, 'commit', %s::jsonb)
-        ON CONFLICT (client_id, project, event_type, source_id) DO UPDATE
-            SET metadata = pr_events.metadata || EXCLUDED.metadata
-"""
-
-_SQL_INSERT_EVENT_LINK = """
-    INSERT INTO pr_event_links (from_event_id, to_event_id, link_type)
-        SELECT DISTINCT ON (ce.id)
-            ce.id, pe.id, 'triggered_by'
-        FROM pr_events ce
-        JOIN pr_commits c ON c.commit_hash = ce.source_id
-        JOIN pr_events pe ON (
-            pe.metadata->>'session_id' = %s
-            AND pe.event_type = 'prompt'
-            AND pe.source_id ~ %s
-            AND pe.source_id::timestamptz <= c.committed_at
-        )
-        WHERE ce.source_id = %s
-          AND ce.event_type = 'commit'
-          AND c.committed_at IS NOT NULL
-          AND ce.client_id=1 AND ce.project=%s
-          AND pe.client_id=1 AND pe.project=%s
-          AND NOT EXISTS (
-              SELECT 1 FROM pr_event_links el2
-              WHERE el2.from_event_id = ce.id AND el2.link_type = 'triggered_by'
-          )
-        ORDER BY ce.id, pe.source_id DESC
-        ON CONFLICT DO NOTHING
-"""
-
-_SQL_BACKFILL_PROMPT_SOURCE = """
-    UPDATE pr_commits c
-           SET prompt_source_id = pe.source_id
-          FROM pr_events ce
-          JOIN pr_event_links el ON el.from_event_id = ce.id AND el.link_type = 'triggered_by'
-          JOIN pr_events pe ON pe.id = el.to_event_id AND pe.event_type = 'prompt'
-         WHERE ce.source_id = c.commit_hash
-           AND c.commit_hash = %s
-           AND c.prompt_source_id IS NULL
+# Link commit → most-recent prompt in the same session that occurred before the commit.
+# Uses pr_commits.prompt_id (UUID FK to pr_prompts) — replaces the old pr_events/pr_event_links approach.
+_SQL_LINK_COMMIT_TO_PROMPT = """
+    UPDATE pr_commits SET prompt_id = (
+        SELECT p.id FROM pr_prompts p
+        WHERE p.client_id=1 AND p.project=%s
+          AND p.session_id = %s
+          AND p.event_type = 'prompt'
+        ORDER BY p.created_at DESC
+        LIMIT 1
+    )
+    WHERE commit_hash = %s
+      AND prompt_id IS NULL
 """
 
 _SQL_LIST_COMMITS = """
@@ -149,41 +122,30 @@ def _write_commit_log(project_name: str, entry: dict) -> None:
 # ── Commit→prompt linking background task ─────────────────────────────────────
 
 def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
-                          commit_msg: str, committed_at: str) -> None:
-    """Upsert the new commit into commits_{p} and run Phase 5 commit→prompt linking.
+                          commit_msg: str, committed_at: str,
+                          diff_summary: str = "") -> None:
+    """Upsert the new commit into pr_commits and link it to its triggering prompt.
 
-    Called as a background task from commit_and_push so every new commit is
-    immediately linked to its triggering prompt without waiting for an explicit sync.
+    Linking uses pr_commits.prompt_id (UUID FK to pr_prompts) — the most recent
+    prompt in the same session that occurred before the commit timestamp.
+    Called as a background task from commit_and_push.
     """
     if not db.is_available():
         return
     try:
-        from core.database import db as _db
-
-        with _db.conn() as conn:
+        with db.conn() as conn:
             with conn.cursor() as cur:
-                # 1. Upsert the commit into commits table
+                # 1. Upsert the commit (includes diff_summary)
                 cur.execute(
                     _SQL_UPSERT_COMMIT,
-                    (project, commit_hash, session_id, commit_msg,
+                    (project, commit_hash, session_id, commit_msg, diff_summary or None,
                      committed_at or datetime.now(timezone.utc), "commit_push"),
                 )
 
-                # 2. Upsert a commit event so Phase 5 can find it
-                meta = json.dumps({"session_id": session_id}) if session_id else "{}"
-                cur.execute(_SQL_INSERT_COMMIT_EVENT, (project, commit_hash, meta))
-
-                # 3. Phase 5 — link this commit to its triggering prompt
+                # 2. Link commit → last prompt in the session (via prompt_id FK)
                 if session_id:
-                    cur.execute(
-                        _SQL_INSERT_EVENT_LINK,
-                        (session_id, r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}', commit_hash, project, project),
-                    )
-
-                    # 4. Backfill prompt_source_id into commits table
-                    cur.execute(_SQL_BACKFILL_PROMPT_SOURCE, (commit_hash,))
-                    linked = cur.rowcount
-                    if linked:
+                    cur.execute(_SQL_LINK_COMMIT_TO_PROMPT, (project, session_id, commit_hash))
+                    if cur.rowcount:
                         log.info(f"Commit {commit_hash[:8]} linked to prompt (session {session_id[:8]})")
     except Exception as exc:
         log.warning(f"_sync_commit_and_link failed for {commit_hash}: {exc}")
@@ -1053,6 +1015,7 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
             body.session_id or None,
             commit_message,
             datetime.now(timezone.utc).isoformat(),
+            diff_stat or "",   # stored as diff_summary on pr_commits
         )
 
     return {

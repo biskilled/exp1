@@ -43,12 +43,12 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.parent_id, w.acceptance_criteria, w.implementation_plan,
               w.agent_run_id, w.agent_status, w.tags,
               w.created_at, w.updated_at,
-              w.seq_num, w.entity_value_id,
-              ec.color, ec.icon,
-              (SELECT COUNT(*) FROM pr_prompt_tags it
-               WHERE it.work_item_id = w.id) AS interaction_count
+              w.seq_num,
+              tc.color, tc.icon,
+              (SELECT COUNT(*) FROM pr_prompts p
+               WHERE p.work_item_id = w.id) AS interaction_count
        FROM pr_work_items w
-       LEFT JOIN mng_entity_categories ec ON ec.client_id=1 AND ec.project=w.project AND ec.name=w.category_name
+       LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.category_name
        WHERE {where}
        ORDER BY w.created_at DESC
        LIMIT %s"""
@@ -56,10 +56,10 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 
 _SQL_INSERT_WORK_ITEM = (
     """INSERT INTO pr_work_items
-           (client_id, project, category_name, category_id, name, description,
+           (client_id, project, category_name, name, description,
             status, lifecycle_status, due_date, parent_id,
             acceptance_criteria, implementation_plan, tags, seq_num)
-       VALUES (1, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+       VALUES (1, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
        ON CONFLICT (client_id, project, category_name, name) DO NOTHING
        RETURNING id, name, category_name, created_at, seq_num"""
 )
@@ -69,7 +69,7 @@ _SQL_GET_WORK_ITEM = (
               w.status, w.lifecycle_status, w.due_date,
               w.acceptance_criteria, w.implementation_plan,
               w.agent_run_id, w.agent_status, w.tags,
-              w.created_at, w.updated_at, w.seq_num, w.entity_value_id
+              w.created_at, w.updated_at, w.seq_num
        FROM pr_work_items w
        WHERE w.client_id=1 AND w.project=%s AND w.id=%s::uuid"""
 )
@@ -83,22 +83,21 @@ _SQL_GET_WORK_ITEM_BY_SEQ = (
               w.status, w.lifecycle_status, w.due_date,
               w.acceptance_criteria, w.implementation_plan,
               w.agent_run_id, w.agent_status, w.tags,
-              w.created_at, w.updated_at, w.seq_num, w.entity_value_id
+              w.created_at, w.updated_at, w.seq_num
        FROM pr_work_items w
        WHERE w.client_id=1 AND w.project=%s AND w.seq_num=%s
        LIMIT 1"""
 )
 
 _SQL_GET_CATEGORY_ID = (
-    "SELECT id FROM mng_entity_categories WHERE client_id=1 AND project=%s AND name=%s"
+    "SELECT id FROM mng_tags_categories WHERE client_id=1 AND name=%s"
 )
 
 _SQL_GET_INTERACTIONS = (
     """SELECT i.id, i.session_id, i.event_type, i.source_id,
               i.prompt, i.response, i.phase, i.created_at
-       FROM pr_prompt_tags it
-       JOIN pr_prompts i ON i.id = it.interaction_id
-       WHERE it.work_item_id=%s::uuid AND i.client_id=1 AND i.project=%s
+       FROM pr_prompts i
+       WHERE i.work_item_id=%s::uuid AND i.client_id=1 AND i.project=%s
        ORDER BY i.created_at DESC LIMIT %s"""
 )
 
@@ -110,8 +109,8 @@ _SQL_GET_FACTS = (
 )
 
 _SQL_GET_MEMORY_ITEMS = (
-    """SELECT id, scope, scope_ref, content, reviewer_score, created_at
-       FROM pr_memory_items
+    """SELECT id, source_type, source_id::text, content, importance, created_at
+       FROM pr_memory_events
        WHERE {where}
        ORDER BY created_at DESC LIMIT %s"""
 )
@@ -167,36 +166,34 @@ _SQL_INSERT_PIPELINE_FACT = (
 
 _SQL_INSERT_PIPELINE_INTERACTION = (
     """INSERT INTO pr_prompts
-       (id, client_id, project, role, content, source, session_id, work_item_id, created_at)
-       VALUES (%s, 1, %s, 'assistant', %s, 'pipeline', %s, %s::uuid, NOW())"""
+       (id, client_id, project, llm_source, event_type, response, session_id, work_item_id, created_at)
+       VALUES (%s, 1, %s, 'pipeline', 'pipeline', %s, %s, %s::uuid, NOW())"""
 )
 
-_SQL_INSERT_PIPELINE_INTERACTION_TAG = (
-    """INSERT INTO pr_prompt_tags (interaction_id, work_item_id, auto_tagged)
-       VALUES (%s::uuid, %s::uuid, TRUE) ON CONFLICT DO NOTHING"""
-)
+# pr_prompt_tags removed — work_item linkage is via pr_prompts.work_item_id
+_SQL_INSERT_PIPELINE_INTERACTION_TAG = None  # unused after migration
 
 _SQL_PIPELINE_TAGGED_INTERACTIONS = (
-    """SELECT i.role, i.content, i.created_at
+    """SELECT i.event_type, i.response, i.created_at
        FROM pr_prompts i
-       JOIN pr_prompt_tags t ON t.interaction_id = i.id
-       WHERE t.work_item_id = %s::uuid
+       WHERE i.work_item_id = %s::uuid
        ORDER BY i.created_at DESC LIMIT 30"""
 )
 
 _SQL_PIPELINE_TAGGED_COMMITS = (
-    """SELECT c.commit_hash, c.message, c.committed_at
+    """SELECT c.commit_hash, c.commit_msg, c.committed_at
        FROM pr_commits c
-       JOIN pr_event_tags et ON et.event_id = c.id
-       JOIN mng_entity_values ev ON ev.id = et.entity_value_id
-       JOIN pr_work_items wi ON wi.entity_value_id = ev.id
-       WHERE wi.id = %s::uuid
+       WHERE c.client_id=1
+         AND c.session_id IN (
+             SELECT DISTINCT session_id FROM pr_prompts
+             WHERE work_item_id = %s::uuid AND session_id IS NOT NULL
+         )
        ORDER BY c.committed_at DESC LIMIT 10"""
 )
 
 _SQL_PIPELINE_MEMORY_ITEMS = (
-    """SELECT summary FROM pr_memory_items
-       WHERE client_id=1 AND project=%s AND scope_ref=%s
+    """SELECT content FROM pr_memory_events
+       WHERE client_id=1 AND project=%s
        ORDER BY created_at DESC LIMIT 3"""
 )
 
@@ -237,7 +234,7 @@ _SQL_GET_ALL_AGENT_ROLES = (
 )
 
 _SQL_LIST_ENTITY_VALUES_ACTIVE = (
-    """SELECT id, name FROM mng_entity_values
+    """SELECT id::text, name FROM pr_tags
        WHERE client_id=1 AND project=%s AND status='active'
        ORDER BY name LIMIT 50"""
 )
@@ -339,19 +336,12 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
     _require_db()
     p = _project(project or body.project)
 
-    # Resolve category_id from mng_entity_categories if it exists
-    category_id = None
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_CATEGORY_ID, (p, body.category_name))
-            row = cur.fetchone()
-            if row:
-                category_id = row[0]
-
             seq = next_seq(cur, p, body.category_name)
             cur.execute(
                 _SQL_INSERT_WORK_ITEM,
-                (p, body.category_name, category_id, body.name, body.description,
+                (p, body.category_name, body.name, body.description,
                  body.status, body.lifecycle_status, body.due_date or None,
                  body.parent_id or None,
                  body.acceptance_criteria, body.implementation_plan,
@@ -600,7 +590,7 @@ def _build_pipeline_context(
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_PIPELINE_MEMORY_ITEMS, (project, item_id))
+                cur.execute(_SQL_PIPELINE_MEMORY_ITEMS, (project,))
                 mems = cur.fetchall()
         if mems:
             lines += ["", "## Previous Memory Summaries"]
@@ -634,7 +624,7 @@ def _save_pipeline_interaction(
                     _SQL_INSERT_PIPELINE_INTERACTION,
                     (iid, project, content, run_id[:36], item_id),
                 )
-                cur.execute(_SQL_INSERT_PIPELINE_INTERACTION_TAG, (iid, item_id))
+                # work_item_id is set directly on the prompt row — no separate tag table needed
     except Exception as _e:
         log.debug(f"Could not save pipeline interaction: {_e}")
 

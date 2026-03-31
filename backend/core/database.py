@@ -661,6 +661,7 @@ CREATE INDEX IF NOT EXISTS idx_pr_fs_tag ON pr_feature_snapshots(tag_id);
 
 _DDL_MEMORY_INFRA_ALTERS = """
 ALTER TABLE pr_commits ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES pr_prompts(id);
+ALTER TABLE pr_commits ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
 ALTER TABLE pr_work_items ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES pr_tags(id);
 ALTER TABLE pr_project_facts ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
 """

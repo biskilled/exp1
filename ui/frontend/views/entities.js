@@ -105,6 +105,8 @@ export function renderEntities(container) {
   window._plannerCycleLifecycle   = _plannerCycleLifecycle;
   window._plannerDrawerAddLink    = _plannerDrawerAddLink;
   window._plannerDrawerRemoveLink = _plannerDrawerRemoveLink;
+  window._plannerGenerateSnapshot = _plannerGenerateSnapshot;
+  window._plannerDrawerMerge      = _plannerDrawerMerge;
 
   if (!project) {
     document.getElementById('planner-tags-pane').innerHTML =
@@ -232,7 +234,7 @@ const _LIFECYCLE_COLORS = {
 function _lifecycleBadge(lc, valId) {
   const label = lc || 'idea';
   const color = _LIFECYCLE_COLORS[label] || '#95a5a6';
-  return `<span onclick="event.stopPropagation();window._plannerCycleLifecycle(${valId},'${label}')"
+  return `<span onclick="event.stopPropagation();window._plannerCycleLifecycle('${valId}','${label}')"
                 title="Click to advance lifecycle"
                 style="font-size:0.58rem;color:#fff;background:${color};padding:0.1rem 0.4rem;
                        border-radius:10px;white-space:nowrap;cursor:pointer;user-select:none">
@@ -657,7 +659,7 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
     const indent   = depth * 20;
 
     const toggleBtn = hasKids
-      ? `<span onclick="window._plannerToggleExpand(${v.id})"
+      ? `<span onclick="window._plannerToggleExpand('${v.id}')"
                style="cursor:pointer;color:var(--muted);margin-right:3px;display:inline-block;
                       width:14px;text-align:center;font-size:0.72rem;user-select:none;flex-shrink:0"
                title="${expanded ? 'Collapse' : 'Expand'}">${expanded ? '▾' : '▸'}</span>`
@@ -667,7 +669,7 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
       <tr style="border-bottom:1px solid var(--border);opacity:${archived ? '0.45' : '1'};
                  transition:background 0.1s;cursor:pointer"
           data-val-id="${v.id}"
-          onclick="window._plannerOpenDrawer(${catId},${v.id})"
+          onclick="window._plannerOpenDrawer(${catId},'${v.id}')"
           onmouseenter="this.style.background='var(--surface2)'"
           onmouseleave="this.style.background=''">
         <td style="padding:0.5rem 0.5rem 0.5rem ${0.5 + indent/16}rem;
@@ -687,19 +689,19 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
           </span>
         </td>
         <td style="padding:0.5rem 0.4rem;text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
-          <button onclick="window._plannerAddChild(${catId},${v.id})"
+          <button onclick="window._plannerAddChild(${catId},'${v.id}')"
             style="font-size:0.6rem;padding:0.13rem 0.35rem;background:var(--surface2);
                    border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
                    color:var(--text2);font-family:var(--font);outline:none;margin-right:3px"
             title="Add child tag">+▸</button>
           ${_isWorkItemCat(catName) ? `<button
-            onclick="event.stopPropagation();window._plannerOpenDrawer(${catId},${v.id});
+            onclick="event.stopPropagation();window._plannerOpenDrawer(${catId},'${v.id}');
                      setTimeout(()=>window._plannerDrawerRunPipeline('${_esc(catName)}','${_esc(v.name)}','${_esc(_plannerState.project)}'),200)"
             style="font-size:0.6rem;padding:0.13rem 0.35rem;background:var(--accent)18;
                    border:1px solid var(--accent);border-radius:var(--radius);cursor:pointer;
                    color:var(--accent);font-family:var(--font);outline:none;margin-right:3px"
             title="Run AI Pipeline">▶</button>` : ''}
-          <button onclick="window._plannerOpenDrawer(${catId},${v.id})"
+          <button onclick="window._plannerOpenDrawer(${catId},'${v.id}')"
             style="font-size:0.85rem;padding:0.15rem 0.45rem;background:var(--surface2);
                    border:1px solid var(--border);border-radius:var(--radius);
                    cursor:pointer;color:var(--text2);font-family:var(--font);outline:none;
@@ -866,7 +868,7 @@ function _renderDrawer() {
         <div style="display:flex;gap:5px;flex-wrap:wrap">
           ${['active','done','archived'].map(s => `
             <button style="${btnStyle(s)}"
-              onclick="window._plannerDrawerSetStatus(${v.id},'${s}')">
+              onclick="window._plannerDrawerSetStatus('${v.id}','${s}')">
               ${STATUS_LABELS[s]}
             </button>`).join('')}
         </div>
@@ -881,7 +883,7 @@ function _renderDrawer() {
             const col = _LIFECYCLE_COLORS[lc] || '#888';
             const active = (v.lifecycle_status || 'idea') === lc;
             return `<button
-              onclick="window._plannerCycleLifecycle(${v.id},'${(v.lifecycle_status || 'idea')}')"
+              onclick="window._plannerCycleLifecycle('${v.id}','${(v.lifecycle_status || 'idea')}')"
               style="font-size:0.6rem;padding:0.18rem 0.5rem;border-radius:10px;cursor:pointer;
                      font-family:var(--font);outline:none;white-space:nowrap;border:1px solid ${col};
                      background:${active ? col : 'transparent'};color:${active ? '#fff' : col};
@@ -896,7 +898,7 @@ function _renderDrawer() {
         <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                     letter-spacing:.06em;margin-bottom:0.35rem">Remarks / Description</div>
         <textarea id="drawer-desc-ta" rows="3"
-          onblur="window._plannerDrawerSaveRemarks(${v.id},this.value)"
+          onblur="window._plannerDrawerSaveRemarks('${v.id}',this.value)"
           style="width:100%;background:var(--bg);border:1px solid var(--border);
                  color:var(--text);font-family:var(--font);font-size:0.68rem;
                  padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
@@ -908,7 +910,7 @@ function _renderDrawer() {
         <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                     letter-spacing:.06em;margin-bottom:0.35rem">Due Date</div>
         <input type="date" value="${_esc(due)}"
-          onchange="window._plannerDrawerSaveDue(${v.id},this.value)"
+          onchange="window._plannerDrawerSaveDue('${v.id}',this.value)"
           style="background:var(--bg);border:1px solid var(--border);color:var(--text);
                  font-family:var(--font);font-size:0.68rem;padding:0.25rem 0.4rem;
                  border-radius:var(--radius);outline:none;width:100%;box-sizing:border-box" />
@@ -930,7 +932,7 @@ function _renderDrawer() {
           <datalist id="drawer-link-datalist">
             ${getCacheValues(catId).map(vv => `<option value="${_esc(vv.name)}"></option>`).join('')}
           </datalist>
-          <button onclick="window._plannerDrawerAddLink(${v.id},${catId})"
+          <button onclick="window._plannerDrawerAddLink('${v.id}',${catId})"
             style="background:var(--accent);border:none;color:#fff;font-size:0.6rem;
                    padding:0.2rem 0.5rem;border-radius:var(--radius);cursor:pointer;
                    font-family:var(--font);outline:none;white-space:nowrap">+ Link</button>
@@ -960,17 +962,55 @@ function _renderDrawer() {
         </div>
       </div>` : ''}
 
+      <!-- Snapshot -->
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">Memory Snapshot</div>
+        <div style="display:flex;gap:5px;align-items:center">
+          <button id="drawer-snapshot-btn"
+            onclick="window._plannerGenerateSnapshot('${_esc(v.name)}','${_esc(_plannerState.project)}')"
+            style="font-size:0.62rem;padding:0.22rem 0.6rem;background:var(--accent)18;
+                   border:1px solid var(--accent);border-radius:var(--radius);cursor:pointer;
+                   color:var(--accent);font-family:var(--font);outline:none;white-space:nowrap">
+            ◈ Generate Snapshot
+          </button>
+          <span id="drawer-snapshot-msg" style="font-size:0.58rem;color:var(--muted)"></span>
+        </div>
+      </div>
+
+      <!-- Merge -->
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">Merge Into…</div>
+        <div style="display:flex;gap:5px">
+          <input id="drawer-merge-inp" type="text" placeholder="Target tag name…"
+            list="drawer-merge-datalist"
+            style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+                   font-family:var(--font);font-size:0.65rem;padding:0.22rem 0.45rem;
+                   border-radius:var(--radius);outline:none" />
+          <datalist id="drawer-merge-datalist">
+            ${getCacheValues(catId).filter(vv => vv.id !== v.id).map(vv => `<option value="${_esc(vv.name)}"></option>`).join('')}
+          </datalist>
+          <button onclick="window._plannerDrawerMerge('${_esc(v.name)}','${_esc(_plannerState.project)}')"
+            style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);
+                   font-size:0.6rem;padding:0.22rem 0.55rem;border-radius:var(--radius);
+                   cursor:pointer;font-family:var(--font);outline:none;white-space:nowrap">
+            → Merge</button>
+        </div>
+        <div id="drawer-merge-msg" style="font-size:0.6rem;color:var(--muted);margin-top:0.2rem;min-height:0.8rem"></div>
+      </div>
+
       <!-- Add sub-tag -->
       <div style="border-top:1px solid var(--border);padding-top:0.75rem">
         <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                     letter-spacing:.06em;margin-bottom:0.35rem">Add Sub-tag</div>
         <div style="display:flex;gap:5px">
           <input id="drawer-child-inp" type="text" placeholder="Sub-tag name…"
-            onkeydown="if(event.key==='Enter')window._plannerDrawerAddChild(${catId},${v.id})"
+            onkeydown="if(event.key==='Enter')window._plannerDrawerAddChild(${catId},'${v.id}')"
             style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
                    font-family:var(--font);font-size:0.68rem;padding:0.22rem 0.45rem;
                    border-radius:var(--radius);outline:none" />
-          <button onclick="window._plannerDrawerAddChild(${catId},${v.id})"
+          <button onclick="window._plannerDrawerAddChild(${catId},'${v.id}')"
             style="background:var(--accent);border:none;color:#fff;font-size:0.62rem;
                    padding:0.22rem 0.55rem;border-radius:var(--radius);cursor:pointer;
                    font-family:var(--font);outline:none;white-space:nowrap">+ Add</button>
@@ -980,7 +1020,7 @@ function _renderDrawer() {
 
       <!-- Danger zone -->
       <div style="border-top:1px solid var(--border);padding-top:0.75rem">
-        <button onclick="window._plannerDeleteVal(${v.id})"
+        <button onclick="window._plannerDeleteVal('${v.id}')"
           style="background:none;border:1px solid var(--red,#e74c3c);color:var(--red,#e74c3c);
                  font-size:0.62rem;padding:0.22rem 0.6rem;border-radius:var(--radius);
                  cursor:pointer;font-family:var(--font);outline:none;
@@ -1124,6 +1164,47 @@ window._plannerDrawerRunPipeline = async (catName, valName, project) => {
   }
 };
 
+async function _plannerGenerateSnapshot(tagName, project) {
+  const btn = document.getElementById('drawer-snapshot-btn');
+  const msg = document.getElementById('drawer-snapshot-msg');
+  if (!btn || !project) return;
+  btn.disabled = true;
+  btn.textContent = '… Generating';
+  if (msg) msg.textContent = '';
+  try {
+    const res = await fetch(
+      (window._serverUrl || 'http://localhost:8000') + `/projects/${encodeURIComponent(project)}/snapshot/${encodeURIComponent(tagName)}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...(window._authHeaders ? window._authHeaders() : {}) } }
+    );
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || res.statusText); }
+    if (msg) { msg.textContent = '✓ Snapshot ready'; msg.style.color = 'var(--green, #27ae60)'; }
+    toast('Snapshot generated for "' + tagName + '"', 'success');
+  } catch (e) {
+    if (msg) { msg.textContent = '✗ ' + e.message; msg.style.color = 'var(--red, #e74c3c)'; }
+    toast('Snapshot error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '◈ Generate Snapshot';
+  }
+}
+
+async function _plannerDrawerMerge(fromName, project) {
+  const inp = document.getElementById('drawer-merge-inp');
+  const msg = document.getElementById('drawer-merge-msg');
+  const intoName = (inp?.value || '').trim();
+  if (!intoName) { if (msg) msg.textContent = 'Enter target tag name'; return; }
+  if (!confirm(`Merge "${fromName}" into "${intoName}"? This moves all sources to the target and marks ${fromName} as merged.`)) return;
+  if (msg) msg.textContent = '…';
+  try {
+    await api.tags.merge({ project, from_name: fromName, into_name: intoName });
+    toast(`Merged "${fromName}" → "${intoName}"`, 'success');
+    await _plannerSync();
+  } catch (e) {
+    if (msg) msg.textContent = '✗ ' + e.message;
+    toast('Merge error: ' + e.message, 'error');
+  }
+}
+
 async function _plannerDeleteVal(valId) {
   if (!confirm('Delete this tag (and all its children + event links)?')) return;
   getCacheDescendants(valId).forEach(d => removeCachedValue(d.id));
@@ -1142,7 +1223,7 @@ async function _plannerSaveNewTag() {
   const name    = (inp?.value || '').trim();
   if (!name) { toast('Name required', 'error'); return; }
   const catId   = row ? parseInt(row.dataset.catId, 10) : _plannerState.selectedCat;
-  const parentId = row?.dataset.parentId ? parseInt(row.dataset.parentId, 10) : null;
+  const parentId = row?.dataset.parentId || null;  // UUID string or null
   const { project } = _plannerState;
   try {
     const result = await api.entities.createValue({ category_id: catId, name, project, parent_id: parentId });
@@ -1242,7 +1323,7 @@ function _renderLinkChips(fromValId, links) {
                  border:1px solid ${lk.color || 'var(--accent)'}44;
                  padding:0.1rem 0.35rem;border-radius:10px">
       ${_esc(lk.name)}
-      <span onclick="window._plannerDrawerRemoveLink(${fromValId},${lk.to_value_id})"
+      <span onclick="window._plannerDrawerRemoveLink('${fromValId}','${lk.to_value_id}')"
             style="cursor:pointer;color:var(--muted);font-size:0.75rem;margin-left:1px">×</span>
     </span>`).join('');
 }

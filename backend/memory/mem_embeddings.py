@@ -91,18 +91,18 @@ _SQL_GET_NODE_OUTPUTS = (
 _SQL_BACKFILL_ENTITY_TAGS = """
     UPDATE pr_embeddings e
     SET metadata = e.metadata || jsonb_build_object('entity_tags',
-        (SELECT jsonb_agg(jsonb_build_object('id', v.id, 'name', v.name, 'category', c.name))
-         FROM pr_events ev
-         JOIN pr_event_tags et ON et.event_id = ev.id
-         JOIN mng_entity_values v  ON v.id = et.entity_value_id AND v.client_id=1
-         JOIN mng_entity_categories c ON c.id = v.category_id AND c.client_id=1
-         WHERE ev.client_id=1 AND ev.project=%s AND ev.source_id = e.source_id)
+        (SELECT jsonb_agg(jsonb_build_object('id', t.id::text, 'name', t.name, 'category', tc.name))
+         FROM pr_prompts pr
+         JOIN pr_source_tags st ON st.prompt_id = pr.id
+         JOIN pr_tags t  ON t.id  = st.tag_id AND t.client_id=1
+         JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
+         WHERE pr.client_id=1 AND pr.project=%s AND pr.source_id = e.source_id)
     )
     WHERE e.client_id=1 AND e.project=%s
       AND EXISTS (
-          SELECT 1 FROM pr_events ev
-          JOIN pr_event_tags et ON et.event_id = ev.id
-          WHERE ev.client_id=1 AND ev.project=%s AND ev.source_id = e.source_id
+          SELECT 1 FROM pr_prompts pr
+          JOIN pr_source_tags st ON st.prompt_id = pr.id
+          WHERE pr.client_id=1 AND pr.project=%s AND pr.source_id = e.source_id
       )
 """
 

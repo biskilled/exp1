@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-30 16:52 UTC — do not edit manually.
+> Auto-generated 2026-03-31 12:47 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 296
-- **Last active**: 2026-03-30T16:52:31Z
+- **Sessions**: 297
+- **Last active**: 2026-03-30T16:59:17Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -162,6 +162,13 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-30 17:12]** `claude_cli/claude`  
+→ I think the sujjestion tagging is missing now (it used to be prevously ) - when user run /memeoy it is also checking onl
+
+**[2026-03-30 16:53]** `claude_cli/claude`  
+→ yes, continue with data migration 
+← _Now verify a clean backend restart works with no errors:_
+
 **[2026-03-30 16:49]** `claude_cli/claude`  
 → Is all table strucure is implemeted properly ? I dont see the table strucure ? 
 ← _All 9 new memory infra tables are now created. Here's the summary:  **✅ New tables (9/9 created):** - `mng_tags_categories` — global tag categories - `pr_tags` — per-project tag hierarchy - `pr_tag_me_
@@ -212,11 +219,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-28 02:13]** `claude_cli/claude`  
 → Can you please rewrite aicli_memory.md. make sure all flows are exatly as they are. all prompts are writeen clear for ea
 ← _This is a significant research task — I need to read every prompt and understand every table before rewriting. Let me do that thoroughly first._
-
-**[2026-03-28 02:02]** `claude_cli/claude`  
-→ I would embedding to be connected to the tagging. for example auth - will be meta data of all authentication prompts.. m
-← _Now update `aicli_memory.md` to document this properly and answer the user's questions:_
-
-**[2026-03-28 01:48]** `claude_cli/claude`  
-→ I would like to understand more about the embedigng and chunk methods. I do understand it is happend only when using /me
-← _Now I have the full picture. Let me give you a complete and accurate answer.  ---  ## Embedding and Chunking — Full Explanation  ### 1. Is embedding only triggered by `/memory`?  **No** — there are 4 _
