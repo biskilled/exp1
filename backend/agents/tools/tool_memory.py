@@ -2,8 +2,8 @@
 tool_memory.py — Agent tools for reading project memory and history.
 
 Provides direct DB/filesystem access (no HTTP round-trip) for:
-  - search_memory: cosine similarity over pr_embeddings + text search in pr_events
-  - get_recent_history: latest prompts from pr_prompts
+  - search_memory: cosine similarity over mem_ai_events + text search in pr_events
+  - get_recent_history: latest prompts from mem_mrr_prompts
   - get_project_facts: reads project_state.json durable facts
 
 These tools are assigned to research-oriented roles (PM, Architect, Reviewer)
@@ -89,10 +89,10 @@ def _handle_search_memory(args: dict) -> str:
         if db.is_available():
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Text search in pr_memory_events (interaction search)
+                    # Text search in mem_ai_events (interaction search)
                     cur.execute(
                         """SELECT me.source_type, me.content, me.created_at
-                           FROM pr_memory_events me
+                           FROM mem_ai_events me
                            WHERE me.client_id=1 AND me.project=%s
                              AND me.content ILIKE %s
                            ORDER BY me.created_at DESC
@@ -104,11 +104,11 @@ def _handle_search_memory(args: dict) -> str:
                         ts = row[2].strftime("%Y-%m-%d") if row[2] else "?"
                         results.append(f"[{ts}] memory({row[0]}): {(row[1] or '')[:300]}")
 
-                    # Fallback to pr_prompts if memory_events empty
+                    # Fallback to mem_mrr_prompts if memory_events empty
                     if not rows:
                         cur.execute(
                             """SELECT 'prompt' AS source, prompt, created_at
-                               FROM pr_prompts
+                               FROM mem_mrr_prompts
                                WHERE client_id=1 AND project=%s
                                  AND prompt ILIKE %s
                                ORDER BY created_at DESC
@@ -168,9 +168,9 @@ def _handle_get_recent_history(args: dict) -> str:
                     if feature:
                         cur.execute(
                             """SELECT p.prompt, p.response, p.created_at
-                               FROM pr_prompts p
-                               JOIN pr_source_tags st ON st.prompt_id = p.id
-                               JOIN pr_tags t ON t.id = st.tag_id
+                               FROM mem_mrr_prompts p
+                               JOIN mem_mrr_tags st ON st.prompt_id = p.id
+                               JOIN planner_tags t ON t.id = st.tag_id
                                WHERE p.client_id=1 AND p.project=%s AND t.name ILIKE %s
                                ORDER BY p.created_at DESC LIMIT %s""",
                             (project, f"%{feature}%", limit),
@@ -178,7 +178,7 @@ def _handle_get_recent_history(args: dict) -> str:
                     else:
                         cur.execute(
                             """SELECT prompt, response, created_at
-                               FROM pr_prompts
+                               FROM mem_mrr_prompts
                                WHERE client_id=1 AND project=%s
                                ORDER BY created_at DESC LIMIT %s""",
                             (project, limit),

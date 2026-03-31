@@ -1,0 +1,114 @@
+# Memory Pipeline Prompts
+# DB (mng_system_roles) is runtime truth — editable from Roles tab UI.
+# This YAML is admin management format, re-seeded on server restart (ON CONFLICT DO NOTHING).
+
+- name: commit_digest
+  category: memory
+  description: "Digest a git commit into 1-2 sentences"
+  content: |
+    Given a git commit message and diff summary, produce a 1-2 sentence digest capturing what changed and why.
+    Return plain text only, no preamble.
+
+- name: prompt_batch_digest
+  category: memory
+  description: "Digest N prompt/response pairs into 1-2 sentences"
+  content: |
+    Given N sequential prompt/response pairs, extract a 1-2 sentence digest capturing what was decided, built, or discovered.
+    Return plain text only, no preamble.
+
+- name: item_digest
+  category: memory
+  description: "Summarise a document item in 1-2 sentences"
+  content: |
+    Summarise this document (requirement, decision, or note) in 1-2 sentences.
+    Return plain text only.
+
+- name: meeting_sections
+  category: memory
+  description: "Split a meeting transcript into named sections"
+  content: |
+    Split this meeting transcript or notes into named sections (key topics discussed).
+    Return JSON: [{"title": "section name", "content": "section text"}]
+    No preamble, no explanation — just the JSON array.
+
+- name: message_chunk_digest
+  category: memory
+  description: "Summarise a message thread chunk in 1-2 sentences"
+  content: |
+    Summarise this message thread chunk in 1-2 sentences capturing the key discussion points.
+    Return plain text only.
+
+- name: ai_tag_suggestion
+  category: memory
+  description: "Suggest the best matching tag for a content snippet"
+  content: |
+    Given a content snippet and a list of existing project tags, suggest the best matching tag.
+    If none of the existing tags fit well, propose a concise new tag name.
+    Return JSON only: {"tag": "tag-name", "is_new": true|false, "reasoning": "one sentence"}
+    No preamble, no markdown fences.
+
+- name: session_summary
+  category: memory
+  description: "Summarise a development session in 3-8 bullets"
+  content: |
+    Summarize this development session — focus on decisions made and code changes (3-8 bullet points).
+    Return plain text only.
+
+- name: session_review
+  category: memory
+  description: "Rate a session summary 1-10 and provide an improved version"
+  content: |
+    Rate this session summary 1-10 for completeness and accuracy.
+    Return ONLY valid JSON: {"score": N, "critique": "...", "improved_summary": "..."}
+
+- name: memory_synthesis
+  category: memory
+  description: "Synthesise project context into MEMORY.md digest"
+  content: |
+    You are a technical memory synthesizer. Given the project context below, produce a concise developer digest (MEMORY.md format).
+    Focus on: architecture decisions, active features, recent changes, known issues, and next steps.
+    Be specific and actionable. Use markdown with clear sections.
+
+- name: feature_snapshot
+  category: memory
+  description: "Generate a 4-layer feature snapshot from memory events"
+  content: |
+    Given the following memory events for a feature, produce a 4-layer snapshot.
+    Return valid JSON with keys:
+      requirements (str): what the feature must do
+      action_items (str): remaining work items
+      design (object): {high_level, low_level, patterns_used}
+      code_summary (object): {files, key_classes, key_methods, dependencies_added, dependencies_removed}
+    Base your answer only on the provided evidence.
+
+# Legacy aliases (kept for backward compatibility with existing DB queries)
+- name: memory_batch_digest
+  category: memory
+  description: "Alias for prompt_batch_digest"
+  content: |
+    Given N sequential prompt/response pairs, extract a 1-2 sentence digest capturing what was decided, built, or discovered.
+    Return plain text only, no preamble.
+
+- name: memory_session_summary
+  category: memory
+  description: "Alias for session_summary"
+  content: |
+    Summarize this development session — focus on decisions made and code changes (3-8 bullet points).
+    Return plain text only.
+
+- name: memory_session_review
+  category: memory
+  description: "Alias for session_review"
+  content: |
+    Rate this session summary 1-10 for completeness and accuracy.
+    Return ONLY valid JSON: {"score": N, "critique": "...", "improved_summary": "..."}
+
+- name: memory_feature_snapshot
+  category: memory
+  description: "Alias for feature_snapshot"
+  content: |
+    Given the following memory events for a feature, produce a 4-layer snapshot.
+    Return valid JSON with keys: requirements (str), action_items (str),
+    design ({high_level, low_level, patterns_used}),
+    code_summary ({files, key_classes, key_methods, dependencies_added, dependencies_removed}).
+    Base your answer only on the provided evidence.

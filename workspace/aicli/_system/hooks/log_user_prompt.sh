@@ -53,26 +53,67 @@ if [ -z "$PROMPT_TEXT" ]; then
     exit 0
 fi
 
-# ── Write to unified history.jsonl ────────────────────────────────────────────
-HIST_DIR="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system"
-HIST_FILE="${HIST_DIR}/history.jsonl"
-mkdir -p "$HIST_DIR"
+BACKEND_URL=$(python3 -c "
+import yaml, sys, os
+config = os.path.join(sys.argv[1], 'aicli.yaml')
+try:
+    d = yaml.safe_load(open(config)) or {}
+    print(d.get('backend_url', 'http://localhost:8000').rstrip('/'))
+except:
+    print('http://localhost:8000')
+" "$WORK_DIR" 2>/dev/null || echo "http://localhost:8000")
 
+WORKSPACE_DIR=$(python3 -c "
+import yaml, sys, os
+config = os.path.join(sys.argv[1], 'aicli.yaml')
+try:
+    d = yaml.safe_load(open(config)) or {}
+    print(d.get('workspace_dir', ''))
+except:
+    print('')
+" "$WORK_DIR" 2>/dev/null || echo "")
+
+if [ -z "$WORKSPACE_DIR" ]; then
+    WORKSPACE_DIR="$WORK_DIR/workspace"
+fi
+
+# ── Read session context tags from .agent-context ─────────────────────────────
+CONTEXT_TAGS=$(python3 -c "
+import json, sys, os
+ctx_file = os.path.join(sys.argv[1], sys.argv[2], '_system', '.agent-context')
+try:
+    d = json.loads(open(ctx_file).read())
+    print(json.dumps(d.get('tags', {})))
+except:
+    print('{}')
+" "$WORKSPACE_DIR" "$ACTIVE_PROJECT" 2>/dev/null || echo "{}")
+
+# ── Write prompt to DB via backend (primary) ──────────────────────────────────
 python3 -c "
-import json, sys
+import json, sys, urllib.request, urllib.error
 
-entry = {
-    'ts': '$TIMESTAMP',
-    'source': 'claude_cli',
-    'session_id': '$SESSION',
-    'provider': 'claude',
-    'user_input': sys.argv[1],
-    'output': '',
-    'user': None,
-    'feature': None,
-    'tags': [],
-}
-print(json.dumps(entry))
-" "$PROMPT_TEXT" >> "$HIST_FILE" 2>/dev/null
+context_tags = json.loads(sys.argv[6])
+
+payload = json.dumps({
+    'ts':             sys.argv[1],
+    'session_id':     sys.argv[2],
+    'session_src_id': sys.argv[2],
+    'prompt':         sys.argv[3],
+    'source':         'claude_cli',
+    'provider':       'claude',
+    'context_tags':   context_tags,
+}).encode()
+
+req = urllib.request.Request(
+    sys.argv[4] + '/chat/' + sys.argv[5] + '/hook-log',
+    data=payload,
+    headers={'Content-Type': 'application/json'},
+    method='POST',
+)
+try:
+    urllib.request.urlopen(req, timeout=3)
+except Exception:
+    pass  # backend unavailable — no JSONL fallback needed; /memory will still run
+" "$TIMESTAMP" "$SESSION" "$PROMPT_TEXT" "$BACKEND_URL" "$ACTIVE_PROJECT" "$CONTEXT_TAGS" 2>/dev/null
 
 exit 0

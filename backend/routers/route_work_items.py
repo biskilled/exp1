@@ -45,7 +45,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.created_at, w.updated_at,
               w.seq_num,
               tc.color, tc.icon,
-              (SELECT COUNT(*) FROM pr_prompts p
+              (SELECT COUNT(*) FROM mem_mrr_prompts p
                WHERE p.work_item_id = w.id) AS interaction_count
        FROM pr_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.category_name
@@ -96,7 +96,7 @@ _SQL_GET_CATEGORY_ID = (
 _SQL_GET_INTERACTIONS = (
     """SELECT i.id, i.session_id, i.event_type, i.source_id,
               i.prompt, i.response, i.phase, i.created_at
-       FROM pr_prompts i
+       FROM mem_mrr_prompts i
        WHERE i.work_item_id=%s::uuid AND i.client_id=1 AND i.project=%s
        ORDER BY i.created_at DESC LIMIT %s"""
 )
@@ -110,7 +110,7 @@ _SQL_GET_FACTS = (
 
 _SQL_GET_MEMORY_ITEMS = (
     """SELECT id, source_type, source_id::text, content, importance, created_at
-       FROM pr_memory_events
+       FROM mem_ai_events
        WHERE {where}
        ORDER BY created_at DESC LIMIT %s"""
 )
@@ -165,34 +165,34 @@ _SQL_INSERT_PIPELINE_FACT = (
 )
 
 _SQL_INSERT_PIPELINE_INTERACTION = (
-    """INSERT INTO pr_prompts
+    """INSERT INTO mem_mrr_prompts
        (id, client_id, project, llm_source, event_type, response, session_id, work_item_id, created_at)
        VALUES (%s, 1, %s, 'pipeline', 'pipeline', %s, %s, %s::uuid, NOW())"""
 )
 
-# pr_prompt_tags removed — work_item linkage is via pr_prompts.work_item_id
+# pr_prompt_tags removed — work_item linkage is via mem_mrr_prompts.work_item_id
 _SQL_INSERT_PIPELINE_INTERACTION_TAG = None  # unused after migration
 
 _SQL_PIPELINE_TAGGED_INTERACTIONS = (
     """SELECT i.event_type, i.response, i.created_at
-       FROM pr_prompts i
+       FROM mem_mrr_prompts i
        WHERE i.work_item_id = %s::uuid
        ORDER BY i.created_at DESC LIMIT 30"""
 )
 
 _SQL_PIPELINE_TAGGED_COMMITS = (
     """SELECT c.commit_hash, c.commit_msg, c.committed_at
-       FROM pr_commits c
+       FROM mem_mrr_commits c
        WHERE c.client_id=1
          AND c.session_id IN (
-             SELECT DISTINCT session_id FROM pr_prompts
+             SELECT DISTINCT session_id FROM mem_mrr_prompts
              WHERE work_item_id = %s::uuid AND session_id IS NOT NULL
          )
        ORDER BY c.committed_at DESC LIMIT 10"""
 )
 
 _SQL_PIPELINE_MEMORY_ITEMS = (
-    """SELECT content FROM pr_memory_events
+    """SELECT content FROM mem_ai_events
        WHERE client_id=1 AND project=%s
        ORDER BY created_at DESC LIMIT 3"""
 )
@@ -234,7 +234,7 @@ _SQL_GET_ALL_AGENT_ROLES = (
 )
 
 _SQL_LIST_ENTITY_VALUES_ACTIVE = (
-    """SELECT id::text, name FROM pr_tags
+    """SELECT id::text, name FROM planner_tags
        WHERE client_id=1 AND project=%s AND status='active'
        ORDER BY name LIMIT 50"""
 )
@@ -605,7 +605,7 @@ def _build_pipeline_context(
 def _save_pipeline_interaction(
     project: str, item_id: str, run_id: str, item_name: str, ac: str, reviewer_out: str
 ) -> None:
-    """Save the pipeline run as a prompt in pr_prompts + tag it to the work item."""
+    """Save the pipeline run as a prompt in mem_mrr_prompts + tag it to the work item."""
     if not db.is_available():
         return
     summary = f"Pipeline run for: {item_name}"

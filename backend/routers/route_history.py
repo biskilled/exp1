@@ -28,26 +28,26 @@ _SQL_LIST_COMMITS = """
     SELECT id, commit_hash, commit_msg, summary, phase,
            feature, bug_ref, source, session_id, prompt_source_id,
            tags, committed_at
-    FROM pr_commits
+    FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s
     ORDER BY committed_at DESC NULLS LAST, id DESC
     LIMIT %s
 """
 
 _SQL_UPSERT_COMMIT_FROM_LOG = """
-    INSERT INTO pr_commits
+    INSERT INTO mem_mrr_commits
         (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
     VALUES (1, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (commit_hash) DO UPDATE SET
         session_id = CASE
             WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
             THEN EXCLUDED.session_id
-            ELSE pr_commits.session_id
+            ELSE mem_mrr_commits.session_id
         END
 """
 
 _SQL_UPDATE_COMMIT_META = (
-    "UPDATE pr_commits SET {set_clause} WHERE id = %s AND client_id=1 RETURNING id"
+    "UPDATE mem_mrr_commits SET {set_clause} WHERE id = %s AND client_id=1 RETURNING id"
 )
 
 # Dynamic WHERE variant: add time-window filter when session timestamps are available.
@@ -55,14 +55,14 @@ _SQL_UPDATE_COMMIT_META = (
 # Build dynamically in the handler; see session_commits() below.
 _SQL_SESSION_COMMITS_BASE = """
     SELECT commit_hash, commit_msg, phase, feature, source, committed_at
-          FROM pr_commits
+          FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s AND session_id = %s
          ORDER BY committed_at
 """
 
 _SQL_SESSION_COMMITS_WITH_WINDOW = """
     SELECT commit_hash, commit_msg, phase, feature, source, committed_at
-          FROM pr_commits
+          FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s
            AND (session_id = %s
             OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz))
@@ -206,7 +206,7 @@ async def chat_history(
     offset: int = Query(0),
     current_user: Optional[dict] = Depends(get_optional_user),
 ):
-    """Return unified project history from pr_prompts (DB-primary).
+    """Return unified project history from mem_mrr_prompts (DB-primary).
 
     Falls back to history.jsonl when DB is unavailable.
     Noise entries are filtered. Returns newest-first with pagination.
@@ -227,7 +227,7 @@ async def chat_history(
                     provider_arg    = (provider,) if provider else ()
 
                     cur.execute(
-                        f"""SELECT COUNT(*) FROM pr_prompts
+                        f"""SELECT COUNT(*) FROM mem_mrr_prompts
                             WHERE client_id=1 AND project=%s
                               AND event_type='prompt'
                               AND prompt IS NOT NULL AND prompt != ''
@@ -239,7 +239,7 @@ async def chat_history(
                     cur.execute(
                         f"""SELECT source_id, session_id, llm_source, prompt,
                                    response, phase, tags, metadata, created_at
-                            FROM pr_prompts
+                            FROM mem_mrr_prompts
                             WHERE client_id=1 AND project=%s
                               AND event_type='prompt'
                               AND prompt IS NOT NULL AND prompt != ''

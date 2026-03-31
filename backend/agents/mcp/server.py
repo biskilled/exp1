@@ -23,7 +23,7 @@ Tools:
 Database naming convention:
     mng_TABLE  — global/shared tables (users, billing, entity categories, agent roles, etc.)
     pr_TABLE   — flat per-project tables with client_id=1 AND project=<name> filters
-                 (e.g. pr_commits, pr_events, pr_embeddings, pr_work_items)
+                 (e.g. mem_mrr_commits, pr_events, mem_ai_events, pr_work_items)
 """
 from __future__ import annotations
 
@@ -711,7 +711,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                 },
             },
             "per_project_tables": {
-                "pr_commits": {
+                "mem_mrr_commits": {
                     "purpose": "Git commits linked to sessions and prompts",
                     "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT",
                                     "commit_hash VARCHAR(40) UNIQUE", "commit_msg TEXT",
@@ -726,7 +726,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                                     "UNIQUE(client_id, project, event_type, source_id)"],
                     "filter": "WHERE client_id=1 AND project=%s",
                 },
-                "pr_embeddings": {
+                "mem_ai_events": {
                     "purpose": "Smart-chunked embeddings for semantic search (pgvector)",
                     "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT",
                                     "source_type VARCHAR(50)", "source_id VARCHAR(255)",
@@ -789,7 +789,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                                     "UNIQUE(client_id, project, category_name, name)"],
                     "filter": "WHERE client_id=1 AND project=%s",
                 },
-                "pr_prompts": {
+                "mem_mrr_prompts": {
                     "purpose": "Unified prompt/response log (distilled memory source)",
                     "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
                                     "work_item_id FK→pr_work_items", "session_id TEXT",
@@ -799,7 +799,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                 },
                 "pr_prompt_tags": {
                     "purpose": "Links prompts to work items (junction table)",
-                    "key_columns": ["interaction_id UUID FK→pr_prompts",
+                    "key_columns": ["interaction_id UUID FK→mem_mrr_prompts",
                                     "work_item_id UUID FK→pr_work_items",
                                     "auto_tagged BOOLEAN", "PK(interaction_id, work_item_id)"],
                 },

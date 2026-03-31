@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-30 16:52 UTC by aicli /memory_
+_Generated: 2026-03-31 15:37 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform enabling Claude CLI and other LLM platforms to access persistent work context across sessions through a hierarchical data model (Clients → Users → Projects) with PostgreSQL semantic storage, MCP integration for embedding-based retrieval, and async DAG workflow execution. Currently at v2.2.0 with 16 active features/tasks spanning UI, authentication, shared memory, tagging, billing, and embeddings; near-term focus on resolving data persistence bugs, completing memory table population, and consolidating JSONL/DB storage layers.
+AiCli is a shared AI memory platform built on FastAPI + PostgreSQL + Electron, enabling users to synthesize development history into structured memory across projects. The system implements dual-layer memory synthesis via Claude Haiku, semantic search with pgvector embeddings, and a DAG-based workflow engine for task orchestration. Currently in active development with focus on completing memory table population, resolving data persistence issues, and stabilizing backend initialization.
 
 ## Project Facts
 
@@ -98,121 +98,63 @@ Reviewer: ```json
 
 ## In Progress
 
-- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure; requires validation via /memory audit
-- Memory_items and project_facts table population not implemented—per specification these tables should update to enable improved memory/context mechanism; PENDING implementation and testing
-- Project visibility bug investigation—AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
-- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh; retry logic handles empty project list on first load
-- Memory endpoint CLAUDE.md template validation—code_dir variable scoped/fixed at line 1120 to resolve runtime failures; endpoint template variable scoping now correct
-- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate redundant calls
-
-## Active Features / Bugs / Tasks
-
-### Bug
-
-- **hooks** `(139 events, 121 commits)`
-
-### Doc_type
-
-- **Test** `(58 events, 56 commits)`
-- **low-level-design** `(52 events, 50 commits)`
-- **high-level-design** `(31 events, 29 commits)`
-- **retrospective** `(30 events, 29 commits)`
-- **customer-meeting** — dsds
-
-### Feature
-
-- **UI** `(126 events, 116 commits)`
-- **shared-memory** `(125 events, 116 commits)`
-- **auth** `(125 events, 117 commits)`
-- **graph-workflow** `(115 events, 106 commits)`
-- **tagging** `(82 events, 79 commits)`
-- **billing** `(82 events, 79 commits)`
-- **mcp** `(81 events, 79 commits)`
-- **workflow-runner** `(80 events, 77 commits)`
-- **embeddings** `(60 events, 56 commits)`
-- **test-picker-feature** `(30 events, 29 commits)`
-- **pagination**
-- **dropbox**
-
-### Phase
-
-- **discovery** `(122 events, 116 commits)`
-- **development** `(121 events, 108 commits)`
-- **prod**
-
-### Task
-
-- **memory** `(79 events, 66 commits)`
-- **implement-projects-tab** — Build the UI for managing features/tasks/bugs `(28 events, 27 commits)`
+- Memory table implementation: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior and completion of update logic
+- Project visibility timing issue: AiCli appears in Recent projects but not selectable as current active project; backend startup delay acknowledged, expected to resolve in production
+- Data persistence bug investigation: tags disappear on session switch; root cause unclear (UI rendering vs. database save failure); requires validation via /memory audit endpoint
+- Backend startup stability: resolved port 127.0.0.1:8000 binding conflicts; documented initialization sequence via bash start_backend.sh; retry logic handles empty project list
+- Memory endpoint template variable scoping: fixed code_dir variable at line 1120 in CLAUDE.md template to resolve runtime failures
+- User-client schema relationship: confirmed hierarchical structure (clients have multiple users) but schema modifications status unclear; may require database migration
 
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `session: 5b19c863-f99a-439c-b595-b415d0d342ed` — 2026-03-16
-
-# Development Session Summary
-
-**Session Focus**: Architecture audit and capability assessment of memory management, tagging system, and MCP integration
-
-**Actions Completed**:
-• Executed `/memory` command to audit data storage layers and tagging system functionality
-• Reviewed how MCP integrates with memory layer for embedding and data retrieval
-• Validated tag system implementation for data organization across Claude CLI and other LLMs
-
-**Key Questions Addressed**:
-• Refactor impact on tag usage and memory efficiency from new summarization process
-• MCP's capability to answer work item management queries and generate workflows
-• Whether improved architecture enables better complex project delivery
-• Real-time MCP functionality and data retrieval accuracy within session
-
-**Findings/Outcomes**: [INCOMPLETE - Session summary ends mid-question; actual results, performance metrics, identified issues, and recommendations not documented]
-
-**Follow-up Needed**: Clarify final question intent and document concrete findings from /memory audit and MCP capability test
-
-### `session: 03f774e9-ad60-4cf3-8c0c-0191ba9a78d0` — 2026-03-16
-
-# Development Session Summary (2026-03-10)
-
-• **Database Performance Issue**: Identified multiple redundant SQL calls slowing the system; implemented strategy to load data once on project access (e.g., tags into memory) and only update DB on explicit save actions
-
-• **Tag Hierarchy Enhancement**: Approved nested tags feature to expand beyond current 2-level hierarchy (category → tag); confirmed login will be first-level only
-
-• **UI/UX Improvements for Planner**:
-  - Increased visibility of action options (currently too small)
-  - Replaced small action buttons with 3-dot menu button to improve clarity
-  - Added ability to unarchive archived items
-
-• **Data Persistence Bug**: Discovered tags saved in UI disappear when switching sessions—unclear if UI rendering issue or database save failure; requires investigation
-
-• **AI Suggestions UI**: Need to make `/memory` suggestions more visible and clearly labeled as "AI suggestions requiring approval," including which session they apply to and direct GitHub commit links
-
-• **Backend Stability**: Intermittent app restart failures due to port 127.0.0.1:8000 binding conflicts
-
-### `session: 8f29a8d3-13a3-42ed-9219-de7bfe53e3d2` — 2026-03-18
+### `prompt_batch: 8f29a8d3-13a3-42ed-9219-de7bfe53e3d2` — 2026-03-31
 
 # Development Session Summary (2026-03-18)
 
-## Issues Fixed
+**Resolved Issues:**
+• **`ensure_project_schema` AttributeError** — Removed stale `db.ensure_project_schema(settings.active_project)` call from `main.py` that referenced non-existent database function; replaced with correct `_ensure_shared_schema` method
+• **CLAUDE.md memory endpoint error** — Fixed line 1120 by defining missing `code_dir` variable to resolve runtime error when loading memory
+• **Backend startup race condition** — Modified `_continueToApp` function to implement retry logic when projects load succeeds but returns empty array on initial startup
 
-• **AttributeError in `main.py`** — Removed stale `db.ensure_project_schema(settings.active_project)` call (method doesn't exist; should use `_ensure_shared_schema` instead)
+**Partially Resolved:**
+• **Project visibility** — AiCli project now appears in Recent projects list, but remains unavailable as selectable current project; backend startup delay acknowledged as expected for dev environment (should resolve in production with persistent backend)
 
-• **Memory endpoint CLAUDE.md template error** — Undefined `code_dir` variable at line 1120 causing runtime failure; variable now properly scoped/defined from config
+**Outstanding Issues:**
+• **Memory mechanism implementation mismatch** — `memory_items` and `project_facts` tables not being updated according to design specification; requires clarification on intended behavior vs. current implementation
+• **User-client schema relationship** — Confirmed hierarchical structure (clients have multiple users) but schema updates status unclear; may require database migration
 
-• **Backend startup race condition** — Modified `_continueToApp()` retry logic to handle edge case where projects load succeeds but returns empty list (prevents false "project not found" errors on first load)
+**Action Items:** Investigate memory table update logic and complete user-client schema modifications
 
-## Issues Identified but Unresolved
+### `prompt_batch: 5b19c863-f99a-439c-b595-b415d0d342ed` — 2026-03-31
 
-• **Project visibility bug** — AiCli appears in Recent projects but not displaying as current active project in main project view; suspected timing issue during backend initialization; **PENDING: Further investigation**
+# Development Session Summary (2026-03-16)
 
-## Design Gaps Requiring Implementation
+- **Memory & Tagging System Audited**: Verified `event_tags_{project}` system is fully wired across chat, history sync, and retrieval; fixed PostgreSQL `ARRAY_AGG(uuid[])` bug causing tag aggregation failures
 
-• **memory_items and project_facts tables not updating** — Per original specification, these tables should be populated to enable improved memory/context mechanism, but update logic not implemented; **PENDING: Implementation and testing**
+- **MCP Integration Validated**: Successfully tested end-to-end pipeline with direct HTTP calls using stored API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY from .env); MCP not yet active in session but `.mcp.json` configured
 
-## Data Model Clarification
+- **Memory Architecture Confirmed**: 5-part improvement system deployed—replaced noisy 40-entry JSONL dumps with synthesized summaries; reduces token overhead while improving context retrieval for complex projects
 
-• Confirmed hierarchical structure: Clients contain multiple Users (previously unclear)
+- **Workflow System Initiated**: Began design for workflow engine similar to specrails (DAG-based task execution); reviewed parent-child task relationships and default pipeline configuration in Planner tab
+
+- **Outstanding**: Locate pipeline configuration source (default Pipeline in Planner tab); reconnect parent-child task hierarchy (UI → Dropbox example); integrate workflows with existing tagging system for better work item management
+
+### `prompt_batch: 03f774e9-ad60-4cf3-8c0c-0191ba9a78d0` — 2026-03-31
+
+# Development Session Summary (2026-03-10)
+
+- **Fixed stale backend process**: Killed lingering uvicorn instance (PID 86671) blocking port 8000; restarted fresh backend
+
+- **Resolved UI loading issues**: Confirmed clean restart process using `NODE_ENV=development` and Vite dev server from `ui/` directory after electron shutdown; port 8000 freed for backend
+
+- **Optimized database queries**: Implemented single-load caching strategy in `chat.js` — tags/categories now loaded once when project opens and stored in memory via `_pickerPopulateCats()` function, eliminating redundant SQL calls during tag picker interactions
+
+- **Designed nested tags architecture**: Confirmed feasibility of multi-level tag hierarchy; planned `parent_id` column addition to `entity_values` table to extend beyond original 2-level (category → tag) structure; clarified that new tags added via chat are always created at root level only
+
+- **Database optimization strategy**: User requested consolidated SQL approach—load data once on project access, save updates only when explicitly saved (not on every change)
 
 ## AI Synthesis
 
-**2026-03-18** `SESSION_SUMMARY` — Removed stale `ensure_project_schema()` call from main.py; fixed memory endpoint CLAUDE.md `code_dir` variable scoping at line 1120; enhanced backend startup retry logic to handle edge case where projects list returns empty on first load. **2026-03-14** `PROJECT_STATE` — Confirmed hierarchical data model (Clients → Users); identified 16 active feature/task/bug entities with 1,200+ total events/commits; documented memory management patterns and tag persistence issue requiring investigation. **2026-03-10** `ARCHITECTURE_AUDIT` — Implemented load-once tag caching strategy on project access to reduce redundant SQL calls; approved nested tag hierarchy expansion; discovered critical data persistence bug where tags disappear on session switch; identified UI visibility issues for memory suggestions and action buttons. **2026-03-10** `STABILITY_FIXES` — Resolved port 127.0.0.1:8000 binding conflicts through documented bash start_backend.sh initialization sequence; stabilized backend startup race condition handling. **PENDING** — memory_items and project_facts table update logic not yet implemented; project visibility bug requires further investigation; JSONL-to-DB migration needed to eliminate dual storage complexity.
+**[2026-03-18]** `Recent Memory` — Removed stale `ensure_project_schema` call from main.py, replaced with `_ensure_shared_schema`; fixed CLAUDE.md line 1120 code_dir variable; implemented retry logic for empty project list on backend startup. **[2026-03-18]** `In Progress` — Project visibility issue persists (AiCli in Recent but not selectable); memory_items and project_facts tables not populating per spec; user-client schema relationship requires clarification. **[2026-03-16]** `Audit Complete` — event_tags system fully wired across chat/history/retrieval; fixed PostgreSQL ARRAY_AGG bug; MCP integration validated with stored API keys; 5-part memory synthesis replaces 40-entry JSONL dumps. **[2026-03-16]** `Architecture` — Workflow engine designed as DAG-based task execution similar to specrails; pending pipeline configuration source location and parent-child task hierarchy reconnection. **[2026-03-10]** `Optimization` — Implemented single-load caching for tags/categories on project open; eliminated redundant SQL calls during tag picker interactions; planned nested tags architecture via parent_id column on entity_values table.

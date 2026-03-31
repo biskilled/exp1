@@ -94,6 +94,7 @@ context_tags = json.loads(sys.argv[6])
 payload = json.dumps({
     'ts':           sys.argv[1],
     'session_id':   sys.argv[2],
+    'session_src_id': sys.argv[2],
     'prompt':       sys.argv[3],
     'source':       'claude_cli',
     'provider':     'claude',

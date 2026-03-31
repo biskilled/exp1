@@ -2,12 +2,12 @@
 route_snapshots.py — 4-layer feature snapshot generation endpoint.
 
 Generates structured knowledge artifacts from memory events:
-  1. Load all pr_memory_events for a tag
+  1. Load all mem_ai_events for a tag
   2. Call Sonnet with memory_feature_snapshot prompt from mng_system_roles
   3. Parse JSON → upsert pr_feature_snapshots
   4. Extract project_facts → upsert pr_project_facts
   5. Embed requirements+action_items → pr_feature_snapshots.embedding
-  6. Mark contributing pr_memory_events.processed_at = NOW()
+  6. Mark contributing mem_ai_events.processed_at = NOW()
 
 Endpoints:
     POST /projects/{project}/snapshot/{tag_name}
@@ -32,15 +32,15 @@ router = APIRouter()
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
 _SQL_GET_TAG_ID = """
-    SELECT id FROM pr_tags
+    SELECT id FROM planner_tags
     WHERE client_id = 1 AND project = %s AND name = %s
     LIMIT 1
 """
 
 _SQL_GET_MEMORY_EVENTS = """
     SELECT me.id, me.source_type, me.source_id, me.session_id, me.content, me.importance
-    FROM pr_memory_events me
-    JOIN pr_memory_tags mt ON mt.event_id = me.id
+    FROM mem_ai_events me
+    JOIN mem_ai_tags mt ON mt.event_id = me.id
     WHERE mt.tag_id = %s::uuid
       AND me.client_id = 1 AND me.project = %s
     ORDER BY me.created_at
@@ -77,7 +77,7 @@ _SQL_UPSERT_SNAPSHOT = """
 """
 
 _SQL_MARK_EVENTS_PROCESSED = """
-    UPDATE pr_memory_events SET processed_at = NOW()
+    UPDATE mem_ai_events SET processed_at = NOW()
     WHERE id = ANY(%s::uuid[]) AND processed_at IS NULL
 """
 
@@ -87,7 +87,7 @@ _SQL_GET_SNAPSHOT = """
            fs.file_paths, fs.is_reusable, fs.created_at, fs.updated_at,
            t.name AS tag_name
     FROM pr_feature_snapshots fs
-    JOIN pr_tags t ON t.id = fs.tag_id
+    JOIN planner_tags t ON t.id = fs.tag_id
     WHERE fs.client_id = 1 AND fs.project = %s AND t.name = %s
     LIMIT 1
 """

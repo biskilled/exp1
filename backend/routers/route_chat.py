@@ -29,13 +29,14 @@ from memory.mem_sessions import SessionStore
 # ── SQL ─────────────────────────────────────────────────────────────────────────
 
 # Removed: _SQL_INSERT_PROMPT_EVENT wrote to pr_events (dropped in memory infra migration).
-# Prompt logging now uses _SQL_INSERT_INTERACTION (pr_prompts) only.
+# Prompt logging now uses _SQL_INSERT_INTERACTION (mem_mrr_prompts) only.
 
 _SQL_INSERT_INTERACTION = """
-    INSERT INTO pr_prompts
-           (client_id, project, session_id, llm_source, event_type, source_id,
+    INSERT INTO mem_mrr_prompts
+           (client_id, project, session_id, session_src_id, session_src_desc,
+            llm_source, event_type, source_id,
             prompt, response, phase, metadata, created_at)
-       VALUES (1, %s, %s, %s, 'prompt', %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+       VALUES (1, %s, %s, %s, %s, %s, 'prompt', %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
        ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
 """
 
@@ -46,7 +47,7 @@ _SQL_INSERT_TRANSACTION = """
 """
 
 _SQL_GET_PROMPT_BY_SOURCE = """
-    SELECT id::text FROM pr_prompts
+    SELECT id::text FROM mem_mrr_prompts
     WHERE client_id=1 AND project=%s AND event_type='prompt' AND source_id=%s
     LIMIT 1
 """
@@ -56,7 +57,7 @@ _SQL_GET_SESSION_FEATURE = """
 """
 
 _SQL_GET_ACTIVE_FEATURES = """
-    SELECT t.name FROM pr_tags t
+    SELECT t.name FROM planner_tags t
        JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
        WHERE t.client_id=1 AND t.project=%s AND tc.name='feature' AND t.status='active'
        ORDER BY t.name
@@ -84,7 +85,7 @@ _SQL_INSERT_GRAPH_RUN = """
 """
 
 _SQL_UPDATE_COMMIT_PHASE = """
-    UPDATE pr_commits SET phase=%s
+    UPDATE mem_mrr_commits SET phase=%s
     WHERE client_id=1 AND project=%s AND session_id=%s
 """
 
@@ -115,7 +116,7 @@ def _append_history(
     user_email: Optional[str] = None, ts: Optional[str] = None,
     tags: Optional[dict] = None,
 ) -> str:
-    """Write a completed exchange to the DB (pr_prompts + pr_events).
+    """Write a completed exchange to the DB (mem_mrr_prompts + pr_events).
 
     DB is the primary store. JSONL files are no longer written here.
     Returns the ts string so callers can correlate the event.
@@ -132,14 +133,14 @@ def _append_history(
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # pr_prompts — feeds memory distillation pipeline
+                # mem_mrr_prompts — feeds memory distillation pipeline
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
-                    (project, session_id, provider, ts,
+                    (project, session_id, None, "ui",
+                     provider, ts,
                      (user_msg or "")[:4000], (response or "")[:8000],
                      phase, meta, ts),
                 )
-                # pr_events was removed — pr_prompts is the only log now.
     except Exception:
         pass  # never break chat because of logging
 
@@ -494,6 +495,7 @@ class HookLogRequest(BaseModel):
     provider: str = "claude"
     phase: str | None = None
     feature: str | None = None
+    session_src_id: str | None = None   # opaque session identifier from the hook script
     context_tags: dict = {}   # {stage: "discovery", feature: "auth", ...} from .agent-context
 
 
@@ -510,7 +512,7 @@ def _count_session_prompts(project: str, session_id: str) -> int:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) FROM pr_prompts "
+                    "SELECT COUNT(*) FROM mem_mrr_prompts "
                     "WHERE client_id=1 AND project=%s AND session_id=%s",
                     (project, session_id),
                 )
@@ -534,12 +536,12 @@ def _get_batch_size(project: str) -> int:
 
 
 async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
-    """Generate a digest for the last N prompts in the session → pr_memory_events."""
+    """Generate a digest for the last N prompts in the session → mem_ai_events."""
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT id, prompt, response FROM pr_prompts
+                    """SELECT id, prompt, response FROM mem_mrr_prompts
                        WHERE client_id=1 AND project=%s AND session_id=%s
                          AND response != ''
                        ORDER BY created_at DESC LIMIT %s""",
@@ -589,7 +591,7 @@ async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO pr_memory_events
+                    """INSERT INTO mem_ai_events
                            (client_id, project, source_type, source_id, session_id, content, importance)
                        VALUES (1, %s, 'prompt_batch', %s::uuid, %s, %s, 1)
                        ON CONFLICT (client_id, project, source_type, source_id) DO NOTHING
@@ -602,7 +604,7 @@ async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
 
 
 async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: dict) -> None:
-    """Create pr_source_tags rows for each key:value in context_tags (auto_tagged=True)."""
+    """Create mem_mrr_tags rows for each key:value in context_tags (auto_tagged=True)."""
     if not context_tags or not db.is_available():
         return
     try:
@@ -613,7 +615,7 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
                     tag_name = f"{key}:{value}" if key not in ("feature", "bug_ref") else str(value)
                     # get_or_create tag
                     cur.execute(
-                        "SELECT id FROM pr_tags WHERE client_id=1 AND project=%s AND name=%s",
+                        "SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s",
                         (project, tag_name),
                     )
                     row = cur.fetchone()
@@ -621,7 +623,7 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
                         tag_id = row[0]
                     else:
                         cur.execute(
-                            "INSERT INTO pr_tags (client_id, project, name, status) "
+                            "INSERT INTO planner_tags (client_id, project, name, status) "
                             "VALUES (1, %s, %s, 'active') "
                             "ON CONFLICT (client_id, project, name) DO NOTHING RETURNING id",
                             (project, tag_name),
@@ -629,7 +631,7 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
                         ins = cur.fetchone()
                         if not ins:
                             cur.execute(
-                                "SELECT id FROM pr_tags WHERE client_id=1 AND project=%s AND name=%s",
+                                "SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s",
                                 (project, tag_name),
                             )
                             ins = cur.fetchone()
@@ -639,7 +641,7 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
                             continue
                     # Insert source-tag link
                     cur.execute(
-                        """INSERT INTO pr_source_tags (tag_id, prompt_id, auto_tagged)
+                        """INSERT INTO mem_mrr_tags (tag_id, prompt_id, auto_tagged)
                            VALUES (%s::uuid, %s::uuid, TRUE)
                            ON CONFLICT DO NOTHING""",
                         (tag_id, prompt_id),
@@ -650,7 +652,7 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
 
 @router.post("/{project}/hook-log")
 async def hook_log_prompt(project: str, body: HookLogRequest):
-    """Unauthenticated endpoint — CLI hooks write prompts directly to pr_prompts.
+    """Unauthenticated endpoint — CLI hooks write prompts directly to mem_mrr_prompts.
 
     Called by log_user_prompt.sh after every Claude Code prompt.
     No auth required: runs on localhost, hook scripts have no JWT.
@@ -665,7 +667,8 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
-                    (project, body.session_id, body.source, ts,
+                    (project, body.session_id, body.session_src_id, body.source,
+                     body.source, ts,
                      (body.prompt or "")[:4000], "",
                      body.phase,
                      json.dumps({"source": body.source, "provider": body.provider,
@@ -675,7 +678,7 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
                 )
                 # Fetch the inserted prompt id
                 cur.execute(
-                    "SELECT id FROM pr_prompts WHERE client_id=1 AND project=%s AND source_id=%s",
+                    "SELECT id FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND source_id=%s",
                     (project, ts),
                 )
                 row = cur.fetchone()
@@ -699,7 +702,7 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
 
 @router.post("/{project}/hook-response")
 async def hook_update_response(project: str, body: HookResponseRequest):
-    """Unauthenticated endpoint — CLI hooks update response text in pr_prompts.
+    """Unauthenticated endpoint — CLI hooks update response text in mem_mrr_prompts.
 
     Called by log_session_stop.sh after Claude Code finishes responding.
     When ts is empty, finds the most recent empty-response row for the session.
@@ -711,7 +714,7 @@ async def hook_update_response(project: str, body: HookResponseRequest):
             with conn.cursor() as cur:
                 if body.ts:
                     cur.execute(
-                        """UPDATE pr_prompts SET response = %s
+                        """UPDATE mem_mrr_prompts SET response = %s
                            WHERE client_id=1 AND project=%s
                              AND source_id = %s AND session_id = %s
                              AND (response IS NULL OR response = '')""",
@@ -720,9 +723,9 @@ async def hook_update_response(project: str, body: HookResponseRequest):
                 else:
                     # Find latest empty-response row for this session
                     cur.execute(
-                        """UPDATE pr_prompts SET response = %s
+                        """UPDATE mem_mrr_prompts SET response = %s
                            WHERE id = (
-                               SELECT id FROM pr_prompts
+                               SELECT id FROM mem_mrr_prompts
                                WHERE client_id=1 AND project=%s
                                  AND session_id = %s
                                  AND (response IS NULL OR response = '')

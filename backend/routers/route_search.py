@@ -18,26 +18,26 @@ from core.database import db
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
-# Base template for tagged-context queries over pr_prompts (replaces pr_events).
-# pr_prompts has no title/feature column; left(prompt,120) serves as title.
+# Base template for tagged-context queries over mem_mrr_prompts (replaces pr_events).
+# mem_mrr_prompts has no title/feature column; left(prompt,120) serves as title.
 # {where} is injected at call site.
 _SQL_SEARCH_PROMPTS_BASE = (
     """SELECT p.id, 'prompt' AS event_type, p.source_id,
               left(p.prompt, 120) AS title,
               p.phase, p.session_id,
               p.created_at, p.metadata
-         FROM pr_prompts p
+         FROM mem_mrr_prompts p
          {where}
         ORDER BY p.created_at DESC
         LIMIT %s"""
 )
 
 _SQL_COUNT_INTERACTIONS_TOTAL = (
-    "SELECT COUNT(*) FROM pr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt'"
+    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt'"
 )
 
 _SQL_COUNT_INTERACTIONS_SINCE = (
-    "SELECT COUNT(*) FROM pr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
+    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ async def get_tagged_context(
     project: str = Query(""),
     phase: Optional[str] = Query(None),
     feature: Optional[str] = Query(None),
-    tag_id: Optional[str] = Query(None),        # pr_tags UUID — replaces entity_value_id
+    tag_id: Optional[str] = Query(None),        # planner_tags UUID — replaces entity_value_id
     entity_value_id: Optional[int] = Query(None),  # deprecated alias; ignored if tag_id given
     limit: int = Query(20),
     user=Depends(get_optional_user),
@@ -100,7 +100,7 @@ async def get_tagged_context(
     """Return prompts filtered by phase, feature, or tag.
 
     Used by MCP get_tagged_context tool to retrieve structured context for a feature/phase.
-    Queries pr_prompts (replaces old pr_events) and pr_source_tags (replaces pr_event_tags).
+    Queries mem_mrr_prompts (replaces old pr_events) and mem_mrr_tags (replaces pr_event_tags).
     """
     if not db.is_available():
         raise HTTPException(503, "PostgreSQL required")
@@ -112,13 +112,13 @@ async def get_tagged_context(
 
     effective_tag_id = tag_id
     if not effective_tag_id and entity_value_id:
-        # Legacy: try to resolve entity_value_id → pr_tags UUID by seq_num / int PK
-        # (mng_entity_values was merged into pr_tags; seq_num may match)
+        # Legacy: try to resolve entity_value_id → planner_tags UUID by seq_num / int PK
+        # (mng_entity_values was merged into planner_tags; seq_num may match)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT id::text FROM pr_tags WHERE client_id=1 AND project=%s AND seq_num=%s LIMIT 1",
+                        "SELECT id::text FROM planner_tags WHERE client_id=1 AND project=%s AND seq_num=%s LIMIT 1",
                         (p, entity_value_id),
                     )
                     row = cur.fetchone()
@@ -128,9 +128,9 @@ async def get_tagged_context(
             pass
 
     if effective_tag_id:
-        # Filter by applied source tag — join through pr_source_tags
+        # Filter by applied source tag — join through mem_mrr_tags
         filters.append(
-            "p.id IN (SELECT prompt_id FROM pr_source_tags WHERE tag_id=%s::uuid AND prompt_id IS NOT NULL)"
+            "p.id IN (SELECT prompt_id FROM mem_mrr_tags WHERE tag_id=%s::uuid AND prompt_id IS NOT NULL)"
         )
         params.append(effective_tag_id)
     else:

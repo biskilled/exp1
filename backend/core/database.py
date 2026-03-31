@@ -1,11 +1,12 @@
 """
-PostgreSQL connection pool — flat table architecture.
+PostgreSQL connection pool — three-layer memory architecture.
 
-Two table namespaces only:
-  mng_  — global + client-scoped (9 tables, client_id FK)
-  pr_   — project-scoped (22 tables, client_id + project columns)
-
-Total: 31 fixed tables regardless of client or project count.
+Table namespaces:
+  mng_         — global + client-scoped (management tables)
+  planner_     — project tag hierarchy (planner_tags, planner_tags_meta)
+  mem_mrr_     — mirroring layer (raw source data: prompts, commits, items, messages, tags)
+  mem_ai_      — AI/embedding layer (mem_ai_events, mem_ai_tags)
+  pr_          — project-scoped misc (work_items, graph_*, project_facts, feature_snapshots, seq_counters)
 
 Falls back gracefully when DATABASE_URL is not set — callers check `is_available()`.
 
@@ -17,7 +18,7 @@ Usage:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT * FROM pr_commits WHERE client_id=%s AND project=%s",
+                    "SELECT * FROM mem_mrr_commits WHERE client_id=%s AND project=%s",
                     (cid, project)
                 )
     else:
@@ -251,11 +252,12 @@ _DDL_PR_TABLES = """
 -- pgvector extension (needed for embedding columns)
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- One-time idempotent rename: pr_interactions → pr_prompts
+-- One-time idempotent rename chain: pr_interactions → pr_prompts → mem_mrr_prompts
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_interactions' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='pr_prompts' AND schemaname='public') THEN
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='pr_prompts' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_prompts' AND schemaname='public') THEN
     ALTER TABLE pr_interactions RENAME TO pr_prompts;
     ALTER INDEX IF EXISTS idx_pr_i_cp      RENAME TO idx_pr_p_cp;
     ALTER INDEX IF EXISTS idx_pr_i_session RENAME TO idx_pr_p_session;
@@ -265,18 +267,73 @@ BEGIN
   END IF;
 END $$;
 
--- One-time idempotent rename: pr_interaction_tags → pr_prompt_tags
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_prompts' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_prompts' AND schemaname='public') THEN
+    ALTER TABLE pr_prompts RENAME TO mem_mrr_prompts;
+    ALTER INDEX IF EXISTS idx_pr_p_cp      RENAME TO idx_mmrr_p_cp;
+    ALTER INDEX IF EXISTS idx_pr_p_session RENAME TO idx_mmrr_p_session;
+    ALTER INDEX IF EXISTS idx_pr_p_source  RENAME TO idx_mmrr_p_source;
+    ALTER INDEX IF EXISTS idx_pr_p_created RENAME TO idx_mmrr_p_created;
+    ALTER INDEX IF EXISTS idx_pr_p_wi      RENAME TO idx_mmrr_p_wi;
+  END IF;
+END $$;
+
+-- One-time idempotent rename: pr_interaction_tags → (dropped)
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_interaction_tags' AND schemaname='public')
      AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='pr_prompt_tags' AND schemaname='public') THEN
     ALTER TABLE pr_interaction_tags RENAME TO pr_prompt_tags;
-    ALTER INDEX IF EXISTS idx_pr_itag_work RENAME TO idx_pr_ptag_work;
   END IF;
 END $$;
 
--- Commits
-CREATE TABLE IF NOT EXISTS pr_commits (
+-- One-time idempotent rename: pr_commits → mem_mrr_commits
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_commits' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_commits' AND schemaname='public') THEN
+    ALTER TABLE pr_commits RENAME TO mem_mrr_commits;
+    ALTER INDEX IF EXISTS idx_pr_c_cp      RENAME TO idx_mmrr_c_cp;
+    ALTER INDEX IF EXISTS idx_pr_c_comm    RENAME TO idx_mmrr_c_comm;
+    ALTER INDEX IF EXISTS idx_pr_c_session RENAME TO idx_mmrr_c_session;
+  END IF;
+END $$;
+
+-- Mirroring: prompts (raw prompt/response log)
+CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
+    id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id           INT           NOT NULL REFERENCES mng_clients(id),
+    project             VARCHAR(255)  NOT NULL,
+    work_item_id        UUID          REFERENCES pr_work_items(id) ON DELETE SET NULL,
+    session_id          TEXT,
+    session_src_id      TEXT,
+    session_src_desc    TEXT,
+    llm_source          TEXT,
+    event_type          TEXT          NOT NULL DEFAULT 'prompt',
+    source_id           TEXT,
+    prompt              TEXT          NOT NULL DEFAULT '',
+    response            TEXT          NOT NULL DEFAULT '',
+    phase               TEXT,
+    tags                TEXT[]        NOT NULL DEFAULT '{}',
+    metadata            JSONB         NOT NULL DEFAULT '{}',
+    ai_tags             TEXT          DEFAULT NULL,
+    created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS prompt_embedding;
+ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS response_embedding;
+ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS session_src_id   TEXT;
+ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS session_src_desc TEXT;
+ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS ai_tags          TEXT DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS        idx_mmrr_p_cp      ON mem_mrr_prompts(client_id, project);
+CREATE INDEX IF NOT EXISTS        idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(client_id, project, source_id) WHERE source_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS        idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC);
+CREATE INDEX IF NOT EXISTS        idx_mmrr_p_wi      ON mem_mrr_prompts(work_item_id) WHERE work_item_id IS NOT NULL;
+
+-- Mirroring: commits
+CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     id               SERIAL         PRIMARY KEY,
     client_id        INT            NOT NULL REFERENCES mng_clients(id),
     project          VARCHAR(255)   NOT NULL,
@@ -291,34 +348,19 @@ CREATE TABLE IF NOT EXISTS pr_commits (
     prompt_source_id VARCHAR(255),
     tags             JSONB          NOT NULL DEFAULT '{}',
     committed_at     TIMESTAMPTZ,
+    diff_details     JSONB          NOT NULL DEFAULT '{}',
+    ai_tags          TEXT           DEFAULT NULL,
     created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     UNIQUE(commit_hash)
 );
-CREATE INDEX IF NOT EXISTS idx_pr_c_cp       ON pr_commits(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_c_comm     ON pr_commits(committed_at DESC);
-CREATE INDEX IF NOT EXISTS idx_pr_c_session  ON pr_commits(session_id) WHERE session_id IS NOT NULL;
-
--- Embeddings (pgvector)
-CREATE TABLE IF NOT EXISTS pr_embeddings (
-    id          SERIAL         PRIMARY KEY,
-    client_id   INT            NOT NULL REFERENCES mng_clients(id),
-    project     VARCHAR(255)   NOT NULL,
-    source_type VARCHAR(50)    NOT NULL,
-    source_id   VARCHAR(255)   NOT NULL,
-    chunk_index INT            NOT NULL DEFAULT 0,
-    content     TEXT           NOT NULL,
-    embedding   vector(1536),
-    chunk_type  VARCHAR(50)    NOT NULL DEFAULT 'full',
-    doc_type    VARCHAR(50),
-    language    VARCHAR(30),
-    file_path   VARCHAR(500),
-    metadata    JSONB          NOT NULL DEFAULT '{}',
-    created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-    UNIQUE(client_id, project, source_type, source_id, chunk_index)
-);
-CREATE INDEX IF NOT EXISTS idx_pr_emb_cp   ON pr_embeddings(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_emb_lang ON pr_embeddings(language) WHERE language IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_pr_emb_src  ON pr_embeddings(source_type, source_id);
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS diff_details JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS ai_tags      TEXT DEFAULT NULL;
+-- Keep backward-compat: prompt_id was on old pr_commits
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS prompt_id    UUID REFERENCES mem_mrr_prompts(id);
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_cp       ON mem_mrr_commits(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm     ON mem_mrr_commits(committed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_session  ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
 
 -- Work items (feature/bug/task pipeline tracking)
 CREATE TABLE IF NOT EXISTS pr_work_items (
@@ -344,32 +386,6 @@ CREATE TABLE IF NOT EXISTS pr_work_items (
 CREATE INDEX IF NOT EXISTS idx_pr_wi_cp     ON pr_work_items(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_pr_wi_cat    ON pr_work_items(category_name);
 CREATE INDEX IF NOT EXISTS idx_pr_wi_status ON pr_work_items(status);
-
--- Prompts (unified prompt/response log)
-CREATE TABLE IF NOT EXISTS pr_prompts (
-    id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id           INT           NOT NULL REFERENCES mng_clients(id),
-    project             VARCHAR(255)  NOT NULL,
-    work_item_id        UUID          REFERENCES pr_work_items(id) ON DELETE SET NULL,
-    session_id          TEXT,
-    llm_source          TEXT,
-    event_type          TEXT          NOT NULL DEFAULT 'prompt',
-    source_id           TEXT,
-    prompt              TEXT          NOT NULL DEFAULT '',
-    response            TEXT          NOT NULL DEFAULT '',
-    phase               TEXT,
-    tags                TEXT[]        NOT NULL DEFAULT '{}',
-    metadata            JSONB         NOT NULL DEFAULT '{}',
-    created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
-);
--- Drop legacy inline embedding columns (embeddings live in pr_embeddings table)
-ALTER TABLE pr_prompts DROP COLUMN IF EXISTS prompt_embedding;
-ALTER TABLE pr_prompts DROP COLUMN IF EXISTS response_embedding;
-CREATE INDEX IF NOT EXISTS        idx_pr_p_cp      ON pr_prompts(client_id, project);
-CREATE INDEX IF NOT EXISTS        idx_pr_p_session ON pr_prompts(session_id) WHERE session_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_p_source  ON pr_prompts(client_id, project, source_id) WHERE source_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS        idx_pr_p_created ON pr_prompts(created_at DESC);
-CREATE INDEX IF NOT EXISTS        idx_pr_p_wi      ON pr_prompts(work_item_id) WHERE work_item_id IS NOT NULL;
 
 -- Project facts (durable extracted facts; valid_until NULL = current)
 CREATE TABLE IF NOT EXISTS pr_project_facts (
@@ -493,10 +509,10 @@ CREATE INDEX IF NOT EXISTS idx_pr_wi_seq ON pr_work_items(client_id, project, se
 """
 
 
-# ─── DDL: Memory Infrastructure tables (9 new tables) ────────────────────────
+# ─── DDL: Memory Infrastructure — three-layer architecture ───────────────────
 
 _DDL_MEMORY_INFRA = """
--- Global tag categories shared across all projects (replaces mng_entity_categories)
+-- Global tag categories shared across all projects
 CREATE TABLE IF NOT EXISTS mng_tags_categories (
     id          SERIAL       PRIMARY KEY,
     client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -508,29 +524,71 @@ CREATE TABLE IF NOT EXISTS mng_tags_categories (
     UNIQUE(client_id, name)
 );
 
--- Per-project tag hierarchy with merge support (replaces mng_entity_values)
-CREATE TABLE IF NOT EXISTS pr_tags (
+-- ── Rename old tag tables (idempotent) ──────────────────────────────────────
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_tags' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='planner_tags' AND schemaname='public') THEN
+    ALTER TABLE pr_tags RENAME TO planner_tags;
+    ALTER INDEX IF EXISTS idx_pr_tags_cp     RENAME TO idx_planner_tags_cp;
+    ALTER INDEX IF EXISTS idx_pr_tags_parent RENAME TO idx_planner_tags_parent;
+    ALTER INDEX IF EXISTS idx_pr_tags_cat    RENAME TO idx_planner_tags_cat;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_tag_meta' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='planner_tags_meta' AND schemaname='public') THEN
+    ALTER TABLE pr_tag_meta RENAME TO planner_tags_meta;
+    ALTER INDEX IF EXISTS idx_pr_tag_meta_cp RENAME TO idx_planner_tags_meta_cp;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_items' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_items' AND schemaname='public') THEN
+    ALTER TABLE pr_items RENAME TO mem_mrr_items;
+    ALTER INDEX IF EXISTS idx_pr_items_cp   RENAME TO idx_mmrr_items_cp;
+    ALTER INDEX IF EXISTS idx_pr_items_type RENAME TO idx_mmrr_items_type;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_messages' AND schemaname='public')
+     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_messages' AND schemaname='public') THEN
+    ALTER TABLE pr_messages RENAME TO mem_mrr_messages;
+    ALTER INDEX IF EXISTS idx_pr_messages_cp RENAME TO idx_mmrr_messages_cp;
+  END IF;
+END $$;
+
+-- ── Planner tag hierarchy ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS planner_tags (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project     VARCHAR(255) NOT NULL,
     name        TEXT         NOT NULL,
     category_id INT          REFERENCES mng_tags_categories(id) ON DELETE SET NULL,
-    parent_id   UUID         REFERENCES pr_tags(id) ON DELETE SET NULL,
-    merged_into UUID         REFERENCES pr_tags(id) ON DELETE SET NULL,
+    parent_id   UUID         REFERENCES planner_tags(id) ON DELETE SET NULL,
+    merged_into UUID         REFERENCES planner_tags(id) ON DELETE SET NULL,
     status      VARCHAR(20)  NOT NULL DEFAULT 'active',
     lifecycle   VARCHAR(20)  NOT NULL DEFAULT 'idea',
     seq_num     INT,
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project, name)
 );
-CREATE INDEX IF NOT EXISTS idx_pr_tags_cp     ON pr_tags(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_tags_parent ON pr_tags(parent_id);
-CREATE INDEX IF NOT EXISTS idx_pr_tags_cat    ON pr_tags(category_id);
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+CREATE INDEX IF NOT EXISTS idx_planner_tags_cp     ON planner_tags(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_planner_tags_parent ON planner_tags(parent_id);
+CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
 
--- Work-item metadata for leaf tags
-CREATE TABLE IF NOT EXISTS pr_tag_meta (
+-- Planner tag metadata
+CREATE TABLE IF NOT EXISTS planner_tags_meta (
     id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    tag_id       UUID         NOT NULL UNIQUE REFERENCES pr_tags(id) ON DELETE CASCADE,
+    tag_id       UUID         NOT NULL UNIQUE REFERENCES planner_tags(id) ON DELETE CASCADE,
     client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project      VARCHAR(255) NOT NULL,
     description  TEXT         NOT NULL DEFAULT '',
@@ -542,11 +600,10 @@ CREATE TABLE IF NOT EXISTS pr_tag_meta (
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_pr_tag_meta_cp ON pr_tag_meta(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_planner_tags_meta_cp ON planner_tags_meta(client_id, project);
 
--- General documents: requirements, decisions, client notes, meetings
--- (must be defined before pr_source_tags which references it)
-CREATE TABLE IF NOT EXISTS pr_items (
+-- ── Mirroring: items (requirements, decisions, meetings) ─────────────────────
+CREATE TABLE IF NOT EXISTS mem_mrr_items (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project     VARCHAR(255) NOT NULL,
@@ -555,14 +612,17 @@ CREATE TABLE IF NOT EXISTS pr_items (
     meeting_at  TIMESTAMPTZ,
     attendees   TEXT[],
     raw_text    TEXT         NOT NULL,
+    summary     TEXT,
+    ai_tags     TEXT         DEFAULT NULL,
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_pr_items_cp   ON pr_items(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_items_type ON pr_items(item_type);
+ALTER TABLE mem_mrr_items ADD COLUMN IF NOT EXISTS summary TEXT;
+ALTER TABLE mem_mrr_items ADD COLUMN IF NOT EXISTS ai_tags TEXT DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmrr_items_cp   ON mem_mrr_items(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mmrr_items_type ON mem_mrr_items(item_type);
 
--- Chunked platform messages (Slack, Teams, Discord)
--- (must be defined before pr_source_tags which references it)
-CREATE TABLE IF NOT EXISTS pr_messages (
+-- ── Mirroring: messages (Slack, Teams, Discord) ──────────────────────────────
+CREATE TABLE IF NOT EXISTS mem_mrr_messages (
     id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id  INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project    VARCHAR(255) NOT NULL,
@@ -571,73 +631,115 @@ CREATE TABLE IF NOT EXISTS pr_messages (
     thread_ref TEXT,
     messages   JSONB        NOT NULL,
     date_range TSTZRANGE,
+    ai_tags    TEXT         DEFAULT NULL,
     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_pr_messages_cp ON pr_messages(client_id, project);
+ALTER TABLE mem_mrr_messages ADD COLUMN IF NOT EXISTS ai_tags TEXT DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmrr_messages_cp ON mem_mrr_messages(client_id, project);
 
--- Unified source → tag junction (replaces pr_event_tags + pr_prompt_tags)
--- Exactly one of prompt_id|commit_id|item_id|message_id is non-null per row
-CREATE TABLE IF NOT EXISTS pr_source_tags (
-    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    tag_id      UUID         NOT NULL REFERENCES pr_tags(id) ON DELETE CASCADE,
-    prompt_id   UUID         REFERENCES pr_prompts(id)  ON DELETE CASCADE,
-    commit_id   INT          REFERENCES pr_commits(id)  ON DELETE CASCADE,
-    item_id     UUID         REFERENCES pr_items(id)    ON DELETE CASCADE,
-    message_id  UUID         REFERENCES pr_messages(id) ON DELETE CASCADE,
-    auto_tagged BOOLEAN      NOT NULL DEFAULT FALSE,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    CONSTRAINT one_source_only CHECK (
-        (CASE WHEN prompt_id  IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN commit_id  IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN item_id    IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN message_id IS NOT NULL THEN 1 ELSE 0 END) = 1
-    )
+-- ── Embedding / AI events table (merged from pr_embeddings + pr_memory_events) ──
+CREATE TABLE IF NOT EXISTS mem_ai_events (
+    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project         VARCHAR(255) NOT NULL,
+    source_type     TEXT         NOT NULL,
+    source_id       TEXT         NOT NULL,
+    session_id      TEXT,
+    session_desc    TEXT,
+    chunk           INT          NOT NULL DEFAULT 0,
+    chunk_type      TEXT         NOT NULL DEFAULT 'full',
+    content         TEXT         NOT NULL,
+    embedding       VECTOR(1536),
+    cnt_prompts     INT,
+    summary         TEXT,
+    summary_max_resolution_hrs INT  DEFAULT 24,
+    summary_cnt_msg             INT  DEFAULT 20,
+    summary_desc                TEXT,
+    doc_type        TEXT,
+    language        TEXT,
+    file_path       TEXT,
+    metadata        JSONB        NOT NULL DEFAULT '{}',
+    importance      SMALLINT     NOT NULL DEFAULT 1,
+    processed_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE(client_id, project, source_type, source_id, chunk)
 );
-CREATE INDEX IF NOT EXISTS idx_pr_src_tags_tag    ON pr_source_tags(tag_id);
-CREATE INDEX IF NOT EXISTS idx_pr_src_tags_prompt ON pr_source_tags(prompt_id);
-CREATE INDEX IF NOT EXISTS idx_pr_src_tags_commit ON pr_source_tags(commit_id);
--- Partial unique indexes (one per source type — avoids NULLS NOT DISTINCT syntax need)
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_src_prompt  ON pr_source_tags(tag_id, prompt_id)  WHERE prompt_id  IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_src_commit  ON pr_source_tags(tag_id, commit_id)  WHERE commit_id  IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_src_item    ON pr_source_tags(tag_id, item_id)    WHERE item_id    IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_src_message ON pr_source_tags(tag_id, message_id) WHERE message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mem_ai_events_cp      ON mem_ai_events(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_events_session ON mem_ai_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_events_type    ON mem_ai_events(source_type);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pending ON mem_ai_events(processed_at) WHERE processed_at IS NULL;
 
--- One digest + embedding per source event (replaces pr_memory_items)
-CREATE TABLE IF NOT EXISTS pr_memory_events (
-    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project      VARCHAR(255) NOT NULL,
-    source_type  TEXT         NOT NULL,
-    source_id    UUID         NOT NULL,
-    session_id   TEXT,
-    content      TEXT         NOT NULL,
-    embedding    VECTOR(1536),
-    importance   SMALLINT     NOT NULL DEFAULT 1,
-    processed_at TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE(client_id, project, source_type, source_id)
+-- ── Tagging: mem_mrr_tags (wide junction — all source FKs) ──────────────────
+CREATE TABLE IF NOT EXISTS mem_mrr_tags (
+    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    tag_id           UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
+    session_id       TEXT,
+    session_src_id   TEXT,
+    session_src_desc TEXT,
+    prompt_id        UUID         REFERENCES mem_mrr_prompts(id)  ON DELETE CASCADE,
+    prompt_created   TIMESTAMPTZ,
+    prompt_updated   TIMESTAMPTZ,
+    commit_id        INT          REFERENCES mem_mrr_commits(id)  ON DELETE CASCADE,
+    commit_created   TIMESTAMPTZ,
+    commit_updated   TIMESTAMPTZ,
+    item_id          UUID         REFERENCES mem_mrr_items(id)    ON DELETE CASCADE,
+    item_created     TIMESTAMPTZ,
+    item_updated     TIMESTAMPTZ,
+    message_id       UUID         REFERENCES mem_mrr_messages(id) ON DELETE CASCADE,
+    message_created  TIMESTAMPTZ,
+    message_updated  TIMESTAMPTZ,
+    event_id         UUID,
+    event_created    TIMESTAMPTZ,
+    event_updated    TIMESTAMPTZ,
+    work_item_id     UUID         REFERENCES pr_work_items(id) ON DELETE SET NULL,
+    work_item_created TIMESTAMPTZ,
+    work_item_updated TIMESTAMPTZ,
+    snapshot_id      UUID,
+    snapshot_created TIMESTAMPTZ,
+    snapshot_updated TIMESTAMPTZ,
+    fact_id          UUID,
+    fact_created     TIMESTAMPTZ,
+    fact_updated     TIMESTAMPTZ,
+    auto_tagged      BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_pr_me_cp      ON pr_memory_events(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_pr_me_session ON pr_memory_events(session_id);
-CREATE INDEX IF NOT EXISTS idx_pr_me_pending ON pr_memory_events(processed_at) WHERE processed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_tag     ON mem_mrr_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_session ON mem_mrr_tags(session_id);
+CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_prompt  ON mem_mrr_tags(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit  ON mem_mrr_tags(commit_id);
 
--- Tags on memory events
-CREATE TABLE IF NOT EXISTS pr_memory_tags (
+-- ── AI tags on embedding events ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS mem_ai_tags (
     id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id   UUID         NOT NULL REFERENCES pr_memory_events(id) ON DELETE CASCADE,
-    tag_id     UUID         NOT NULL REFERENCES pr_tags(id)          ON DELETE CASCADE,
+    event_id   UUID         NOT NULL REFERENCES mem_ai_events(id) ON DELETE CASCADE,
+    tag_id     UUID         NOT NULL REFERENCES planner_tags(id)  ON DELETE CASCADE,
     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(event_id, tag_id)
 );
-CREATE INDEX IF NOT EXISTS idx_pr_memory_tags_event ON pr_memory_tags(event_id);
-CREATE INDEX IF NOT EXISTS idx_pr_memory_tags_tag   ON pr_memory_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_tags_event ON mem_ai_tags(event_id);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_tags_tag   ON mem_ai_tags(tag_id);
 
--- 4-layer feature snapshot per work item
+-- ── AI tag relations (global) ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS mng_ai_tags_relations (
+    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    from_tag_id  UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
+    relation     TEXT         NOT NULL,
+    to_tag_id    UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
+    note         TEXT,
+    source       VARCHAR(20)  NOT NULL DEFAULT 'manual',
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (from_tag_id, relation, to_tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_from ON mng_ai_tags_relations(from_tag_id);
+CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_to   ON mng_ai_tags_relations(to_tag_id);
+
+-- ── 4-layer feature snapshots ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS pr_feature_snapshots (
     id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id      INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project        VARCHAR(255) NOT NULL,
-    tag_id         UUID         NOT NULL REFERENCES pr_tags(id),
+    tag_id         UUID         NOT NULL REFERENCES planner_tags(id),
     work_item_type TEXT         NOT NULL DEFAULT 'feature',
     requirements   TEXT,
     action_items   TEXT,
@@ -655,14 +757,76 @@ CREATE TABLE IF NOT EXISTS pr_feature_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_pr_fs_cp  ON pr_feature_snapshots(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_pr_fs_tag ON pr_feature_snapshots(tag_id);
+
+-- ── Data migration: pr_source_tags → mem_mrr_tags ───────────────────────────
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_source_tags' AND schemaname='public') THEN
+    INSERT INTO mem_mrr_tags (tag_id, session_id, prompt_id, prompt_created,
+                               commit_id, commit_created, item_id, item_created,
+                               message_id, message_created, auto_tagged, created_at)
+    SELECT tag_id, NULL, prompt_id, created_at,
+           commit_id, created_at, item_id, created_at,
+           message_id, created_at, auto_tagged, created_at
+    FROM pr_source_tags
+    ON CONFLICT DO NOTHING;
+    DROP TABLE IF EXISTS pr_source_tags CASCADE;
+  END IF;
+END $$;
+
+-- ── Data migration: pr_memory_events → mem_ai_events ────────────────────────
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_memory_events' AND schemaname='public') THEN
+    INSERT INTO mem_ai_events (id, client_id, project, source_type, source_id,
+                                session_id, chunk, chunk_type, content, embedding,
+                                importance, processed_at, created_at)
+    SELECT id, client_id, project, source_type, source_id::text,
+           session_id, 0, 'full', content, embedding,
+           importance, processed_at, created_at
+    FROM pr_memory_events
+    ON CONFLICT (client_id, project, source_type, source_id, chunk) DO NOTHING;
+    DROP TABLE IF EXISTS pr_memory_events CASCADE;
+  END IF;
+END $$;
+
+-- ── Data migration: pr_embeddings → mem_ai_events ───────────────────────────
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_embeddings' AND schemaname='public') THEN
+    INSERT INTO mem_ai_events (client_id, project, source_type, source_id,
+                                chunk, chunk_type, content, embedding,
+                                doc_type, language, file_path, metadata, created_at)
+    SELECT client_id, project, source_type, source_id,
+           chunk_index, chunk_type, content, embedding,
+           doc_type, language, file_path, metadata, created_at
+    FROM pr_embeddings
+    ON CONFLICT (client_id, project, source_type, source_id, chunk) DO NOTHING;
+    DROP TABLE IF EXISTS pr_embeddings CASCADE;
+  END IF;
+END $$;
+
+-- ── Data migration: pr_memory_tags → mem_ai_tags ────────────────────────────
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_memory_tags' AND schemaname='public') THEN
+    INSERT INTO mem_ai_tags (id, event_id, tag_id, created_at)
+    SELECT id, event_id, tag_id, created_at FROM pr_memory_tags
+    ON CONFLICT (event_id, tag_id) DO NOTHING;
+    DROP TABLE IF EXISTS pr_memory_tags CASCADE;
+  END IF;
+END $$;
 """
 
 # ─── Column additions to existing tables (memory infra) ──────────────────────
 
 _DDL_MEMORY_INFRA_ALTERS = """
-ALTER TABLE pr_commits ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES pr_prompts(id);
-ALTER TABLE pr_commits ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
-ALTER TABLE pr_work_items ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES pr_tags(id);
+ALTER TABLE mem_mrr_commits  ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
+ALTER TABLE mem_mrr_commits  ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE pr_work_items    DROP COLUMN IF EXISTS tag_id;
+ALTER TABLE pr_work_items    ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
+ALTER TABLE pr_feature_snapshots DROP COLUMN IF EXISTS tag_id;
+ALTER TABLE pr_feature_snapshots ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
 ALTER TABLE pr_project_facts ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
 """
 
@@ -788,14 +952,18 @@ class _Database:
         _Database._seed_memory_system_roles(conn)
 
     def _ensure_shared_schema(self, conn) -> None:
-        """Create all pr_* flat tables + memory infra tables. Runs once per process lifetime."""
+        """Create all tables (mem_mrr_*, mem_ai_*, planner_*, pr_*) and run migrations.
+
+        Runs once per process lifetime.  Migration DO $$ blocks inside each DDL
+        string handle idempotent renames so this is safe to call on every restart.
+        """
         if self._shared_schema_ready:
             return
-        _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "pr_* flat tables")
-        _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA, "memory infra tables")
+        _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "mem_mrr_prompts/commits + pr_work_items")
+        _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA, "planner_tags + mem_mrr_* + mem_ai_* tables")
         _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA_ALTERS, "memory infra column alters")
         self._shared_schema_ready = True
-        log.info("✅ pr_* flat tables + memory infra ready")
+        log.info("✅ three-layer memory schema ready (mem_mrr_* | planner_* | mem_ai_*)")
     # ── Seeding ────────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -1300,12 +1468,13 @@ class _Database:
     def _seed_tag_categories(conn) -> None:
         """Seed default tag categories into mng_tags_categories."""
         _SEED_CATS = [
-            ("feature",  "#22c55e", "⚡", "New functionality"),
-            ("bug",      "#ef4444", "🐛", "Defect or unexpected behaviour"),
-            ("task",     "#3b82f6", "✓",  "Process or maintenance work"),
-            ("design",   "#a855f7", "◈",  "Architecture or UX design"),
-            ("decision", "#f59e0b", "⚑",  "Architectural or product decision"),
-            ("meeting",  "#6b7280", "◷",  "Meeting summary"),
+            ("feature",      "#22c55e", "⚡", "New functionality"),
+            ("bug",          "#ef4444", "🐛", "Defect or unexpected behaviour"),
+            ("task",         "#3b82f6", "✓",  "Process or maintenance work"),
+            ("design",       "#a855f7", "◈",  "Architecture or UX design"),
+            ("decision",     "#f59e0b", "⚑",  "Architectural or product decision"),
+            ("meeting",      "#6b7280", "◷",  "Meeting summary"),
+            ("ai_suggestion","#94a3b8", "✦",  "Auto-suggested by AI — reassign to proper category"),
         ]
         try:
             with conn.cursor() as cur:
@@ -1330,34 +1499,67 @@ class _Database:
 
     @staticmethod
     def _seed_memory_system_roles(conn) -> None:
-        """Seed memory pipeline system prompts into mng_system_roles (category='memory')."""
+        """Seed memory pipeline system prompts into mng_system_roles (category='memory').
+
+        First tries workspace/_templates/memory/prompts.yaml (YAML is admin management format).
+        Falls back to hard-coded defaults.  Uses ON CONFLICT DO NOTHING so DB edits are preserved.
+        """
+        # Try YAML first
+        try:
+            _Database._seed_from_memory_prompts_yaml(conn)
+            return
+        except Exception:
+            pass  # YAML not found — fall back to defaults
+
         _SEED_ROLES = [
             (
-                "memory_batch_digest",
+                "commit_digest",
+                "memory",
+                "Given a git commit message and diff, produce a 1-2 sentence digest capturing "
+                "what changed and why. Return plain text only, no preamble.",
+            ),
+            (
+                "prompt_batch_digest",
                 "memory",
                 "Given N sequential prompt/response pairs, extract a 1-2 sentence digest capturing "
                 "what was decided, built, or discovered. Return plain text only, no preamble.",
             ),
             (
-                "memory_session_summary",
+                "item_digest",
+                "memory",
+                "Summarise this document (requirement/decision/note) in 1-2 sentences. "
+                "Return plain text only.",
+            ),
+            (
+                "meeting_sections",
+                "memory",
+                "Split this meeting transcript into named sections (key topics). "
+                "Return JSON: [{\"title\": str, \"content\": str}]",
+            ),
+            (
+                "message_chunk_digest",
+                "memory",
+                "Summarise this message thread chunk in 1-2 sentences. "
+                "Return plain text only.",
+            ),
+            (
+                "ai_tag_suggestion",
+                "memory",
+                "Given a content snippet and a list of existing project tags, suggest the best "
+                "matching tag (or propose a new tag name if none fits). "
+                "Return JSON: {\"tag\": str, \"is_new\": bool, \"reasoning\": str}",
+            ),
+            (
+                "session_summary",
                 "memory",
                 "Summarize this development session — focus on decisions and code changes "
                 "(3-8 bullet points). Return plain text only.",
             ),
             (
-                "memory_session_review",
+                "session_review",
                 "memory",
                 'Rate this session summary 1-10 for completeness and accuracy. Return ONLY valid JSON: '
                 '{"score": N, "critique": "...", "improved_summary": "..."}',
-            ),
-            (
-                "memory_feature_snapshot",
-                "memory",
-                "Given the following memory events for a feature, produce a 4-layer snapshot. "
-                "Return valid JSON with keys: requirements (str), action_items (str), "
-                "design ({high_level, low_level, patterns_used}), "
-                "code_summary ({files, key_classes, key_methods, dependencies_added, dependencies_removed}). "
-                "Base your answer only on the provided evidence.",
             ),
             (
                 "memory_synthesis",
@@ -1367,6 +1569,22 @@ class _Database:
                 "active features, recent changes, known issues, and next steps. "
                 "Be specific and actionable. Use markdown with clear sections.",
             ),
+            (
+                "feature_snapshot",
+                "memory",
+                "Given the following memory events for a feature, produce a 4-layer snapshot. "
+                "Return valid JSON with keys: requirements (str), action_items (str), "
+                "design ({high_level, low_level, patterns_used}), "
+                "code_summary ({files, key_classes, key_methods, dependencies_added, dependencies_removed}). "
+                "Base your answer only on the provided evidence.",
+            ),
+        ]
+        # Keep old names as aliases so existing code doesn't break
+        _ALIASES = [
+            ("memory_batch_digest",    "prompt_batch_digest"),
+            ("memory_session_summary", "session_summary"),
+            ("memory_session_review",  "session_review"),
+            ("memory_feature_snapshot","feature_snapshot"),
         ]
         try:
             with conn.cursor() as cur:
@@ -1383,6 +1601,20 @@ class _Database:
                            ON CONFLICT (client_id, name) DO NOTHING""",
                         (name, category, content, f"Memory pipeline: {name.replace('_', ' ')}"),
                     )
+                # Seed aliases for backward compatibility
+                for alias_name, source_name in _ALIASES:
+                    cur.execute(
+                        "SELECT content FROM mng_system_roles WHERE client_id=1 AND name=%s LIMIT 1",
+                        (source_name,),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        cur.execute(
+                            """INSERT INTO mng_system_roles (client_id, name, category, content, description)
+                               VALUES (1, %s, 'memory', %s, %s)
+                               ON CONFLICT (client_id, name) DO NOTHING""",
+                            (alias_name, row[0], f"Alias for {source_name}"),
+                        )
             conn.commit()
             log.debug("✅ memory system roles seeded")
         except Exception as e:
@@ -1390,21 +1622,67 @@ class _Database:
             log.debug(f"_seed_memory_system_roles skipped: {e}")
 
     @staticmethod
+    def _seed_from_memory_prompts_yaml(conn) -> None:
+        """Upsert memory prompts from workspace/_templates/memory/prompts.yaml into mng_system_roles.
+
+        YAML is the admin management format; DB is runtime truth.
+        Uses ON CONFLICT DO NOTHING so in-DB edits are preserved across restarts.
+        """
+        try:
+            import yaml as _yaml
+        except ImportError:
+            return
+
+        yaml_path = (
+            Path(__file__).parent.parent.parent
+            / "workspace" / "_templates" / "memory" / "prompts.yaml"
+        )
+        if not yaml_path.exists():
+            raise FileNotFoundError(f"Memory prompts YAML not found: {yaml_path}")
+
+        data = _yaml.safe_load(yaml_path.read_text())
+        if not data or not isinstance(data, list):
+            raise ValueError("prompts.yaml must be a YAML list of {name, content, description?}")
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema='public' AND table_name='mng_system_roles'"
+            )
+            if not cur.fetchone():
+                return
+            for entry in data:
+                if not isinstance(entry, dict) or not entry.get("name") or not entry.get("content"):
+                    continue
+                name        = entry["name"]
+                content     = entry["content"]
+                description = entry.get("description", f"Memory pipeline: {name.replace('_', ' ')}")
+                category    = entry.get("category", "memory")
+                cur.execute(
+                    """INSERT INTO mng_system_roles (client_id, name, category, content, description)
+                       VALUES (1, %s, %s, %s, %s)
+                       ON CONFLICT (client_id, name) DO NOTHING""",
+                    (name, category, content, description),
+                )
+        conn.commit()
+        log.debug(f"✅ memory prompts YAML seeded ({len(data)} entries)")
+
+    @staticmethod
     def _seed_client_defaults(client_id: int, conn) -> None:
-        """Seed default entity categories for a new client. Idempotent."""
+        """Seed default tag categories for a new client. Idempotent."""
         _CATS = [
-            ("_global", "feature", "#3b82f6", "★"),
-            ("_global", "bug",     "#ef4444", "🐛"),
-            ("_global", "task",    "#8b5cf6", "✓"),
-            ("_global", "doc",     "#10b981", "📄"),
+            ("feature", "#22c55e", "⚡", "New functionality"),
+            ("bug",     "#ef4444", "🐛", "Defect or unexpected behaviour"),
+            ("task",    "#3b82f6", "✓",  "Process or maintenance work"),
+            ("design",  "#a855f7", "◈",  "Architecture or UX design"),
         ]
         try:
             with conn.cursor() as cur:
-                for proj, name, color, icon in _CATS:
+                for name, color, icon, desc in _CATS:
                     cur.execute(
-                        """INSERT INTO mng_entity_categories (client_id, project, name, color, icon)
+                        """INSERT INTO mng_tags_categories (client_id, name, color, icon, description)
                            VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
-                        (client_id, proj, name, color, icon),
+                        (client_id, name, color, icon, desc),
                     )
             conn.commit()
         except Exception as e:

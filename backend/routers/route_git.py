@@ -25,21 +25,21 @@ log = logging.getLogger(__name__)
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
 _SQL_UPSERT_COMMIT = """
-    INSERT INTO pr_commits
+    INSERT INTO mem_mrr_commits
             (client_id, project, commit_hash, session_id, commit_msg, diff_summary, committed_at, source)
         VALUES (1, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
-            SET session_id   = COALESCE(EXCLUDED.session_id,   pr_commits.session_id),
-                commit_msg   = COALESCE(EXCLUDED.commit_msg,   pr_commits.commit_msg),
-                diff_summary = COALESCE(EXCLUDED.diff_summary, pr_commits.diff_summary),
-                committed_at = COALESCE(EXCLUDED.committed_at, pr_commits.committed_at)
+            SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
+                commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
+                diff_summary = COALESCE(EXCLUDED.diff_summary, mem_mrr_commits.diff_summary),
+                committed_at = COALESCE(EXCLUDED.committed_at, mem_mrr_commits.committed_at)
 """
 
 # Link commit → most-recent prompt in the same session that occurred before the commit.
-# Uses pr_commits.prompt_id (UUID FK to pr_prompts) — replaces the old pr_events/pr_event_links approach.
+# Uses mem_mrr_commits.prompt_id (UUID FK to mem_mrr_prompts) — replaces the old pr_events/pr_event_links approach.
 _SQL_LINK_COMMIT_TO_PROMPT = """
-    UPDATE pr_commits SET prompt_id = (
-        SELECT p.id FROM pr_prompts p
+    UPDATE mem_mrr_commits SET prompt_id = (
+        SELECT p.id FROM mem_mrr_prompts p
         WHERE p.client_id=1 AND p.project=%s
           AND p.session_id = %s
           AND p.event_type = 'prompt'
@@ -54,7 +54,7 @@ _SQL_LIST_COMMITS = """
     SELECT id, commit_hash, commit_msg, summary, phase,
            feature, bug_ref, source, session_id, prompt_source_id,
            tags, committed_at
-    FROM pr_commits
+    FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s
     ORDER BY committed_at DESC NULLS LAST, id DESC
     LIMIT %s
@@ -62,7 +62,7 @@ _SQL_LIST_COMMITS = """
 
 _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
     SELECT commit_hash, commit_msg, phase, feature, source, committed_at
-          FROM pr_commits
+          FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s
            AND (session_id = %s
             OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz))
@@ -71,7 +71,7 @@ _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
 
 _SQL_GET_SESSION_COMMITS_BY_ID = """
     SELECT commit_hash, commit_msg, phase, feature, source, committed_at
-          FROM pr_commits
+          FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s AND session_id = %s
          ORDER BY committed_at
 """
@@ -124,9 +124,9 @@ def _write_commit_log(project_name: str, entry: dict) -> None:
 def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
                           commit_msg: str, committed_at: str,
                           diff_summary: str = "") -> None:
-    """Upsert the new commit into pr_commits and link it to its triggering prompt.
+    """Upsert the new commit into mem_mrr_commits and link it to its triggering prompt.
 
-    Linking uses pr_commits.prompt_id (UUID FK to pr_prompts) — the most recent
+    Linking uses mem_mrr_commits.prompt_id (UUID FK to mem_mrr_prompts) — the most recent
     prompt in the same session that occurred before the commit timestamp.
     Called as a background task from commit_and_push.
     """
@@ -1015,7 +1015,7 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
             body.session_id or None,
             commit_message,
             datetime.now(timezone.utc).isoformat(),
-            diff_stat or "",   # stored as diff_summary on pr_commits
+            diff_stat or "",   # stored as diff_summary on mem_mrr_commits
         )
 
     return {

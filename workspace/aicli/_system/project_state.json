@@ -77,12 +77,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Data persistence bug: tags disappear on session switch\u2014root cause investigation ongoing; unclear if UI rendering vs database save failure; requires validation via /memory audit",
-    "Memory_items and project_facts table population not implemented\u2014per specification these tables should update to enable improved memory/context mechanism; PENDING implementation and testing",
-    "Project visibility bug investigation\u2014AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization",
-    "Backend startup stability fixes\u2014resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh; retry logic handles empty project list on first load",
-    "Memory endpoint CLAUDE.md template validation\u2014code_dir variable scoped/fixed at line 1120 to resolve runtime failures; endpoint template variable scoping now correct",
-    "JSONL vs. database storage consolidation\u2014migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate redundant calls"
+    "Memory table implementation: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior and completion of update logic",
+    "Project visibility timing issue: AiCli appears in Recent projects but not selectable as current active project; backend startup delay acknowledged, expected to resolve in production",
+    "Data persistence bug investigation: tags disappear on session switch; root cause unclear (UI rendering vs. database save failure); requires validation via /memory audit endpoint",
+    "Backend startup stability: resolved port 127.0.0.1:8000 binding conflicts; documented initialization sequence via bash start_backend.sh; retry logic handles empty project list",
+    "Memory endpoint template variable scoping: fixed code_dir variable at line 1120 in CLAUDE.md template to resolve runtime failures",
+    "User-client schema relationship: confirmed hierarchical structure (clients have multiple users) but schema modifications status unclear; may require database migration"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -114,7 +114,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-03-30T16:52:56Z",
+  "last_memory_run": "2026-03-31T15:37:56Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
@@ -134,12 +134,12 @@
       "Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic"
     ],
     "in_progress": [
-      "Data persistence bug: tags disappear on session switch\u2014root cause investigation ongoing; unclear if UI rendering vs database save failure; requires validation via /memory audit",
-      "Memory_items and project_facts table population not implemented\u2014per specification these tables should update to enable improved memory/context mechanism; PENDING implementation and testing",
-      "Project visibility bug investigation\u2014AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization",
-      "Backend startup stability fixes\u2014resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh; retry logic handles empty project list on first load",
-      "Memory endpoint CLAUDE.md template validation\u2014code_dir variable scoped/fixed at line 1120 to resolve runtime failures; endpoint template variable scoping now correct",
-      "JSONL vs. database storage consolidation\u2014migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate redundant calls"
+      "Memory table implementation: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior and completion of update logic",
+      "Project visibility timing issue: AiCli appears in Recent projects but not selectable as current active project; backend startup delay acknowledged, expected to resolve in production",
+      "Data persistence bug investigation: tags disappear on session switch; root cause unclear (UI rendering vs. database save failure); requires validation via /memory audit endpoint",
+      "Backend startup stability: resolved port 127.0.0.1:8000 binding conflicts; documented initialization sequence via bash start_backend.sh; retry logic handles empty project list",
+      "Memory endpoint template variable scoping: fixed code_dir variable at line 1120 in CLAUDE.md template to resolve runtime failures",
+      "User-client schema relationship: confirmed hierarchical structure (clients have multiple users) but schema modifications status unclear; may require database migration"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -156,10 +156,9 @@
       "mcp": "Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)",
       "deployment": "Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev; desktop: Electron-builder",
       "config_management": "config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support",
-      "build_tooling": "npm 8+ with webpack/Electron-builder; Vite dev server on localhost",
       "database_version": "PostgreSQL 15+"
     },
-    "project_summary": "aicli is a shared AI memory platform enabling Claude CLI and other LLM platforms to access persistent work context across sessions through a hierarchical data model (Clients \u2192 Users \u2192 Projects) with PostgreSQL semantic storage, MCP integration for embedding-based retrieval, and async DAG workflow execution. Currently at v2.2.0 with 16 active features/tasks spanning UI, authentication, shared memory, tagging, billing, and embeddings; near-term focus on resolving data persistence bugs, completing memory table population, and consolidating JSONL/DB storage layers.",
-    "memory_digest": "**2026-03-18** `SESSION_SUMMARY` \u2014 Removed stale `ensure_project_schema()` call from main.py; fixed memory endpoint CLAUDE.md `code_dir` variable scoping at line 1120; enhanced backend startup retry logic to handle edge case where projects list returns empty on first load. **2026-03-14** `PROJECT_STATE` \u2014 Confirmed hierarchical data model (Clients \u2192 Users); identified 16 active feature/task/bug entities with 1,200+ total events/commits; documented memory management patterns and tag persistence issue requiring investigation. **2026-03-10** `ARCHITECTURE_AUDIT` \u2014 Implemented load-once tag caching strategy on project access to reduce redundant SQL calls; approved nested tag hierarchy expansion; discovered critical data persistence bug where tags disappear on session switch; identified UI visibility issues for memory suggestions and action buttons. **2026-03-10** `STABILITY_FIXES` \u2014 Resolved port 127.0.0.1:8000 binding conflicts through documented bash start_backend.sh initialization sequence; stabilized backend startup race condition handling. **PENDING** \u2014 memory_items and project_facts table update logic not yet implemented; project visibility bug requires further investigation; JSONL-to-DB migration needed to eliminate dual storage complexity."
+    "project_summary": "AiCli is a shared AI memory platform built on FastAPI + PostgreSQL + Electron, enabling users to synthesize development history into structured memory across projects. The system implements dual-layer memory synthesis via Claude Haiku, semantic search with pgvector embeddings, and a DAG-based workflow engine for task orchestration. Currently in active development with focus on completing memory table population, resolving data persistence issues, and stabilizing backend initialization.",
+    "memory_digest": "**[2026-03-18]** `Recent Memory` \u2014 Removed stale `ensure_project_schema` call from main.py, replaced with `_ensure_shared_schema`; fixed CLAUDE.md line 1120 code_dir variable; implemented retry logic for empty project list on backend startup. **[2026-03-18]** `In Progress` \u2014 Project visibility issue persists (AiCli in Recent but not selectable); memory_items and project_facts tables not populating per spec; user-client schema relationship requires clarification. **[2026-03-16]** `Audit Complete` \u2014 event_tags system fully wired across chat/history/retrieval; fixed PostgreSQL ARRAY_AGG bug; MCP integration validated with stored API keys; 5-part memory synthesis replaces 40-entry JSONL dumps. **[2026-03-16]** `Architecture` \u2014 Workflow engine designed as DAG-based task execution similar to specrails; pending pipeline configuration source location and parent-child task hierarchy reconnection. **[2026-03-10]** `Optimization` \u2014 Implemented single-load caching for tags/categories on project open; eliminated redundant SQL calls during tag picker interactions; planned nested tags architecture via parent_id column on entity_values table."
   }
 }

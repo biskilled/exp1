@@ -77,9 +77,9 @@ def _handle_list_work_items(args: dict) -> str:
                     cur.execute(
                         """SELECT t.name, tc.name AS cat_name, t.lifecycle, tm.description, t.seq_num
                            FROM pr_work_items wi
-                           JOIN pr_tags t ON t.id = wi.tag_id
+                           JOIN planner_tags t ON t.id = wi.tag_id
                            LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-                           LEFT JOIN pr_tag_meta tm ON tm.tag_id = t.id
+                           LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
                            WHERE wi.client_id=1 AND wi.project=%s
                              AND tc.name ILIKE %s AND t.status=%s
                            ORDER BY t.seq_num DESC NULLS LAST LIMIT 50""",
@@ -89,9 +89,9 @@ def _handle_list_work_items(args: dict) -> str:
                     cur.execute(
                         """SELECT t.name, tc.name AS cat_name, t.lifecycle, tm.description, t.seq_num
                            FROM pr_work_items wi
-                           JOIN pr_tags t ON t.id = wi.tag_id
+                           JOIN planner_tags t ON t.id = wi.tag_id
                            LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-                           LEFT JOIN pr_tag_meta tm ON tm.tag_id = t.id
+                           LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
                            WHERE wi.client_id=1 AND wi.project=%s AND t.status=%s
                            ORDER BY t.seq_num DESC NULLS LAST LIMIT 50""",
                         (project, status),
@@ -170,9 +170,9 @@ def _handle_create_work_item(args: dict) -> str:
                         cat_row = cur.fetchone()
                 category_id = cat_row[0] if cat_row else None
 
-                # Create pr_tags row
+                # Create planner_tags row
                 cur.execute(
-                    """INSERT INTO pr_tags (client_id, project, name, category_id, status)
+                    """INSERT INTO planner_tags (client_id, project, name, category_id, status)
                        VALUES (1, %s, %s, %s, 'active')
                        ON CONFLICT (client_id, project, name) DO NOTHING
                        RETURNING id, seq_num""",
@@ -186,7 +186,7 @@ def _handle_create_work_item(args: dict) -> str:
                 # Insert tag_meta with description
                 if description:
                     cur.execute(
-                        """INSERT INTO pr_tag_meta (tag_id, client_id, project, description)
+                        """INSERT INTO planner_tags_meta (tag_id, client_id, project, description)
                            VALUES (%s::uuid, 1, %s, %s)
                            ON CONFLICT (tag_id) DO NOTHING""",
                         (tag_id, project, description),

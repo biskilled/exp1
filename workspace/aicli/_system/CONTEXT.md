@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-31 12:47 UTC — do not edit manually.
+> Auto-generated 2026-03-31 16:29 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 297
-- **Last active**: 2026-03-30T16:59:17Z
+- **Sessions**: 298
+- **Last active**: 2026-03-31T15:37:02Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -45,12 +45,12 @@
 
 ## In Progress
 
-- Data persistence bug: tags disappear on session switch—root cause investigation ongoing; unclear if UI rendering vs database save failure; requires validation via /memory audit
-- Memory_items and project_facts table population not implemented—per specification these tables should update to enable improved memory/context mechanism; PENDING implementation and testing
-- Project visibility bug investigation—AiCli appears in Recent projects but not displaying as current active project in main view; suspected timing issue during backend initialization
-- Backend startup stability fixes—resolved port 127.0.0.1:8000 binding conflicts; documented proper initialization sequence via bash start_backend.sh; retry logic handles empty project list on first load
-- Memory endpoint CLAUDE.md template validation—code_dir variable scoped/fixed at line 1120 to resolve runtime failures; endpoint template variable scoping now correct
-- JSONL vs. database storage consolidation—migrate away from dual JSONL/DB storage toward DB-only tables to simplify data persistence and eliminate redundant calls
+- Memory table implementation: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior and completion of update logic
+- Project visibility timing issue: AiCli appears in Recent projects but not selectable as current active project; backend startup delay acknowledged, expected to resolve in production
+- Data persistence bug investigation: tags disappear on session switch; root cause unclear (UI rendering vs. database save failure); requires validation via /memory audit endpoint
+- Backend startup stability: resolved port 127.0.0.1:8000 binding conflicts; documented initialization sequence via bash start_backend.sh; retry logic handles empty project list
+- Memory endpoint template variable scoping: fixed code_dir variable at line 1120 in CLAUDE.md template to resolve runtime failures
+- User-client schema relationship: confirmed hierarchical structure (clients have multiple users) but schema modifications status unclear; may require database migration
 
 ## Key Decisions
 
@@ -162,8 +162,12 @@ aicli/                     ← ENGINE — code only, no project-specific content
 
 ## Recent Development History
 
+**[2026-03-31 15:44]** `claude_cli/claude`  
+→ I am not so happy with the infrastrucure, think it is bit complicated anbd would like to dp antoehr refactor before I co
+
 **[2026-03-30 17:12]** `claude_cli/claude`  
 → I think the sujjestion tagging is missing now (it used to be prevously ) - when user run /memeoy it is also checking onl
+← _All done. Here's a summary of what was completed in this session:  **Step 11 (aicli_memory.md) — verified complete.** The file was already fully updated (v3.0, 2026-03-30) covering all sections the pl_
 
 **[2026-03-30 16:53]** `claude_cli/claude`  
 → yes, continue with data migration 
@@ -215,7 +219,3 @@ aicli/                     ← ENGINE — code only, no project-specific content
 **[2026-03-28 02:32]** `claude_cli/claude`  
 → Is it reccomended to merge pr_events and pr_interactions ?
 ← _The background research agent completed — its findings confirm the rewrite is accurate. The document is ready at `/Users/user/Documents/gdrive_cellqlick/2026/aicli/aicli_memory.md`._
-
-**[2026-03-28 02:13]** `claude_cli/claude`  
-→ Can you please rewrite aicli_memory.md. make sure all flows are exatly as they are. all prompts are writeen clear for ea
-← _This is a significant research task — I need to read every prompt and understand every table before rewriting. Let me do that thoroughly first._

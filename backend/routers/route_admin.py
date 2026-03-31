@@ -119,7 +119,7 @@ _SQL_INSERT_CATEGORY = """
 """
 
 _SQL_UPSERT_TAG = """
-    INSERT INTO pr_tags
+    INSERT INTO planner_tags
         (client_id, project, category_id, name, status, created_at)
     VALUES (1, %s, %s, %s, 'active', NOW())
     ON CONFLICT (client_id, project, name) DO UPDATE
@@ -700,7 +700,7 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
                 # Migrate commits
                 if _table_exists(cur, "commits"):
                     cur.execute(
-                        """INSERT INTO pr_commits
+                        """INSERT INTO mem_mrr_commits
                                (client_id, project, commit_hash, commit_msg, summary, phase, feature,
                                 bug_ref, source, session_id, tags, committed_at, created_at)
                             SELECT 1, %s, commit_hash, commit_msg, summary, phase, feature,
@@ -713,12 +713,12 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
 
                 # pr_events / pr_event_tags / pr_event_links were dropped in the
                 # 2026-03-30 memory-infra migration. Old "events" rows are now
-                # in pr_prompts (written by the CLI hooks). Skip these steps.
+                # in mem_mrr_prompts (written by the CLI hooks). Skip these steps.
 
                 # Migrate embeddings
                 if _table_exists(cur, "embeddings"):
                     cur.execute(
-                        """INSERT INTO pr_embeddings
+                        """INSERT INTO mem_ai_events
                                (client_id, project, source_type, source_id, chunk_index, content, embedding,
                                 chunk_type, doc_type, language, file_path, metadata, created_at)
                             SELECT 1, %s, source_type, source_id, chunk_index, content, embedding,

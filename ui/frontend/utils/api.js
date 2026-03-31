@@ -325,6 +325,16 @@ api.tags = {
     update: (id, body) => fetch(_base() + `/tags/categories/${id}`, { method:'PATCH', headers:_headers(), body:JSON.stringify(body) }).then(r=>r.ok?r.json():r.json().then(e=>Promise.reject(new Error(e.detail)))),
     delete: (id)       => _del(`/tags/categories/${id}`),
   },
+  suggestions: {
+    generate: (proj)         => _post(`/tags/suggestions/generate?project=${enc(proj)}`),
+    apply:    (proj, body)   => _post(`/tags/suggestions/apply?project=${enc(proj)}`, body),
+    ignore:   (proj, body)   => _post(`/tags/suggestions/ignore?project=${enc(proj)}`, body),
+  },
+  relations: {
+    list:   (proj)     => _get(`/tags/relations?project=${enc(proj)}`),
+    create: (body)     => _post('/tags/relations', body),
+    delete: (id)       => _del(`/tags/relations/${enc(id)}`),
+  },
 };
 
 

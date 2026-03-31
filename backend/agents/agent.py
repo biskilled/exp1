@@ -7,7 +7,7 @@ Two run modes:
                     • Hallucination guard: requires Thought text before every tool call
                     • Loop detection: aborts if the same tool is called 3× in a row
                     • Structured handoff: extracts JSON output and passes it to the next agent
-                    • Memory save: persists every handoff to pr_prompts
+                    • Memory save: persists every handoff to mem_mrr_prompts
 
 Usage:
     # General use
@@ -92,7 +92,7 @@ _SQL_LOAD_ROLE = """SELECT ar.system_prompt, ar.provider, ar.model,
                              ar.tools, ar.react, ar.max_iterations
                    LIMIT 1"""
 
-_SQL_SAVE_INTERACTION = """INSERT INTO pr_prompts
+_SQL_SAVE_INTERACTION = """INSERT INTO mem_mrr_prompts
     (client_id, project, source, session_id, content, metadata, created_at)
     VALUES (1, %s, %s, %s, %s, %s::jsonb, NOW())"""
 
@@ -286,7 +286,7 @@ class Agent:
         output: dict,
         project: str,
     ) -> None:
-        """Persist the agent's structured handoff to pr_prompts."""
+        """Persist the agent's structured handoff to mem_mrr_prompts."""
         from core.database import db
         import uuid
         if not db.is_available():
@@ -307,7 +307,7 @@ class Agent:
                         (project, f"agent:{self.name}", session_id, content, metadata),
                     )
                 conn.commit()
-            log.debug("Agent '%s' saved handoff to pr_prompts (project=%s)", self.name, project)
+            log.debug("Agent '%s' saved handoff to mem_mrr_prompts (project=%s)", self.name, project)
         except Exception as e:
             log.warning("Agent '%s' failed to save to memory: %s", self.name, e)
 
@@ -479,7 +479,7 @@ class Agent:
         - Hallucination guard: injects a warning if model calls a tool without a Thought
         - Loop detection: aborts if same tool called 3× in a row
         - Parses final response as structured JSON handoff
-        - Saves structured output to pr_prompts (memory)
+        - Saves structured output to mem_mrr_prompts (memory)
         """
         from data.dl_api_keys import get_key
         from agents.tools import invoke_tool

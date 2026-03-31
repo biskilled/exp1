@@ -1,8 +1,8 @@
 """
 route_tags.py — Unified tag management router.
 
-Manages the per-project tag registry (pr_tags), global categories (mng_tags_categories),
-source-tag links (pr_source_tags), and session context persistence.
+Manages the per-project tag registry (planner_tags), global categories (mng_tags_categories),
+source-tag links (mem_mrr_tags), and session context persistence.
 
 Replaces mng_entity_categories + mng_entity_values with a cleaner hierarchy.
 
@@ -52,10 +52,10 @@ _SQL_LIST_TAGS = """
            t.status, t.lifecycle, t.seq_num, t.created_at,
            tc.name AS category_name, tc.color, tc.icon,
            tm.description, tm.due_date, tm.priority,
-           (SELECT COUNT(*) FROM pr_source_tags st WHERE st.tag_id = t.id) AS source_count
-    FROM pr_tags t
+           (SELECT COUNT(*) FROM mem_mrr_tags st WHERE st.tag_id = t.id) AS source_count
+    FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-    LEFT JOIN pr_tag_meta tm ON tm.tag_id = t.id
+    LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
     WHERE t.client_id = 1 AND t.project = %s
       AND t.merged_into IS NULL
     ORDER BY t.created_at
@@ -66,52 +66,52 @@ _SQL_GET_TAG = """
            t.status, t.lifecycle, t.seq_num, t.created_at,
            tc.name AS category_name, tc.color, tc.icon,
            tm.description, tm.due_date, tm.priority, tm.requirements, tm.requester, tm.extra
-    FROM pr_tags t
+    FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-    LEFT JOIN pr_tag_meta tm ON tm.tag_id = t.id
+    LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
     WHERE t.client_id = 1 AND t.project = %s AND t.id = %s::uuid
 """
 
 _SQL_INSERT_TAG = """
-    INSERT INTO pr_tags (client_id, project, name, category_id, parent_id, status, lifecycle)
+    INSERT INTO planner_tags (client_id, project, name, category_id, parent_id, status, lifecycle)
     VALUES (1, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (client_id, project, name) DO NOTHING
     RETURNING id, name, created_at
 """
 
 _SQL_DELETE_TAG = """
-    DELETE FROM pr_tags WHERE id = %s::uuid AND client_id = 1 AND project = %s
+    DELETE FROM planner_tags WHERE id = %s::uuid AND client_id = 1 AND project = %s
     RETURNING id
 """
 
 _SQL_CHECK_TAG_SOURCES = """
-    SELECT COUNT(*) FROM pr_source_tags WHERE tag_id = %s::uuid
+    SELECT COUNT(*) FROM mem_mrr_tags WHERE tag_id = %s::uuid
 """
 
 _SQL_GET_TAG_SOURCES = """
     SELECT 'prompt' AS source_type, p.id::text AS source_id, p.prompt AS content, p.created_at,
            p.session_id, NULL::text AS commit_hash
-    FROM pr_source_tags st
-    JOIN pr_prompts p ON p.id = st.prompt_id
+    FROM mem_mrr_tags st
+    JOIN mem_mrr_prompts p ON p.id = st.prompt_id
     WHERE st.tag_id = %s::uuid AND st.prompt_id IS NOT NULL
     UNION ALL
     SELECT 'commit' AS source_type, c.id::text AS source_id, c.commit_msg AS content, c.created_at,
            c.session_id, c.commit_hash
-    FROM pr_source_tags st
-    JOIN pr_commits c ON c.id = st.commit_id
+    FROM mem_mrr_tags st
+    JOIN mem_mrr_commits c ON c.id = st.commit_id
     WHERE st.tag_id = %s::uuid AND st.commit_id IS NOT NULL
     ORDER BY created_at DESC
     LIMIT 100
 """
 
 _SQL_INSERT_SOURCE_TAG = """
-    INSERT INTO pr_source_tags (tag_id, prompt_id, commit_id, item_id, message_id, auto_tagged)
+    INSERT INTO mem_mrr_tags (tag_id, prompt_id, commit_id, item_id, message_id, auto_tagged)
     VALUES (%s::uuid, %s, %s, %s, %s, %s)
     RETURNING id
 """
 
 _SQL_DELETE_SOURCE_TAG = """
-    DELETE FROM pr_source_tags WHERE id = %s::uuid RETURNING id
+    DELETE FROM mem_mrr_tags WHERE id = %s::uuid RETURNING id
 """
 
 _SQL_GET_SESSION_CONTEXT = """
@@ -146,7 +146,7 @@ _SQL_DELETE_CATEGORY = """
 """
 
 _SQL_CHECK_CATEGORY_IN_USE = """
-    SELECT COUNT(*) FROM pr_tags WHERE category_id = %s AND client_id = 1
+    SELECT COUNT(*) FROM planner_tags WHERE category_id = %s AND client_id = 1
 """
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
@@ -304,11 +304,11 @@ async def update_tag(tag_id: str, body: TagUpdate):
     with db.conn() as conn:
         with conn.cursor() as cur:
             if tag_fields:
-                sql, vals = build_update("pr_tags", tag_fields, "id = %s::uuid AND client_id = 1")
+                sql, vals = build_update("planner_tags", tag_fields, "id = %s::uuid AND client_id = 1")
                 cur.execute(sql, (*vals, tag_id))
             if meta_fields:
                 cur.execute(
-                    "SELECT project FROM pr_tags WHERE id = %s::uuid AND client_id = 1",
+                    "SELECT project FROM planner_tags WHERE id = %s::uuid AND client_id = 1",
                     (tag_id,),
                 )
                 proj_row = cur.fetchone()
@@ -318,7 +318,7 @@ async def update_tag(tag_id: str, body: TagUpdate):
                     placeholders = ", ".join(["%s"] * len(meta_fields))
                     updates = ", ".join(f"{k} = EXCLUDED.{k}" for k in meta_fields)
                     cur.execute(
-                        f"""INSERT INTO pr_tag_meta (tag_id, client_id, project, {col_names}, updated_at)
+                        f"""INSERT INTO planner_tags_meta (tag_id, client_id, project, {col_names}, updated_at)
                             VALUES (%s::uuid, 1, %s, {placeholders}, %s)
                             ON CONFLICT (tag_id) DO UPDATE SET
                             {updates},
@@ -355,12 +355,12 @@ async def merge_tags(body: TagMerge):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM pr_tags WHERE client_id=1 AND project=%s AND name=%s",
+                "SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s",
                 (body.project, body.from_name),
             )
             from_row = cur.fetchone()
             cur.execute(
-                "SELECT id FROM pr_tags WHERE client_id=1 AND project=%s AND name=%s",
+                "SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s",
                 (body.project, body.into_name),
             )
             into_row = cur.fetchone()
@@ -370,11 +370,11 @@ async def merge_tags(body: TagMerge):
                 raise HTTPException(status_code=404, detail=f"Tag '{body.into_name}' not found")
             from_id, into_id = from_row[0], into_row[0]
             cur.execute(
-                "UPDATE pr_source_tags SET tag_id = %s WHERE tag_id = %s",
+                "UPDATE mem_mrr_tags SET tag_id = %s WHERE tag_id = %s",
                 (into_id, from_id),
             )
             cur.execute(
-                "UPDATE pr_tags SET merged_into = %s, status = 'archived' WHERE id = %s",
+                "UPDATE planner_tags SET merged_into = %s, status = 'archived' WHERE id = %s",
                 (into_id, from_id),
             )
     return {"ok": True, "merged_into": str(into_id)}
@@ -530,4 +530,107 @@ async def delete_category(cat_id: int):
             row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Category not found")
+    return {"ok": True}
+
+
+# ── AI tag suggestion endpoints ───────────────────────────────────────────────
+
+class SuggestionApplyBody(BaseModel):
+    source_type: str
+    source_id: str
+    tag_name: str
+    session_id: Optional[str] = None
+    session_src_desc: Optional[str] = None
+
+
+class SuggestionIgnoreBody(BaseModel):
+    source_type: str
+    source_id: str
+
+
+@router.post("/suggestions/generate")
+async def generate_tag_suggestions(project: str = Query(...)):
+    """Suggest planner_tags for all untagged mirroring rows (ai_tags IS NULL).
+
+    Calls Haiku once per row with the ai_tag_suggestion prompt.
+    Returns: {suggestions: [...], total_untagged: N}
+    """
+    _require_db()
+    from memory.memory_tagging import MemoryTagging
+    from memory.memory_mirroring import MemoryMirroring
+
+    tagging = MemoryTagging()
+    mirroring = MemoryMirroring()
+
+    total_untagged = sum(
+        len(mirroring.get_untagged(project, stype, limit=1000))
+        for stype in ("prompt", "commit", "item")
+    )
+
+    suggestions = await tagging.suggest_tags_for_untagged(project, batch_size=20)
+    return {"suggestions": suggestions, "total_untagged": total_untagged}
+
+
+@router.post("/suggestions/apply")
+async def apply_tag_suggestion(project: str = Query(...), body: SuggestionApplyBody = ...):
+    """Apply an AI tag suggestion: create/get tag, link to source, mark 'approved'."""
+    _require_db()
+    from memory.memory_tagging import MemoryTagging
+    tagging = MemoryTagging()
+    ok = await tagging.apply_suggestion(
+        project, body.source_type, body.source_id, body.tag_name,
+        session_id=body.session_id, session_src_desc=body.session_src_desc,
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to apply suggestion")
+    return {"ok": True}
+
+
+@router.post("/suggestions/ignore")
+async def ignore_tag_suggestion(project: str = Query(...), body: SuggestionIgnoreBody = ...):
+    """Mark a source row's AI tagging as 'ignored'."""
+    _require_db()
+    from memory.memory_tagging import MemoryTagging
+    MemoryTagging().ignore_suggestion(body.source_type, body.source_id)
+    return {"ok": True}
+
+
+# ── Tag relation endpoints ────────────────────────────────────────────────────
+
+class RelationCreate(BaseModel):
+    from_tag_id: str
+    relation: str
+    to_tag_id: str
+    note: Optional[str] = None
+    source: str = "manual"
+
+
+@router.get("/relations")
+async def list_tag_relations(project: str = Query(...)):
+    """List mng_ai_tags_relations for tags belonging to a project."""
+    _require_db()
+    from memory.memory_tagging import MemoryTagging
+    return MemoryTagging().get_relations(project)
+
+
+@router.post("/relations")
+async def create_tag_relation(body: RelationCreate):
+    """Add a relationship between two planner_tags."""
+    _require_db()
+    from memory.memory_tagging import MemoryTagging
+    MemoryTagging().add_relation(
+        body.from_tag_id, body.relation, body.to_tag_id,
+        note=body.note, source=body.source,
+    )
+    return {"ok": True}
+
+
+@router.delete("/relations/{relation_id}")
+async def delete_tag_relation(relation_id: str):
+    """Remove a tag relation by UUID."""
+    _require_db()
+    from memory.memory_tagging import MemoryTagging
+    deleted = MemoryTagging().delete_relation(relation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Relation not found")
     return {"ok": True}

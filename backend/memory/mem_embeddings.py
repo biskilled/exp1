@@ -50,7 +50,7 @@ _EXT_LANG: dict[str, str] = {
 
 # ── SQL ───────────────────────────────────────────────────────────────────────
 
-_SQL_UPSERT_EMBEDDING = """INSERT INTO pr_embeddings
+_SQL_UPSERT_EMBEDDING = """INSERT INTO mem_ai_events
                            (client_id, project, source_type, source_id, chunk_index, content,
                             embedding, chunk_type, doc_type, language, file_path, metadata)
                        VALUES (1, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
@@ -71,37 +71,37 @@ _SQL_UPSERT_EMBEDDING = """INSERT INTO pr_embeddings
 _SQL_SEARCH_EMBEDDINGS_TPL = """SELECT source_type, source_id, chunk_index, chunk_type,
                                content, language, file_path, doc_type, metadata,
                                1 - (embedding <=> %s::vector) AS score
-                        FROM pr_embeddings
+                        FROM mem_ai_events
                         WHERE {where}
                         ORDER BY embedding <=> %s::vector
                         LIMIT %s"""
 
 _SQL_GET_COMMIT_META = (
     "SELECT phase, feature, bug_ref "
-    "FROM pr_commits WHERE client_id=1 AND project=%s AND commit_hash=%s"
+    "FROM mem_mrr_commits WHERE client_id=1 AND project=%s AND commit_hash=%s"
 )
 
 _SQL_GET_NODE_OUTPUTS = (
     "SELECT node_id, node_name, output FROM pr_graph_node_results WHERE run_id=%s AND status='done'"
 )
 
-# Propagate entity value tags from pr_event_tags into pr_embeddings.metadata.
+# Propagate entity value tags from pr_event_tags into mem_ai_events.metadata.
 # The bridge is ev.source_id == e.source_id (timestamp for history, commit_hash for commit).
 # Uses || merge so existing metadata keys are preserved.
 _SQL_BACKFILL_ENTITY_TAGS = """
-    UPDATE pr_embeddings e
+    UPDATE mem_ai_events e
     SET metadata = e.metadata || jsonb_build_object('entity_tags',
         (SELECT jsonb_agg(jsonb_build_object('id', t.id::text, 'name', t.name, 'category', tc.name))
-         FROM pr_prompts pr
-         JOIN pr_source_tags st ON st.prompt_id = pr.id
-         JOIN pr_tags t  ON t.id  = st.tag_id AND t.client_id=1
+         FROM mem_mrr_prompts pr
+         JOIN mem_mrr_tags st ON st.prompt_id = pr.id
+         JOIN planner_tags t  ON t.id  = st.tag_id AND t.client_id=1
          JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
          WHERE pr.client_id=1 AND pr.project=%s AND pr.source_id = e.source_id)
     )
     WHERE e.client_id=1 AND e.project=%s
       AND EXISTS (
-          SELECT 1 FROM pr_prompts pr
-          JOIN pr_source_tags st ON st.prompt_id = pr.id
+          SELECT 1 FROM mem_mrr_prompts pr
+          JOIN mem_mrr_tags st ON st.prompt_id = pr.id
           WHERE pr.client_id=1 AND pr.project=%s AND pr.source_id = e.source_id
       )
 """
@@ -651,7 +651,7 @@ async def ingest_document(
 
 
 async def backfill_entity_tags(project: str) -> int:
-    """Propagate entity value tags from pr_event_tags into pr_embeddings.metadata.
+    """Propagate entity value tags from pr_event_tags into mem_ai_events.metadata.
 
     Runs after any tagging operation so embeddings become searchable by entity.
     Finds all embeddings whose source_id matches a tagged pr_events.source_id and
