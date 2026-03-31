@@ -35,7 +35,7 @@ from routers import (
     route_work_items, route_agent_roles, route_system_roles, route_documents,
     route_user_api_keys, route_logs, route_agents, route_tags,
 )
-from routers import route_snapshots
+from routers import route_snapshots, route_memory
 from pwa_router import router as pwa_router
 
 
@@ -103,6 +103,7 @@ app.include_router(route_logs.router,           prefix="/logs",           tags=[
 app.include_router(route_agents.router,         prefix="/agents",         tags=["agents"])
 app.include_router(route_tags.router,           prefix="/tags",           tags=["tags"])
 app.include_router(route_snapshots.router,      prefix="",                tags=["snapshots"])
+app.include_router(route_memory.router,         prefix="/memory",         tags=["memory"])
 
 # Static files
 STATIC_DIR = Path(__file__).parent / "static"

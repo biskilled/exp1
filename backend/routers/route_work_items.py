@@ -254,6 +254,18 @@ def _project(p: str | None) -> str:
     return p or settings.active_project or "default"
 
 
+async def _trigger_memory_regen(project: str) -> None:
+    """Background task: regenerate root context files after work item changes."""
+    try:
+        from memory.memory_files import MemoryFiles
+        import asyncio as _aio
+        await _aio.get_event_loop().run_in_executor(
+            None, MemoryFiles().write_root_files, project
+        )
+    except Exception as e:
+        log.debug(f"_trigger_memory_regen error: {e}")
+
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class WorkItemCreate(BaseModel):
@@ -348,6 +360,9 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
                  body.tags, seq),
             )
             r = cur.fetchone()
+    # Regenerate root memory files in background
+    asyncio.create_task(_trigger_memory_regen(p))
+
     return {
         "id": str(r[0]), "name": r[1], "category_name": r[2],
         "created_at": r[3].isoformat(), "project": p,
@@ -414,6 +429,9 @@ async def patch_work_item(
             asyncio.create_task(_summarize_feature_memory(p, item_id))
         except Exception:
             pass
+
+    # Regenerate root memory files in background after any patch
+    asyncio.create_task(_trigger_memory_regen(p))
 
     return {"ok": True, "id": item_id, "status": new_status}
 

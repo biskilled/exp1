@@ -533,6 +533,22 @@ CREATE TABLE IF NOT EXISTS pr_seq_counters (
 );
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS seq_num INT;
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq ON mem_ai_work_items(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
+
+-- Session summaries (structured synthesis written by Stop hook)
+CREATE TABLE IF NOT EXISTS pr_session_summaries (
+    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project      VARCHAR(255) NOT NULL,
+    session_id   TEXT         NOT NULL,
+    summary      TEXT         NOT NULL DEFAULT '',
+    open_threads TEXT         NOT NULL DEFAULT '',
+    next_steps   TEXT         NOT NULL DEFAULT '',
+    tags         TEXT[]       NOT NULL DEFAULT '{}',
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE(client_id, project, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pr_ss_cp      ON pr_session_summaries(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_pr_ss_created ON pr_session_summaries(created_at DESC);
 """
 
 

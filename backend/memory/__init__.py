@@ -12,5 +12,6 @@ from memory.memory_mirroring import MemoryMirroring
 from memory.memory_tagging import MemoryTagging
 from memory.memory_embedding import MemoryEmbedding
 from memory.memory_promotion import MemoryPromotion, compute_relevance
+from memory.memory_files import MemoryFiles
 
-__all__ = ["MemoryMirroring", "MemoryTagging", "MemoryEmbedding", "MemoryPromotion", "compute_relevance"]
+__all__ = ["MemoryMirroring", "MemoryTagging", "MemoryEmbedding", "MemoryPromotion", "compute_relevance", "MemoryFiles"]

@@ -142,5 +142,11 @@ echo "To change: edit $CONTEXT_FILE"
 echo "Your prompt was held. Re-send to proceed."
 echo ""
 
+# ── Refresh top_events.md so Claude Code loads fresh memory at session start ──
+curl -sf --connect-timeout 2 --max-time 10 \
+    -X POST "${BACKEND_URL}/memory/${ACTIVE_PROJECT}/regenerate?scope=root" \
+    -H "Content-Type: application/json" \
+    -o /dev/null 2>/dev/null &   # run in background, don't block session
+
 # Exit 2 = block the prompt (Claude Code shows output above to user)
 exit 2

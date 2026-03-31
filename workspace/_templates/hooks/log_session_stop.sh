@@ -171,6 +171,15 @@ state['source']           = 'claude_cli'
 runtime_file.write_text(json.dumps(state, indent=2))
 " "$RUNTIME_FILE" "$SESSION" 2>/dev/null
 
+# ── Generate session summary (stores in pr_session_summaries + mem_ai_events) ──
+if [ -n "$SESSION" ]; then
+curl -sf --connect-timeout 2 --max-time 10 \
+    -X POST "${BACKEND_URL}/memory/${ACTIVE_PROJECT}/session-summary" \
+    -H "Content-Type: application/json" \
+    -d "{\"session_id\":\"${SESSION}\",\"force\":false}" \
+    -o /dev/null 2>/dev/null &   # run in background
+fi
+
 # ── Auto-regenerate MEMORY.md so next session starts with fresh context ───────
 curl -sf --connect-timeout 2 --max-time 15 \
     -X POST "${BACKEND_URL}/projects/${ACTIVE_PROJECT}/memory" \

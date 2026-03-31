@@ -15,6 +15,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -274,6 +275,18 @@ async def generate_snapshot(project: str, tag_name: str):
     log.info(f"Snapshot generated for '{tag_name}' in '{project}': "
              f"{len(event_ids)} events, {facts_extracted} facts, "
              f"{relations_upserted} relations")
+
+    # Regenerate feature CLAUDE.md in background after snapshot
+    async def _regen():
+        try:
+            from memory.memory_files import MemoryFiles
+            mf = MemoryFiles()
+            await asyncio.get_event_loop().run_in_executor(
+                None, mf.write_feature_files, project, tag_name
+            )
+        except Exception as e:
+            log.debug(f"snapshot regen error: {e}")
+    asyncio.create_task(_regen())
 
     return {
         "snapshot_id":        snap_id,

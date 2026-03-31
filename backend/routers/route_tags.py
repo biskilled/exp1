@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -44,6 +45,22 @@ from core.database import db, build_update
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _trigger_memory_regen(project: str, tag_name: str | None = None) -> None:
+    """Background task: regenerate root + optional feature context files."""
+    try:
+        from memory.memory_files import MemoryFiles
+        mf = MemoryFiles()
+        await asyncio.get_event_loop().run_in_executor(
+            None, mf.write_root_files, project
+        )
+        if tag_name:
+            await asyncio.get_event_loop().run_in_executor(
+                None, mf.write_feature_files, project, tag_name
+            )
+    except Exception as e:
+        log.debug(f"_trigger_memory_regen error: {e}")
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
@@ -629,7 +646,7 @@ async def list_tag_relations(project: str = Query(...)):
 
 
 @router.post("/relations")
-async def create_tag_relation(body: RelationCreate):
+async def create_tag_relation(body: RelationCreate, project: str | None = Query(None)):
     """Add a relationship between two planner_tags (by UUID)."""
     _require_db()
     from memory.memory_tagging import MemoryTagging
@@ -637,6 +654,9 @@ async def create_tag_relation(body: RelationCreate):
         body.from_tag_id, body.relation, body.to_tag_id,
         note=body.note, source=body.source,
     )
+    if project:
+        asyncio.create_task(_trigger_memory_regen(project))
+    return {"ok": True}
 
 
 @router.post("/relations/by-name")
@@ -655,7 +675,7 @@ async def create_tag_relation_by_name(body: RelationCreateByName):
     )
     if not ok:
         raise HTTPException(status_code=400, detail="Could not resolve or create tags")
-    return {"ok": True}
+    asyncio.create_task(_trigger_memory_regen(body.project))
     return {"ok": True}
 
 

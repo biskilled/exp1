@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 20:48 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 21:42 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -38,29 +38,30 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ with webpack/Electron-builder; Vite dev server on localhost
 - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
+- **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; JSONL migration planned
+- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; per-project schemas
 - Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys
 - All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none
-- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval
+- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with approval
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); reduces token overhead
-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
-- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
+- Per-project unified event table: mem_ai_events (id, project_id, session_id, session_desc, event_summary) replacing pr_embeddings/pr_memory_events
+- Table naming convention: mem_ai_* prefix for consolidated memory tables; mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
-- Embeddings linked to tags: tag metadata captures context (auth→all authentication prompts; feature/bug→relevant code changes)
-- Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
-- Manual relations managed by developers via CLI/admin UI; relation types: depends_on, relates_to, blocks, implements
+- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
+- Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements
+- Memory management pattern: load_once_on_access, update_on_save; memory_items and project_facts table population pending clarification
 
 ## Recent Context (last 5 changes)
 
-- [2026-03-31] Is it makes more sense, before I continue to the secopnd phase (refactor embedding logic) . is there is anything else yo
 - [2026-03-31] Yes please fix that. about pr_embedding. in the prevous prompts I have mention the following: pr_embeddings,pr_memory_ev
 - [2026-03-31] I am not sure all tagging functionality is implemented as I do not see the mng_ai_tags_relations for example. can you pl
 - [2026-03-31] I do see the error . it suppose to be mem_ai_tags_relations not mng_ai_tags_relations. can you fix that ?
 - [2026-03-31] I would like to make sure relation is managed properly.  relation can be managed entries by developers.   Manual relatio
+- [2026-03-31] I would like to make sure that the final layer include Work Items, Feature Snapshots and Project Facts is well managed  

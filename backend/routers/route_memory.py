@@ -1,0 +1,370 @@
+"""
+route_memory.py — Memory file generation and session summary endpoints.
+
+Endpoints:
+    GET  /memory/{project}/top-events           — top-N events by relevance_score
+    POST /memory/{project}/session-summary      — generate + store session summary
+    GET  /memory/{project}/session-summaries    — list recent session summaries
+    POST /memory/{project}/regenerate           — regenerate context files from DB
+    GET  /memory/{project}/llm-prompt           — get rendered system prompt (compact|full|gemini)
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import re
+from typing import Optional
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from pydantic import BaseModel
+
+from core.config import settings
+from core.database import db
+
+log = logging.getLogger(__name__)
+router = APIRouter()
+
+# ── SQL ────────────────────────────────────────────────────────────────────────
+
+_SQL_GET_SESSION_PROMPTS = """
+    SELECT prompt, response, created_at
+    FROM mem_mrr_prompts
+    WHERE client_id=1 AND project=%s AND session_id=%s
+      AND event_type='prompt' AND prompt IS NOT NULL AND prompt != ''
+    ORDER BY created_at
+"""
+
+_SQL_GET_SYSTEM_ROLE = """
+    SELECT content FROM mng_system_roles
+    WHERE client_id=1 AND name=%s AND is_active=TRUE
+    LIMIT 1
+"""
+
+_SQL_UPSERT_SESSION_SUMMARY = """
+    INSERT INTO pr_session_summaries
+        (client_id, project, session_id, summary, open_threads, next_steps, tags)
+    VALUES (1, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (client_id, project, session_id)
+    DO UPDATE SET
+        summary      = EXCLUDED.summary,
+        open_threads = EXCLUDED.open_threads,
+        next_steps   = EXCLUDED.next_steps,
+        tags         = EXCLUDED.tags
+    RETURNING id
+"""
+
+_SQL_INSERT_AI_EVENT_SUMMARY = """
+    INSERT INTO mem_ai_events
+        (client_id, project, source_type, source_id, session_id,
+         chunk, chunk_type, content, summary_desc, importance, created_at)
+    VALUES (1, %s, 'session_summary', %s, %s, 0, 'full', %s, %s, 2, NOW())
+    ON CONFLICT (client_id, project, source_type, source_id, chunk)
+    DO UPDATE SET
+        content      = EXCLUDED.content,
+        summary_desc = EXCLUDED.summary_desc
+"""
+
+_SQL_LIST_SESSION_SUMMARIES = """
+    SELECT id, session_id, summary, open_threads, next_steps, tags, created_at
+    FROM pr_session_summaries
+    WHERE client_id=1 AND project=%s
+    ORDER BY created_at DESC
+    LIMIT %s
+"""
+
+_SQL_GET_EXISTING_SUMMARY = """
+    SELECT id FROM pr_session_summaries
+    WHERE client_id=1 AND project=%s AND session_id=%s
+    LIMIT 1
+"""
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _require_db():
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="Database not available")
+
+
+async def _call_haiku(system_prompt: str, user_message: str, max_tokens: int = 600) -> str:
+    try:
+        from data.dl_api_keys import get_key
+        api_key = get_key("claude") or get_key("anthropic")
+        if not api_key:
+            return ""
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        resp = await client.messages.create(
+            model=getattr(settings, "claude_haiku_model", "claude-haiku-4-5-20251001"),
+            max_tokens=max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        return resp.content[0].text if resp.content else ""
+    except Exception as e:
+        log.warning(f"_call_haiku error: {e}")
+        return ""
+
+
+def _parse_json(text: str) -> dict:
+    clean = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`")
+    m = re.search(r"\{[\s\S]*\}", clean)
+    if not m:
+        return {}
+    try:
+        return json.loads(m.group())
+    except Exception:
+        return {}
+
+
+async def _generate_session_summary(
+    project: str, session_id: str
+) -> Optional[dict]:
+    """
+    Read session prompts, call Haiku with session_end_synthesis prompt,
+    return {summary, open_threads, next_steps}.
+    """
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_GET_SESSION_PROMPTS, (project, session_id))
+            pairs = cur.fetchall()
+
+    if not pairs:
+        return None
+
+    # Build conversation text for synthesis
+    conv_lines = []
+    for prompt, response, created_at in pairs[-20:]:  # last 20 pairs
+        if prompt:
+            conv_lines.append(f"User: {prompt[:300]}")
+        if response:
+            conv_lines.append(f"Assistant: {response[:300]}")
+    conv_text = "\n".join(conv_lines)
+
+    # Load synthesis prompt from DB
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_GET_SYSTEM_ROLE, ("session_end_synthesis",))
+            row = cur.fetchone()
+    system_prompt = row[0] if row else (
+        "Analyse this development session and produce a structured summary.\n"
+        "Return JSON only:\n"
+        "{\n"
+        "  \"summary\": \"3-6 bullet points of what was decided/built/fixed\",\n"
+        "  \"open_threads\": \"unresolved questions or partially-done items (bullet list or empty string)\",\n"
+        "  \"next_steps\": \"suggested follow-up actions (bullet list or empty string)\"\n"
+        "}\n"
+        "No preamble, no markdown fences."
+    )
+
+    raw = await _call_haiku(system_prompt, conv_text, max_tokens=600)
+    if not raw:
+        return None
+    parsed = _parse_json(raw)
+    if not parsed:
+        return None
+
+    return {
+        "summary":      parsed.get("summary", ""),
+        "open_threads": parsed.get("open_threads", ""),
+        "next_steps":   parsed.get("next_steps", ""),
+    }
+
+
+async def _trigger_root_regen(project: str) -> None:
+    """Background task: regenerate root context files."""
+    try:
+        from memory.memory_files import MemoryFiles
+        await asyncio.get_event_loop().run_in_executor(
+            None, MemoryFiles().write_root_files, project
+        )
+        log.debug(f"Root files regenerated for '{project}'")
+    except Exception as e:
+        log.debug(f"_trigger_root_regen error: {e}")
+
+
+async def _trigger_feature_regen(project: str, tag_name: str) -> None:
+    """Background task: regenerate a feature CLAUDE.md."""
+    try:
+        from memory.memory_files import MemoryFiles
+        await asyncio.get_event_loop().run_in_executor(
+            None, MemoryFiles().write_feature_files, project, tag_name
+        )
+        log.debug(f"Feature files regenerated for '{project}/{tag_name}'")
+    except Exception as e:
+        log.debug(f"_trigger_feature_regen error: {e}")
+
+
+# ── Models ────────────────────────────────────────────────────────────────────
+
+class SessionSummaryRequest(BaseModel):
+    session_id: str
+    force:      bool = False   # re-generate even if summary already exists
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.get("/{project}/top-events")
+async def get_top_events(
+    project: str,
+    limit:      int         = Query(5, ge=1, le=20),
+    session_id: str | None  = Query(None),
+):
+    """Return top-N memory events ranked by time-decayed relevance score."""
+    _require_db()
+    from memory.memory_files import MemoryFiles
+    events = MemoryFiles().get_top_events(project, limit)
+    return {"events": events, "project": project, "total": len(events)}
+
+
+@router.post("/{project}/session-summary")
+async def create_session_summary(
+    project: str,
+    body: SessionSummaryRequest,
+    background: BackgroundTasks = BackgroundTasks(),
+):
+    """
+    Generate a structured session summary from session prompts.
+    Stores in pr_session_summaries AND mem_ai_events.
+    Triggers root files regeneration as a background task.
+    """
+    _require_db()
+    session_id = body.session_id
+
+    # Skip if already exists (unless force=True)
+    if not body.force:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_GET_EXISTING_SUMMARY, (project, session_id))
+                if cur.fetchone():
+                    return {"status": "already_exists", "session_id": session_id}
+
+    result = await _generate_session_summary(project, session_id)
+    if not result:
+        return {"status": "no_data", "session_id": session_id}
+
+    # Store in pr_session_summaries
+    summary_text = result["summary"]
+    combined_content = "\n".join(filter(None, [
+        "Summary:", summary_text,
+        "\nOpen Threads:", result["open_threads"],
+        "\nNext Steps:", result["next_steps"],
+    ]))
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                _SQL_UPSERT_SESSION_SUMMARY,
+                (project, session_id, summary_text,
+                 result["open_threads"], result["next_steps"], []),
+            )
+            ss_row = cur.fetchone()
+            ss_id = str(ss_row[0]) if ss_row else None
+
+            # Also insert into mem_ai_events for semantic search
+            cur.execute(
+                _SQL_INSERT_AI_EVENT_SUMMARY,
+                (project, session_id, session_id, combined_content, summary_text[:200]),
+            )
+
+    # Regenerate root files in background
+    background.add_task(_trigger_root_regen, project)
+
+    log.info(f"Session summary generated for '{project}' session={session_id}")
+    return {
+        "status":    "created",
+        "id":        ss_id,
+        "session_id": session_id,
+        **result,
+    }
+
+
+@router.get("/{project}/session-summaries")
+async def list_session_summaries(
+    project: str,
+    limit: int = Query(10, ge=1, le=50),
+):
+    """Return recent session summaries for a project."""
+    _require_db()
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_LIST_SESSION_SUMMARIES, (project, limit))
+            rows = cur.fetchall()
+    return {
+        "summaries": [
+            {
+                "id":           str(r[0]),
+                "session_id":   r[1],
+                "summary":      r[2],
+                "open_threads": r[3],
+                "next_steps":   r[4],
+                "tags":         r[5] or [],
+                "created_at":   r[6].isoformat() if r[6] else None,
+            }
+            for r in rows
+        ],
+        "project": project,
+        "total": len(rows),
+    }
+
+
+@router.post("/{project}/regenerate")
+async def regenerate_memory_files(
+    project: str,
+    scope:    str        = Query("root", pattern="^(root|feature|all)$"),
+    tag_name: str | None = Query(None),
+):
+    """
+    Regenerate context files from DB tables.
+
+    scope=root    → CLAUDE.md, .cursorrules, system prompts, top_events.md
+    scope=feature → features/{tag_name}/CLAUDE.md  (tag_name required)
+    scope=all     → root + all active feature files
+    """
+    from memory.memory_files import MemoryFiles
+    mf = MemoryFiles()
+    written: list[str] = []
+
+    if scope == "root":
+        written = await asyncio.get_event_loop().run_in_executor(
+            None, mf.write_root_files, project
+        )
+    elif scope == "feature":
+        if not tag_name:
+            raise HTTPException(400, "tag_name is required for scope=feature")
+        written = await asyncio.get_event_loop().run_in_executor(
+            None, mf.write_feature_files, project, tag_name
+        )
+    elif scope == "all":
+        written = await asyncio.get_event_loop().run_in_executor(
+            None, mf.write_all_files, project
+        )
+
+    return {
+        "status":  "ok",
+        "project": project,
+        "scope":   scope,
+        "written": [p.split("/workspace/")[-1] if "/workspace/" in p else p for p in written],
+        "count":   len(written),
+    }
+
+
+@router.get("/{project}/llm-prompt")
+async def get_llm_prompt(
+    project: str,
+    variant: str = Query("compact", pattern="^(compact|full|gemini)$"),
+):
+    """Return a rendered LLM system prompt. Useful for copy-paste into claude.ai, ChatGPT, etc."""
+    from memory.memory_files import MemoryFiles
+    mf = MemoryFiles()
+    ctx = mf._load_context(project)
+
+    if variant == "compact":
+        content = mf.render_system_compact(ctx)
+    elif variant == "full":
+        content = mf.render_system_full(ctx)
+    else:
+        content = mf.render_gemini_context(ctx)
+
+    return {"variant": variant, "project": project, "content": content}
