@@ -49,25 +49,32 @@ _SQL_UPSERT_SESSION_SUMMARY = """
     INSERT INTO mem_ai_events
         (client_id, project, event_type, source_id, session_id,
          chunk, chunk_type, content, summary, open_threads, next_steps,
-         summary_tags, llm_source, importance, created_at)
+         llm_source, importance, created_at)
     VALUES (1, %s, 'session_summary', %s, %s,
-            0, 'full', %s, %s, %s, %s, %s, %s, 2, NOW())
+            0, 'full', %s, %s, %s, %s, %s, 2, NOW())
     ON CONFLICT (client_id, project, event_type, source_id, chunk)
     DO UPDATE SET
         content      = EXCLUDED.content,
         summary      = EXCLUDED.summary,
         open_threads = EXCLUDED.open_threads,
         next_steps   = EXCLUDED.next_steps,
-        summary_tags = EXCLUDED.summary_tags,
         llm_source   = EXCLUDED.llm_source
     RETURNING id
 """
 
 _SQL_LIST_SESSION_SUMMARIES = """
-    SELECT id, session_id, summary, open_threads, next_steps, summary_tags, created_at
-    FROM mem_ai_events
-    WHERE client_id=1 AND project=%s AND event_type='session_summary'
-    ORDER BY created_at DESC
+    SELECT e.id, e.session_id, e.summary, e.open_threads, e.next_steps,
+           COALESCE(
+               array_agg(pt.name ORDER BY pt.name) FILTER (WHERE pt.name IS NOT NULL),
+               '{}'::text[]
+           ) AS tags,
+           e.created_at
+    FROM mem_ai_events e
+    LEFT JOIN mem_ai_tags mat ON mat.event_id = e.id
+    LEFT JOIN planner_tags  pt  ON pt.id = mat.tag_id
+    WHERE e.client_id=1 AND e.project=%s AND e.event_type='session_summary'
+    GROUP BY e.id, e.session_id, e.summary, e.open_threads, e.next_steps, e.created_at
+    ORDER BY e.created_at DESC
     LIMIT %s
 """
 
@@ -257,7 +264,7 @@ async def create_session_summary(
                 _SQL_UPSERT_SESSION_SUMMARY,
                 (project, session_id, session_id,
                  combined_content, summary_text,
-                 result["open_threads"], result["next_steps"], [], haiku_model),
+                 result["open_threads"], result["next_steps"], haiku_model),
             )
             row = cur.fetchone()
             event_id = str(row[0]) if row else None

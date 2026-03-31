@@ -683,7 +683,6 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     summary         TEXT,                   -- Haiku digest or session summary bullets
     open_threads    TEXT         NOT NULL DEFAULT '',   -- session_summary only
     next_steps      TEXT         NOT NULL DEFAULT '',   -- session_summary only
-    summary_tags    TEXT[]       NOT NULL DEFAULT '{}', -- session_summary only
     doc_type        TEXT,                   -- item: 'requirement'|'decision'|'meeting'
     language        TEXT,                   -- code chunk: 'python'|'javascript'|…
     file_path       TEXT,                   -- code/commit chunk: source file path
@@ -748,6 +747,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_tags (
     id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     event_id           UUID         NOT NULL REFERENCES mem_ai_events(id) ON DELETE CASCADE,
     tag_id             UUID         NOT NULL REFERENCES planner_tags(id)  ON DELETE CASCADE,
+    ai_suggested       BOOLEAN      NOT NULL DEFAULT FALSE,  -- TRUE when tag was proposed by AI (not manually assigned)
     event_updated      TIMESTAMPTZ,
     work_item_id       UUID         REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
     work_item_updated  TIMESTAMPTZ,
@@ -884,10 +884,14 @@ ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS next_steps   TEXT NOT NULL DE
 ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS summary_tags TEXT[] NOT NULL DEFAULT '{}';
 -- Add llm_source: which model produced this event
 ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS llm_source   VARCHAR(100) DEFAULT NULL;
--- Drop unused legacy message-resolution columns
+-- Drop unused / denormalized columns from mem_ai_events
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_max_resolution_hrs;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_cnt_msg;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_desc;
+-- summary_tags[] is denormalized — tags live in mem_ai_tags (linked by event_id)
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_tags;
+-- Add ai_suggested flag to mem_ai_tags so AI-proposed tags are distinguishable
+ALTER TABLE mem_ai_tags ADD COLUMN IF NOT EXISTS ai_suggested BOOLEAN NOT NULL DEFAULT FALSE;
 -- Migrate pr_session_summaries → mem_ai_events (idempotent: only if table still exists)
 DO $$
 BEGIN

@@ -157,8 +157,8 @@ _SQL_UPDATE_MRR_TAG_EVENT = """
 """
 
 _SQL_INSERT_AI_TAG = """
-    INSERT INTO mem_ai_tags (event_id, tag_id)
-    VALUES (%s::uuid, %s::uuid)
+    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
+    VALUES (%s::uuid, %s::uuid, %s)
     ON CONFLICT (event_id, tag_id) DO NOTHING
 """
 
@@ -383,14 +383,17 @@ class MemoryTagging:
         except Exception as e:
             log.debug(f"MemoryTagging.update_event_id_for_prompts error: {e}")
 
-    def link_to_event(self, event_id: str, tag_id: str) -> None:
-        """Insert a row into mem_ai_tags linking a tag to an AI event."""
+    def link_to_event(self, event_id: str, tag_id: str, ai_suggested: bool = False) -> None:
+        """Insert a row into mem_ai_tags linking a tag to an AI event.
+
+        ai_suggested=True marks the tag as proposed by an LLM (not manually assigned).
+        """
         if not db.is_available():
             return
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_INSERT_AI_TAG, (event_id, tag_id))
+                    cur.execute(_SQL_INSERT_AI_TAG, (event_id, tag_id, ai_suggested))
         except Exception as e:
             log.debug(f"MemoryTagging.link_to_event error: {e}")
 
