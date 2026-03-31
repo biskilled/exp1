@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-03-31 16:36 UTC by aicli /memory_
+_Generated: 2026-03-31 16:55 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform built on FastAPI + PostgreSQL + Electron, enabling collaborative AI work through semantic search, tagging, and workflow automation. Currently in Phase 1 stabilization with memory synthesis deployed, event tagging fully operational, and MCP integration validated; Phase 2 embedding refactor blocked pending clarification on memory table population logic and user-client schema relationship.
+aicli is a shared AI memory platform integrating Claude CLI, LLM platforms, and work item management via MCP server. It uses PostgreSQL 15+ with pgvector for semantic search, FastAPI backend with JWT auth, and Electron/Vanilla JS frontend with Cytoscape.js workflow visualization. Current focus is consolidating embedding/memory event tables, resolving data persistence issues on session switches, and clarifying memory table population logic before Phase 2 refactoring.
 
 ## Project Facts
 
@@ -55,7 +55,7 @@ Reviewer: ```json
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
 - **storage_primary**: PostgreSQL 15+ with per-project schema
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
+- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys
 - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
 - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
@@ -77,6 +77,7 @@ Reviewer: ```json
 - **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ with webpack/Electron-builder; Vite dev server on localhost
+- **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 
 ## Key Decisions
 
@@ -89,72 +90,144 @@ Reviewer: ```json
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); reduces token overhead
 - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
 - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
 - Embeddings linked to tags: tag metadata captures context (auth→all authentication prompts; feature/bug→relevant code changes)
 - Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
+- pr_embeddings and pr_memory_events tables to be merged into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)
 
 ## In Progress
 
-- Memory table population design review: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior before Phase 2 embedding refactor
-- Backend startup race condition partially resolved: AiCli now appears in Recent projects but remains unavailable as selectable current project; acknowledged as dev environment delay
-- Data persistence validation: tags disappearing on session switch—root cause under investigation (UI rendering vs. database save failure); /memory audit endpoint testing pending
-- Embedding logic refactoring planned: Phase 2 work blocked pending clarification on memory table update logic and completion of existing issues
-- Port binding stability confirmed: 127.0.0.1:8000 conflicts resolved; bash start_backend.sh initialization sequence documented
-- User-client schema relationship confirmed: hierarchical structure validated (clients have multiple users); schema modification status unclear, may require database migration
+- Table consolidation design: pr_embeddings and pr_memory_events merging into single mem_ai_events table with event summary schema
+- Memory table population logic: memory_items and project_facts tables require clarification on intended update behavior before Phase 2 embedding refactor
+- Data persistence validation: tags disappearing on session switch—root cause under investigation (UI rendering vs. database save failure)
+- Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay acknowledged
+- Embedding logic refactoring blocked: Phase 2 work pending clarification on memory table update logic and table consolidation design
+- Port binding stability: 127.0.0.1:8000 conflicts resolved; bash start_backend.sh initialization sequence documented
 
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `prompt_batch: 8f29a8d3-13a3-42ed-9219-de7bfe53e3d2` — 2026-03-31
+### `commit` — 2026-03-31
 
-# Development Session Summary (2026-03-18)
+diff --git a/workspace/aicli/_system/project_state.json b/workspace/aicli/_system/project_state.json
+index 17937a5..9a00c6f 100644
+--- a/workspace/aicli/_system/project_state.json
++++ b/workspace/aicli/_system/project_state.json
+@@ -114,7 +114,7 @@
+     "cloud": "Railway (Dockerfile + railway.toml)",
+     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
+   },
+-  "last_memory_run": "2026-03-31T15:37:56Z",
++  "last_memory_run": "2026-03-31T16:34:04Z",
+   "_synthesis_cache": {
+     "key_decisions": [
+       "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
 
-**Resolved Issues:**
-• **`ensure_project_schema` AttributeError** — Removed stale `db.ensure_project_schema(settings.active_project)` call from `main.py` that referenced non-existent database function; replaced with correct `_ensure_shared_schema` method
-• **CLAUDE.md memory endpoint error** — Fixed line 1120 by defining missing `code_dir` variable to resolve runtime error when loading memory
-• **Backend startup race condition** — Modified `_continueToApp` function to implement retry logic when projects load succeeds but returns empty array on initial startup
 
-**Partially Resolved:**
-• **Project visibility** — AiCli project now appears in Recent projects list, but remains unavailable as selectable current project; backend startup delay acknowledged as expected for dev environment (should resolve in production with persistent backend)
+### `commit` — 2026-03-31
 
-**Outstanding Issues:**
-• **Memory mechanism implementation mismatch** — `memory_items` and `project_facts` tables not being updated according to design specification; requires clarification on intended behavior vs. current implementation
-• **User-client schema relationship** — Confirmed hierarchical structure (clients have multiple users) but schema updates status unclear; may require database migration
+diff --git a/workspace/aicli/_system/dev_runtime_state.json b/workspace/aicli/_system/dev_runtime_state.json
+index ee29cb0..cdf9cac 100644
+--- a/workspace/aicli/_system/dev_runtime_state.json
++++ b/workspace/aicli/_system/dev_runtime_state.json
+@@ -1,8 +1,8 @@
+ {
+-  "last_updated": "2026-03-31T16:33:38Z",
++  "last_updated": "2026-03-31T16:36:40Z",
+   "last_session_id": "17cd46bd-a73d-4611-8a20-7e584e13e61d",
+-  "last_session_ts": "2026-03-31T16:33:38Z",
+-  "session_count": 299,
++  "last_session_ts": "2026-03-31T16:36:40Z",
++  "session_count": 300,
+   "last_provider": "claude",
+   "last_prompt_preview": "hellow, how are you ?",
+   "source": "claude_cli"
 
-**Action Items:** Investigate memory table update logic and complete user-client schema modifications
 
-### `prompt_batch: 5b19c863-f99a-439c-b595-b415d0d342ed` — 2026-03-31
+### `commit` — 2026-03-31
 
-# Development Session Summary (2026-03-16)
+diff --git a/workspace/aicli/_system/cursor/rules.md b/workspace/aicli/_system/cursor/rules.md
+index 7d91267..52b8bba 100644
+--- a/workspace/aicli/_system/cursor/rules.md
++++ b/workspace/aicli/_system/cursor/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 15:37 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 16:33 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
 
-- **Memory & Tagging System Audited**: Verified `event_tags_{project}` system is fully wired across chat, history sync, and retrieval; fixed PostgreSQL `ARRAY_AGG(uuid[])` bug causing tag aggregation failures
 
-- **MCP Integration Validated**: Successfully tested end-to-end pipeline with direct HTTP calls using stored API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY from .env); MCP not yet active in session but `.mcp.json` configured
+### `commit` — 2026-03-31
 
-- **Memory Architecture Confirmed**: 5-part improvement system deployed—replaced noisy 40-entry JSONL dumps with synthesized summaries; reduces token overhead while improving context retrieval for complex projects
+diff --git a/workspace/aicli/_system/commit_log.jsonl b/workspace/aicli/_system/commit_log.jsonl
+index 99ddf9e..ec77437 100644
+--- a/workspace/aicli/_system/commit_log.jsonl
++++ b/workspace/aicli/_system/commit_log.jsonl
+@@ -513,3 +513,5 @@
+ {"ts": "2026-03-30T16:59:17Z", "action": "commit_push", "source": "claude_cli", "session_id": "7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1", "hash": "e6a0097f", "message": "chore: update ai workspace state and simplify database.py", "pushed": true, "push_error": ""}
+ {"action": "commit_push", "source": "claude_cli", "session_id": "7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1", "hash": "1732da8e", "message": "chore: update system files and refactor backend routes", "files_count": 39, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-03-31T15:37:24Z"}
+ {"ts": "2026-03-31T15:37:02Z", "action": "commit_push", "source": "claude_cli", "session_id": "7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1", "hash": "1732da8e", "message": "chore: update system files and refactor backend routes", "pushed": true, "push_error": ""}
++{"action": "commit_push", "source": "claude_cli", "session_id": "17cd46bd-a73d-4611-8a20-7e584e13e61d", "hash": "8f221096", "message": "chore: update ai session state and memory after session 17cd46bd", "files_count": 56, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-03-31T16:33:48Z"}
++{"ts": "2026-03-31T16:33:38Z", "action": "commit_push", "source": "claude_cli", "session_id": "17cd46bd-a73d-4611-8a20-7e584e13e61d", "hash": "8f221096", "message": "chore: update ai session state and memory after session 17cd46bd", "pushed": true, "push_error": ""}
 
-- **Workflow System Initiated**: Began design for workflow engine similar to specrails (DAG-based task execution); reviewed parent-child task relationships and default pipeline configuration in Planner tab
 
-- **Outstanding**: Locate pipeline configuration source (default Pipeline in Planner tab); reconnect parent-child task hierarchy (UI → Dropbox example); integrate workflows with existing tagging system for better work item management
+### `commit` — 2026-03-31
 
-### `prompt_batch: 03f774e9-ad60-4cf3-8c0c-0191ba9a78d0` — 2026-03-31
+diff --git a/workspace/aicli/_system/claude/MEMORY.md b/workspace/aicli/_system/claude/MEMORY.md
+index 03dec08..4987952 100644
+--- a/workspace/aicli/_system/claude/MEMORY.md
++++ b/workspace/aicli/_system/claude/MEMORY.md
+@@ -1,12 +1,8 @@
+ # Project Memory — aicli
+-_Generated: 2026-03-31 15:37 UTC by aicli /memory_
++_Generated: 2026-03-31 16:33 UTC by aicli /memory_
+ 
+ > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+ 
+-## Project Summary
+-
+-AiCli is a shared AI memory platform built on FastAPI + PostgreSQL + Electron, enabling users to synthesize development history into structured memory across projects. The system implements dual-layer memory synthesis via Claude Haiku, semantic search with pgvector embeddings, and a DAG-based workflow engine for task orchestration. Currently in active development with focus on completing memory table population, resolving data persistence issues, and stabilizing backend initialization.
+-
+ ## Project Facts
+ 
+ - **auth_pattern**: login_as_first_level_hierarchy
+@@ -154,7 +150,3 @@ Reviewer: ```json
+ - **Designed nested tags architecture**: Confirmed feasibility of multi-level tag hierarchy; planned `parent_id` column addition to `entity_values` table to extend beyond original 2-level (category → tag) structure; clarified that new tags added via chat are always created at root level only
+ 
+ - **Database optimization strategy**: User requested consolidated SQL approach—load data once on project access, save updates only when explicitly saved (not on every change)
+-
+-## AI Synthesis
+-
+-**[2026-03-18]** `Recent Memory` — Removed stale `ensure_project_schema` call from main.py, replaced with `_ensure_shared_schema`; fixed CLAUDE.md line 1120 code_dir variable; implemented retry logic for empty project list on backend startup. **[2026-03-18]** `In Progress` — Project visibility issue persists (AiCli in Recent but not selectable); memory_items and project_facts tables not populating per spec; user-client schema relationship requires clarification. **[2026-03-16]** `Audit Complete` — event_tags system fully wired across chat/history/retrieval; fixed PostgreSQL ARRAY_AGG bug; MCP integration validated with stored API keys; 5-part memory synthesis replaces 40-entry JSONL dumps. **[2026-03-16]** `Architecture` — Workflow engine designed as DAG-based task execution similar to specrails; pending pipeline configuration source location and parent-child task hierarchy reconnection. **[2026-03-10]** `Optimization` — Implemented single-load caching for tags/categories on project open; eliminated redundant SQL calls during tag picker interactions; planned nested tags architecture via parent_id column on entity_values table.
+\ No newline at end of file
 
-# Development Session Summary (2026-03-10)
 
-- **Fixed stale backend process**: Killed lingering uvicorn instance (PID 86671) blocking port 8000; restarted fresh backend
+### `commit` — 2026-03-31
 
-- **Resolved UI loading issues**: Confirmed clean restart process using `NODE_ENV=development` and Vite dev server from `ui/` directory after electron shutdown; port 8000 freed for backend
+diff --git a/workspace/aicli/_system/claude/CLAUDE.md b/workspace/aicli/_system/claude/CLAUDE.md
+index 8bfbf42..0a1faed 100644
+--- a/workspace/aicli/_system/claude/CLAUDE.md
++++ b/workspace/aicli/_system/claude/CLAUDE.md
+@@ -119,4 +119,10 @@ Layer 5 — Global Knowledge
+ - [2026-03-31] `claude_cli`: I am not so happy with the infrastrucure, think it is bit complicated anbd would like to dp antoehr 
+ 
+ ---
+-*Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
+\ No newline at end of file
++*Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
++
++---
++
++## Session Memory
++
++Read `MEMORY.md` in this directory for recent work history, key decisions, and in-progress items. It was generated by aicli `/memory` (last 10 development exchanges).
 
-- **Optimized database queries**: Implemented single-load caching strategy in `chat.js` — tags/categories now loaded once when project opens and stored in memory via `_pickerPopulateCats()` function, eliminating redundant SQL calls during tag picker interactions
-
-- **Designed nested tags architecture**: Confirmed feasibility of multi-level tag hierarchy; planned `parent_id` column addition to `entity_values` table to extend beyond original 2-level (category → tag) structure; clarified that new tags added via chat are always created at root level only
-
-- **Database optimization strategy**: User requested consolidated SQL approach—load data once on project access, save updates only when explicitly saved (not on every change)
 
 ## AI Synthesis
 
-**[2026-03-31]** `claude_cli` — Pre-Phase 2 review: user asks if memory table population and embedding refactor should proceed; outstanding issues blocking Phase 2 include memory_items/project_facts table update logic clarification and user-client schema relationship validation. **[2026-03-18]** `development` — Resolved ensure_project_schema AttributeError by replacing with _ensure_shared_schema; fixed CLAUDE.md line 1120 code_dir variable definition; implemented retry logic in _continueToApp for empty project list on startup. **[2026-03-16]** `audit` — Validated event_tags system fully wired across chat/history/retrieval; fixed PostgreSQL ARRAY_AGG(uuid[]) bug; confirmed 5-part memory synthesis reducing JSONL noise from 40 entries to synthesized summaries; MCP integration tested with stored API keys. **[2026-03-10]** `optimization` — Killed stale uvicorn (PID 86671); optimized database with single-load tag caching strategy in chat.js eliminating redundant SQL calls; designed nested tags architecture with parent_id column; consolidated SQL approach: load once on project access, save only on explicit save. **[2026-03-14]** `architecture` — Confirmed per-project schema tables structure (commits, events, embeddings, event_tags, event_links, memory_items, project_facts) and shared auth/usage tables; hierarchical data model (clients→users) with login_as_first_level_hierarchy pattern documented.
+**[2026-03-31 16:50]** `claude_cli` — Identified critical table consolidation requirement: pr_embeddings and pr_memory_events to merge into single mem_ai_events table with event summary schema (id, project_id, session_id, session_desc, event_summary). **[2026-03-31]** `system` — Memory synthesis pipeline running dual-layer Claude Haiku approach (raw JSONL → interaction_tags → 5 output files) to reduce token overhead. **[2026-03-31]** `system` — Backend startup race condition partially resolved: AiCli appears in Recent projects but unavailable for selection due to dev environment timing delays. **[ongoing]** `development` — Data persistence investigation: tags disappearing on session switch requires root cause analysis between UI rendering and database save failures; /memory audit endpoint testing pending. **[ongoing]** `development` — Memory table population design blocked: memory_items and project_facts tables not being populated per design spec; Phase 2 embedding refactor awaiting clarification. **[established]** `architecture` — Hierarchical data model enforced: Clients contain multiple Users with login_as_first_level_hierarchy auth pattern and _ensure_shared_schema replacing ensure_project_schema.

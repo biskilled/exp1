@@ -105,8 +105,10 @@ _SQL_GET_TAG_SOURCES = """
 """
 
 _SQL_INSERT_SOURCE_TAG = """
-    INSERT INTO mem_mrr_tags (tag_id, prompt_id, commit_id, item_id, message_id, auto_tagged)
-    VALUES (%s::uuid, %s, %s, %s, %s, %s)
+    INSERT INTO mem_mrr_tags
+           (tag_id, session_id, session_src_id, session_src_desc,
+            prompt_id, commit_id, item_id, message_id, auto_tagged)
+    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
     RETURNING id
 """
 
@@ -182,6 +184,9 @@ class TagMerge(BaseModel):
 
 class SourceTagCreate(BaseModel):
     tag_id: str
+    session_id: Optional[str] = None
+    session_src_id: Optional[str] = None
+    session_src_desc: Optional[str] = None
     prompt_id: Optional[str] = None
     commit_id: Optional[int] = None
     item_id: Optional[str] = None
@@ -409,8 +414,8 @@ async def add_source_tag(body: SourceTagCreate):
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_INSERT_SOURCE_TAG,
-                (body.tag_id, body.prompt_id, body.commit_id,
-                 body.item_id, body.message_id, body.auto_tagged),
+                (body.tag_id, body.session_id, body.session_src_id, body.session_src_desc,
+                 body.prompt_id, body.commit_id, body.item_id, body.message_id, body.auto_tagged),
             )
             row = cur.fetchone()
     if not row:

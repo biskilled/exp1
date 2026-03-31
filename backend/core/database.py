@@ -708,6 +708,11 @@ CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_tag     ON mem_mrr_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_session ON mem_mrr_tags(session_id);
 CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_prompt  ON mem_mrr_tags(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit  ON mem_mrr_tags(commit_id);
+-- Partial unique indexes enable UPSERT per source type (one row per tag+source combination)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_prompt_uniq  ON mem_mrr_tags(tag_id, prompt_id)   WHERE prompt_id  IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit_uniq  ON mem_mrr_tags(tag_id, commit_id)   WHERE commit_id  IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_item_uniq    ON mem_mrr_tags(tag_id, item_id)     WHERE item_id    IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_message_uniq ON mem_mrr_tags(tag_id, message_id)  WHERE message_id IS NOT NULL;
 
 -- ── AI tags on embedding events ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_tags (
@@ -824,6 +829,7 @@ END $$;
 # ─── Column additions to existing tables (memory infra) ──────────────────────
 
 _DDL_MEMORY_INFRA_ALTERS = """
+ALTER TABLE planner_tags         ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE mem_mrr_commits      ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
 ALTER TABLE mem_mrr_commits      ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
 ALTER TABLE pr_work_items        ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);

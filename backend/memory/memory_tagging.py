@@ -9,7 +9,9 @@ Public API::
 
     tagging = MemoryTagging()
     tag_id = tagging.get_or_create_tag(project, name, category_id)
-    tagging.link_to_mirroring(tag_id, session_id, prompt_id=uuid)
+    tagging.link_to_mirroring(tag_id, session_id, session_src_desc='claude_cli', prompt_id=uuid)
+    tagging.link_to_mirroring(tag_id, session_id, commit_id=42, commit_created=ts, event_id=evt_uuid)
+    tagging.update_event_id_for_prompts(event_id, [prompt_uuid1, prompt_uuid2])
     tagging.link_to_event(event_id, tag_id)
     tagging.add_relation(from_tag_id, 'depends_on', to_tag_id)
     tree = tagging.get_tag_tree(project)
@@ -47,21 +49,111 @@ _SQL_INSERT_TAG = """
     RETURNING id
 """
 
-_SQL_INSERT_MRR_TAG = """
+# Per-source-type UPSERT SQL — one row per (tag, source) combination.
+# ON CONFLICT updates the *_updated timestamp and backfills event_id/work_item_id when available.
+_SQL_UPSERT_MRR_TAG_PROMPT = """
     INSERT INTO mem_mrr_tags
            (tag_id, session_id, session_src_id, session_src_desc,
-            prompt_id, prompt_created,
-            commit_id, commit_created,
-            item_id, item_created,
-            message_id, message_created,
-            work_item_id, auto_tagged)
-       VALUES (%s::uuid, %s, %s, %s,
-               %s, %s,
-               %s, %s,
-               %s::uuid, %s,
-               %s::uuid, %s,
-               %s::uuid, %s)
+            prompt_id, prompt_created, prompt_updated,
+            work_item_id, work_item_created, work_item_updated,
+            event_id, event_created, event_updated, auto_tagged)
+    VALUES (%s::uuid, %s, %s, %s,
+            %s::uuid, %s, %s,
+            %s::uuid, %s, %s,
+            %s::uuid, %s, %s, %s)
+    ON CONFLICT (tag_id, prompt_id) WHERE prompt_id IS NOT NULL
+    DO UPDATE SET
+        prompt_updated    = COALESCE(EXCLUDED.prompt_updated,    NOW()),
+        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
+        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
+        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
+        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
+        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
+        updated_at        = NOW()
     RETURNING id
+"""
+
+_SQL_UPSERT_MRR_TAG_COMMIT = """
+    INSERT INTO mem_mrr_tags
+           (tag_id, session_id, session_src_id, session_src_desc,
+            commit_id, commit_created, commit_updated,
+            work_item_id, work_item_created, work_item_updated,
+            event_id, event_created, event_updated, auto_tagged)
+    VALUES (%s::uuid, %s, %s, %s,
+            %s, %s, %s,
+            %s::uuid, %s, %s,
+            %s::uuid, %s, %s, %s)
+    ON CONFLICT (tag_id, commit_id) WHERE commit_id IS NOT NULL
+    DO UPDATE SET
+        commit_updated    = COALESCE(EXCLUDED.commit_updated,    NOW()),
+        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
+        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
+        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
+        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
+        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
+        updated_at        = NOW()
+    RETURNING id
+"""
+
+_SQL_UPSERT_MRR_TAG_ITEM = """
+    INSERT INTO mem_mrr_tags
+           (tag_id, session_id, session_src_id, session_src_desc,
+            item_id, item_created, item_updated,
+            work_item_id, work_item_created, work_item_updated,
+            event_id, event_created, event_updated, auto_tagged)
+    VALUES (%s::uuid, %s, %s, %s,
+            %s::uuid, %s, %s,
+            %s::uuid, %s, %s,
+            %s::uuid, %s, %s, %s)
+    ON CONFLICT (tag_id, item_id) WHERE item_id IS NOT NULL
+    DO UPDATE SET
+        item_updated      = COALESCE(EXCLUDED.item_updated,      NOW()),
+        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
+        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
+        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
+        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
+        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
+        updated_at        = NOW()
+    RETURNING id
+"""
+
+_SQL_UPSERT_MRR_TAG_MESSAGE = """
+    INSERT INTO mem_mrr_tags
+           (tag_id, session_id, session_src_id, session_src_desc,
+            message_id, message_created, message_updated,
+            work_item_id, work_item_created, work_item_updated,
+            event_id, event_created, event_updated, auto_tagged)
+    VALUES (%s::uuid, %s, %s, %s,
+            %s::uuid, %s, %s,
+            %s::uuid, %s, %s,
+            %s::uuid, %s, %s, %s)
+    ON CONFLICT (tag_id, message_id) WHERE message_id IS NOT NULL
+    DO UPDATE SET
+        message_updated   = COALESCE(EXCLUDED.message_updated,   NOW()),
+        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
+        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
+        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
+        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
+        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
+        updated_at        = NOW()
+    RETURNING id
+"""
+
+# Session-level link (no source FK) — plain insert, no uniqueness conflict expected
+_SQL_INSERT_MRR_TAG_SESSION = """
+    INSERT INTO mem_mrr_tags
+           (tag_id, session_id, session_src_id, session_src_desc,
+            work_item_id, work_item_created, auto_tagged)
+    VALUES (%s::uuid, %s, %s, %s, %s::uuid, %s, %s)
+    RETURNING id
+"""
+
+# Backfill event_id on existing mem_mrr_tags rows after a batch event is created
+_SQL_UPDATE_MRR_TAG_EVENT = """
+    UPDATE mem_mrr_tags
+       SET event_id = %s::uuid, event_updated = NOW(), updated_at = NOW()
+     WHERE prompt_id = ANY(%s::uuid[])
+       AND event_id IS NULL
 """
 
 _SQL_INSERT_AI_TAG = """
@@ -173,40 +265,102 @@ class MemoryTagging:
         *,
         session_src_id: Optional[str] = None,
         session_src_desc: Optional[str] = None,
+        # Prompt FK + timestamps
         prompt_id: Optional[str] = None,
         prompt_created: Optional[object] = None,
+        prompt_updated: Optional[object] = None,
+        # Commit FK + timestamps
         commit_id: Optional[int] = None,
         commit_created: Optional[object] = None,
+        commit_updated: Optional[object] = None,
+        # Item FK + timestamps
         item_id: Optional[str] = None,
         item_created: Optional[object] = None,
+        item_updated: Optional[object] = None,
+        # Message FK + timestamps
         message_id: Optional[str] = None,
         message_created: Optional[object] = None,
+        message_updated: Optional[object] = None,
+        # Work-item FK + timestamps
         work_item_id: Optional[str] = None,
+        work_item_created: Optional[object] = None,
+        work_item_updated: Optional[object] = None,
+        # AI-event FK + timestamps (Phase-2 — stored, no FK constraint yet)
+        event_id: Optional[str] = None,
+        event_created: Optional[object] = None,
+        event_updated: Optional[object] = None,
         auto_tagged: bool = False,
     ) -> Optional[str]:
-        """Insert a row into mem_mrr_tags linking a tag to one or more source rows.
+        """Insert or update a mem_mrr_tags row linking a tag to a source event.
 
-        Returns the new mem_mrr_tags.id as a string.
+        Routes to the appropriate per-source UPSERT SQL based on which FK is non-null.
+        ON CONFLICT updates *_updated and backfills event_id/work_item_id if supplied.
+        Returns the mem_mrr_tags.id as a string.
         """
         if not db.is_available():
             return None
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        _SQL_INSERT_MRR_TAG,
-                        (tag_id, session_id, session_src_id, session_src_desc,
-                         prompt_id, prompt_created,
-                         commit_id, commit_created,
-                         item_id, item_created,
-                         message_id, message_created,
-                         work_item_id, auto_tagged),
-                    )
+                    if prompt_id is not None:
+                        cur.execute(_SQL_UPSERT_MRR_TAG_PROMPT, (
+                            tag_id, session_id, session_src_id, session_src_desc,
+                            prompt_id, prompt_created, prompt_updated,
+                            work_item_id, work_item_created, work_item_updated,
+                            event_id, event_created, event_updated, auto_tagged,
+                        ))
+                    elif commit_id is not None:
+                        cur.execute(_SQL_UPSERT_MRR_TAG_COMMIT, (
+                            tag_id, session_id, session_src_id, session_src_desc,
+                            commit_id, commit_created, commit_updated,
+                            work_item_id, work_item_created, work_item_updated,
+                            event_id, event_created, event_updated, auto_tagged,
+                        ))
+                    elif item_id is not None:
+                        cur.execute(_SQL_UPSERT_MRR_TAG_ITEM, (
+                            tag_id, session_id, session_src_id, session_src_desc,
+                            item_id, item_created, item_updated,
+                            work_item_id, work_item_created, work_item_updated,
+                            event_id, event_created, event_updated, auto_tagged,
+                        ))
+                    elif message_id is not None:
+                        cur.execute(_SQL_UPSERT_MRR_TAG_MESSAGE, (
+                            tag_id, session_id, session_src_id, session_src_desc,
+                            message_id, message_created, message_updated,
+                            work_item_id, work_item_created, work_item_updated,
+                            event_id, event_created, event_updated, auto_tagged,
+                        ))
+                    else:
+                        # Session-level link — no specific source FK
+                        cur.execute(_SQL_INSERT_MRR_TAG_SESSION, (
+                            tag_id, session_id, session_src_id, session_src_desc,
+                            work_item_id, work_item_created, auto_tagged,
+                        ))
                     row = cur.fetchone()
             return str(row[0]) if row else None
         except Exception as e:
             log.debug(f"MemoryTagging.link_to_mirroring error: {e}")
             return None
+
+    def update_event_id_for_prompts(
+        self,
+        event_id: str,
+        prompt_ids: list[str],
+    ) -> None:
+        """Backfill event_id on mem_mrr_tags rows for the given prompt_ids.
+
+        Called by MemoryEmbedding after process_prompt_batch creates a mem_ai_events
+        row, so that mirroring-layer tag links know which AI event they rolled up into.
+        Only updates rows where event_id IS NULL to avoid overwriting existing links.
+        """
+        if not db.is_available() or not prompt_ids:
+            return
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_UPDATE_MRR_TAG_EVENT, (event_id, prompt_ids))
+        except Exception as e:
+            log.debug(f"MemoryTagging.update_event_id_for_prompts error: {e}")
 
     def link_to_event(self, event_id: str, tag_id: str) -> None:
         """Insert a row into mem_ai_tags linking a tag to an AI event."""
