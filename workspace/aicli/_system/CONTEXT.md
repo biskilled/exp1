@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-03-31 21:42 UTC — do not edit manually.
+> Auto-generated 2026-03-31 22:19 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 305
-- **Last active**: 2026-03-31T21:42:08Z
+- **Sessions**: 306
+- **Last active**: 2026-03-31T22:18:49Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -47,12 +47,12 @@
 
 ## In Progress
 
-- Table consolidation & renaming: pr_project_facts → mem_ai_project_facts, pr_work_items → mem_ai_work_items; add mem_ai_features table for final memory layer (Work Items, Feature Snapshots, Project Facts)
+- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md + system prompts for all LLM providers auto-regenerated from project_facts, work_items, sessions (Layer 1 priority)
+- Manual relation management design: Developer-declared relations via CLI/admin UI/SQL with types (depends_on, relates_to, blocks, implements) vs. automatic detection
+- Table consolidation: pr_embeddings + pr_memory_events → mem_ai_events; pr_project_facts → mem_ai_project_facts; pr_work_items → mem_ai_work_items; add mem_ai_features
 - Tagging functionality validation: Verify mem_ai_tags_relations table implementation (naming corrected from mng_ai_tags_relations) and all tagging prompts per spec
 - Data persistence validation: Tags disappearing on session switch; investigate root cause (UI rendering vs. database save failure)
-- Memory table population logic: Clarify intended update behavior for memory_items and project_facts; currently not populating per spec
 - Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay documented
-- Work Items, Feature Snapshots, and Project Facts trigger & timing design needed for final memory layer completion
 
 ## Key Decisions
 
@@ -63,14 +63,14 @@
 - All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with approval
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); reduces token overhead
-- Per-project unified event table: mem_ai_events (id, project_id, session_id, session_desc, event_summary) replacing pr_embeddings/pr_memory_events
+- Per-project unified event table: mem_ai_events (id, project_id, session_id, session_desc, event_summary) consolidating pr_embeddings/pr_memory_events
 - Table naming convention: mem_ai_* prefix for consolidated memory tables; mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
 - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
 - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
 - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
 - Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements
-- Memory management pattern: load_once_on_access, update_on_save; memory_items and project_facts table population pending clarification
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
+- Memory management pattern: load_once_on_access, update_on_save; triggered by memory endpoint and synthesis layer
 
 ---
 

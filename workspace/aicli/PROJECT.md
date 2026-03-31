@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Table consolidation & renaming: pr_project_facts → mem_ai_project_facts, pr_work_items → mem_ai_work_items; add mem_ai_features table for final memory layer (Work Items, Feature Snapshots, Project Facts)
+- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md + system prompts for all LLM providers auto-regenerated from project_facts, work_items, sessions (Layer 1 priority)
+- Manual relation management design: Developer-declared relations via CLI/admin UI/SQL with types (depends_on, relates_to, blocks, implements) vs. automatic detection
+- Table consolidation: pr_embeddings + pr_memory_events → mem_ai_events; pr_project_facts → mem_ai_project_facts; pr_work_items → mem_ai_work_items; add mem_ai_features
 - Tagging functionality validation: Verify mem_ai_tags_relations table implementation (naming corrected from mng_ai_tags_relations) and all tagging prompts per spec
 - Data persistence validation: Tags disappearing on session switch; investigate root cause (UI rendering vs. database save failure)
-- Memory table population logic: Clarify intended update behavior for memory_items and project_facts; currently not populating per spec
 - Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay documented
-- Work Items, Feature Snapshots, and Project Facts trigger & timing design needed for final memory layer completion
