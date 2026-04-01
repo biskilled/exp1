@@ -674,15 +674,10 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
 
     let html = `
       <tr style="border-bottom:1px solid var(--border);opacity:${archived ? '0.45' : '1'};
-                 transition:background 0.1s;cursor:grab"
+                 transition:background 0.1s;cursor:grab;user-select:none"
           data-val-id="${v.id}" data-tag-id="${v.id}" data-tag-name="${_esc(v.name)}"
           data-cat-id="${catId}" data-cat-name="${_esc(catName)}"
           draggable="true"
-          ondragstart="window._plannerDragStart(event,'${v.id}','${_esc(v.name)}',${catId},'${_esc(catName)}')"
-          ondragover="window._plannerDragOver(event)"
-          ondragleave="window._plannerDragLeave(event)"
-          ondrop="window._plannerDrop(event)"
-          ondragend="window._plannerDragEnd(event)"
           onclick="window._plannerOpenDrawer(${catId},'${v.id}')"
           onmouseenter="this.style.background='var(--surface2)'"
           onmouseleave="this.style.background=''">
@@ -778,6 +773,8 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
       </tbody>
     </table>`}
   `;
+
+  _attachTagTableDnd(pane, catName);
 
   window._plannerShowNewTag = (catId, parentId = null) => {
     const row   = document.getElementById('planner-new-tag-row');
@@ -1429,69 +1426,84 @@ async function _dndExecuteDrop(zone, drag, target) {
   _renderCategoryList();
 }
 
-window._plannerDragStart = function(e, tagId, tagName, catId, catName) {
-  _dragTag = { id: tagId, name: tagName, category_id: catId, category_name: catName };
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', tagId);
-  e.currentTarget.style.opacity = '0.45';
-  if (!document.getElementById('planner-dnd-hint')) {
-    const h = document.createElement('div');
-    h.id = 'planner-dnd-hint';
-    h.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;display:none;font-size:0.62rem;' +
-      'background:var(--surface2);border:1px solid var(--border);padding:0.2rem 0.5rem;' +
-      'border-radius:var(--radius);white-space:nowrap;font-family:var(--font)';
-    document.body.appendChild(h);
-  }
-};
+function _ensureDndHint() {
+  if (document.getElementById('planner-dnd-hint')) return;
+  const h = document.createElement('div');
+  h.id = 'planner-dnd-hint';
+  h.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;display:none;font-size:0.62rem;' +
+    'background:var(--surface2);border:1px solid var(--border);padding:0.2rem 0.5rem;' +
+    'border-radius:var(--radius);white-space:nowrap;font-family:var(--font)';
+  document.body.appendChild(h);
+}
 
-window._plannerDragOver = function(e) {
-  const row = e.target.closest('tr[data-tag-id]');
-  if (!row || !_dragTag) return;
-  if (_dragTag.category_name !== row.dataset.catName) { e.dataTransfer.dropEffect = 'none'; return; }
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  const zone = _dndGetZone(e, row);
-  if (row !== _dragOverRow || zone !== _dragZone) _dndHighlight(row, zone);
-  const h = document.getElementById('planner-dnd-hint');
-  if (h) { h.style.display = 'block'; h.style.left = (e.clientX+16)+'px'; h.style.top = (e.clientY+12)+'px'; }
-};
+/** Attach drag-and-drop listeners to table rows and tbody after innerHTML is set. */
+function _attachTagTableDnd(pane, catName) {
+  _ensureDndHint();
 
-window._plannerDragLeave = function(e) {
-  if (!e.currentTarget.contains(e.relatedTarget)) _dndClearHighlight();
-};
+  // dragstart / dragend — on each draggable <tr>
+  pane.querySelectorAll('tr[data-tag-id]').forEach(tr => {
+    tr.addEventListener('dragstart', function(e) {
+      const ds = this.dataset;
+      _dragTag = { id: ds.tagId, name: ds.tagName, category_id: Number(ds.catId), category_name: ds.catName };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', ds.tagId);
+      this.style.opacity = '0.45';
+    });
+    tr.addEventListener('dragend', function() {
+      this.style.opacity = '';
+      _dndClearHighlight();
+      _dragTag = null;
+    });
+  });
 
-window._plannerDrop = function(e) {
-  e.preventDefault();
-  const row = e.target.closest('tr[data-tag-id]');
-  if (!row || !_dragTag || !_dragZone) { _dndClearHighlight(); return; }
-  const zone = _dragZone;
-  const target = { id: row.dataset.tagId, name: row.dataset.tagName,
-                   category_id: Number(row.dataset.catId), category_name: row.dataset.catName };
-  _dndClearHighlight();
-  if (target.id === _dragTag.id) return;
-  _dndExecuteDrop(zone, { ..._dragTag }, target).catch(err => toast(err.message, 'error'));
-};
+  // dragover / dragleave / drop — delegated to <tbody> so every pixel in the row responds
+  const tbody = pane.querySelector('tbody');
+  if (!tbody) return;
 
-window._plannerDragEnd = function(e) {
-  e.currentTarget.style.opacity = '';
-  _dndClearHighlight();
-  _dragTag = null;
-};
+  tbody.addEventListener('dragover', function(e) {
+    const row = e.target.closest('tr[data-tag-id]');
+    if (!row || !_dragTag) return;
+    if (_dragTag.category_name !== row.dataset.catName) { e.dataTransfer.dropEffect = 'none'; return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const zone = _dndGetZone(e, row);
+    if (row !== _dragOverRow || zone !== _dragZone) _dndHighlight(row, zone);
+    const h = document.getElementById('planner-dnd-hint');
+    if (h) { h.style.display = 'block'; h.style.left = (e.clientX + 16) + 'px'; h.style.top = (e.clientY + 12) + 'px'; }
+  });
+
+  tbody.addEventListener('dragleave', function(e) {
+    if (!this.contains(e.relatedTarget)) _dndClearHighlight();
+  });
+
+  tbody.addEventListener('drop', function(e) {
+    e.preventDefault();
+    const row = e.target.closest('tr[data-tag-id]');
+    if (!row || !_dragTag || !_dragZone) { _dndClearHighlight(); return; }
+    const zone = _dragZone;
+    const target = { id: row.dataset.tagId, name: row.dataset.tagName,
+                     category_id: Number(row.dataset.catId), category_name: row.dataset.catName };
+    _dndClearHighlight();
+    if (target.id === _dragTag.id) return;
+    _dndExecuteDrop(zone, { ..._dragTag }, target).catch(err => toast(err.message, 'error'));
+  });
+}
 
 window._plannerCatDragOver = function(e, catId, catName) {
   if (!_dragTag || _dragTag.category_name !== 'ai_suggestion' || catName === 'ai_suggestion') return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
-  e.currentTarget.style.background = 'var(--accent)22';
-  e.currentTarget.style.outline = '1px solid var(--accent)';
+  const el = e.target.closest('.planner-cat-row');
+  if (el) { el.style.background = 'var(--accent)22'; el.style.outline = '1px solid var(--accent)'; }
   const h = document.getElementById('planner-dnd-hint');
   if (h) { h.style.display = 'block'; h.textContent = `→ Move to ${catName}`; h.style.color = 'var(--accent)';
            h.style.left = (e.clientX+16)+'px'; h.style.top = (e.clientY+12)+'px'; }
 };
 
 window._plannerCatDragLeave = function(e) {
-  if (!e.currentTarget.contains(e.relatedTarget)) {
-    e.currentTarget.style.background = e.currentTarget.style.outline = '';
+  const el = e.target.closest('.planner-cat-row');
+  if (el && !el.contains(e.relatedTarget)) {
+    el.style.background = el.style.outline = '';
     const h = document.getElementById('planner-dnd-hint');
     if (h) h.style.display = 'none';
   }
@@ -1499,7 +1511,8 @@ window._plannerCatDragLeave = function(e) {
 
 window._plannerCatDrop = async function(e, catId, catName) {
   e.preventDefault();
-  e.currentTarget.style.background = e.currentTarget.style.outline = '';
+  const el = e.target.closest('.planner-cat-row');
+  if (el) el.style.background = el.style.outline = '';
   const h = document.getElementById('planner-dnd-hint');
   if (h) h.style.display = 'none';
   if (!_dragTag || _dragTag.category_name !== 'ai_suggestion' || catName === 'ai_suggestion') return;
