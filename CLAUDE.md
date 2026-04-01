@@ -26,21 +26,21 @@ You are a senior Python software architect with deep expertise in:
 
 ## Key Architectural Decisions
 
-- Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state and memory files
+- Engine/workspace separation: aicli/ contains backend logic; workspace/ contains per-project content; _system/ stores project state and memory files
 - Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
 - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vite dev server for local development
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients → Users with login_as_first_level_hierarchy pattern
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules; Claude Haiku for dual-layer memory synthesis generating 5 output files
 - Async DAG workflow executor via asyncio.gather with loop-back, max_iterations cap; Cytoscape.js visualization with 2-pane approval panel for chat negotiation
-- Memory synthesis: Claude Haiku generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items with timestamp tracking
+- Memory synthesis: Claude Haiku generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items
 - _ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load
 - Data persistence: load_once_on_access, update_on_save pattern; tags stored in mem_ai_tags_relations with row ID linking, not in summary arrays
-- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations (depends_on, relates_to, blocks, implements) via CLI/admin UI
-- Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; routers/, core/, data/ (dl_ prefix), agents/tools/ (tool_ prefix), agents/mcp/ for MCP server
-- Memory file generation reads snapshot data from inline planner_tags fields (summary, action_items, design, code_summary); mem_ai_tags_relations relations section omitted
-- Per-feature CLAUDE.md auto-loaded when Claude enters features/{tag}/ directory; tag retrieval returns (id, name, status, short_desc, priority, due_date)
-- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local via bash start_backend.sh + ui/npm run dev
-- Config management: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support; billing storage in data/provider_storage/
+- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+- Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; routers/, core/, data/ (dl_ prefix), agents/tools/ (tool_ prefix), agents/mcp/
+- Memory file generation reads snapshot data from inline planner_tags fields (summary, action_items, design, code_summary)
+- Per-feature CLAUDE.md auto-loaded when Claude enters features/{tag}/ directory
+- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop; local via bash start_backend.sh + ui/npm run dev
+- Config management: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
 
 ---
 

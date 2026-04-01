@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Memory file generation refactoring: feature_details context loaded from planner_tags inline fields; _SQL_ACTIVE_TAGS query fixed to return tag names from column index [1]; per-feature CLAUDE.md rendering improved with snapshot data integration
-- Schema consolidation: mem_ai_tags_relations relations section removed from feature rendering; inline snapshot fields (summary, action_items, design, code_summary) now primary data source for feature details
-- SQL cursor tuple unpacking: memory_promotion.py _SQL_GET_CURRENT_FACTS fixed to unpack 4 columns instead of 5; memory_files.py active tags query corrected to read name from proper result index
-- Memory file lifecycle: get_active_feature_tags() now correctly filters active/open tags with snapshots; render_feature_claude_md() enhanced to read complete tag metadata including requirements and short_desc
-- Feature details context loading: planner_tags query limits to 30 most recent tags with embedding or summary; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary
-- Database cursor handling robustness: standardized tuple unpacking across memory_promotion.py and memory_files.py; improved documentation of SQL result column ordering in get_active_feature_tags() method
+- Memory file generation refactoring: feature_details context loaded from planner_tags inline fields; _SQL_ACTIVE_TAGS query fixed to return tag names from correct column index; per-feature CLAUDE.md rendering improved with snapshot data integration
+- Schema consolidation: mem_ai_tags_relations relations section removed from feature rendering; inline snapshot fields now primary data source for feature details context
+- SQL cursor tuple unpacking standardization: memory_promotion.py _SQL_GET_CURRENT_FACTS fixed to unpack 4 columns instead of 5; memory_files.py active tags query corrected
+- Memory file lifecycle enhancement: get_active_feature_tags() now correctly filters active/open tags with snapshots; render_feature_claude_md() reads complete tag metadata
+- Feature details context loading: planner_tags query limits to 30 most recent tags; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary
+- Database cursor handling robustness: standardized tuple unpacking across memory_promotion.py and memory_files.py with improved SQL result column ordering documentation
