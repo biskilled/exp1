@@ -299,6 +299,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     agent_run_id        UUID,
     agent_status        VARCHAR(20),
     tags                TEXT[]        NOT NULL DEFAULT '{}',
+    embedding           VECTOR(1536),
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project, category_name, name)
@@ -315,6 +316,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
     fact_key         TEXT          NOT NULL,
     fact_value       TEXT          NOT NULL,
     category         TEXT          DEFAULT NULL,   -- 'stack'|'pattern'|'convention'|'constraint'|'client'
+    embedding        VECTOR(1536),
     valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     valid_until      TIMESTAMPTZ,
     source_memory_id UUID,         -- historical reference
@@ -658,14 +660,15 @@ ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS session_src_desc;
 -- mem_mrr_commits: drop legacy columns
 ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS prompt_source_id;
 ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS tags;
--- mem_ai_work_items: add tag_id (not in original schema)
+-- mem_ai_work_items: add tag_id + embedding (not in original schema)
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
 -- mem_ai_tags: drop columns that were never used
 ALTER TABLE mem_ai_tags DROP COLUMN IF EXISTS event_updated;
 ALTER TABLE mem_ai_tags DROP COLUMN IF EXISTS work_item_id;
 ALTER TABLE mem_ai_tags DROP COLUMN IF EXISTS work_item_updated;
--- mem_ai_project_facts: drop columns that were never queried
-ALTER TABLE mem_ai_project_facts DROP COLUMN IF EXISTS embedding;
+-- mem_ai_project_facts: add embedding, drop unused columns
+ALTER TABLE mem_ai_project_facts ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
 ALTER TABLE mem_ai_project_facts DROP COLUMN IF EXISTS conflict_with;
 -- mem_ai_features: drop columns that were always NULL or a fixed value
 ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS work_item_type;

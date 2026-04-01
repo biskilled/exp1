@@ -719,3 +719,125 @@ async def delete_tag_relation(relation_id: str):
     if not deleted:
         raise HTTPException(status_code=404, detail="Relation not found")
     return {"ok": True}
+
+
+@router.get("/context")
+async def get_tag_context(
+    tag_name: str = Query(..., description="Tag name to retrieve full context for"),
+    project:  str = Query(...),
+    limit:    int = Query(20, ge=1, le=100),
+):
+    """Return comprehensive context for a tag: properties, AI events, mirroring rows, relations.
+
+    Used by the pipeline's first agent (PM) to orient on a feature/bug before planning.
+    """
+    _require_db()
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            # ── Tag properties ──────────────────────────────────────────────
+            cur.execute(
+                """SELECT t.id, t.name, t.category_id, t.parent_id,
+                          c.name AS category_name, c.color, c.icon,
+                          tm.description
+                   FROM planner_tags t
+                   LEFT JOIN mng_tags_categories c ON c.id = t.category_id
+                   LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
+                   WHERE t.client_id=1 AND t.project=%s AND t.name=%s
+                   LIMIT 1""",
+                (project, tag_name),
+            )
+            tag_row = cur.fetchone()
+            if not tag_row:
+                raise HTTPException(404, f"Tag '{tag_name}' not found in project '{project}'")
+            tag_id = str(tag_row[0])
+            tag_info = {
+                "id": tag_id, "name": tag_row[1],
+                "category": tag_row[4], "color": tag_row[5], "icon": tag_row[6],
+                "description": tag_row[7] or "",
+                "parent_id": str(tag_row[3]) if tag_row[3] else None,
+            }
+
+            # ── Recent AI events tagged with this tag ───────────────────────
+            cur.execute(
+                """SELECT e.id, e.event_type, e.source_id, LEFT(e.content, 400) AS preview,
+                          e.summary, e.created_at
+                   FROM mem_ai_events e
+                   JOIN mem_ai_tags at ON at.event_id = e.id
+                   WHERE at.tag_id = %s::uuid
+                   ORDER BY e.created_at DESC
+                   LIMIT %s""",
+                (tag_id, limit),
+            )
+            ai_events = [
+                {
+                    "id": str(r[0]), "event_type": r[1], "source_id": r[2],
+                    "preview": r[3], "summary": r[4],
+                    "created_at": r[5].isoformat() if r[5] else None,
+                }
+                for r in cur.fetchall()
+            ]
+
+            # ── Recent mirroring sources tagged with this tag ───────────────
+            cur.execute(
+                """SELECT prompt_id, commit_id, item_id, message_id, created_at
+                   FROM mem_mrr_tags
+                   WHERE tag_id = %s::uuid
+                   ORDER BY created_at DESC
+                   LIMIT %s""",
+                (tag_id, limit),
+            )
+            mrr_sources = [
+                {
+                    "prompt_id": str(r[0]) if r[0] else None,
+                    "commit_id": r[1],
+                    "item_id": str(r[2]) if r[2] else None,
+                    "message_id": str(r[3]) if r[3] else None,
+                    "created_at": r[4].isoformat() if r[4] else None,
+                }
+                for r in cur.fetchall()
+            ]
+
+            # ── Relations involving this tag ────────────────────────────────
+            cur.execute(
+                """SELECT r.id, r.relation, r.note, r.source,
+                          tf.name AS from_name, tt.name AS to_name
+                   FROM mng_ai_tags_relations r
+                   JOIN planner_tags tf ON tf.id = r.from_tag_id
+                   JOIN planner_tags tt ON tt.id = r.to_tag_id
+                   WHERE r.from_tag_id = %s::uuid OR r.to_tag_id = %s::uuid""",
+                (tag_id, tag_id),
+            )
+            relations = [
+                {
+                    "id": str(r[0]), "relation": r[1], "note": r[2], "source": r[3],
+                    "from": r[4], "to": r[5],
+                }
+                for r in cur.fetchall()
+            ]
+
+            # ── Work items referencing this tag ─────────────────────────────
+            cur.execute(
+                """SELECT id, name, category_name, lifecycle_status, status, description
+                   FROM mem_ai_work_items
+                   WHERE client_id=1 AND project=%s AND tag_id = %s::uuid
+                   ORDER BY created_at DESC
+                   LIMIT 10""",
+                (project, tag_id),
+            )
+            work_items = [
+                {
+                    "id": str(r[0]), "name": r[1], "category": r[2],
+                    "lifecycle": r[3], "status": r[4],
+                    "description": (r[5] or "")[:200],
+                }
+                for r in cur.fetchall()
+            ]
+
+    return {
+        "tag": tag_info,
+        "ai_events": ai_events,
+        "mrr_sources": mrr_sources,
+        "relations": relations,
+        "work_items": work_items,
+        "project": project,
+    }

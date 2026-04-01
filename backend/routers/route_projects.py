@@ -129,7 +129,12 @@ _SQL_INSERT_NEW_FACT = (
            (client_id, project, fact_key, fact_value, source_memory_id)
        VALUES (1, %s, %s, %s, %s::uuid)
        ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL
-       DO NOTHING"""
+       DO NOTHING
+       RETURNING id"""
+)
+
+_SQL_UPDATE_FACT_EMBEDDING = (
+    "UPDATE mem_ai_project_facts SET embedding = %s::vector WHERE id = %s::uuid"
 )
 
 _SQL_GET_DISTILLED_FACTS = (
@@ -1264,6 +1269,21 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
         return None
 
 
+async def _embed_project_facts(facts: list[tuple[str, str, str]]) -> None:
+    """Embed newly inserted project facts and store the vector on the row."""
+    try:
+        from memory.memory_embedding import _embed
+        for fact_id, k, v in facts:
+            vec = await _embed(f"{k}: {v}")
+            if vec and db.is_available():
+                vec_str = f"[{','.join(str(x) for x in vec)}]"
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(_SQL_UPDATE_FACT_EMBEDDING, (vec_str, fact_id))
+    except Exception as e:
+        log.debug(f"_embed_project_facts error: {e}")
+
+
 async def _extract_project_facts(project: str, memory_item_id: str | None = None) -> int:
     """Layer 3: Extract durable architectural facts from recent memory_items.
 
@@ -1372,6 +1392,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
         # source_memory_id: use the most recent memory_item for traceability
         src_id = source_ids[0] if source_ids else None
         inserted = 0
+        new_fact_ids: list[tuple[str, str, str]] = []  # (id, key, value)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 for k, v in facts:
@@ -1380,13 +1401,21 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
                     # Insert new fact (ON CONFLICT skips if value identical)
                     try:
                         cur.execute(_SQL_INSERT_NEW_FACT, (project, k, v, memory_item_id or src_id))
-                        inserted += cur.rowcount
+                        row = cur.fetchone()
+                        if row:
+                            new_fact_ids.append((str(row[0]), k, v))
+                            inserted += 1
                     except Exception:
                         pass
             log.debug(
                 f"_extract_project_facts: {project} → {inserted} new, "
                 f"{len(facts)} passed threshold (model={role_model})"
             )
+
+        # ── Embed newly inserted facts in background ───────────────────────
+        if new_fact_ids:
+            asyncio.create_task(_embed_project_facts(new_fact_ids))
+
         return inserted
     except Exception as e:
         log.debug(f"_extract_project_facts failed: {e}")

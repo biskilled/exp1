@@ -38,17 +38,17 @@
   "key_decisions": [
     "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
     "Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; per-project schemas with mem_ai_* prefix tables",
-    "Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server on localhost",
-    "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients contain Users; login_as_first_level_hierarchy pattern",
-    "All LLM providers as independent adapters; Claude Haiku for synthesis; server holds API keys; client sends none",
-    "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel",
+    "Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server",
+    "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients \u2192 Users",
+    "All LLM providers as independent adapters; Claude Haiku for synthesis; server holds API keys",
+    "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization",
     "Memory synthesis: Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md)",
-    "Unified event table mem_ai_events (id, project_id, session_id, session_desc, event_summary, event_type) consolidates embeddings and memory events",
-    "Tag storage architecture: tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; sourced from MRR when applicable",
-    "_ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load",
-    "Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB",
-    "Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements",
-    "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work items",
+    "Unified event table mem_ai_events consolidates embeddings and memory events with event_type column",
+    "Tags stored in mem_ai_tags_relations (linked via row id), not in summary_tags array; sourced from MRR",
+    "_ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load",
+    "Tags load once on project access into memory; cache invalidation on session/project switch forces re-load",
+    "Manual relations managed via CLI/admin UI: depends_on, relates_to, blocks, implements",
+    "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)",
     "Memory management pattern: load_once_on_access, update_on_save; triggered by memory endpoint and synthesis layer",
     "Deployment: Railway (Dockerfile + railway.toml) for cloud; local dev via bash start_backend.sh + ui/npm run dev"
   ],
@@ -79,12 +79,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Tag column schema correction: fixed mem_ai_tags_relations table reference in DDL; verified database migrations applied and testing persistence across session switches",
-    "Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts and mem_ai_work_items with proper timestamp tracking",
-    "Unified event table validation: confirmed mem_ai_events consolidates pr_embeddings/pr_memory_events with event_type column; removed event_summary_tags array and deprecated metadata (language, file_path)",
-    "Backend startup race condition: AiCli appearing in Recent projects but unselectable on first load; retry logic in place for empty project list with session state persistence",
-    "Data persistence validation: investigated tags disappearing on session switch; root cause traced to cache invalidation triggering DB re-load; migration testing in progress",
-    "Schema documentation cleanup: updated project_state.json and rules.md to reflect current mem_ai_* table naming convention and removal of deprecated columns from mem_ai_events"
+    "Tag column schema correction: fixed mem_ai_tags_relations table reference in DDL; database migrations applied and persistence validation across session switches",
+    "Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts and mem_ai_work_items with timestamp tracking",
+    "Unified event table validation: confirmed mem_ai_events consolidates pr_embeddings/pr_memory_events; removed event_summary_tags array and deprecated metadata",
+    "Backend startup race condition: AiCli appearing in Recent projects but unselectable on first load; retry logic implemented for empty project list",
+    "Data persistence validation: investigated tags disappearing on session switch; root cause traced to cache invalidation triggering DB re-load",
+    "Schema documentation cleanup: updated project_state.json and rules.md to reflect mem_ai_* table naming and removed deprecated columns"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -116,32 +116,32 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-01T01:06:14Z",
+  "last_memory_run": "2026-04-01T01:15:43Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
       "Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; per-project schemas with mem_ai_* prefix tables",
-      "Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server on localhost",
-      "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients contain Users; login_as_first_level_hierarchy pattern",
-      "All LLM providers as independent adapters; Claude Haiku for synthesis; server holds API keys; client sends none",
-      "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel",
+      "Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server",
+      "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients \u2192 Users",
+      "All LLM providers as independent adapters; Claude Haiku for synthesis; server holds API keys",
+      "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization",
       "Memory synthesis: Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md)",
-      "Unified event table mem_ai_events (id, project_id, session_id, session_desc, event_summary, event_type) consolidates embeddings and memory events",
-      "Tag storage architecture: tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; sourced from MRR when applicable",
-      "_ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load",
-      "Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB",
-      "Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements",
-      "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work items",
+      "Unified event table mem_ai_events consolidates embeddings and memory events with event_type column",
+      "Tags stored in mem_ai_tags_relations (linked via row id), not in summary_tags array; sourced from MRR",
+      "_ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load",
+      "Tags load once on project access into memory; cache invalidation on session/project switch forces re-load",
+      "Manual relations managed via CLI/admin UI: depends_on, relates_to, blocks, implements",
+      "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)",
       "Memory management pattern: load_once_on_access, update_on_save; triggered by memory endpoint and synthesis layer",
       "Deployment: Railway (Dockerfile + railway.toml) for cloud; local dev via bash start_backend.sh + ui/npm run dev"
     ],
     "in_progress": [
-      "Tag column schema correction: fixed mem_ai_tags_relations table reference in DDL; verified database migrations applied and testing persistence across session switches",
-      "Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts and mem_ai_work_items with proper timestamp tracking",
-      "Unified event table validation: confirmed mem_ai_events consolidates pr_embeddings/pr_memory_events with event_type column; removed event_summary_tags array and deprecated metadata (language, file_path)",
-      "Backend startup race condition: AiCli appearing in Recent projects but unselectable on first load; retry logic in place for empty project list with session state persistence",
-      "Data persistence validation: investigated tags disappearing on session switch; root cause traced to cache invalidation triggering DB re-load; migration testing in progress",
-      "Schema documentation cleanup: updated project_state.json and rules.md to reflect current mem_ai_* table naming convention and removal of deprecated columns from mem_ai_events"
+      "Tag column schema correction: fixed mem_ai_tags_relations table reference in DDL; database migrations applied and persistence validation across session switches",
+      "Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts and mem_ai_work_items with timestamp tracking",
+      "Unified event table validation: confirmed mem_ai_events consolidates pr_embeddings/pr_memory_events; removed event_summary_tags array and deprecated metadata",
+      "Backend startup race condition: AiCli appearing in Recent projects but unselectable on first load; retry logic implemented for empty project list",
+      "Data persistence validation: investigated tags disappearing on session switch; root cause traced to cache invalidation triggering DB re-load",
+      "Schema documentation cleanup: updated project_state.json and rules.md to reflect mem_ai_* table naming and removed deprecated columns"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -159,10 +159,10 @@
       "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev",
-      "config_management": "config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support",
-      "database_version": "PostgreSQL 15+"
+      "build_tooling": "npm 8+ with webpack/Electron-builder; Vite dev server",
+      "config_management": "config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI for context-aware development workflows. It uses PostgreSQL with pgvector for semantic search, Claude Haiku for memory synthesis, and a DAG-based async workflow engine with visual approval panels. Current focus is finalizing schema consolidation (mem_ai_* unified tables), resolving data persistence issues on session switches, and fixing backend startup race conditions affecting project initialization.",
-    "memory_digest": "**[2026-04-01]** `db_schema` \u2014 Unified mem_ai_events table now consolidates pr_embeddings and pr_memory_events with event_type column for classification; removed deprecated summary_tags array and metadata columns (language, file_path). **[2026-03-31]** `tag_architecture` \u2014 Confirmed tags belong in mem_ai_tags_relations linked via row id, not in event summary_tags; tags sourced from MRR when applicable and loaded once on project access. **[2026-03-31]** `memory_files` \u2014 Automated generation of 5 memory files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) from mem_ai_project_facts and mem_ai_work_items via Claude Haiku dual-layer synthesis. **[2026-03-31]** `data_persistence` \u2014 Investigated tags disappearing on session switch; root cause traced to cache invalidation triggering DB re-load; DDL updated and persistence testing underway. **[2026-03-31]** `schema_cleanup` \u2014 Validated language and file_path columns in mem_ai_events are no longer relevant; updated project state documentation and removed deprecated references. **[2026-03-31]** `startup_race` \u2014 Backend startup race condition identified: AiCli appearing in Recent projects but unselectable due to initialization delay; retry logic now handles empty project list on first load."
+    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend with PostgreSQL 15+ (pgvector) semantic storage, an Electron UI with xterm.js/Monaco/Cytoscape.js visualization, and a Python 3.12 CLI. It manages multi-user projects with per-schema isolation, unified event tables, smart memory synthesis (Claude Haiku dual-layer), async DAG workflows, and MCP tool integration. Current focus is validating unified event table consolidation, fixing tag persistence across session switches, and automating memory file generation from project facts.",
+    "memory_digest": "**[2026-03-14]** `schema` \u2014 Consolidated mem_ai_events table now unifies embeddings and memory events with event_type discriminator; removed deprecated event_summary_tags array and metadata fields (language, file_path). **[2026-03-14]** `persistence` \u2014 Debugged tag disappearance across session switches; root cause identified as cache invalidation forcing DB re-load; implemented load_once_on_access pattern with explicit cache management. **[2026-03-14]** `memory_synthesis` \u2014 Automated generation of 5 output files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) from mem_ai_project_facts and mem_ai_work_items with timestamp tracking for incremental updates. **[2026-03-14]** `startup` \u2014 Fixed backend race condition where AiCli appeared in Recent projects but was unselectable on first load; implemented retry logic for empty project list with session state persistence. **[2026-03-14]** `migrations` \u2014 Applied DDL corrections to mem_ai_tags_relations table reference; validated database schema consistency and tested persistence across multiple session cycles. **[2026-03-14]** `documentation` \u2014 Updated project_state.json and rules.md to reflect mem_ai_* naming convention; removed references to deprecated columns and clarified tag storage in mem_ai_tags_relations vs summary_tags anti-pattern."
   }
 }

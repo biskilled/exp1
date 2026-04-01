@@ -266,6 +266,24 @@ async def _trigger_memory_regen(project: str) -> None:
         log.debug(f"_trigger_memory_regen error: {e}")
 
 
+async def _embed_work_item(project: str, item_id: str, name: str, description: str, criteria: str) -> None:
+    """Embed work item content and store the vector on the row."""
+    try:
+        from memory.memory_embedding import _embed
+        text = f"{name}\n{description}\n{criteria}".strip()
+        vec = await _embed(text)
+        if vec and db.is_available():
+            vec_str = f"[{','.join(str(x) for x in vec)}]"
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE mem_ai_work_items SET embedding = %s::vector WHERE id = %s::uuid AND client_id=1 AND project=%s",
+                        (vec_str, item_id, project),
+                    )
+    except Exception as e:
+        log.debug(f"_embed_work_item error: {e}")
+
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class WorkItemCreate(BaseModel):
@@ -360,11 +378,13 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
                  body.tags, seq),
             )
             r = cur.fetchone()
-    # Regenerate root memory files in background
+    item_id = str(r[0])
+    # Embed work item content + regenerate memory files in background
+    asyncio.create_task(_embed_work_item(p, item_id, body.name, body.description, body.acceptance_criteria))
     asyncio.create_task(_trigger_memory_regen(p))
 
     return {
-        "id": str(r[0]), "name": r[1], "category_name": r[2],
+        "id": item_id, "name": r[1], "category_name": r[2],
         "created_at": r[3].isoformat(), "project": p,
         "seq_num": r[4],
     }
@@ -429,6 +449,18 @@ async def patch_work_item(
             asyncio.create_task(_summarize_feature_memory(p, item_id))
         except Exception:
             pass
+
+    # Re-embed if content-bearing fields changed
+    if any(getattr(body, f) is not None for f in ("name", "description", "acceptance_criteria", "implementation_plan")):
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT name, description, acceptance_criteria FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s",
+                    (item_id, p),
+                )
+                row = cur.fetchone()
+        if row:
+            asyncio.create_task(_embed_work_item(p, item_id, row[0], row[1], row[2]))
 
     # Regenerate root memory files in background after any patch
     asyncio.create_task(_trigger_memory_regen(p))
@@ -1000,6 +1032,97 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
     except Exception as exc:
         log.warning(f"_ensure_pipeline_workflow failed: {exc}", exc_info=True)
         return None
+
+
+# ── Semantic search ───────────────────────────────────────────────────────────
+
+@router.get("/search")
+async def search_work_items(
+    query:    str            = Query(..., description="Natural language query"),
+    project:  str | None     = Query(None),
+    category: str | None     = Query(None, description="Filter by category: feature, bug, task"),
+    limit:    int            = Query(10, ge=1, le=50),
+):
+    """Semantic search over work items using pgvector cosine similarity."""
+    _require_db()
+    from memory.memory_embedding import _embed
+    p = _project(project)
+    vec = await _embed(query)
+    if not vec:
+        raise HTTPException(503, "Embedding unavailable — check OpenAI API key")
+    vec_str = f"[{','.join(str(x) for x in vec)}]"
+    where = "client_id=1 AND project=%s AND embedding IS NOT NULL"
+    params: list = [vec_str, p]
+    if category:
+        where += " AND category_name=%s"
+        params.append(category)
+    params.extend([vec_str, limit])
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT id, name, category_name, description, lifecycle_status, status,
+                           acceptance_criteria, seq_num,
+                           1 - (embedding <=> %s::vector) AS score
+                    FROM mem_ai_work_items
+                    WHERE {where}
+                    ORDER BY embedding <=> %s::vector
+                    LIMIT %s""",
+                params,
+            )
+            rows = cur.fetchall()
+    return {
+        "results": [
+            {
+                "id": str(r[0]), "name": r[1], "category": r[2],
+                "description": (r[3] or "")[:300],
+                "lifecycle": r[4], "status": r[5],
+                "criteria_preview": (r[6] or "")[:200],
+                "seq_num": r[7], "score": round(float(r[8]), 4),
+            }
+            for r in rows
+        ],
+        "query": query, "project": p, "total": len(rows),
+    }
+
+
+@router.get("/facts/search")
+async def search_project_facts(
+    query:   str        = Query(..., description="Natural language query"),
+    project: str | None = Query(None),
+    limit:   int        = Query(10, ge=1, le=50),
+):
+    """Semantic search over current project facts using pgvector cosine similarity."""
+    _require_db()
+    from memory.memory_embedding import _embed
+    p = _project(project)
+    vec = await _embed(query)
+    if not vec:
+        raise HTTPException(503, "Embedding unavailable — check OpenAI API key")
+    vec_str = f"[{','.join(str(x) for x in vec)}]"
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, fact_key, fact_value, category, valid_from, source_memory_id,
+                          1 - (embedding <=> %s::vector) AS score
+                   FROM mem_ai_project_facts
+                   WHERE client_id=1 AND project=%s AND valid_until IS NULL AND embedding IS NOT NULL
+                   ORDER BY embedding <=> %s::vector
+                   LIMIT %s""",
+                (vec_str, p, vec_str, limit),
+            )
+            rows = cur.fetchall()
+    return {
+        "results": [
+            {
+                "id": str(r[0]), "fact_key": r[1], "fact_value": r[2],
+                "category": r[3],
+                "valid_from": r[4].isoformat() if r[4] else None,
+                "score": round(float(r[6]), 4),
+            }
+            for r in rows
+        ],
+        "query": query, "project": p, "total": len(rows),
+    }
 
 
 # ── Project facts ─────────────────────────────────────────────────────────────

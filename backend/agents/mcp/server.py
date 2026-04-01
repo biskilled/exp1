@@ -8,17 +8,20 @@ All tools call the FastAPI backend via HTTP — no direct DB access.
 
 Tools:
     search_memory        — semantic search across history, roles, commits, docs
-    get_project_state    — PROJECT.md + in_progress items + tech stack
+    get_project_state    — PROJECT.md + active work items + project facts
     get_recent_history   — last N prompt/response entries for the project
     get_roles            — list available AI role prompt files
     get_commits          — list commits with phase/feature tags (untagged = red flag)
     get_session_tags     — active session tags (phase, feature, bug_ref)
     set_session_tags     — update active session tags
     commit_push          — commit + push from Cursor; logs to commit_log.jsonl
-    get_db_schema        — return complete database table schema reference
+    get_db_schema        — complete database schema (mem_mrr_*, mem_ai_*, planner_*, pr_graph_*)
     list_work_items      — list work items with pipeline status
     run_work_item_pipeline — trigger 4-agent PM→Architect→Dev→Reviewer pipeline
     get_item_by_number   — resolve #NNNNN sequential ref to full work item or entity
+    search_facts         — semantic search over current project facts (embedding-based)
+    search_work_items    — semantic search over work items (embedding-based)
+    get_tag_context      — full context for a tag: events, sources, relations, work items
 
 Database naming convention:
     mng_TABLE  — global/shared tables (users, billing, entity categories, agent roles, etc.)
@@ -359,6 +362,62 @@ async def list_tools() -> list[mcp_types.Tool]:
                 "properties": {"project": {"type": "string"}},
             },
         ),
+        mcp_types.Tool(
+            name="search_facts",
+            description=(
+                "Semantic search over current project facts (durable architectural decisions, "
+                "stack choices, conventions, and constraints). "
+                "Use when you need to recall a specific architectural decision or project constraint. "
+                "More targeted than search_memory — facts only, no chat history or code chunks."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query":   {"type": "string", "description": "Natural language query"},
+                    "limit":   {"type": "integer", "default": 10},
+                    "project": {"type": "string"},
+                },
+                "required": ["query"],
+            },
+        ),
+        mcp_types.Tool(
+            name="search_work_items",
+            description=(
+                "Semantic search over work items (features, bugs, tasks). "
+                "Returns matching items ranked by cosine similarity to the query. "
+                "Use to find relevant features/bugs before starting implementation, "
+                "or to discover related work items for a given topic."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query":    {"type": "string", "description": "Natural language query"},
+                    "limit":    {"type": "integer", "default": 10},
+                    "category": {"type": "string", "description": "Filter by category: feature, bug, task"},
+                    "project":  {"type": "string"},
+                },
+                "required": ["query"],
+            },
+        ),
+        mcp_types.Tool(
+            name="get_tag_context",
+            description=(
+                "Return comprehensive context for a specific tag (feature, bug, or task): "
+                "tag properties (description, category), recent AI-layer events tagged with it, "
+                "mirroring source rows (prompts/commits/items), relations to other tags, "
+                "and work items referencing this tag. "
+                "Use before starting work on a feature — the PM agent calls this to orient on the full history."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tag_name": {"type": "string", "description": "Tag name, e.g. 'auth', 'retry-dashboard'"},
+                    "limit":    {"type": "integer", "default": 20, "description": "Max events/sources to return"},
+                    "project":  {"type": "string"},
+                },
+                "required": ["tag_name"],
+            },
+        ),
     ]
 
 
@@ -398,12 +457,12 @@ async def _dispatch(name: str, args: dict) -> Any:
             _get(f"/projects/{project}"),
             _get("/history/session-tags", {"project": project}),
         )
-        # Load entity summary, project facts, recent memory — each best-effort
-        entities: dict = {}
+        # Load work items, project facts, recent memory — each best-effort
+        work_items_data: dict = {}
         facts_data: dict = {}
         memory_data: dict = {}
         try:
-            entities = await _get("/entities/summary", {"project": project})
+            work_items_data = await _get(f"/work-items?project={project}&status=active")
         except Exception:
             pass
         try:
@@ -415,20 +474,17 @@ async def _dispatch(name: str, args: dict) -> Any:
         except Exception:
             pass
 
-        # Build compact entity map: {category: [{name, status, event_count, commit_count, description, due_date}]}
-        entity_map: dict = {}
-        for cat in entities.get("summary", []):
-            entity_map[cat["name"]] = [
-                {
-                    "name": v["name"],
-                    "status": v["status"],
-                    "description": v["description"],
-                    "due_date": v["due_date"],
-                    "event_count": v["event_count"],
-                    "commit_count": v["commit_count"],
-                }
-                for v in cat.get("values", [])
-            ]
+        # Build compact work items map: {category: [{name, lifecycle, status, seq_num, criteria_preview}]}
+        wi_map: dict = {}
+        for wi in work_items_data.get("work_items", []):
+            cat = wi.get("category_name", "other")
+            wi_map.setdefault(cat, []).append({
+                "seq_num": wi.get("seq_num"),
+                "name": wi["name"],
+                "lifecycle": wi.get("lifecycle_status", "idea"),
+                "status": wi.get("status", "active"),
+                "criteria_preview": (wi.get("acceptance_criteria") or "")[:120],
+            })
 
         return {
             "project": project,
@@ -440,7 +496,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "feature": tags.get("feature"),
                 "bug_ref": tags.get("bug_ref"),
             },
-            "entities": entity_map,
+            "work_items": wi_map,
             "project_facts": {
                 f["fact_key"]: f["fact_value"]
                 for f in facts_data.get("facts", [])
@@ -662,150 +718,162 @@ async def _dispatch(name: str, args: dict) -> Any:
             "due_date": ev.get("due_date"),
         }
 
+    elif name == "search_facts":
+        import urllib.parse as _up
+        params = {
+            "query": args["query"],
+            "project": project,
+            "limit": str(args.get("limit", 10)),
+        }
+        qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
+        return await _get(f"/work-items/facts/search?{qs}")
+
+    elif name == "search_work_items":
+        import urllib.parse as _up
+        params = {
+            "query": args["query"],
+            "project": project,
+            "limit": str(args.get("limit", 10)),
+        }
+        if args.get("category"):
+            params["category"] = args["category"]
+        qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
+        return await _get(f"/work-items/search?{qs}")
+
+    elif name == "get_tag_context":
+        import urllib.parse as _up
+        params = {
+            "tag_name": args["tag_name"],
+            "project": project,
+            "limit": str(args.get("limit", 20)),
+        }
+        qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
+        return await _get(f"/tags/context?{qs}")
+
     elif name == "get_db_schema":
         p = project
         return {
             "naming_convention": {
-                "mng_TABLE": "Global/shared tables (entity categories, agent roles, billing, users)",
-                "pr_TABLE": "Flat per-project tables — always filter with client_id=1 AND project=<name>",
-                "note": "All pr_ tables have client_id INT and project TEXT columns for isolation",
+                "mng_TABLE": "Global/shared tables (users, billing, roles, tag categories, system prompts)",
+                "planner_TABLE": "Tag hierarchy tables (planner_tags, planner_tags_meta)",
+                "mem_mrr_TABLE": "Mirroring layer — raw source data as-is (prompts, commits, items, messages, tags)",
+                "mem_ai_TABLE": "AI/embedding layer — digests, embeddings, facts, features, work items",
+                "pr_TABLE": "Graph workflow tables (pr_graph_*)",
+                "filter": "All tables use client_id=1 AND project=<name> for isolation",
             },
             "global_tables": {
                 "mng_users": {
                     "purpose": "User accounts, roles, billing balances",
                     "key_columns": ["id VARCHAR(36) PK", "email UNIQUE", "role (free/paid/admin)",
-                                    "balance_added_usd", "balance_used_usd", "stripe_customer_id"],
+                                    "balance_added_usd", "balance_used_usd"],
                 },
-                "mng_usage_logs": {
-                    "purpose": "Per-request LLM cost tracking",
-                    "key_columns": ["id SERIAL PK", "user_id FK→mng_users", "provider", "model",
-                                    "input_tokens", "output_tokens", "cost_usd", "charged_usd"],
-                },
-                "mng_transactions": {
-                    "purpose": "Credit/debit ledger (coupons, top-ups, charges)",
-                    "key_columns": ["id SERIAL PK", "user_id FK→mng_users", "type", "amount_usd", "description"],
-                },
-                "mng_entity_categories": {
-                    "purpose": "Tag category definitions per project (feature, bug, task, component, etc.)",
-                    "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT", "name TEXT",
-                                    "color TEXT", "icon TEXT", "UNIQUE(client_id, project, name)"],
-                },
-                "mng_entity_values": {
-                    "purpose": "Tag instances — specific features, bugs, tasks tracked in Planner",
-                    "key_columns": ["id SERIAL PK", "client_id INT", "category_id FK→mng_entity_categories",
-                                    "project TEXT", "name TEXT", "description TEXT",
-                                    "status (active/done/archived)", "lifecycle_status",
-                                    "due_date DATE", "parent_id FK→self"],
-                },
-                "mng_entity_value_links": {
-                    "purpose": "Dependencies between entity values (blocks, related_to)",
-                    "key_columns": ["from_value_id FK→mng_entity_values", "to_value_id FK→mng_entity_values",
-                                    "link_type (blocks/related_to)", "PK(from,to,link_type)"],
+                "mng_tags_categories": {
+                    "purpose": "Tag category definitions (feature, bug, task, component, ai_suggestion, etc.)",
+                    "key_columns": ["id UUID PK", "client_id INT", "name TEXT", "color TEXT", "icon TEXT"],
                 },
                 "mng_agent_roles": {
-                    "purpose": "Built-in role templates and per-client customizable LLM personas",
-                    "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT (default '_global')", "name TEXT",
-                                    "description TEXT", "system_prompt TEXT", "provider TEXT",
-                                    "model TEXT", "tags TEXT[]", "is_active BOOLEAN",
-                                    "UNIQUE(client_id, project, name)"],
+                    "purpose": "LLM agent role definitions (system_prompt, model, provider, tools list)",
+                    "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT", "name TEXT",
+                                    "system_prompt TEXT", "provider TEXT", "model TEXT",
+                                    "tools JSONB", "react BOOLEAN", "max_iterations INT"],
+                },
+                "mng_system_roles": {
+                    "purpose": "Memory pipeline prompts editable from UI (commit_digest, prompt_batch_digest, etc.)",
+                    "key_columns": ["id SERIAL PK", "client_id INT", "name TEXT", "content TEXT", "is_active BOOLEAN"],
+                },
+                "mng_ai_tags_relations": {
+                    "purpose": "Directed relationships between planner_tags (depends_on, blocks, relates_to, etc.)",
+                    "key_columns": ["id UUID PK", "from_tag_id FK→planner_tags", "relation TEXT",
+                                    "to_tag_id FK→planner_tags", "note TEXT", "source (manual|ai_snapshot)"],
                 },
             },
-            "per_project_tables": {
-                "mem_mrr_commits": {
-                    "purpose": "Git commits linked to sessions and prompts",
-                    "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT",
-                                    "commit_hash VARCHAR(40) UNIQUE", "commit_msg TEXT",
-                                    "session_id TEXT", "phase TEXT", "feature TEXT", "committed_at TIMESTAMPTZ"],
+            "tagging_tables": {
+                "planner_tags": {
+                    "purpose": "Per-project tag hierarchy (features, bugs, tasks, components)",
+                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT", "name TEXT",
+                                    "description TEXT", "category_id FK→mng_tags_categories",
+                                    "parent_id FK→self", "UNIQUE(client_id, project, name)"],
                     "filter": "WHERE client_id=1 AND project=%s",
                 },
-                "pr_events": {
-                    "purpose": "Raw event log (prompt/commit events)",
-                    "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT",
-                                    "event_type VARCHAR(50)", "source_id VARCHAR(255)",
-                                    "phase TEXT", "feature TEXT", "session_id TEXT", "metadata JSONB",
-                                    "UNIQUE(client_id, project, event_type, source_id)"],
-                    "filter": "WHERE client_id=1 AND project=%s",
+                "planner_tags_meta": {
+                    "purpose": "Key-value metadata for planner_tags",
+                    "key_columns": ["tag_id FK→planner_tags", "meta_key TEXT", "meta_value TEXT"],
                 },
-                "mem_ai_events": {
-                    "purpose": "Smart-chunked embeddings for semantic search (pgvector)",
-                    "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT",
-                                    "event_type VARCHAR(50)", "source_id VARCHAR(255)",
-                                    "chunk_index INT", "content TEXT", "embedding vector(1536)",
-                                    "chunk_type (full/summary/function/class/section)", "language TEXT", "file_path TEXT",
-                                    "UNIQUE(client_id, project, event_type, source_id, chunk_index)"],
-                    "filter": "WHERE client_id=1 AND project=%s",
-                },
-                "pr_event_tags": {
-                    "purpose": "Links raw events to mng_entity_values (junction table, no client_id needed)",
-                    "key_columns": ["event_id INT FK→pr_events", "entity_value_id FK→mng_entity_values",
-                                    "auto_tagged BOOLEAN", "PK(event_id, entity_value_id)"],
-                },
-                "pr_event_links": {
-                    "purpose": "Event-to-event directed links (for timeline causality, junction table)",
-                    "key_columns": ["from_event_id INT FK→pr_events", "to_event_id INT FK→pr_events",
-                                    "link_type VARCHAR(50)", "PK(from,to,link_type)"],
-                },
-                "pr_graph_workflows": {
-                    "purpose": "DAG workflow definitions (multi-agent pipelines) per project",
-                    "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT", "name TEXT",
-                                    "description TEXT", "max_iterations INT",
-                                    "UNIQUE(client_id, project, name)"],
-                    "filter": "WHERE client_id=1 AND project=%s",
-                },
-                "pr_graph_nodes": {
-                    "purpose": "Steps within a workflow (scoped by workflow_id FK)",
-                    "key_columns": ["id SERIAL PK", "workflow_id FK→pr_graph_workflows", "name TEXT",
-                                    "provider TEXT", "model TEXT", "role_id FK→mng_agent_roles",
-                                    "role_prompt TEXT", "inject_context BOOLEAN", "require_approval BOOLEAN",
-                                    "position_x NUMERIC", "position_y NUMERIC"],
-                },
-                "pr_graph_edges": {
-                    "purpose": "Directed connections between workflow nodes (scoped by workflow_id FK)",
-                    "key_columns": ["id SERIAL PK", "workflow_id FK→pr_graph_workflows",
-                                    "source_node_id FK→pr_graph_nodes", "target_node_id FK→pr_graph_nodes",
-                                    "condition JSONB", "label TEXT"],
-                },
-                "pr_graph_runs": {
-                    "purpose": "Workflow execution instances with status tracking per project",
-                    "key_columns": ["id VARCHAR PK", "client_id INT", "project TEXT",
-                                    "workflow_id FK→pr_graph_workflows",
-                                    "status (pending/running/done/failed/waiting_approval)",
-                                    "user_input TEXT", "context JSONB"],
-                    "filter": "WHERE client_id=1 AND project=%s",
-                },
-                "pr_graph_node_results": {
-                    "purpose": "Per-node output within a run (scoped by run_id FK)",
-                    "key_columns": ["id SERIAL PK", "run_id FK→pr_graph_runs", "node_id FK→pr_graph_nodes",
-                                    "status TEXT", "output TEXT", "cost NUMERIC"],
-                },
-                "mem_ai_work_items": {
-                    "purpose": "Structured feature/bug/task items with 4-agent pipeline tracking",
-                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
-                                    "category_name TEXT", "name TEXT", "description TEXT",
-                                    "status (active/done/archived)",
-                                    "lifecycle_status (idea/design/development/testing/review/done)",
-                                    "due_date DATE", "acceptance_criteria TEXT", "implementation_plan TEXT",
-                                    "agent_run_id FK→pr_graph_runs", "agent_status TEXT", "tags TEXT[]",
-                                    "UNIQUE(client_id, project, category_name, name)"],
-                    "filter": "WHERE client_id=1 AND project=%s",
-                },
+            },
+            "mirroring_tables": {
                 "mem_mrr_prompts": {
-                    "purpose": "Unified prompt/response log (distilled memory source)",
-                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
-                                    "work_item_id FK→mem_ai_work_items", "session_id TEXT",
-                                    "event_type (prompt/commit/etc.)", "source_id TEXT",
-                                    "prompt TEXT", "response TEXT", "phase TEXT", "metadata JSONB"],
+                    "purpose": "Raw prompt/response log from all AI sessions (claude_cli, cursor, aicli UI)",
+                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT", "session_id TEXT",
+                                    "prompt TEXT", "response TEXT", "phase TEXT", "source TEXT",
+                                    "ai_tags TEXT (NULL|approved|ignored)", "metadata JSONB"],
                     "filter": "WHERE client_id=1 AND project=%s",
+                },
+                "mem_mrr_commits": {
+                    "purpose": "Git commits with diff details and session links",
+                    "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT",
+                                    "commit_hash VARCHAR(40)", "commit_msg TEXT", "diff TEXT",
+                                    "diff_details JSONB", "session_id TEXT", "phase TEXT", "feature TEXT",
+                                    "ai_tags TEXT", "committed_at TIMESTAMPTZ"],
+                    "filter": "WHERE client_id=1 AND project=%s",
+                },
+                "mem_mrr_tags": {
+                    "purpose": "Junction: links planner_tags to any mirroring source (one row per tag+source combo)",
+                    "key_columns": ["id UUID PK", "tag_id FK→planner_tags", "session_id TEXT",
+                                    "prompt_id FK→mem_mrr_prompts", "commit_id FK→mem_mrr_commits",
+                                    "item_id FK→mem_mrr_items", "message_id FK→mem_mrr_messages",
+                                    "auto_tagged BOOLEAN"],
+                    "note": "Any combination of source FKs can be non-null — one tag can reference multiple sources",
+                },
+            },
+            "ai_layer_tables": {
+                "mem_ai_events": {
+                    "purpose": "AI-digested embeddings for semantic search — one row per summarised unit (pgvector)",
+                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
+                                    "event_type TEXT (prompt_batch|commit|item|message|session_summary)",
+                                    "source_id TEXT", "session_id TEXT", "chunk INT", "chunk_type TEXT",
+                                    "content TEXT", "embedding VECTOR(1536)", "summary TEXT",
+                                    "UNIQUE(client_id, project, event_type, source_id, chunk)"],
+                    "filter": "WHERE client_id=1 AND project=%s",
+                },
+                "mem_ai_tags": {
+                    "purpose": "Links planner_tags to mem_ai_events (promoted from mem_mrr_tags when event created)",
+                    "key_columns": ["id UUID PK", "event_id FK→mem_ai_events", "tag_id FK→planner_tags",
+                                    "ai_suggested BOOLEAN", "UNIQUE(event_id, tag_id)"],
                 },
                 "mem_ai_project_facts": {
-                    "purpose": "Durable extracted facts; valid_until NULL = current fact",
+                    "purpose": "Durable extracted facts; temporal validity (valid_until NULL = current). Searchable via embedding.",
                     "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
                                     "fact_key TEXT", "fact_value TEXT", "category TEXT",
-                                    "valid_from TIMESTAMPTZ", "valid_until TIMESTAMPTZ",
-                                    "conflict_status TEXT", "conflict_with UUID",
+                                    "embedding VECTOR(1536)", "valid_from TIMESTAMPTZ", "valid_until TIMESTAMPTZ",
                                     "UNIQUE(client_id, project, fact_key) WHERE valid_until IS NULL"],
                     "filter": "WHERE client_id=1 AND project=%s AND valid_until IS NULL",
+                    "search_endpoint": "GET /work-items/facts/search?query=...&project=...",
                 },
+                "mem_ai_work_items": {
+                    "purpose": "Feature/bug/task items with 4-agent pipeline tracking. Searchable via embedding.",
+                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
+                                    "category_name TEXT", "name TEXT", "description TEXT",
+                                    "status (active/done/archived)", "lifecycle_status",
+                                    "acceptance_criteria TEXT", "implementation_plan TEXT",
+                                    "embedding VECTOR(1536)", "tag_id FK→planner_tags",
+                                    "UNIQUE(client_id, project, category_name, name)"],
+                    "filter": "WHERE client_id=1 AND project=%s",
+                    "search_endpoint": "GET /work-items/search?query=...&project=...",
+                },
+                "mem_ai_features": {
+                    "purpose": "Feature snapshots: 4-layer summaries (requirements, action_items, design, code_summary)",
+                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
+                                    "tag_id FK→planner_tags", "requirements TEXT", "action_items TEXT",
+                                    "design JSONB", "code_summary JSONB", "embedding VECTOR(1536)"],
+                    "filter": "WHERE client_id=1 AND project=%s",
+                },
+            },
+            "graph_tables": {
+                "pr_graph_workflows": {"purpose": "DAG workflow definitions"},
+                "pr_graph_nodes": {"purpose": "Steps within a workflow"},
+                "pr_graph_edges": {"purpose": "Directed connections between nodes"},
+                "pr_graph_runs": {"purpose": "Workflow execution instances"},
+                "pr_graph_node_results": {"purpose": "Per-node output within a run"},
             },
         }
 

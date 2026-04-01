@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 01:05 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 01:15 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -44,16 +44,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 - Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
 - Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; per-project schemas with mem_ai_* prefix tables
-- Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server on localhost
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients contain Users; login_as_first_level_hierarchy pattern
-- All LLM providers as independent adapters; Claude Haiku for synthesis; server holds API keys; client sends none
-- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel
+- Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients → Users
+- All LLM providers as independent adapters; Claude Haiku for synthesis; server holds API keys
+- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
 - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md)
-- Unified event table mem_ai_events (id, project_id, session_id, session_desc, event_summary, event_type) consolidates embeddings and memory events
-- Tag storage architecture: tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; sourced from MRR when applicable
-- _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
-- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
-- Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work items
+- Unified event table mem_ai_events consolidates embeddings and memory events with event_type column
+- Tags stored in mem_ai_tags_relations (linked via row id), not in summary_tags array; sourced from MRR
+- _ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load
+- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load
+- Manual relations managed via CLI/admin UI: depends_on, relates_to, blocks, implements
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
 - Memory management pattern: load_once_on_access, update_on_save; triggered by memory endpoint and synthesis layer
 - Deployment: Railway (Dockerfile + railway.toml) for cloud; local dev via bash start_backend.sh + ui/npm run dev
