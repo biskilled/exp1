@@ -399,6 +399,11 @@ async def merge_tags(body: TagMerge):
                 "UPDATE planner_tags SET merged_into = %s, status = 'archived' WHERE id = %s",
                 (into_id, from_id),
             )
+            # Also remap AI-layer event tags
+            cur.execute(
+                "UPDATE mem_ai_tags SET tag_id = %s WHERE tag_id = %s",
+                (into_id, from_id),
+            )
     return {"ok": True, "merged_into": str(into_id)}
 
 

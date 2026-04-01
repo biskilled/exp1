@@ -156,8 +156,11 @@ function _renderCategoryList() {
   const tags     = cats.filter(c => !_isWorkItemCat(c.name));
 
   const catRow = c => `
-    <div class="planner-cat-row" data-id="${c.id}"
+    <div class="planner-cat-row" data-id="${c.id}" data-cat-name="${_esc(c.name)}"
          onclick="window._plannerSelectCat(${c.id},'${_esc(c.name)}')"
+         ondragover="window._plannerCatDragOver(event,${c.id},'${_esc(c.name)}')"
+         ondragleave="window._plannerCatDragLeave(event)"
+         ondrop="window._plannerCatDrop(event,${c.id},'${_esc(c.name)}')"
          style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;
                 cursor:pointer;margin-bottom:2px;transition:background 0.1s;
                 background:${_plannerState.selectedCat === c.id ? 'var(--accent)22' : 'transparent'};
@@ -256,6 +259,10 @@ function _plannerCycleLifecycle(valId, current) {
 
 // Which parent rows are collapsed (set of value IDs whose children are hidden)
 const _collapsed = new Set();
+
+let _dragTag     = null;   // { id, name, category_id, category_name } of dragged tag
+let _dragOverRow = null;   // currently highlighted <tr> DOM element
+let _dragZone    = null;   // 'top' | 'mid' | 'bot'
 
 function _renderTagTableFromCache() {
   const { selectedCat, selectedCatName, selectedCatColor, selectedCatIcon } = _plannerState;
@@ -667,8 +674,15 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
 
     let html = `
       <tr style="border-bottom:1px solid var(--border);opacity:${archived ? '0.45' : '1'};
-                 transition:background 0.1s;cursor:pointer"
-          data-val-id="${v.id}"
+                 transition:background 0.1s;cursor:grab"
+          data-val-id="${v.id}" data-tag-id="${v.id}" data-tag-name="${_esc(v.name)}"
+          data-cat-id="${catId}" data-cat-name="${_esc(catName)}"
+          draggable="true"
+          ondragstart="window._plannerDragStart(event,'${v.id}','${_esc(v.name)}',${catId},'${_esc(catName)}')"
+          ondragover="window._plannerDragOver(event)"
+          ondragleave="window._plannerDragLeave(event)"
+          ondrop="window._plannerDrop(event)"
+          ondragend="window._plannerDragEnd(event)"
           onclick="window._plannerOpenDrawer(${catId},'${v.id}')"
           onmouseenter="this.style.background='var(--surface2)'"
           onmouseleave="this.style.background=''">
@@ -1355,6 +1369,152 @@ async function _plannerDrawerRemoveLink(fromValId, toValId) {
     toast('Remove link failed: ' + e.message, 'error');
   }
 }
+
+// ── Drag-and-Drop ─────────────────────────────────────────────────────────────
+
+function _dndGetZone(e, row) {
+  const rect = row.getBoundingClientRect();
+  const relY  = (e.clientY - rect.top) / rect.height;
+  return relY < 0.28 ? 'top' : relY > 0.72 ? 'bot' : 'mid';
+}
+
+function _dndHighlight(row, zone) {
+  _dndClearHighlight();
+  _dragOverRow = row;  _dragZone = zone;
+  if (zone === 'top')       row.style.borderTop    = '2px solid var(--accent)';
+  else if (zone === 'bot')  row.style.borderBottom = '2px solid var(--accent)';
+  else { row.style.background = 'rgba(255,165,0,0.08)'; row.style.outline = '1px dashed rgba(255,165,0,0.5)'; }
+  const hint = document.getElementById('planner-dnd-hint');
+  if (hint) {
+    hint.textContent = zone === 'top' ? '↑ Make parent' : zone === 'mid' ? '⊕ Merge' : '↓ Make child';
+    hint.style.color = zone === 'mid' ? '#e67e22' : 'var(--accent)';
+  }
+}
+
+function _dndClearHighlight() {
+  if (_dragOverRow) {
+    _dragOverRow.style.borderTop = _dragOverRow.style.borderBottom = '';
+    _dragOverRow.style.background = _dragOverRow.style.outline = '';
+    _dragOverRow = null;
+  }
+  _dragZone = null;
+  const h = document.getElementById('planner-dnd-hint');
+  if (h) h.style.display = 'none';
+}
+
+async function _dndExecuteDrop(zone, drag, target) {
+  const project = _plannerState.project;
+  const catId   = _plannerState.selectedCat;
+
+  // Cycle guard for reparent operations
+  if (zone !== 'mid') {
+    const dragDescs   = getCacheDescendants(catId, drag.id)   || [];
+    const targetDescs = getCacheDescendants(catId, target.id) || [];
+    if (zone === 'bot' && dragDescs.some(d => d.id === target.id))
+      { toast('Cannot make a descendant a parent', 'error'); return; }
+    if (zone === 'top' && targetDescs.some(d => d.id === drag.id))
+      { toast('Cannot create circular hierarchy', 'error'); return; }
+  }
+
+  if (zone === 'mid') {
+    if (!confirm(`Merge "${drag.name}" into "${target.name}"?\n\n"${drag.name}" will be archived and all its history remapped to "${target.name}". This cannot be undone.`)) return;
+    await api.tags.merge({ project, from_name: drag.name, into_name: target.name });
+    toast(`Merged "${drag.name}" → "${target.name}"`, 'success');
+  } else if (zone === 'bot') {
+    await api.tags.update(drag.id, { parent_id: target.id });
+    toast(`"${drag.name}" is now a child of "${target.name}"`, 'success');
+  } else {
+    await api.tags.update(target.id, { parent_id: drag.id });
+    toast(`"${target.name}" is now a child of "${drag.name}"`, 'success');
+  }
+
+  await loadTagCache(project, true);
+  _renderTagTableFromCache();
+  _renderCategoryList();
+}
+
+window._plannerDragStart = function(e, tagId, tagName, catId, catName) {
+  _dragTag = { id: tagId, name: tagName, category_id: catId, category_name: catName };
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', tagId);
+  e.currentTarget.style.opacity = '0.45';
+  if (!document.getElementById('planner-dnd-hint')) {
+    const h = document.createElement('div');
+    h.id = 'planner-dnd-hint';
+    h.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;display:none;font-size:0.62rem;' +
+      'background:var(--surface2);border:1px solid var(--border);padding:0.2rem 0.5rem;' +
+      'border-radius:var(--radius);white-space:nowrap;font-family:var(--font)';
+    document.body.appendChild(h);
+  }
+};
+
+window._plannerDragOver = function(e) {
+  const row = e.target.closest('tr[data-tag-id]');
+  if (!row || !_dragTag) return;
+  if (_dragTag.category_name !== row.dataset.catName) { e.dataTransfer.dropEffect = 'none'; return; }
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const zone = _dndGetZone(e, row);
+  if (row !== _dragOverRow || zone !== _dragZone) _dndHighlight(row, zone);
+  const h = document.getElementById('planner-dnd-hint');
+  if (h) { h.style.display = 'block'; h.style.left = (e.clientX+16)+'px'; h.style.top = (e.clientY+12)+'px'; }
+};
+
+window._plannerDragLeave = function(e) {
+  if (!e.currentTarget.contains(e.relatedTarget)) _dndClearHighlight();
+};
+
+window._plannerDrop = function(e) {
+  e.preventDefault();
+  const row = e.target.closest('tr[data-tag-id]');
+  if (!row || !_dragTag || !_dragZone) { _dndClearHighlight(); return; }
+  const zone = _dragZone;
+  const target = { id: row.dataset.tagId, name: row.dataset.tagName,
+                   category_id: Number(row.dataset.catId), category_name: row.dataset.catName };
+  _dndClearHighlight();
+  if (target.id === _dragTag.id) return;
+  _dndExecuteDrop(zone, { ..._dragTag }, target).catch(err => toast(err.message, 'error'));
+};
+
+window._plannerDragEnd = function(e) {
+  e.currentTarget.style.opacity = '';
+  _dndClearHighlight();
+  _dragTag = null;
+};
+
+window._plannerCatDragOver = function(e, catId, catName) {
+  if (!_dragTag || _dragTag.category_name !== 'ai_suggestion' || catName === 'ai_suggestion') return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.style.background = 'var(--accent)22';
+  e.currentTarget.style.outline = '1px solid var(--accent)';
+  const h = document.getElementById('planner-dnd-hint');
+  if (h) { h.style.display = 'block'; h.textContent = `→ Move to ${catName}`; h.style.color = 'var(--accent)';
+           h.style.left = (e.clientX+16)+'px'; h.style.top = (e.clientY+12)+'px'; }
+};
+
+window._plannerCatDragLeave = function(e) {
+  if (!e.currentTarget.contains(e.relatedTarget)) {
+    e.currentTarget.style.background = e.currentTarget.style.outline = '';
+    const h = document.getElementById('planner-dnd-hint');
+    if (h) h.style.display = 'none';
+  }
+};
+
+window._plannerCatDrop = async function(e, catId, catName) {
+  e.preventDefault();
+  e.currentTarget.style.background = e.currentTarget.style.outline = '';
+  const h = document.getElementById('planner-dnd-hint');
+  if (h) h.style.display = 'none';
+  if (!_dragTag || _dragTag.category_name !== 'ai_suggestion' || catName === 'ai_suggestion') return;
+  const dragCopy = { ..._dragTag };
+  _dragTag = null;
+  await api.tags.update(dragCopy.id, { category_id: catId });
+  toast(`"${dragCopy.name}" moved to "${catName}"`, 'success');
+  await loadTagCache(_plannerState.project, true);
+  _renderCategoryList();
+  _renderTagTableFromCache();
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
