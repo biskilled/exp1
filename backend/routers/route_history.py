@@ -228,7 +228,6 @@ async def chat_history(
                     cur.execute(
                         f"""SELECT COUNT(*) FROM mem_mrr_prompts
                             WHERE client_id=1 AND project=%s
-                              AND event_type='prompt'
                               AND prompt IS NOT NULL AND prompt != ''
                               {noise_filter}{provider_filter}""",
                         (p,) + noise_args + provider_arg,
@@ -240,7 +239,6 @@ async def chat_history(
                                    response, phase, tags, metadata, created_at
                             FROM mem_mrr_prompts
                             WHERE client_id=1 AND project=%s
-                              AND event_type='prompt'
                               AND prompt IS NOT NULL AND prompt != ''
                               {noise_filter}{provider_filter}
                             ORDER BY created_at DESC
@@ -272,7 +270,8 @@ async def chat_history(
                 "has_more": (offset + len(entries)) < total,
             }
         except Exception as e:
-            log.warning("chat_history DB read failed, falling back to JSONL: %s", e)
+            import logging
+            logging.getLogger(__name__).warning("chat_history DB read failed, falling back to JSONL: %s", e)
 
     # Fallback: JSONL (when DB unavailable)
     entries = _load_unified_history(project, provider)

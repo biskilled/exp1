@@ -1042,7 +1042,7 @@ async def get_events_source_tags(project: str | None = Query(None)):
                    FROM mem_mrr_tags st
                    JOIN planner_tags t ON t.id = st.tag_id AND t.client_id=1 AND t.project=%s
                    JOIN mng_tags_categories tc ON tc.id = t.category_id
-                   JOIN mem_mrr_commits c ON c.id = st.commit_id AND c.client_id=1 AND c.project=%s
+                   JOIN mem_mrr_commits c ON c.commit_hash = st.commit_id AND c.client_id=1 AND c.project=%s
                    WHERE st.commit_id IS NOT NULL
                    ORDER BY 1, 3""",
                 (p, p, p, p),
