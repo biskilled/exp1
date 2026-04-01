@@ -881,25 +881,6 @@ function _renderDrawer() {
         </div>
       </div>
 
-      <!-- Lifecycle -->
-      <div>
-        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                    letter-spacing:.06em;margin-bottom:0.35rem">Lifecycle</div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${_LIFECYCLE_ORDER.map(lc => {
-            const col = _LIFECYCLE_COLORS[lc] || '#888';
-            const active = (v.lifecycle_status || 'idea') === lc;
-            return `<button
-              onclick="window._plannerCycleLifecycle('${v.id}','${(v.lifecycle_status || 'idea')}')"
-              style="font-size:0.6rem;padding:0.18rem 0.5rem;border-radius:10px;cursor:pointer;
-                     font-family:var(--font);outline:none;white-space:nowrap;border:1px solid ${col};
-                     background:${active ? col : 'transparent'};color:${active ? '#fff' : col};
-                     transition:all 0.12s"
-              title="Advance lifecycle">${lc}</button>`;
-          }).join('')}
-        </div>
-      </div>
-
       <!-- Remarks -->
       <div>
         <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
