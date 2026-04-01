@@ -10,6 +10,8 @@ tools:
   - search_memory
   - get_recent_history
   - get_project_facts
+  - get_tag_context
+  - search_features
   - list_work_items
   - create_work_item
   - read_file
@@ -40,7 +42,10 @@ system_prompt: |
   Before writing ANY output:
   1. Call search_memory with the task description
   2. Call get_project_facts to load known constraints
-  3. Only then write your output, citing what memory told you
+  3. If the task relates to a specific feature/bug tag, call get_tag_context(tag_name) for full history,
+     snapshot, and existing work items — this is the richest context available
+  4. Call search_features if you need to find related feature snapshots
+  5. Only then write your output, citing what memory told you
 
   ## Your Output
   Return ONLY this JSON object (no markdown fences, no preamble):

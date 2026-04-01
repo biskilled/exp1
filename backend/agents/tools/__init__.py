@@ -7,7 +7,8 @@ invoke_tool(name, args) dispatches a tool call and returns a string result.
 Tool modules:
   tool_git       — git_status, git_diff, git_commit, git_push
   tool_file      — read_file, write_file, list_dir
-  tool_memory    — search_memory, get_recent_history, get_project_facts
+  tool_memory    — search_memory, get_recent_history, get_project_facts,
+                   get_tag_context, search_features
   tool_workitems — list_work_items, create_work_item
 """
 from __future__ import annotations

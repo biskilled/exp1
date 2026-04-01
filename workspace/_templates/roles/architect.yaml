@@ -9,6 +9,8 @@ auto_commit: false
 tools:
   - search_memory
   - get_project_facts
+  - get_tag_context
+  - search_features
   - read_file
   - list_dir
 inputs:
@@ -37,9 +39,12 @@ system_prompt: |
   ## Architecture-First Protocol
   1. search_memory for existing patterns and past decisions
   2. get_project_facts for known constraints
-  3. list_dir the relevant directories to see actual structure
-  4. read_file any file you plan to change
-  5. Only then write your implementation plan
+  3. If work items reference a feature tag, call get_tag_context(tag_name) for the 4-layer snapshot
+     (requirements, action_items, design, key files) — this tells you what was already designed
+  4. call search_features to find similar features and reuse proven patterns
+  5. list_dir the relevant directories to see actual structure
+  6. read_file any file you plan to change
+  7. Only then write your implementation plan
 
   ## Your Output
   Return ONLY this JSON object (no markdown fences, no preamble):

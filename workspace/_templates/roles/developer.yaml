@@ -8,6 +8,7 @@ max_iterations: 15
 auto_commit: true
 tools:
   - search_memory
+  - get_project_facts
   - read_file
   - write_file
   - list_dir

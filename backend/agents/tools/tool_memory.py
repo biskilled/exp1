@@ -1,13 +1,15 @@
 """
-tool_memory.py — Agent tools for reading project memory and history.
+tool_memory.py — Agent tools for reading project memory, history, and tag context.
 
-Provides direct DB/filesystem access (no HTTP round-trip) for:
-  - search_memory: cosine similarity over mem_ai_events + text search in pr_events
-  - get_recent_history: latest prompts from mem_mrr_prompts
-  - get_project_facts: reads project_state.json durable facts
+Provides direct DB access (no HTTP round-trip) for pipeline ReAct agents:
+  - search_memory     : vector + text search over mem_ai_events
+  - get_recent_history: latest prompts from mem_mrr_prompts (with optional tag filter)
+  - get_project_facts : current facts from mem_ai_project_facts
+  - get_tag_context   : full context for a tag — events, snapshot, work items, relations
+  - search_features   : search mem_ai_features by tag name or semantic query
 
-These tools are assigned to research-oriented roles (PM, Architect, Reviewer)
-so they can reason over past decisions without leaving the agentic loop.
+Assigned to research-oriented roles (PM, Architect, Reviewer) so they can reason
+over past decisions without leaving the agentic loop.
 """
 from __future__ import annotations
 
@@ -17,55 +19,31 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# ── Tool definitions (Claude tool_use JSON schema format) ─────────────────────
+# ── Embedding helper (sync — for use in sync tool handlers) ───────────────────
 
-MEMORY_TOOL_DEFS: list[dict] = [
-    {
-        "name": "search_memory",
-        "description": (
-            "Search the project knowledge base using text similarity. "
-            "Returns relevant past interactions, decisions, and code chunks."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query":   {"type": "string", "description": "Search query"},
-                "project": {"type": "string", "description": "Project name (default: active project)"},
-                "limit":   {"type": "integer", "description": "Max results (default 5)"},
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "get_recent_history",
-        "description": "Retrieve recent interaction history for the project.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "project": {"type": "string", "description": "Project name"},
-                "limit":   {"type": "integer", "description": "Max entries (default 10)"},
-                "feature": {"type": "string", "description": "Filter by feature tag (optional)"},
-            },
-        },
-    },
-    {
-        "name": "get_project_facts",
-        "description": "Get durable architectural facts for the project from project_state.json.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "project": {"type": "string", "description": "Project name"},
-            },
-        },
-    },
-]
+def _embed_sync(text: str) -> list[float] | None:
+    """Synchronous embedding via OpenAI text-embedding-3-small. Returns None on failure."""
+    try:
+        from data.dl_api_keys import get_key
+        import openai
+        key = get_key("openai") or get_key("openai_key")
+        if not key:
+            return None
+        client = openai.OpenAI(api_key=key)
+        resp = client.embeddings.create(model="text-embedding-3-small", input=text[:8000])
+        return resp.data[0].embedding
+    except Exception as e:
+        log.debug(f"_embed_sync error: {e}")
+        return None
 
-# ── Handlers ──────────────────────────────────────────────────────────────────
+
+def _vec_str(vec: list[float]) -> str:
+    return f"[{','.join(str(x) for x in vec)}]"
+
 
 def _get_active_project() -> str:
     """Best-effort: read from session_state.json or fall back to env."""
     import os
-    from pathlib import Path
     project = os.environ.get("ACTIVE_PROJECT", "")
     if not project:
         state_path = Path.home() / ".aicli" / "session_state.json"
@@ -77,10 +55,100 @@ def _get_active_project() -> str:
     return project or "aicli"
 
 
+# ── Tool definitions ───────────────────────────────────────────────────────────
+
+MEMORY_TOOL_DEFS: list[dict] = [
+    {
+        "name": "search_memory",
+        "description": (
+            "Semantic + text search over the project knowledge base (mem_ai_events). "
+            "Returns relevant digests of past prompt batches, commits, items, and sessions. "
+            "Optionally filter by feature tag name to scope results to a specific tag."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query":   {"type": "string",  "description": "Natural language search query"},
+                "project": {"type": "string",  "description": "Project name (default: active)"},
+                "limit":   {"type": "integer", "description": "Max results (default 6)"},
+                "feature": {"type": "string",  "description": "Filter by planner_tag name (optional)"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "get_recent_history",
+        "description": (
+            "Retrieve recent raw prompt/response pairs from mem_mrr_prompts. "
+            "Use 'feature' to scope results to a specific tag."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string",  "description": "Project name"},
+                "limit":   {"type": "integer", "description": "Max entries (default 10)"},
+                "feature": {"type": "string",  "description": "Filter by feature tag name (optional)"},
+            },
+        },
+    },
+    {
+        "name": "get_project_facts",
+        "description": (
+            "Get all current durable architectural facts from mem_ai_project_facts "
+            "(valid_until IS NULL). Returns key-value pairs like 'auth_method: JWT + bcrypt'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project name"},
+            },
+        },
+    },
+    {
+        "name": "get_tag_context",
+        "description": (
+            "Return comprehensive context for a specific feature/bug/task tag. "
+            "Includes: tag description + requirements, recent AI-layer event digests, "
+            "feature snapshot (4-layer: requirements, action_items, design, code_summary), "
+            "associated work items, and tag relations (depends_on, blocks, etc.). "
+            "Call this FIRST when starting work on any feature or bug — the PM agent "
+            "uses this to orient on full history before creating acceptance criteria."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tag_name": {"type": "string",  "description": "Tag name, e.g. 'auth-refactor', 'retry-dashboard'"},
+                "project":  {"type": "string",  "description": "Project name"},
+                "limit":    {"type": "integer", "description": "Max AI events to return (default 8)"},
+            },
+            "required": ["tag_name"],
+        },
+    },
+    {
+        "name": "search_features",
+        "description": (
+            "Search mem_ai_features (4-layer feature snapshots) by tag name or semantic query. "
+            "Returns requirements, action_items, design overview, and affected files for matching features."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query":   {"type": "string",  "description": "Tag name or semantic query"},
+                "project": {"type": "string",  "description": "Project name"},
+                "limit":   {"type": "integer", "description": "Max results (default 5)"},
+            },
+            "required": ["query"],
+        },
+    },
+]
+
+# ── Handlers ───────────────────────────────────────────────────────────────────
+
 def _handle_search_memory(args: dict) -> str:
     query   = args.get("query", "")
     project = args.get("project") or _get_active_project()
-    limit   = int(args.get("limit", 5))
+    limit   = int(args.get("limit", 6))
+    feature = args.get("feature")
 
     results: list[str] = []
 
@@ -89,52 +157,75 @@ def _handle_search_memory(args: dict) -> str:
         if db.is_available():
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Text search in mem_ai_events (interaction search)
-                    cur.execute(
-                        """SELECT me.event_type, me.content, me.created_at
-                           FROM mem_ai_events me
-                           WHERE me.client_id=1 AND me.project=%s
-                             AND me.content ILIKE %s
-                           ORDER BY me.created_at DESC
-                           LIMIT %s""",
-                        (project, f"%{query}%", limit),
-                    )
-                    rows = cur.fetchall()
-                    for row in rows:
-                        ts = row[2].strftime("%Y-%m-%d") if row[2] else "?"
-                        results.append(f"[{ts}] memory({row[0]}): {(row[1] or '')[:300]}")
+                    # ── Vector search (primary) ───────────────────────────
+                    vec = _embed_sync(query)
+                    if vec:
+                        vs = _vec_str(vec)
+                        if feature:
+                            cur.execute(
+                                """SELECT me.event_type, me.content, me.summary, me.created_at
+                                   FROM mem_ai_events me
+                                   JOIN mem_ai_tags mt ON mt.event_id = me.id
+                                   JOIN planner_tags t ON t.id = mt.tag_id
+                                   WHERE me.client_id=1 AND me.project=%s
+                                     AND me.embedding IS NOT NULL
+                                     AND t.name ILIKE %s
+                                   ORDER BY me.embedding <=> %s::vector
+                                   LIMIT %s""",
+                                (project, f"%{feature}%", vs, limit),
+                            )
+                        else:
+                            cur.execute(
+                                """SELECT event_type, content, summary, created_at
+                                   FROM mem_ai_events
+                                   WHERE client_id=1 AND project=%s
+                                     AND embedding IS NOT NULL
+                                   ORDER BY embedding <=> %s::vector
+                                   LIMIT %s""",
+                                (project, vs, limit),
+                            )
+                        rows = cur.fetchall()
+                        for row in rows:
+                            ts = row[3].strftime("%Y-%m-%d") if row[3] else "?"
+                            text = (row[2] or row[1] or "")[:400]
+                            results.append(f"[{ts}] {row[0]}: {text}")
 
-                    # Fallback to mem_mrr_prompts if memory_events empty
-                    if not rows:
+                    # ── Text fallback ─────────────────────────────────────
+                    if not results:
+                        where_extra = "AND t.name ILIKE %s" if feature else ""
+                        join_extra  = "JOIN mem_ai_tags mt ON mt.event_id = me.id JOIN planner_tags t ON t.id = mt.tag_id" if feature else ""
+                        params: list = [project, f"%{query}%"]
+                        if feature:
+                            params.append(f"%{feature}%")
+                        params.append(limit)
                         cur.execute(
-                            """SELECT 'prompt' AS source, prompt, created_at
-                               FROM mem_mrr_prompts
-                               WHERE client_id=1 AND project=%s
-                                 AND prompt ILIKE %s
-                               ORDER BY created_at DESC
-                               LIMIT %s""",
-                            (project, f"%{query}%", limit),
+                            f"""SELECT me.event_type, me.content, me.summary, me.created_at
+                                FROM mem_ai_events me
+                                {join_extra}
+                                WHERE me.client_id=1 AND me.project=%s
+                                  AND me.content ILIKE %s
+                                  {where_extra}
+                                ORDER BY me.created_at DESC LIMIT %s""",
+                            params,
                         )
-                        rows2 = cur.fetchall()
-                        for row in rows2:
-                            ts = row[2].strftime("%Y-%m-%d") if row[2] else "?"
-                            results.append(f"[{ts}] {row[0]}: {(row[1] or '')[:300]}")
+                        for row in cur.fetchall():
+                            ts = row[3].strftime("%Y-%m-%d") if row[3] else "?"
+                            text = (row[2] or row[1] or "")[:400]
+                            results.append(f"[{ts}] {row[0]}: {text}")
     except Exception as e:
         log.debug(f"search_memory DB error: {e}")
 
-    # Fallback: search history.jsonl
+    # JSONL fallback (DB unavailable)
     if not results:
         try:
-            import os
             cfg_path = Path.home() / ".aicli" / "config.json"
             workspace = "workspace"
             if cfg_path.exists():
                 workspace = json.loads(cfg_path.read_text()).get("workspace_dir", workspace)
             history_path = Path(workspace) / project / "_system" / "history.jsonl"
             if history_path.exists():
-                lines = history_path.read_text().splitlines()
                 query_lower = query.lower()
-                for line in reversed(lines[-500:]):
+                for line in reversed(history_path.read_text().splitlines()[-500:]):
                     try:
                         entry = json.loads(line)
                         content = (entry.get("content") or entry.get("message") or "")
@@ -183,26 +274,22 @@ def _handle_get_recent_history(args: dict) -> str:
                                ORDER BY created_at DESC LIMIT %s""",
                             (project, limit),
                         )
-                    rows = cur.fetchall()
-                    for row in rows:
+                    for row in cur.fetchall():
                         ts = row[2].strftime("%Y-%m-%d %H:%M") if row[2] else "?"
-                        preview = (row[0] or "")[:300]
-                        results.append(f"[{ts}] Q: {preview}")
+                        results.append(f"[{ts}] Q: {(row[0] or '')[:300]}")
     except Exception as e:
         log.debug(f"get_recent_history DB error: {e}")
 
-    # Fallback: history.jsonl
+    # JSONL fallback
     if not results:
         try:
-            import os
             cfg_path = Path.home() / ".aicli" / "config.json"
             workspace = "workspace"
             if cfg_path.exists():
                 workspace = json.loads(cfg_path.read_text()).get("workspace_dir", workspace)
             history_path = Path(workspace) / project / "_system" / "history.jsonl"
             if history_path.exists():
-                lines = history_path.read_text().splitlines()
-                for line in reversed(lines[-(limit * 2):]):
+                for line in reversed(history_path.read_text().splitlines()[-(limit * 2):]):
                     try:
                         entry = json.loads(line)
                         content = (entry.get("content") or entry.get("message") or "")[:400]
@@ -215,34 +302,37 @@ def _handle_get_recent_history(args: dict) -> str:
         except Exception as e:
             log.debug(f"get_recent_history JSONL fallback: {e}")
 
-    if not results:
-        return "No recent history found."
-    return "\n\n".join(results)
+    return "\n\n".join(results) if results else "No recent history found."
 
 
 def _handle_get_project_facts(args: dict) -> str:
     project = args.get("project") or _get_active_project()
 
-    # Primary: query mem_ai_project_facts (temporal validity — valid_until IS NULL = current)
     try:
         from core.database import db
         if db.is_available():
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT fact_key, fact_value FROM mem_ai_project_facts
+                        """SELECT fact_key, fact_value, category FROM mem_ai_project_facts
                            WHERE client_id=1 AND project=%s AND valid_until IS NULL
-                           ORDER BY fact_key""",
+                           ORDER BY category NULLS LAST, fact_key""",
                         (project,),
                     )
                     rows = cur.fetchall()
                     if rows:
-                        lines = [f"{r[0]}: {r[1]}" for r in rows]
+                        lines = []
+                        cur_cat = None
+                        for k, v, cat in rows:
+                            if cat and cat != cur_cat:
+                                lines.append(f"\n[{cat}]")
+                                cur_cat = cat
+                            lines.append(f"  {k}: {v}")
                         return "Project Facts:\n" + "\n".join(lines)
     except Exception as e:
         log.debug(f"get_project_facts DB error: {e}")
 
-    # Fallback: project_state.json (when DB unavailable)
+    # Fallback: project_state.json
     try:
         cfg_path = Path.home() / ".aicli" / "config.json"
         workspace = "workspace"
@@ -251,23 +341,233 @@ def _handle_get_project_facts(args: dict) -> str:
         state_path = Path(workspace) / project / "_system" / "project_state.json"
         if state_path.exists():
             state = json.loads(state_path.read_text())
-            # Try key_decisions first (more structured than raw facts)
             facts = state.get("key_decisions", state.get("facts", {}))
             if isinstance(facts, list):
                 return "Project Key Decisions:\n" + "\n".join(f"- {f}" for f in facts)
             if isinstance(facts, dict) and facts:
-                lines = [f"{k}: {v}" for k, v in facts.items()]
-                return "Project Facts:\n" + "\n".join(lines)
+                return "Project Facts:\n" + "\n".join(f"{k}: {v}" for k, v in facts.items())
     except Exception as e:
         log.debug(f"get_project_facts JSON fallback: {e}")
 
     return "No project facts found."
 
 
-# ── Handler map ───────────────────────────────────────────────────────────────
+def _handle_get_tag_context(args: dict) -> str:
+    tag_name = args.get("tag_name", "").strip()
+    project  = args.get("project") or _get_active_project()
+    limit    = int(args.get("limit", 8))
+
+    if not tag_name:
+        return "Error: tag_name is required."
+
+    try:
+        from core.database import db
+        if not db.is_available():
+            return "Database not available."
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # ── Tag + meta ────────────────────────────────────────────
+                cur.execute(
+                    """SELECT t.id, t.name, t.lifecycle, t.status,
+                              c.name AS category,
+                              tm.description, tm.requirements, tm.due_date, tm.priority
+                       FROM planner_tags t
+                       LEFT JOIN mng_tags_categories c ON c.id = t.category_id
+                       LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
+                       WHERE t.client_id=1 AND t.project=%s AND t.name=%s
+                       LIMIT 1""",
+                    (project, tag_name),
+                )
+                tag_row = cur.fetchone()
+                if not tag_row:
+                    return f"Tag '{tag_name}' not found in project '{project}'."
+                tag_id = str(tag_row[0])
+
+                lines = [
+                    f"=== Tag: {tag_row[1]} ===",
+                    f"Category: {tag_row[4] or 'unset'}  |  Lifecycle: {tag_row[2]}  |  Status: {tag_row[3]}",
+                ]
+                if tag_row[5]:
+                    lines.append(f"Description: {tag_row[5]}")
+                if tag_row[6]:
+                    lines.append(f"Requirements: {tag_row[6][:500]}")
+                if tag_row[7]:
+                    lines.append(f"Due: {tag_row[7]}  Priority: {tag_row[8] or 3}")
+
+                # ── Feature snapshot ──────────────────────────────────────
+                cur.execute(
+                    """SELECT requirements, action_items, design, code_summary, updated_at
+                       FROM mem_ai_features
+                       WHERE client_id=1 AND project=%s AND tag_id=%s::uuid
+                       LIMIT 1""",
+                    (project, tag_id),
+                )
+                snap = cur.fetchone()
+                if snap:
+                    lines.append("\n--- Feature Snapshot ---")
+                    if snap[0]:
+                        lines.append(f"Requirements: {snap[0][:600]}")
+                    if snap[1]:
+                        lines.append(f"Action Items: {snap[1][:400]}")
+                    if snap[2]:
+                        design = snap[2] if isinstance(snap[2], dict) else {}
+                        hl = design.get("high_level", "")
+                        if hl:
+                            lines.append(f"Design: {hl[:300]}")
+                    if snap[3]:
+                        cs = snap[3] if isinstance(snap[3], dict) else {}
+                        files = cs.get("files", [])
+                        if files:
+                            lines.append(f"Key files: {', '.join(files[:8])}")
+
+                # ── Recent AI events ──────────────────────────────────────
+                cur.execute(
+                    """SELECT e.event_type, e.content, e.summary, e.created_at
+                       FROM mem_ai_events e
+                       JOIN mem_ai_tags at ON at.event_id = e.id
+                       WHERE at.tag_id = %s::uuid
+                       ORDER BY e.created_at DESC
+                       LIMIT %s""",
+                    (tag_id, limit),
+                )
+                events = cur.fetchall()
+                if events:
+                    lines.append(f"\n--- Recent AI Events (last {len(events)}) ---")
+                    for ev in events:
+                        ts = ev[3].strftime("%Y-%m-%d") if ev[3] else "?"
+                        text = (ev[2] or ev[1] or "")[:250]
+                        lines.append(f"[{ts}] {ev[0]}: {text}")
+
+                # ── Work items ────────────────────────────────────────────
+                cur.execute(
+                    """SELECT name, category_name, lifecycle_status, status,
+                              acceptance_criteria, seq_num
+                       FROM mem_ai_work_items
+                       WHERE client_id=1 AND project=%s AND tag_id=%s::uuid
+                       ORDER BY created_at DESC LIMIT 5""",
+                    (project, tag_id),
+                )
+                wis = cur.fetchall()
+                if not wis:
+                    # Also try matching by name
+                    cur.execute(
+                        """SELECT name, category_name, lifecycle_status, status,
+                                  acceptance_criteria, seq_num
+                           FROM mem_ai_work_items
+                           WHERE client_id=1 AND project=%s AND name ILIKE %s
+                           ORDER BY created_at DESC LIMIT 5""",
+                        (project, f"%{tag_name}%"),
+                    )
+                    wis = cur.fetchall()
+                if wis:
+                    lines.append("\n--- Work Items ---")
+                    for wi in wis:
+                        ref = f"#{wi[5]}" if wi[5] else ""
+                        ac  = (wi[4] or "")[:150]
+                        lines.append(f"  {ref} [{wi[1]}] {wi[0]} ({wi[2]}/{wi[3]})")
+                        if ac:
+                            lines.append(f"    AC: {ac}")
+
+                # ── Relations ─────────────────────────────────────────────
+                cur.execute(
+                    """SELECT r.relation, r.note,
+                              tf.name AS from_name, tt.name AS to_name
+                       FROM mng_ai_tags_relations r
+                       JOIN planner_tags tf ON tf.id = r.from_tag_id
+                       JOIN planner_tags tt ON tt.id = r.to_tag_id
+                       WHERE r.from_tag_id=%s::uuid OR r.to_tag_id=%s::uuid""",
+                    (tag_id, tag_id),
+                )
+                rels = cur.fetchall()
+                if rels:
+                    lines.append("\n--- Relations ---")
+                    for rel in rels:
+                        note = f" ({rel[1]})" if rel[1] else ""
+                        lines.append(f"  {rel[2]} --[{rel[0]}]--> {rel[3]}{note}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        log.debug(f"get_tag_context error: {e}")
+        return f"Error fetching context for '{tag_name}': {e}"
+
+
+def _handle_search_features(args: dict) -> str:
+    query   = args.get("query", "").strip()
+    project = args.get("project") or _get_active_project()
+    limit   = int(args.get("limit", 5))
+
+    if not query:
+        return "Error: query is required."
+
+    results: list[str] = []
+
+    try:
+        from core.database import db
+        if not db.is_available():
+            return "Database not available."
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Vector search first
+                vec = _embed_sync(query)
+                if vec:
+                    vs = _vec_str(vec)
+                    cur.execute(
+                        """SELECT t.name, f.requirements, f.action_items, f.code_summary,
+                                  f.updated_at,
+                                  1 - (f.embedding <=> %s::vector) AS score
+                           FROM mem_ai_features f
+                           JOIN planner_tags t ON t.id = f.tag_id
+                           WHERE f.client_id=1 AND f.project=%s AND f.embedding IS NOT NULL
+                           ORDER BY f.embedding <=> %s::vector
+                           LIMIT %s""",
+                        (vs, project, vs, limit),
+                    )
+                else:
+                    # Tag name match fallback
+                    cur.execute(
+                        """SELECT t.name, f.requirements, f.action_items, f.code_summary,
+                                  f.updated_at, 1.0 AS score
+                           FROM mem_ai_features f
+                           JOIN planner_tags t ON t.id = f.tag_id
+                           WHERE f.client_id=1 AND f.project=%s AND t.name ILIKE %s
+                           ORDER BY f.updated_at DESC LIMIT %s""",
+                        (project, f"%{query}%", limit),
+                    )
+                rows = cur.fetchall()
+                for row in rows:
+                    ts   = row[4].strftime("%Y-%m-%d") if row[4] else "?"
+                    reqs = (row[1] or "")[:300]
+                    acts = (row[2] or "")[:200]
+                    cs   = row[3] if isinstance(row[3], dict) else {}
+                    files = ", ".join(cs.get("files", [])[:5])
+                    score = f" (score={row[5]:.2f})" if row[5] else ""
+                    block = [
+                        f"[Feature: {row[0]}{score}] updated {ts}",
+                        f"  Requirements: {reqs}",
+                    ]
+                    if acts:
+                        block.append(f"  Action Items: {acts}")
+                    if files:
+                        block.append(f"  Files: {files}")
+                    results.append("\n".join(block))
+    except Exception as e:
+        log.debug(f"search_features error: {e}")
+        return f"Error searching features: {e}"
+
+    if not results:
+        return f"No feature snapshots found matching: {query}"
+    return "\n\n".join(results)
+
+
+# ── Handler map ────────────────────────────────────────────────────────────────
 
 MEMORY_HANDLERS: dict[str, callable] = {
-    "search_memory":       _handle_search_memory,
-    "get_recent_history":  _handle_get_recent_history,
-    "get_project_facts":   _handle_get_project_facts,
+    "search_memory":      _handle_search_memory,
+    "get_recent_history": _handle_get_recent_history,
+    "get_project_facts":  _handle_get_project_facts,
+    "get_tag_context":    _handle_get_tag_context,
+    "search_features":    _handle_search_features,
 }
