@@ -11,14 +11,14 @@
     "storage_primary": "PostgreSQL 15+ with per-project schema",
     "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
     "db_schema": "Unified: mem_ai_events (with event_type, summary_tags removed), mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
-    "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
+    "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle",
     "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok",
-    "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic",
+    "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
     "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
     "memory_synthesis": "Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
     "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
-    "mcp": "Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)",
-    "deployment": "Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev; desktop: Electron-builder",
+    "mcp": "Stdio MCP server with 12+ tools",
+    "deployment": "Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev",
     "database_schema": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
     "config_management": "config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support",
     "db_tables": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
@@ -31,25 +31,25 @@
     "database": "PostgreSQL 15+ per-project schema + shared auth/usage tables; agent roles initialized",
     "node_modules_build": "npm 8+ with webpack/Electron-builder; dev server Vite on localhost",
     "database_version": "PostgreSQL 15+",
-    "build_tooling": "npm 8+ with webpack/Electron-builder; Vite dev server on localhost",
+    "build_tooling": "npm 8+ with webpack/Electron-builder; Vite dev server",
     "db_consolidation": "mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)",
     "db_tables_unified": "mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features"
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
-    "Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; per-project schemas",
-    "Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server",
+    "Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; per-project schemas with mem_ai_* prefix tables",
+    "Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server on localhost",
     "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys",
-    "All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none",
-    "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with approval",
-    "Memory synthesis: Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files); reduces token overhead",
-    "Unified event table mem_ai_events consolidates pr_embeddings/pr_memory_events with event_type column for classification",
-    "Table naming convention: mem_ai_* prefix (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features)",
+    "All LLM providers as independent adapters; Claude Haiku for synthesis; server holds API keys; client sends none",
+    "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel",
+    "Memory synthesis: Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md)",
+    "Unified event table mem_ai_events (id, project_id, session_id, session_desc, event_summary, event_type) consolidates embeddings and memory events",
+    "Tag storage architecture: tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; sourced from MRR when applicable",
     "Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy",
     "_ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load",
     "Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB",
     "Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements",
-    "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval",
+    "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work items",
     "Memory management pattern: load_once_on_access, update_on_save; triggered by memory endpoint and synthesis layer"
   ],
   "implemented_features": [
@@ -79,12 +79,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Tag column schema correction: fixed mem_ai_tags_relations table reference (was mng_ai_tags_relations) in DDL and verified database migrations applied",
+    "Tag column schema correction: fixed mem_ai_tags_relations table reference (was mng_ai_tags_relations) in DDL; verified database migrations applied and testing persistence",
     "Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts, mem_ai_work_items, sessions",
-    "Tag storage architecture clarification: tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; tags sourced from MRR when applicable",
+    "Tag storage architecture clarification: confirmed tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; tags sourced from MRR when applicable",
     "Schema column cleanup: validating relevance of language and file_path columns in mem_ai_events; removing unnecessary metadata fields",
-    "Data persistence validation: tags disappearing on session switch root cause investigation (DDL now updated, testing persistence)",
-    "Backend startup race condition: AiCli appearing in Recent projects but remaining unselectable due to dev environment initialization delay"
+    "Data persistence validation: tags disappearing on session switch root cause investigated; DDL updated and persistence testing underway",
+    "Backend startup race condition: AiCli appearing in Recent projects but unselectable due to dev environment initialization delay; retry logic in place for empty project list"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -116,32 +116,32 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-01T00:17:19Z",
+  "last_memory_run": "2026-04-01T00:38:49Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state",
-      "Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; per-project schemas",
-      "Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server",
+      "Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; per-project schemas with mem_ai_* prefix tables",
+      "Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server on localhost",
       "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys",
-      "All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none",
-      "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with approval",
-      "Memory synthesis: Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files); reduces token overhead",
-      "Unified event table mem_ai_events consolidates pr_embeddings/pr_memory_events with event_type column for classification",
-      "Table naming convention: mem_ai_* prefix (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features)",
+      "All LLM providers as independent adapters; Claude Haiku for synthesis; server holds API keys; client sends none",
+      "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel",
+      "Memory synthesis: Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md)",
+      "Unified event table mem_ai_events (id, project_id, session_id, session_desc, event_summary, event_type) consolidates embeddings and memory events",
+      "Tag storage architecture: tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; sourced from MRR when applicable",
       "Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy",
       "_ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load",
       "Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB",
       "Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements",
-      "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval",
+      "MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work items",
       "Memory management pattern: load_once_on_access, update_on_save; triggered by memory endpoint and synthesis layer"
     ],
     "in_progress": [
-      "Tag column schema correction: fixed mem_ai_tags_relations table reference (was mng_ai_tags_relations) in DDL and verified database migrations applied",
+      "Tag column schema correction: fixed mem_ai_tags_relations table reference (was mng_ai_tags_relations) in DDL; verified database migrations applied and testing persistence",
       "Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts, mem_ai_work_items, sessions",
-      "Tag storage architecture clarification: tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; tags sourced from MRR when applicable",
+      "Tag storage architecture clarification: confirmed tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; tags sourced from MRR when applicable",
       "Schema column cleanup: validating relevance of language and file_path columns in mem_ai_events; removing unnecessary metadata fields",
-      "Data persistence validation: tags disappearing on session switch root cause investigation (DDL now updated, testing persistence)",
-      "Backend startup race condition: AiCli appearing in Recent projects but remaining unselectable due to dev environment initialization delay"
+      "Data persistence validation: tags disappearing on session switch root cause investigated; DDL updated and persistence testing underway",
+      "Backend startup race condition: AiCli appearing in Recent projects but unselectable due to dev environment initialization delay; retry logic in place for empty project list"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -150,19 +150,15 @@
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with per-project schema",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database_version": "PostgreSQL 15+",
-      "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free",
+      "authentication": "JWT (python-jose) + bcrypt + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok",
-      "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer (raw JSONL \u2192 interaction_tags \u2192 5 output files)",
-      "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
-      "mcp": "Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)",
-      "deployment": "Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev; desktop: Electron-builder",
-      "build_tooling": "npm 8+ with webpack/Electron-builder; Vite dev server on localhost",
-      "config_management": "config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support",
-      "dev_environment": "PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root"
+      "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
+      "mcp": "Stdio MCP server with 12+ tools",
+      "deployment": "Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev",
+      "build_tooling": "npm 8+ with webpack/Electron-builder; Vite dev server",
+      "database_version": "PostgreSQL 15+"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron UI with PostgreSQL storage and semantic search via pgvector. It manages project-scoped memory through unified event tables (mem_ai_*), integrates multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) for synthesis and analysis, and provides async DAG workflow execution with visual approval workflows. Current focus is on fixing schema inconsistencies, automating memory file generation from structured project facts, validating data persistence across sessions, and resolving backend startup initialization delays.",
-    "memory_digest": "**[2026-03-31]** `schema-fix` \u2014 Corrected mem_ai_tags_relations table reference in DDL (was incorrectly named mng_ai_tags_relations); verified migrations and database consistency. **[2026-03-31]** `memory-architecture` \u2014 Clarified tag storage model: tags reside in mem_ai_tags_relations linked via row id, not as summary_tags arrays; tags sourced from MRR when applicable. **[2026-03-31]** `column-cleanup` \u2014 Validated language and file_path columns in mem_ai_events for necessity; removing unnecessary metadata to streamline schema. **[2026-03-31]** `persistence-issue` \u2014 Investigated tags disappearing on session switch; root cause identified in DDL, now testing persistence with updated schema. **[2026-03-31]** `memory-generation` \u2014 Implemented auto-regeneration of CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts, mem_ai_work_items, and session data. **[2026-03-31]** `startup-race-condition` \u2014 Identified AiCli project appearing in Recent list but remaining unselectable; due to dev environment initialization delay; retry logic on empty project list now handling this scenario."
+    "project_summary": "aicli is a shared AI memory platform built on FastAPI + PostgreSQL + pgvector, providing a unified event storage system (mem_ai_events) with semantic search, workflow automation via async DAG execution, and a desktop UI powered by Electron + xterm.js + Cytoscape.js. Currently stabilizing tag persistence, auto-generating memory files, and resolving backend startup race conditions to ensure reliable project initialization and session data consistency.",
+    "memory_digest": "**[2026-03-31]** `schema` \u2014 Consolidated mem_ai_events table with event_type column for unified AI event storage; removed summary_tags array in favor of mem_ai_tags_relations linked relations. **[2026-03-31]** `database` \u2014 Fixed DDL: corrected table reference from mng_ai_tags_relations to mem_ai_tags_relations; verified migrations applied and schema column cleanup validated. **[2026-03-31]** `memory_architecture` \u2014 Clarified tag storage: tags persist in mem_ai_tags_relations linked via row id, sourced from MRR when applicable; tags load once on project access with cache invalidation on session/project switch. **[2026-03-31]** `file_generation` \u2014 Automated memory file generation from mem_ai_project_facts, mem_ai_work_items, and sessions into 5 output files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md). **[2026-03-31]** `data_persistence` \u2014 Investigated tags disappearing on session switch; root cause traced to DDL schema; database migrations now applied and persistence testing underway. **[2026-03-31]** `startup` \u2014 Backend race condition: AiCli appears in Recent projects but remains unselectable; retry logic added to handle empty project list on first load during dev environment initialization."
   }
 }

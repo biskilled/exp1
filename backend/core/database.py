@@ -53,15 +53,11 @@ CREATE TABLE IF NOT EXISTS mng_clients (
     provider_balances JSONB        DEFAULT NULL,
     server_api_keys   JSONB        DEFAULT NULL
 );
-ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS pricing_config    JSONB DEFAULT NULL;
-ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS provider_costs    JSONB DEFAULT NULL;
-ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS provider_balances JSONB DEFAULT NULL;
-ALTER TABLE mng_clients ADD COLUMN IF NOT EXISTS server_api_keys   JSONB DEFAULT NULL;
 INSERT INTO mng_clients (id, slug, name, plan) VALUES (1, 'local', 'Local Install', 'free')
     ON CONFLICT (slug) DO NOTHING;
 """
 
-# ─── DDL: mng_users / usage_logs / transactions ───────────────────────────────
+# ─── DDL: mng_users / usage_logs / transactions ──────────────────────────────
 
 _DDL_CORE = """
 CREATE TABLE IF NOT EXISTS mng_users (
@@ -79,12 +75,6 @@ CREATE TABLE IF NOT EXISTS mng_users (
     coupons_used       TEXT[]         NOT NULL DEFAULT '{}',
     stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT ''
 );
-ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS client_id          INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
-ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS role               VARCHAR(20)    NOT NULL DEFAULT 'free';
-ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS balance_added_usd  NUMERIC(14, 8) NOT NULL DEFAULT 0;
-ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS balance_used_usd   NUMERIC(14, 8) NOT NULL DEFAULT 0;
-ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS coupons_used       TEXT[]         NOT NULL DEFAULT '{}';
-ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_users_email    ON mng_users(email);
 CREATE INDEX IF NOT EXISTS idx_users_client   ON mng_users(client_id);
 
@@ -99,7 +89,6 @@ CREATE TABLE IF NOT EXISTS mng_usage_logs (
     charged_usd   NUMERIC(12, 8) NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
-ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS charged_usd   NUMERIC(12, 8) NOT NULL DEFAULT 0;
 ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS source        VARCHAR(50)    NOT NULL DEFAULT 'request';
 ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS metadata      JSONB          DEFAULT NULL;
 ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS period_start  TIMESTAMPTZ    DEFAULT NULL;
@@ -173,8 +162,6 @@ CREATE TABLE IF NOT EXISTS mng_session_tags (
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project)
 );
-ALTER TABLE mng_session_tags ADD COLUMN IF NOT EXISTS
-    client_id INT NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
 CREATE INDEX IF NOT EXISTS idx_mst_cp ON mng_session_tags(client_id, project);
 
 -- Agent roles per client+project (templates + custom)
@@ -192,8 +179,6 @@ CREATE TABLE IF NOT EXISTS mng_agent_roles (
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS
-    client_id INT NOT NULL DEFAULT 1 REFERENCES mng_clients(id);
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS inputs        JSONB        DEFAULT '[]';
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS outputs       JSONB        DEFAULT '[]';
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS role_type     VARCHAR(50)  NOT NULL DEFAULT 'agent';
@@ -252,55 +237,6 @@ _DDL_PR_TABLES = """
 -- pgvector extension (needed for embedding columns)
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- One-time idempotent rename chain: pr_interactions → pr_prompts → mem_mrr_prompts
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_interactions' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='pr_prompts' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_prompts' AND schemaname='public') THEN
-    ALTER TABLE pr_interactions RENAME TO pr_prompts;
-    ALTER INDEX IF EXISTS idx_pr_i_cp      RENAME TO idx_pr_p_cp;
-    ALTER INDEX IF EXISTS idx_pr_i_session RENAME TO idx_pr_p_session;
-    ALTER INDEX IF EXISTS idx_pr_i_source  RENAME TO idx_pr_p_source;
-    ALTER INDEX IF EXISTS idx_pr_i_created RENAME TO idx_pr_p_created;
-    ALTER INDEX IF EXISTS idx_pr_i_wi      RENAME TO idx_pr_p_wi;
-  END IF;
-END $$;
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_prompts' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_prompts' AND schemaname='public') THEN
-    ALTER TABLE pr_prompts RENAME TO mem_mrr_prompts;
-    ALTER INDEX IF EXISTS idx_pr_p_cp      RENAME TO idx_mmrr_p_cp;
-    ALTER INDEX IF EXISTS idx_pr_p_session RENAME TO idx_mmrr_p_session;
-    ALTER INDEX IF EXISTS idx_pr_p_source  RENAME TO idx_mmrr_p_source;
-    ALTER INDEX IF EXISTS idx_pr_p_created RENAME TO idx_mmrr_p_created;
-    ALTER INDEX IF EXISTS idx_pr_p_wi      RENAME TO idx_mmrr_p_wi;
-  END IF;
-END $$;
-
--- One-time idempotent rename: pr_interaction_tags → (dropped)
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_interaction_tags' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='pr_prompt_tags' AND schemaname='public') THEN
-    ALTER TABLE pr_interaction_tags RENAME TO pr_prompt_tags;
-  END IF;
-END $$;
-
--- One-time idempotent rename: pr_commits → mem_mrr_commits
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_commits' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_commits' AND schemaname='public') THEN
-    ALTER TABLE pr_commits RENAME TO mem_mrr_commits;
-    ALTER INDEX IF EXISTS idx_pr_c_cp      RENAME TO idx_mmrr_c_cp;
-    ALTER INDEX IF EXISTS idx_pr_c_comm    RENAME TO idx_mmrr_c_comm;
-    ALTER INDEX IF EXISTS idx_pr_c_session RENAME TO idx_mmrr_c_session;
-  END IF;
-END $$;
-
 -- Mirroring: prompts (raw prompt/response log)
 CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -317,9 +253,6 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     ai_tags      TEXT          DEFAULT NULL,
     created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
-ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS prompt_embedding;
-ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS response_embedding;
-ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS ai_tags TEXT DEFAULT NULL;
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_cp      ON mem_mrr_prompts(client_id, project);
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(client_id, project, source_id) WHERE source_id IS NOT NULL;
@@ -345,26 +278,9 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     committed_at TIMESTAMPTZ,
     created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
-ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS diff_details JSONB NOT NULL DEFAULT '{}';
-ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
-ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS ai_tags      TEXT DEFAULT NULL;
-ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS prompt_id    UUID REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_cp       ON mem_mrr_commits(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm     ON mem_mrr_commits(committed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_session  ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
-
--- One-time idempotent rename: pr_work_items → mem_ai_work_items
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_work_items' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_ai_work_items' AND schemaname='public') THEN
-    ALTER TABLE pr_work_items RENAME TO mem_ai_work_items;
-    ALTER INDEX IF EXISTS idx_pr_wi_cp     RENAME TO idx_mem_ai_wi_cp;
-    ALTER INDEX IF EXISTS idx_pr_wi_cat    RENAME TO idx_mem_ai_wi_cat;
-    ALTER INDEX IF EXISTS idx_pr_wi_status RENAME TO idx_mem_ai_wi_status;
-    ALTER INDEX IF EXISTS idx_pr_wi_seq    RENAME TO idx_mem_ai_wi_seq;
-  END IF;
-END $$;
 
 -- Work items (feature/bug/task pipeline tracking)
 CREATE TABLE IF NOT EXISTS mem_ai_work_items (
@@ -390,17 +306,6 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cp     ON mem_ai_work_items(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat    ON mem_ai_work_items(category_name);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_status ON mem_ai_work_items(status);
-
--- One-time idempotent rename: pr_project_facts → mem_ai_project_facts
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_project_facts' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_ai_project_facts' AND schemaname='public') THEN
-    ALTER TABLE pr_project_facts RENAME TO mem_ai_project_facts;
-    ALTER INDEX IF EXISTS idx_pr_pf_cp      RENAME TO idx_mem_ai_pf_cp;
-    ALTER INDEX IF EXISTS idx_pr_pf_current RENAME TO idx_mem_ai_pf_current;
-  END IF;
-END $$;
 
 -- Project facts (durable extracted facts; valid_until NULL = current)
 CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
@@ -542,46 +447,6 @@ CREATE TABLE IF NOT EXISTS mng_tags_categories (
     UNIQUE(client_id, name)
 );
 
--- ── Rename old tag tables (idempotent) ──────────────────────────────────────
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_tags' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='planner_tags' AND schemaname='public') THEN
-    ALTER TABLE pr_tags RENAME TO planner_tags;
-    ALTER INDEX IF EXISTS idx_pr_tags_cp     RENAME TO idx_planner_tags_cp;
-    ALTER INDEX IF EXISTS idx_pr_tags_parent RENAME TO idx_planner_tags_parent;
-    ALTER INDEX IF EXISTS idx_pr_tags_cat    RENAME TO idx_planner_tags_cat;
-  END IF;
-END $$;
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_tag_meta' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='planner_tags_meta' AND schemaname='public') THEN
-    ALTER TABLE pr_tag_meta RENAME TO planner_tags_meta;
-    ALTER INDEX IF EXISTS idx_pr_tag_meta_cp RENAME TO idx_planner_tags_meta_cp;
-  END IF;
-END $$;
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_items' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_items' AND schemaname='public') THEN
-    ALTER TABLE pr_items RENAME TO mem_mrr_items;
-    ALTER INDEX IF EXISTS idx_pr_items_cp   RENAME TO idx_mmrr_items_cp;
-    ALTER INDEX IF EXISTS idx_pr_items_type RENAME TO idx_mmrr_items_type;
-  END IF;
-END $$;
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_messages' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_mrr_messages' AND schemaname='public') THEN
-    ALTER TABLE pr_messages RENAME TO mem_mrr_messages;
-    ALTER INDEX IF EXISTS idx_pr_messages_cp RENAME TO idx_mmrr_messages_cp;
-  END IF;
-END $$;
-
 -- ── Planner tag hierarchy ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS planner_tags (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -634,8 +499,6 @@ CREATE TABLE IF NOT EXISTS mem_mrr_items (
     ai_tags     TEXT         DEFAULT NULL,
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-ALTER TABLE mem_mrr_items ADD COLUMN IF NOT EXISTS summary TEXT;
-ALTER TABLE mem_mrr_items ADD COLUMN IF NOT EXISTS ai_tags TEXT DEFAULT NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_cp   ON mem_mrr_items(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_type ON mem_mrr_items(item_type);
 
@@ -652,7 +515,6 @@ CREATE TABLE IF NOT EXISTS mem_mrr_messages (
     ai_tags    TEXT         DEFAULT NULL,
     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-ALTER TABLE mem_mrr_messages ADD COLUMN IF NOT EXISTS ai_tags TEXT DEFAULT NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_messages_cp ON mem_mrr_messages(client_id, project);
 
 -- ── Embedding / AI events table (merged from pr_embeddings + pr_memory_events) ──
@@ -756,18 +618,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_tags_relations (
 CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_from ON mem_ai_tags_relations(from_tag_id);
 CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_to   ON mem_ai_tags_relations(to_tag_id);
 
--- One-time idempotent rename: pr_feature_snapshots → mem_ai_features
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_feature_snapshots' AND schemaname='public')
-     AND NOT EXISTS (SELECT FROM pg_tables WHERE tablename='mem_ai_features' AND schemaname='public') THEN
-    ALTER TABLE pr_feature_snapshots RENAME TO mem_ai_features;
-    ALTER INDEX IF EXISTS idx_pr_fs_cp  RENAME TO idx_mem_ai_feat_cp;
-    ALTER INDEX IF EXISTS idx_pr_fs_tag RENAME TO idx_mem_ai_feat_tag;
-  END IF;
-END $$;
-
--- ── 4-layer feature snapshots (mem_ai_features) ───────────────────────────────
+-- ── 4-layer feature snapshots (mem_ai_features) ─────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_features (
     id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id        INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -787,177 +638,42 @@ CREATE TABLE IF NOT EXISTS mem_ai_features (
 CREATE INDEX IF NOT EXISTS idx_mem_ai_feat_cp  ON mem_ai_features(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_feat_tag ON mem_ai_features(tag_id);
 
--- ── Data migration: pr_source_tags → mem_mrr_tags ───────────────────────────
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_source_tags' AND schemaname='public') THEN
-    INSERT INTO mem_mrr_tags (tag_id, session_id, prompt_id, prompt_created,
-                               commit_id, commit_created, item_id, item_created,
-                               message_id, message_created, auto_tagged, created_at)
-    SELECT tag_id, NULL, prompt_id, created_at,
-           commit_id, created_at, item_id, created_at,
-           message_id, created_at, auto_tagged, created_at
-    FROM pr_source_tags
-    ON CONFLICT DO NOTHING;
-    DROP TABLE IF EXISTS pr_source_tags CASCADE;
-  END IF;
-END $$;
-
--- ── Data migration: pr_memory_events → mem_ai_events ────────────────────────
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_memory_events' AND schemaname='public') THEN
-    INSERT INTO mem_ai_events (id, client_id, project, event_type, source_id,
-                                session_id, chunk, chunk_type, content, embedding,
-                                importance, processed_at, created_at)
-    SELECT id, client_id, project, source_type, source_id::text,
-           session_id, 0, 'full', content, embedding,
-           importance, processed_at, created_at
-    FROM pr_memory_events
-    ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
-    DROP TABLE IF EXISTS pr_memory_events CASCADE;
-  END IF;
-END $$;
-
--- ── Data migration: pr_embeddings → mem_ai_events ───────────────────────────
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_embeddings' AND schemaname='public') THEN
-    INSERT INTO mem_ai_events (client_id, project, event_type, source_id,
-                                chunk, chunk_type, content, embedding,
-                                doc_type, language, file_path, metadata, created_at)
-    SELECT client_id, project, source_type, source_id,
-           chunk_index, chunk_type, content, embedding,
-           doc_type, language, file_path, metadata, created_at
-    FROM pr_embeddings
-    ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
-    DROP TABLE IF EXISTS pr_embeddings CASCADE;
-  END IF;
-END $$;
-
--- ── Data migration: pr_memory_tags → mem_ai_tags ────────────────────────────
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_memory_tags' AND schemaname='public') THEN
-    INSERT INTO mem_ai_tags (id, event_id, tag_id, created_at)
-    SELECT id, event_id, tag_id, created_at FROM pr_memory_tags
-    ON CONFLICT (event_id, tag_id) DO NOTHING;
-    DROP TABLE IF EXISTS pr_memory_tags CASCADE;
-  END IF;
-END $$;
 """
 
 # ─── Column additions to existing tables (memory infra) ──────────────────────
 
 _DDL_MEMORY_INFRA_ALTERS = """
--- Rename source_type → event_type (idempotent via DO block)
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='mem_ai_events' AND column_name='source_type') THEN
-        ALTER TABLE mem_ai_events RENAME COLUMN source_type TO event_type;
-    END IF;
-END $$;
--- Add session-summary columns to mem_ai_events (merged from pr_session_summaries)
-ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS open_threads TEXT NOT NULL DEFAULT '';
-ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS next_steps   TEXT NOT NULL DEFAULT '';
-ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS summary_tags TEXT[] NOT NULL DEFAULT '{}';
--- Add llm_source: which model produced this event
-ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS llm_source   VARCHAR(100) DEFAULT NULL;
--- Drop unused / denormalized columns from mem_ai_events
+-- mem_ai_events: drop legacy columns no longer in schema
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_max_resolution_hrs;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_cnt_msg;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_desc;
--- summary_tags[] is denormalized — tags live in mem_ai_tags (linked by event_id)
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_tags;
--- Add ai_suggested flag to mem_ai_tags so AI-proposed tags are distinguishable
-ALTER TABLE mem_ai_tags ADD COLUMN IF NOT EXISTS ai_suggested BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS session_desc;
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS cnt_prompts;
 -- mem_mrr_prompts: drop denormalized/redundant columns
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS tags;
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS event_type;
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS session_src_id;
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS session_src_desc;
--- mem_mrr_commits: drop legacy/redundant columns
+-- mem_mrr_commits: drop legacy columns
 ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS prompt_source_id;
 ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS tags;
--- mem_mrr_commits: migrate PK from SERIAL id → commit_hash (idempotent)
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name='mem_mrr_commits' AND column_name='id' AND data_type='integer'
-  ) THEN
-    -- Migrate mem_mrr_tags.commit_id from INT to TEXT (commit_hash)
-    ALTER TABLE mem_mrr_tags ADD COLUMN IF NOT EXISTS _commit_hash TEXT;
-    UPDATE mem_mrr_tags mt
-       SET _commit_hash = c.commit_hash
-      FROM mem_mrr_commits c
-     WHERE c.id = mt.commit_id AND mt.commit_id IS NOT NULL;
-    ALTER TABLE mem_mrr_tags DROP CONSTRAINT IF EXISTS mem_mrr_tags_commit_id_fkey;
-    DROP INDEX IF EXISTS idx_mem_mrr_tags_commit_uniq;
-    DROP INDEX IF EXISTS idx_mem_mrr_tags_commit;
-    ALTER TABLE mem_mrr_tags DROP COLUMN commit_id;
-    ALTER TABLE mem_mrr_tags RENAME COLUMN _commit_hash TO commit_id;
-    -- Promote commit_hash to PRIMARY KEY on mem_mrr_commits
-    ALTER TABLE mem_mrr_commits DROP CONSTRAINT IF EXISTS mem_mrr_commits_pkey;
-    ALTER TABLE mem_mrr_commits DROP COLUMN id;
-    ALTER TABLE mem_mrr_commits DROP CONSTRAINT IF EXISTS mem_mrr_commits_commit_hash_key;
-    ALTER TABLE mem_mrr_commits ADD PRIMARY KEY (commit_hash);
-    -- Restore FK and indexes
-    ALTER TABLE mem_mrr_tags ADD CONSTRAINT mem_mrr_tags_commit_id_fkey
-      FOREIGN KEY (commit_id) REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE;
-    CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit ON mem_mrr_tags(commit_id);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit_uniq
-      ON mem_mrr_tags(tag_id, commit_id) WHERE commit_id IS NOT NULL;
-  END IF;
-END $$;
--- Migrate pr_session_summaries → mem_ai_events (idempotent: only if table still exists)
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_session_summaries' AND schemaname='public') THEN
-    INSERT INTO mem_ai_events (client_id, project, event_type, source_id, session_id,
-                                chunk, chunk_type, content, summary, open_threads, next_steps,
-                                importance, created_at)
-    SELECT client_id, project, 'session_summary', session_id, session_id,
-           0, 'full',
-           COALESCE(NULLIF(summary,''), '') || E'\n\nOpen Threads:\n' || COALESCE(NULLIF(open_threads,''), 'None')
-               || E'\n\nNext Steps:\n' || COALESCE(NULLIF(next_steps,''), 'None'),
-           summary, open_threads, next_steps, 2, created_at
-    FROM pr_session_summaries
-    ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
-    DROP TABLE pr_session_summaries CASCADE;
-  END IF;
-END $$;
-ALTER TABLE planner_tags            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-ALTER TABLE mem_mrr_commits         ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
-ALTER TABLE mem_mrr_commits         ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
-ALTER TABLE mem_ai_work_items       ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
-ALTER TABLE mem_ai_features         ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
-ALTER TABLE mem_ai_features         ADD COLUMN IF NOT EXISTS work_item_status TEXT;
-ALTER TABLE mem_ai_features         ADD COLUMN IF NOT EXISTS project_facts JSONB;
-ALTER TABLE mem_ai_project_facts    ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
-ALTER TABLE mem_ai_project_facts    ADD COLUMN IF NOT EXISTS category TEXT DEFAULT NULL;
-ALTER TABLE mem_ai_project_facts    ADD COLUMN IF NOT EXISTS conflict_status TEXT DEFAULT NULL;
-ALTER TABLE mem_ai_project_facts    ADD COLUMN IF NOT EXISTS conflict_with UUID REFERENCES mem_ai_project_facts(id) ON DELETE SET NULL;
-ALTER TABLE mem_ai_tags             ADD COLUMN IF NOT EXISTS event_updated   TIMESTAMPTZ;
-ALTER TABLE mem_ai_tags             ADD COLUMN IF NOT EXISTS work_item_id    UUID REFERENCES mem_ai_work_items(id) ON DELETE SET NULL;
-ALTER TABLE mem_ai_tags             ADD COLUMN IF NOT EXISTS work_item_updated TIMESTAMPTZ;
--- mem_ai_events: drop session_desc (never read) and cnt_prompts (never read)
-ALTER TABLE mem_ai_events           DROP COLUMN IF EXISTS session_desc;
-ALTER TABLE mem_ai_events           DROP COLUMN IF EXISTS cnt_prompts;
--- mem_ai_tags: drop columns that were never written or read
-ALTER TABLE mem_ai_tags             DROP COLUMN IF EXISTS event_updated;
-ALTER TABLE mem_ai_tags             DROP COLUMN IF EXISTS work_item_id;
-ALTER TABLE mem_ai_tags             DROP COLUMN IF EXISTS work_item_updated;
--- mem_ai_project_facts: drop embedding (never queried) and conflict_with (never read)
-ALTER TABLE mem_ai_project_facts    DROP COLUMN IF EXISTS embedding;
-ALTER TABLE mem_ai_project_facts    DROP COLUMN IF EXISTS conflict_with;
--- mem_ai_features: drop columns that are always NULL or always a fixed value
-ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS work_item_type;
-ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS project_facts;
-ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS prompt_ids;
-ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS commit_hashes;
-ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS design_refs;
-ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS is_reusable;
+-- mem_ai_work_items: add tag_id (not in original schema)
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
+-- mem_ai_tags: drop columns that were never used
+ALTER TABLE mem_ai_tags DROP COLUMN IF EXISTS event_updated;
+ALTER TABLE mem_ai_tags DROP COLUMN IF EXISTS work_item_id;
+ALTER TABLE mem_ai_tags DROP COLUMN IF EXISTS work_item_updated;
+-- mem_ai_project_facts: drop columns that were never queried
+ALTER TABLE mem_ai_project_facts DROP COLUMN IF EXISTS embedding;
+ALTER TABLE mem_ai_project_facts DROP COLUMN IF EXISTS conflict_with;
+-- mem_ai_features: drop columns that were always NULL or a fixed value
+ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS work_item_type;
+ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS project_facts;
+ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS prompt_ids;
+ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS commit_hashes;
+ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS design_refs;
+ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS is_reusable;
 """
 
 
@@ -1027,7 +743,6 @@ class _Database:
 
     # ── Schema creation ────────────────────────────────────────────────────────
 
-    @staticmethod
     @staticmethod
     def _split_ddl(sql: str) -> list[str]:
         """Split SQL into individual statements, correctly handling DO $$ ... $$ blocks.

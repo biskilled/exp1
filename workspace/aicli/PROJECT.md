@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Tag column schema correction: fixed mem_ai_tags_relations table reference (was mng_ai_tags_relations) in DDL and verified database migrations applied
+- Tag column schema correction: fixed mem_ai_tags_relations table reference (was mng_ai_tags_relations) in DDL; verified database migrations applied and testing persistence
 - Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts, mem_ai_work_items, sessions
-- Tag storage architecture clarification: tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; tags sourced from MRR when applicable
+- Tag storage architecture clarification: confirmed tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; tags sourced from MRR when applicable
 - Schema column cleanup: validating relevance of language and file_path columns in mem_ai_events; removing unnecessary metadata fields
-- Data persistence validation: tags disappearing on session switch root cause investigation (DDL now updated, testing persistence)
-- Backend startup race condition: AiCli appearing in Recent projects but remaining unselectable due to dev environment initialization delay
+- Data persistence validation: tags disappearing on session switch root cause investigated; DDL updated and persistence testing underway
+- Backend startup race condition: AiCli appearing in Recent projects but unselectable due to dev environment initialization delay; retry logic in place for empty project list
