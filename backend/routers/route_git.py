@@ -42,7 +42,6 @@ _SQL_LINK_COMMIT_TO_PROMPT = """
         SELECT p.id FROM mem_mrr_prompts p
         WHERE p.client_id=1 AND p.project=%s
           AND p.session_id = %s
-          AND p.event_type = 'prompt'
         ORDER BY p.created_at DESC
         LIMIT 1
     )
@@ -51,12 +50,11 @@ _SQL_LINK_COMMIT_TO_PROMPT = """
 """
 
 _SQL_LIST_COMMITS = """
-    SELECT id, commit_hash, commit_msg, summary, phase,
-           feature, bug_ref, source, session_id, prompt_source_id,
-           tags, committed_at
+    SELECT commit_hash, commit_msg, summary, phase,
+           feature, bug_ref, source, session_id, committed_at
     FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s
-    ORDER BY committed_at DESC NULLS LAST, id DESC
+    ORDER BY committed_at DESC NULLS LAST, created_at DESC
     LIMIT %s
 """
 

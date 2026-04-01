@@ -28,10 +28,9 @@ log = logging.getLogger(__name__)
 
 _SQL_INSERT_PROMPT = """
     INSERT INTO mem_mrr_prompts
-           (client_id, project, session_id, session_src_id, session_src_desc,
-            llm_source, event_type, source_id, prompt, response,
-            phase, metadata, ai_tags, created_at)
-       VALUES (1, %s, %s, %s, %s, %s, 'prompt', %s, %s, %s, %s, %s::jsonb, NULL, %s::timestamptz)
+           (client_id, project, session_id, llm_source, source_id,
+            prompt, response, phase, metadata, ai_tags, created_at)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, NULL, %s::timestamptz)
        ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
     RETURNING id
 """
@@ -39,11 +38,11 @@ _SQL_INSERT_PROMPT = """
 _SQL_INSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
            (client_id, project, commit_hash, commit_msg, summary,
-            phase, feature, bug_ref, source, session_id, tags,
+            phase, feature, bug_ref, source, session_id,
             committed_at, diff_details, ai_tags)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, NULL)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, NULL)
        ON CONFLICT (commit_hash) DO NOTHING
-    RETURNING id
+    RETURNING commit_hash
 """
 
 _SQL_INSERT_ITEM = """
@@ -86,7 +85,7 @@ _SQL_GET_UNTAGGED_PROMPTS = """
 """
 
 _SQL_GET_UNTAGGED_COMMITS = """
-    SELECT id::text, 'commit' AS source_type,
+    SELECT commit_hash, 'commit' AS source_type,
            (commit_hash || ' ' || commit_msg)[:500] AS content_preview, created_at
     FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s AND ai_tags IS NULL
@@ -106,7 +105,7 @@ _SQL_SET_AI_TAG_STATUS_PROMPT = (
     "UPDATE mem_mrr_prompts SET ai_tags=%s WHERE client_id=1 AND id=%s::uuid"
 )
 _SQL_SET_AI_TAG_STATUS_COMMIT = (
-    "UPDATE mem_mrr_commits SET ai_tags=%s WHERE client_id=1 AND id=%s"
+    "UPDATE mem_mrr_commits SET ai_tags=%s WHERE client_id=1 AND commit_hash=%s"
 )
 _SQL_SET_AI_TAG_STATUS_ITEM = (
     "UPDATE mem_mrr_items SET ai_tags=%s WHERE client_id=1 AND id=%s::uuid"
@@ -130,14 +129,11 @@ class MemoryMirroring:
         llm_source: str = "claude_cli",
         phase: Optional[str] = None,
         metadata: str = "{}",
-        session_src_id: Optional[str] = None,
-        session_src_desc: Optional[str] = None,
         ts: Optional[str] = None,
     ) -> Optional[str]:
         """Insert a prompt/response into mem_mrr_prompts. Returns the UUID string or None."""
         if not db.is_available():
             return None
-        import json
         from datetime import datetime, timezone
         if ts is None:
             ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -146,8 +142,7 @@ class MemoryMirroring:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_PROMPT,
-                        (project, session_id, session_src_id, session_src_desc,
-                         llm_source, source_id,
+                        (project, session_id, llm_source, source_id,
                          (prompt or "")[:4000], (response or "")[:8000],
                          phase, metadata, ts),
                     )
@@ -169,11 +164,10 @@ class MemoryMirroring:
         bug_ref: Optional[str] = None,
         source: str = "git",
         session_id: Optional[str] = None,
-        tags: str = "{}",
         committed_at: Optional[str] = None,
         diff_details: str = "{}",
-    ) -> Optional[int]:
-        """Insert a commit into mem_mrr_commits. Returns the serial id or None."""
+    ) -> Optional[str]:
+        """Insert a commit into mem_mrr_commits. Returns commit_hash or None."""
         if not db.is_available():
             return None
         try:
@@ -183,10 +177,10 @@ class MemoryMirroring:
                         _SQL_INSERT_COMMIT,
                         (project, commit_hash, commit_msg, summary,
                          phase, feature, bug_ref, source, session_id,
-                         tags, committed_at, diff_details),
+                         committed_at, diff_details),
                     )
                     row = cur.fetchone()
-            return row[0] if row else None
+            return str(row[0]) if row else None
         except Exception as e:
             log.debug(f"MemoryMirroring.store_commit error: {e}")
             return None

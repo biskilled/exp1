@@ -33,10 +33,9 @@ from memory.mem_sessions import SessionStore
 
 _SQL_INSERT_INTERACTION = """
     INSERT INTO mem_mrr_prompts
-           (client_id, project, session_id, session_src_id, session_src_desc,
-            llm_source, event_type, source_id,
+           (client_id, project, session_id, llm_source, source_id,
             prompt, response, phase, metadata, created_at)
-       VALUES (1, %s, %s, %s, %s, %s, 'prompt', %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
        ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
 """
 
@@ -667,8 +666,7 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
-                    (project, body.session_id, body.session_src_id, body.source,
-                     body.source, ts,
+                    (project, body.session_id, body.source, ts,
                      (body.prompt or "")[:4000], "",
                      body.phase,
                      json.dumps({"source": body.source, "provider": body.provider,

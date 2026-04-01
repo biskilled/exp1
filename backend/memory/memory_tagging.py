@@ -90,7 +90,6 @@ _SQL_UPSERT_MRR_TAG_COMMIT = """
         event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
         work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
         work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
-        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
         updated_at        = NOW()
     RETURNING id
 """
@@ -290,8 +289,8 @@ class MemoryTagging:
         prompt_id: Optional[str] = None,
         prompt_created: Optional[object] = None,
         prompt_updated: Optional[object] = None,
-        # Commit FK + timestamps
-        commit_id: Optional[int] = None,
+        # Commit FK + timestamps (commit_hash string)
+        commit_id: Optional[str] = None,
         commit_created: Optional[object] = None,
         commit_updated: Optional[object] = None,
         # Item FK + timestamps
@@ -735,10 +734,7 @@ class MemoryTagging:
             if source_type == "prompt":
                 kwargs["prompt_id"] = source_id
             elif source_type == "commit":
-                try:
-                    kwargs["commit_id"] = int(source_id)
-                except ValueError:
-                    pass
+                kwargs["commit_id"] = source_id  # commit_hash string
             elif source_type == "item":
                 kwargs["item_id"] = source_id
 
@@ -748,6 +744,8 @@ class MemoryTagging:
         except Exception as e:
             log.debug(f"MemoryTagging.apply_suggestion error: {e}")
             return False
+
+
 
     def ignore_suggestion(self, source_type: str, source_id: str) -> None:
         """Mark a row as ignored by the AI tagging flow."""

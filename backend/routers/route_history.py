@@ -25,12 +25,11 @@ from core.database import db
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
 _SQL_LIST_COMMITS = """
-    SELECT id, commit_hash, commit_msg, summary, phase,
-           feature, bug_ref, source, session_id, prompt_source_id,
-           tags, committed_at
+    SELECT commit_hash, commit_msg, summary, phase,
+           feature, bug_ref, source, session_id, committed_at
     FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s
-    ORDER BY committed_at DESC NULLS LAST, id DESC
+    ORDER BY committed_at DESC NULLS LAST, created_at DESC
     LIMIT %s
 """
 
@@ -47,7 +46,7 @@ _SQL_UPSERT_COMMIT_FROM_LOG = """
 """
 
 _SQL_UPDATE_COMMIT_META = (
-    "UPDATE mem_mrr_commits SET {set_clause} WHERE id = %s AND client_id=1 RETURNING id"
+    "UPDATE mem_mrr_commits SET {set_clause} WHERE commit_hash = %s AND client_id=1 RETURNING commit_hash"
 )
 
 # Dynamic WHERE variant: add time-window filter when session timestamps are available.
@@ -299,7 +298,6 @@ class CommitPatch(BaseModel):
     feature: str | None = None
     bug_ref: str | None = None
     summary: str | None = None
-    tags:    dict | None = None
 
 
 @router.get("/commits")
@@ -359,8 +357,8 @@ async def commits_history(
     return {"commits": commits[:limit], "project": p, "source": "file"}
 
 
-@router.patch("/commits/{commit_id}")
-async def patch_commit(commit_id: int, body: CommitPatch, project: str | None = Query(None)):
+@router.patch("/commits/{commit_hash}")
+async def patch_commit(commit_hash: str, body: CommitPatch, project: str | None = Query(None)):
     """Update metadata (phase, feature, bug_ref, summary, tags) for a commit row."""
     if not db.is_available():
         raise HTTPException(status_code=503, detail="PostgreSQL not available")
@@ -381,15 +379,10 @@ async def patch_commit(commit_id: int, body: CommitPatch, project: str | None = 
     if body.summary is not None:
         updates.append("summary = %s")
         params.append(body.summary)
-    if body.tags is not None:
-        updates.append("tags = %s")
-        import json as _json
-        params.append(_json.dumps(body.tags))
-
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    params.append(commit_id)
+    params.append(commit_hash)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -399,7 +392,7 @@ async def patch_commit(commit_id: int, body: CommitPatch, project: str | None = 
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Commit not found")
 
-    return {"ok": True, "id": commit_id}
+    return {"ok": True, "commit_hash": commit_hash}
 
 
 @router.post("/commits/sync")

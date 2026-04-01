@@ -303,61 +303,52 @@ END $$;
 
 -- Mirroring: prompts (raw prompt/response log)
 CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
-    id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id           INT           NOT NULL REFERENCES mng_clients(id),
-    project             VARCHAR(255)  NOT NULL,
-    work_item_id        UUID          REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
-    session_id          TEXT,
-    session_src_id      TEXT,
-    session_src_desc    TEXT,
-    llm_source          TEXT,
-    event_type          TEXT          NOT NULL DEFAULT 'prompt',
-    source_id           TEXT,
-    prompt              TEXT          NOT NULL DEFAULT '',
-    response            TEXT          NOT NULL DEFAULT '',
-    phase               TEXT,
-    tags                TEXT[]        NOT NULL DEFAULT '{}',
-    metadata            JSONB         NOT NULL DEFAULT '{}',
-    ai_tags             TEXT          DEFAULT NULL,
-    created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+    id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id    INT           NOT NULL REFERENCES mng_clients(id),
+    project      VARCHAR(255)  NOT NULL,
+    work_item_id UUID          REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
+    session_id   TEXT,
+    llm_source   TEXT,
+    source_id    TEXT,
+    prompt       TEXT          NOT NULL DEFAULT '',
+    response     TEXT          NOT NULL DEFAULT '',
+    phase        TEXT,
+    metadata     JSONB         NOT NULL DEFAULT '{}',
+    ai_tags      TEXT          DEFAULT NULL,
+    created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS prompt_embedding;
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS response_embedding;
-ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS session_src_id   TEXT;
-ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS session_src_desc TEXT;
-ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS ai_tags          TEXT DEFAULT NULL;
+ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS ai_tags TEXT DEFAULT NULL;
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_cp      ON mem_mrr_prompts(client_id, project);
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(client_id, project, source_id) WHERE source_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC);
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_wi      ON mem_mrr_prompts(work_item_id) WHERE work_item_id IS NOT NULL;
 
--- Mirroring: commits
+-- Mirroring: commits — commit_hash is the natural primary key (git hash)
 CREATE TABLE IF NOT EXISTS mem_mrr_commits (
-    id               SERIAL         PRIMARY KEY,
-    client_id        INT            NOT NULL REFERENCES mng_clients(id),
-    project          VARCHAR(255)   NOT NULL,
-    commit_hash      VARCHAR(64)    NOT NULL,
-    commit_msg       TEXT           NOT NULL DEFAULT '',
-    summary          TEXT           NOT NULL DEFAULT '',
-    phase            VARCHAR(20),
-    feature          VARCHAR(255),
-    bug_ref          VARCHAR(255),
-    source           VARCHAR(50)    NOT NULL DEFAULT 'git',
-    session_id       VARCHAR(255),
-    prompt_source_id VARCHAR(255),
-    tags             JSONB          NOT NULL DEFAULT '{}',
-    committed_at     TIMESTAMPTZ,
-    diff_details     JSONB          NOT NULL DEFAULT '{}',
-    ai_tags          TEXT           DEFAULT NULL,
-    created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-    UNIQUE(commit_hash)
+    commit_hash  VARCHAR(64)    PRIMARY KEY,
+    client_id    INT            NOT NULL REFERENCES mng_clients(id),
+    project      VARCHAR(255)   NOT NULL,
+    commit_msg   TEXT           NOT NULL DEFAULT '',
+    summary      TEXT           NOT NULL DEFAULT '',
+    diff_summary TEXT           NOT NULL DEFAULT '',
+    phase        VARCHAR(20),
+    feature      VARCHAR(255),
+    bug_ref      VARCHAR(255),
+    source       VARCHAR(50)    NOT NULL DEFAULT 'git',
+    session_id   VARCHAR(255),
+    prompt_id    UUID           REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
+    diff_details JSONB          NOT NULL DEFAULT '{}',
+    ai_tags      TEXT           DEFAULT NULL,
+    committed_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
 ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS diff_details JSONB NOT NULL DEFAULT '{}';
-ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS ai_tags      TEXT DEFAULT NULL;
--- Keep backward-compat: prompt_id was on old pr_commits
-ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS prompt_id    UUID REFERENCES mem_mrr_prompts(id);
 ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS ai_tags      TEXT DEFAULT NULL;
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS prompt_id    UUID REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_cp       ON mem_mrr_commits(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm     ON mem_mrr_commits(committed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_session  ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
@@ -707,7 +698,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_tags (
     prompt_id        UUID         REFERENCES mem_mrr_prompts(id)  ON DELETE CASCADE,
     prompt_created   TIMESTAMPTZ,
     prompt_updated   TIMESTAMPTZ,
-    commit_id        INT          REFERENCES mem_mrr_commits(id)  ON DELETE CASCADE,
+    commit_id        TEXT         REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE,
     commit_created   TIMESTAMPTZ,
     commit_updated   TIMESTAMPTZ,
     item_id          UUID         REFERENCES mem_mrr_items(id)    ON DELETE CASCADE,
@@ -892,18 +883,57 @@ ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_desc;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_tags;
 -- Add ai_suggested flag to mem_ai_tags so AI-proposed tags are distinguishable
 ALTER TABLE mem_ai_tags ADD COLUMN IF NOT EXISTS ai_suggested BOOLEAN NOT NULL DEFAULT FALSE;
+-- mem_mrr_prompts: drop denormalized/redundant columns
+ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS tags;
+ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS event_type;
+ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS session_src_id;
+ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS session_src_desc;
+-- mem_mrr_commits: drop legacy/redundant columns
+ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS prompt_source_id;
+ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS tags;
+-- mem_mrr_commits: migrate PK from SERIAL id → commit_hash (idempotent)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='mem_mrr_commits' AND column_name='id' AND data_type='integer'
+  ) THEN
+    -- Migrate mem_mrr_tags.commit_id from INT to TEXT (commit_hash)
+    ALTER TABLE mem_mrr_tags ADD COLUMN IF NOT EXISTS _commit_hash TEXT;
+    UPDATE mem_mrr_tags mt
+       SET _commit_hash = c.commit_hash
+      FROM mem_mrr_commits c
+     WHERE c.id = mt.commit_id AND mt.commit_id IS NOT NULL;
+    ALTER TABLE mem_mrr_tags DROP CONSTRAINT IF EXISTS mem_mrr_tags_commit_id_fkey;
+    DROP INDEX IF EXISTS idx_mem_mrr_tags_commit_uniq;
+    DROP INDEX IF EXISTS idx_mem_mrr_tags_commit;
+    ALTER TABLE mem_mrr_tags DROP COLUMN commit_id;
+    ALTER TABLE mem_mrr_tags RENAME COLUMN _commit_hash TO commit_id;
+    -- Promote commit_hash to PRIMARY KEY on mem_mrr_commits
+    ALTER TABLE mem_mrr_commits DROP CONSTRAINT IF EXISTS mem_mrr_commits_pkey;
+    ALTER TABLE mem_mrr_commits DROP COLUMN id;
+    ALTER TABLE mem_mrr_commits DROP CONSTRAINT IF EXISTS mem_mrr_commits_commit_hash_key;
+    ALTER TABLE mem_mrr_commits ADD PRIMARY KEY (commit_hash);
+    -- Restore FK and indexes
+    ALTER TABLE mem_mrr_tags ADD CONSTRAINT mem_mrr_tags_commit_id_fkey
+      FOREIGN KEY (commit_id) REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE;
+    CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit ON mem_mrr_tags(commit_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit_uniq
+      ON mem_mrr_tags(tag_id, commit_id) WHERE commit_id IS NOT NULL;
+  END IF;
+END $$;
 -- Migrate pr_session_summaries → mem_ai_events (idempotent: only if table still exists)
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_session_summaries' AND schemaname='public') THEN
     INSERT INTO mem_ai_events (client_id, project, event_type, source_id, session_id,
                                 chunk, chunk_type, content, summary, open_threads, next_steps,
-                                summary_tags, importance, created_at)
+                                importance, created_at)
     SELECT client_id, project, 'session_summary', session_id, session_id,
            0, 'full',
            COALESCE(NULLIF(summary,''), '') || E'\n\nOpen Threads:\n' || COALESCE(NULLIF(open_threads,''), 'None')
                || E'\n\nNext Steps:\n' || COALESCE(NULLIF(next_steps,''), 'None'),
-           summary, open_threads, next_steps, COALESCE(tags, '{}'), 2, created_at
+           summary, open_threads, next_steps, 2, created_at
     FROM pr_session_summaries
     ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
     DROP TABLE pr_session_summaries CASCADE;

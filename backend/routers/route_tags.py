@@ -112,10 +112,10 @@ _SQL_GET_TAG_SOURCES = """
     JOIN mem_mrr_prompts p ON p.id = st.prompt_id
     WHERE st.tag_id = %s::uuid AND st.prompt_id IS NOT NULL
     UNION ALL
-    SELECT 'commit' AS source_type, c.id::text AS source_id, c.commit_msg AS content, c.created_at,
+    SELECT 'commit' AS source_type, c.commit_hash AS source_id, c.commit_msg AS content, c.created_at,
            c.session_id, c.commit_hash
     FROM mem_mrr_tags st
-    JOIN mem_mrr_commits c ON c.id = st.commit_id
+    JOIN mem_mrr_commits c ON c.commit_hash = st.commit_id
     WHERE st.tag_id = %s::uuid AND st.commit_id IS NOT NULL
     ORDER BY created_at DESC
     LIMIT 100
@@ -205,7 +205,7 @@ class SourceTagCreate(BaseModel):
     session_src_id: Optional[str] = None
     session_src_desc: Optional[str] = None
     prompt_id: Optional[str] = None
-    commit_id: Optional[int] = None
+    commit_id: Optional[str] = None
     item_id: Optional[str] = None
     message_id: Optional[str] = None
     auto_tagged: bool = False
