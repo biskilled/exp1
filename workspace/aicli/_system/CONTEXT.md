@@ -7,8 +7,8 @@
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 334
-- **Last active**: 2026-04-01T18:05:40Z
+- **Sessions**: 336
+- **Last active**: 2026-04-01T18:06:31Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- Memory file auto-generation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md fully regenerated with timestamp tracking from mem_ai_project_facts and mem_ai_work_items (commit 593519a8)
-- Unified event table consolidation: mem_ai_events schema validated; deprecated event_summary_tags array and metadata columns removed; data persistence across session switches confirmed
-- Backend startup race condition resolved: retry logic implemented to handle empty project list on first load, preventing AiCli project from appearing unselectable in Recent
-- Tag persistence bug fixed: mem_ai_tags_relations now properly maintains row ID linking and cache invalidation during DB reload operations
-- Schema documentation updated: project_state.json and rules.md aligned with mem_ai_* unified naming; removed webpack reference in node_modules_build clarification
-- Frontend UI refinement: lifecycle button section removed from entities.js drawer to reduce clutter and align with feature scope
+- Memory file generation refactoring: feature_details context loaded from planner_tags inline fields; _SQL_ACTIVE_TAGS query fixed to return tag names from column index [1]; per-feature CLAUDE.md rendering improved with snapshot data integration
+- Schema consolidation: mem_ai_tags_relations relations section removed from feature rendering; inline snapshot fields (summary, action_items, design, code_summary) now primary data source for feature details
+- SQL cursor tuple unpacking: memory_promotion.py _SQL_GET_CURRENT_FACTS fixed to unpack 4 columns instead of 5; memory_files.py active tags query corrected to read name from proper result index
+- Memory file lifecycle: get_active_feature_tags() now correctly filters active/open tags with snapshots; render_feature_claude_md() enhanced to read complete tag metadata including requirements and short_desc
+- Feature details context loading: planner_tags query limits to 30 most recent tags with embedding or summary; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary
+- Database cursor handling robustness: standardized tuple unpacking across memory_promotion.py and memory_files.py; improved documentation of SQL result column ordering in get_active_feature_tags() method
 
 ## Key Decisions
 
@@ -69,10 +69,10 @@
 - Memory synthesis: Claude Haiku generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items with timestamp tracking
 - _ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load
 - Data persistence: load_once_on_access, update_on_save pattern; tags stored in mem_ai_tags_relations with row ID linking, not in summary arrays
-- MCP server (stdio) with 12+ tools configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations (depends_on, relates_to, blocks, implements) via CLI/admin UI
 - Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; routers/, core/, data/ (dl_ prefix), agents/tools/ (tool_ prefix), agents/mcp/ for MCP server
-- CLI: Python 3.12 + prompt_toolkit + rich with verb-noun command routing; memory endpoint template variable scoping fixed at line 1120
+- Memory file generation reads snapshot data from inline planner_tags fields (summary, action_items, design, code_summary); mem_ai_tags_relations relations section omitted
+- Per-feature CLAUDE.md auto-loaded when Claude enters features/{tag}/ directory; tag retrieval returns (id, name, status, short_desc, priority, due_date)
 - Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local via bash start_backend.sh + ui/npm run dev
 - Config management: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support; billing storage in data/provider_storage/
 
