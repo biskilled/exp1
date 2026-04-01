@@ -102,7 +102,6 @@ export function renderEntities(container) {
   window._plannerDrawerSaveRemarks = _plannerDrawerSaveRemarks;
   window._plannerDrawerSaveDue    = _plannerDrawerSaveDue;
   window._plannerDrawerAddChild   = _plannerDrawerAddChild;
-  window._plannerCycleLifecycle   = _plannerCycleLifecycle;
   window._plannerDrawerAddLink    = _plannerDrawerAddLink;
   window._plannerDrawerRemoveLink = _plannerDrawerRemoveLink;
   window._plannerGenerateSnapshot = _plannerGenerateSnapshot;
@@ -220,39 +219,6 @@ const _WORK_ITEM_CATEGORIES = new Set(['feature', 'bug', 'task']);
 
 function _isWorkItemCat(name) {
   return _WORK_ITEM_CATEGORIES.has((name || '').toLowerCase());
-}
-
-// ── Lifecycle badge helpers ───────────────────────────────────────────────────
-
-const _LIFECYCLE_ORDER = ['idea', 'design', 'development', 'testing', 'review', 'done'];
-const _LIFECYCLE_COLORS = {
-  idea:        '#95a5a6',
-  design:      '#8e44ad',
-  development: '#2980b9',
-  testing:     '#e67e22',
-  review:      '#16a085',
-  done:        '#27ae60',
-};
-
-function _lifecycleBadge(lc, valId) {
-  const label = lc || 'idea';
-  const color = _LIFECYCLE_COLORS[label] || '#95a5a6';
-  return `<span onclick="event.stopPropagation();window._plannerCycleLifecycle('${valId}','${label}')"
-                title="Click to advance lifecycle"
-                style="font-size:0.58rem;color:#fff;background:${color};padding:0.1rem 0.4rem;
-                       border-radius:10px;white-space:nowrap;cursor:pointer;user-select:none">
-            ${label}
-          </span>`;
-}
-
-function _plannerCycleLifecycle(valId, current) {
-  const idx  = _LIFECYCLE_ORDER.indexOf(current);
-  const next = _LIFECYCLE_ORDER[(idx + 1) % _LIFECYCLE_ORDER.length];
-  updateCachedValue(valId, { lifecycle_status: next });
-  _renderTagTableFromCache();
-  if (_drawerValId === valId) _renderDrawer();
-  api.entities.patchValue(valId, { lifecycle_status: next })
-    .catch(e => toast('Lifecycle sync error: ' + e.message, 'error'));
 }
 
 // ── Tag table ─────────────────────────────────────────────────────────────────
@@ -387,8 +353,6 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
   };
 
   function rowsForNode(wi, depth) {
-    const lc     = wi.lifecycle_status || 'idea';
-    const lcCol  = _LIFECYCLE_COLORS[lc] || '#888';
     const effectiveStatus = (wi.status !== 'done' && wi.status !== 'archived' && (!wi.description || !wi.description.trim())) ? 'prereq' : wi.status;
     const sc     = effectiveStatus === 'prereq' ? '#e74c3c' : effectiveStatus === 'active' ? '#27ae60' : effectiveStatus === 'done' ? '#4a90e2' : '#888';
     const kids   = children[wi.id] || [];
@@ -429,13 +393,6 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
                   title="${_esc(wi.name)}">${_esc(wi.name)}</span>
           </div>
         </td>
-        <td style="padding:0.5rem 0.4rem;white-space:nowrap" onclick="event.stopPropagation()">
-          <span onclick="window._wiCycleLifecycle('${wi.id}','${lc}')"
-                title="Click to advance"
-                style="font-size:0.58rem;color:#fff;background:${lcCol};
-                       padding:0.1rem 0.4rem;border-radius:10px;white-space:nowrap;
-                       cursor:pointer;user-select:none">${lc}</span>
-        </td>
         <td style="padding:0.5rem 0.4rem;white-space:nowrap">
           <span style="font-size:0.6rem;color:${sc};background:${sc}22;
                        padding:0.12rem 0.4rem;border-radius:10px">${_esc(effectiveStatus)}</span>
@@ -470,7 +427,6 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
       <thead>
         <tr style="border-bottom:2px solid var(--border)">
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
-          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:80px">Lifecycle</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:65px">Status</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;max-width:110px">Criteria</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:70px">Agent</th>
@@ -483,18 +439,6 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
       </tbody>
     </table>`;
 }
-
-// Lifecycle cycling for work items (inline, mirrors _plannerCycleLifecycle)
-window._wiCycleLifecycle = (id, current) => {
-  const idx  = _LIFECYCLE_ORDER.indexOf(current);
-  const next = _LIFECYCLE_ORDER[(idx + 1) % _LIFECYCLE_ORDER.length];
-  if (_wiItemsCache[id]) _wiItemsCache[id].lifecycle_status = next;
-  const tb = document.getElementById('wi-table-body');
-  const { selectedCatName: catName, selectedCatColor: catColor, selectedCatIcon: catIcon, project } = _plannerState;
-  if (tb) tb.innerHTML = _wiRenderRows(_wiItemsCache, catName, catColor, catIcon, project);
-  api.workItems.patch(id, _plannerState.project, { lifecycle_status: next })
-    .catch(e => toast('Lifecycle sync error: ' + e.message, 'error'));
-};
 
 async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon) {
   const drawer = document.getElementById('planner-drawer');
@@ -510,7 +454,6 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
     const wi   = (data.work_items || []).find(w => w.id === id);
     if (!wi) { inner.innerHTML = '<div style="padding:1rem;color:var(--muted)">Not found</div>'; return; }
 
-    const lc_col = _LIFECYCLE_COLORS[wi.lifecycle_status || 'idea'] || '#888';
     const isPrereq = wi.status !== 'done' && wi.status !== 'archived' && (!wi.description || !wi.description.trim());
     const drawerSeqBadge = wi.seq_num
       ? `<span style="font-size:0.55rem;color:var(--muted);background:var(--surface2);
@@ -528,14 +471,6 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
       </div>
 
       <div style="padding:0.85rem 1rem;display:flex;flex-direction:column;gap:0.85rem">
-
-        <!-- Lifecycle badge -->
-        <div>
-          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                      letter-spacing:.06em;margin-bottom:0.3rem">Lifecycle</div>
-          <span style="font-size:0.65rem;color:#fff;background:${lc_col};
-                       padding:0.15rem 0.5rem;border-radius:10px">${wi.lifecycle_status || 'idea'}</span>
-        </div>
 
         <!-- Description -->
         <div>
