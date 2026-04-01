@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-01 12:36 UTC — do not edit manually.
+> Auto-generated 2026-04-01 13:01 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 326
-- **Last active**: 2026-04-01T12:26:19Z
+- **Sessions**: 327
+- **Last active**: 2026-04-01T12:37:21Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts and mem_ai_work_items with timestamp tracking completed
-- Unified event table validation: mem_ai_events consolidates embeddings and memory events; removed event_summary_tags array and deprecated metadata columns; schema migration applied
-- Data persistence across session switches: tags disappearing root cause traced to cache invalidation during DB reload; fix ensures mem_ai_tags_relations persistence with proper row ID linking
+- Memory file auto-generation fully completed: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md regenerated from mem_ai_project_facts and mem_ai_work_items with timestamp tracking
+- Unified event table validation: mem_ai_events consolidates embeddings and memory events; removed deprecated event_summary_tags array and metadata columns; schema migration applied
+- Data persistence bug fix: tags disappearing on session switch traced to cache invalidation during DB reload; fixed via mem_ai_tags_relations persistence with proper row ID linking
+- Backend startup race condition resolved: AiCli project appearing in Recent but unselectable on first load fixed with retry logic for empty project list handling
 - Schema documentation cleanup: project_state.json and rules.md updated to reflect mem_ai_* unified naming; removed conflicting legacy database_schema field
-- Backend startup race condition resolution: AiCli project appearing in Recent but unselectable on first load; retry logic implemented for empty project list handling during initialization
-- Database migrations and tag column schema correction: mem_ai_tags_relations DDL fixed; persistence validated across session switches with proper tag column handling
+- Frontend UI refinement: removed lifecycle button section from entities.js drawer to align with current feature scope and reduce UI clutter
 
 ## Key Decisions
 

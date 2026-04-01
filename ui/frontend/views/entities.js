@@ -23,13 +23,14 @@ let _plannerState = {
   selectedCatColor: '',
   selectedCatIcon:  '',
   project:          '',
+  aiSubtypeFilter:  null,   // filter for AI section sub-rows
 };
 
 // ── Main render ───────────────────────────────────────────────────────────────
 
 export function renderEntities(container) {
   const project = state.currentProject?.name || '';
-  _plannerState = { selectedCat: null, selectedCatName: '', selectedCatColor: '', selectedCatIcon: '', project };
+  _plannerState = { selectedCat: null, selectedCatName: '', selectedCatColor: '', selectedCatIcon: '', project, aiSubtypeFilter: null };
 
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
@@ -41,6 +42,9 @@ export function renderEntities(container) {
         ${project ? `<span style="font-size:0.65rem;color:var(--accent)">${_esc(project)}</span>` : ''}
         <button class="btn btn-ghost btn-sm" style="margin-left:auto"
           onclick="window._plannerSync()" title="Sync events + reload cache">↻ Sync</button>
+        <button class="btn btn-ghost btn-sm"
+          onclick="window._plannerMigrateAiTags()"
+          title="Move AI-auto-created tags from bug/feature/task into AI Suggestions">⇢ Fix AI tags</button>
       </div>
 
       <!-- 2-pane body -->
@@ -89,6 +93,8 @@ export function renderEntities(container) {
 
   // Wire window globals
   window._plannerSelectCat        = _plannerSelectCat;
+  window._plannerSelectAiSubtype  = _plannerSelectAiSubtype;
+  window._plannerMigrateAiTags    = _plannerMigrateAiTags;
   window._plannerDeleteVal        = _plannerDeleteVal;
   window._plannerSaveNewTag       = _plannerSaveNewTag;
   window._plannerCancelNewTag     = _plannerCancelNewTag;
@@ -151,9 +157,11 @@ function _renderCategoryList() {
     return;
   }
 
-  const pipeline = cats.filter(c => _isWorkItemCat(c.name));
-  const tags     = cats.filter(c => !_isWorkItemCat(c.name));
+  const aiSugCat  = cats.find(c => c.name === 'ai_suggestion');
+  const pipeline  = cats.filter(c => _isWorkItemCat(c.name));
+  const tags      = cats.filter(c => !_isWorkItemCat(c.name) && c.name !== 'ai_suggestion');
 
+  const isSel = (id) => _plannerState.selectedCat === id && !_plannerState.aiSubtypeFilter;
   const catRow = c => `
     <div class="planner-cat-row" data-id="${c.id}" data-cat-name="${_esc(c.name)}"
          onclick="window._plannerSelectCat(${c.id},'${_esc(c.name)}')"
@@ -162,22 +170,59 @@ function _renderCategoryList() {
          ondrop="window._plannerCatDrop(event,${c.id},'${_esc(c.name)}')"
          style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;
                 cursor:pointer;margin-bottom:2px;transition:background 0.1s;
-                background:${_plannerState.selectedCat === c.id ? 'var(--accent)22' : 'transparent'};
-                border-left:2px solid ${_plannerState.selectedCat === c.id ? 'var(--accent)' : 'transparent'}">
+                background:${isSel(c.id) ? 'var(--accent)22' : 'transparent'};
+                border-left:2px solid ${isSel(c.id) ? 'var(--accent)' : 'transparent'}">
       <span style="color:${c.color};font-size:0.85rem">${c.icon}</span>
       <span style="font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(c.name)}</span>
       <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${getCacheValues(c.id).length}</span>
     </div>`;
+
+  // AI Suggestions section — sub-grouped by [suggested: X] prefix in description
+  let aiHtml = '';
+  if (aiSugCat) {
+    const aiTags = getCacheValues(aiSugCat.id);
+    const byType = {};
+    aiTags.forEach(t => {
+      const m = (t.description || '').match(/^\[suggested:\s*(\w+)\]/i);
+      const type = m ? m[1].toLowerCase() : 'other';
+      byType[type] = (byType[type] || 0) + 1;
+    });
+    const TYPE_ORDER = ['bug', 'feature', 'task'];
+    const sortedTypes = [
+      ...TYPE_ORDER.filter(t => byType[t]),
+      ...Object.keys(byType).filter(t => !TYPE_ORDER.includes(t)),
+    ];
+    aiHtml = `
+      <div style="font-size:0.5rem;text-transform:uppercase;letter-spacing:.1em;
+                  color:var(--muted);padding:8px 8px 3px;margin-top:4px;
+                  border-top:1px solid var(--border)">AI Suggestions</div>
+      ${sortedTypes.length ? sortedTypes.map(type => {
+        const isActive = _plannerState.selectedCat === aiSugCat.id && _plannerState.aiSubtypeFilter === type;
+        return `<div class="planner-cat-row planner-ai-subrow" data-id="${aiSugCat.id}"
+                     data-cat-name="ai_suggestion" data-ai-type="${type}"
+                     onclick="window._plannerSelectAiSubtype(${aiSugCat.id},'${_esc(type)}')"
+                     style="display:flex;align-items:center;gap:6px;padding:4px 8px 4px 20px;
+                            border-radius:5px;cursor:pointer;margin-bottom:2px;transition:background 0.1s;
+                            background:${isActive ? 'var(--accent)22' : 'transparent'};
+                            border-left:2px solid ${isActive ? 'var(--accent)' : 'transparent'}">
+                  <span style="font-size:0.6rem;color:var(--muted)">→</span>
+                  <span style="font-size:0.63rem;flex:1">${_esc(type)}</span>
+                  <span style="font-size:0.55rem;color:var(--muted)">${byType[type]}</span>
+                </div>`;
+      }).join('') : `<div style="padding:4px 20px;font-size:0.6rem;color:var(--muted)">No suggestions yet</div>`}
+    `;
+  }
 
   const divider = tags.length ? `
     <div style="font-size:0.5rem;text-transform:uppercase;letter-spacing:.1em;
                 color:var(--muted);padding:8px 8px 3px;margin-top:4px;
                 border-top:1px solid var(--border)">Tags</div>` : '';
 
-  list.innerHTML = pipeline.map(catRow).join('') + divider + tags.map(catRow).join('');
+  list.innerHTML = pipeline.map(catRow).join('') + divider + tags.map(catRow).join('') + aiHtml;
 }
 
 async function _plannerSelectCat(catId, catName) {
+  _plannerState.aiSubtypeFilter = null;
   // Fallback categories have null IDs — reload cache and resolve real ID by name
   if (catId === null || catId === undefined) {
     const pane = document.getElementById('planner-tags-pane');
@@ -213,6 +258,26 @@ async function _plannerSelectCat(catId, catName) {
   }
 }
 
+// Select a specific AI suggestion sub-type (bug / feature / task / other)
+function _plannerSelectAiSubtype(catId, type) {
+  catId = Number(catId);
+  _plannerState.selectedCat      = catId;
+  _plannerState.selectedCatName  = 'ai_suggestion';
+  _plannerState.aiSubtypeFilter  = type;
+  const cat = getCacheCategories().find(c => c.id === catId) || {};
+  _plannerState.selectedCatColor = cat.color || 'var(--muted)';
+  _plannerState.selectedCatIcon  = cat.icon  || '✨';
+
+  // Update active style — only the matching sub-row is highlighted
+  document.querySelectorAll('.planner-cat-row').forEach(r => {
+    const isMatch = r.classList.contains('planner-ai-subrow') && r.dataset.aiType === type;
+    r.style.background = isMatch ? 'var(--accent)22' : 'transparent';
+    r.style.borderLeft = isMatch ? '2px solid var(--accent)' : '2px solid transparent';
+  });
+
+  _renderTagTableFromCache();
+}
+
 // ── Work item categories ──────────────────────────────────────────────────────
 
 const _WORK_ITEM_CATEGORIES = new Set(['feature', 'bug', 'task']);
@@ -227,6 +292,7 @@ function _isWorkItemCat(name) {
 const _collapsed = new Set();
 
 let _dragTag     = null;   // { id, name, category_id, category_name } of dragged tag
+let _dragWi      = null;   // { id, name, catName } of dragged work item
 let _dragOverRow = null;   // currently highlighted <tr> DOM element
 let _dragZone    = null;   // 'top' | 'mid' | 'bot'
 
@@ -272,7 +338,7 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
   window._wiToggleCollapse = (id) => {
     if (_wiCollapsed.has(id)) _wiCollapsed.delete(id); else _wiCollapsed.add(id);
     const tb = document.getElementById('wi-table-body');
-    if (tb) tb.innerHTML = _wiRenderRows(_wiItemsCache, catName, catColor, catIcon, project);
+    _wiSetTableBody(tb, _wiItemsCache, catName, catColor, catIcon, project);
   };
   window._wiRunPipeline = async (id, proj) => {
     const btn = document.querySelector(`[data-wi-run-btn="${id}"]`);
@@ -326,11 +392,18 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
       return;
     }
 
-    tableBody.innerHTML = _wiRenderRows(_wiItemsCache, catName, catColor, catIcon, project);
+    _wiSetTableBody(tableBody, _wiItemsCache, catName, catColor, catIcon, project);
   } catch (e) {
     const tb = document.getElementById('wi-table-body');
     if (tb) tb.textContent = `Error loading ${catName}s: ${e.message}`;
   }
+}
+
+/** Render work item rows into tableBody and attach DnD listeners. */
+function _wiSetTableBody(tableBody, byId, catName, catColor, catIcon, project) {
+  if (!tableBody) return;
+  tableBody.innerHTML = _wiRenderRows(byId, catName, catColor, catIcon, project);
+  _attachWorkItemDnd(tableBody, catName, project);
 }
 
 function _wiRenderRows(byId, catName, catColor, catIcon, project) {
@@ -379,8 +452,9 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
       : '';
 
     let html = `
-      <tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
-          data-wi-id="${wi.id}"
+      <tr style="border-bottom:1px solid var(--border);cursor:grab;transition:background 0.1s;user-select:none"
+          draggable="true"
+          data-wi-id="${wi.id}" data-wi-name="${_esc(wi.name)}" data-cat-name="${_esc(catName)}"
           onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(catName)}','${_esc(project)}')"
           onmouseenter="this.style.background='var(--surface2)'"
           onmouseleave="this.style.background=''">
@@ -589,7 +663,14 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
 
 function _renderTagTable(pane, catId, catName, catColor, catIcon) {
   const STATUS_COLORS = { active: '#27ae60', done: '#4a90e2', archived: '#888' };
-  const roots = getCacheRoots(catId);
+  const isAiSug = catName === 'ai_suggestion';
+
+  // For ai_suggestion category, optionally filter by subtype prefix
+  let roots = getCacheRoots(catId);
+  if (isAiSug && _plannerState.aiSubtypeFilter) {
+    const prefix = `[suggested: ${_plannerState.aiSubtypeFilter}]`;
+    roots = roots.filter(v => (v.description || '').toLowerCase().startsWith(prefix));
+  }
 
   // Recursively build table rows for a node and its visible children
   function _rowsForNode(v, depth) {
@@ -662,11 +743,13 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
   pane.innerHTML = `
     <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
       <span style="font-size:0.8rem;color:${catColor}">${catIcon}</span>
-      <span style="font-size:0.78rem;font-weight:600;color:var(--text)">${_esc(catName)}</span>
-      <button onclick="window._plannerShowNewTag(${catId})"
+      <span style="font-size:0.78rem;font-weight:600;color:var(--text)">
+        ${isAiSug && _plannerState.aiSubtypeFilter ? `AI → ${_plannerState.aiSubtypeFilter}` : _esc(catName)}
+      </span>
+      ${isAiSug ? '' : `<button onclick="window._plannerShowNewTag(${catId})"
         style="background:var(--accent);border:none;color:#fff;font-size:0.62rem;
                padding:0.2rem 0.55rem;border-radius:var(--radius);cursor:pointer;
-               font-family:var(--font);outline:none;margin-left:auto">+ New Tag</button>
+               font-family:var(--font);outline:none;margin-left:auto">+ New Tag</button>`}
     </div>
 
     <!-- New tag inline row (hidden) -->
@@ -1220,6 +1303,23 @@ async function _plannerSync() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+async function _plannerMigrateAiTags() {
+  const { project } = _plannerState;
+  if (!project) return;
+  try {
+    const r = await api.tags.migrateToAiSuggestions(project);
+    const n = r.moved || 0;
+    if (n > 0) {
+      toast(`Moved ${n} auto-created tag${n !== 1 ? 's' : ''} to AI Suggestions`, 'success');
+      await loadTagCache(project, true);
+      _renderCategoryList();
+      _renderTagTableFromCache();
+    } else {
+      toast('No AI-auto-created tags found to migrate', 'info');
+    }
+  } catch (e) { toast('Migration failed: ' + e.message, 'error'); }
+}
+
 // ── Value-link helpers ────────────────────────────────────────────────────────
 
 async function _loadDrawerLinks(valId) {
@@ -1340,6 +1440,80 @@ async function _dndExecuteDrop(zone, drag, target) {
   await loadTagCache(project, true);
   _renderTagTableFromCache();
   _renderCategoryList();
+}
+
+async function _dndExecuteWiDrop(zone, drag, target, project) {
+  if (zone === 'mid') { toast('Merge is not supported for work items', 'error'); return; }
+  // Cycle guard
+  const dragKids   = Object.values(_wiItemsCache).filter(w => w.parent_id === drag.id).map(w => w.id);
+  const allDescs   = new Set();
+  const stack = [...dragKids];
+  while (stack.length) { const n = stack.pop(); allDescs.add(n); Object.values(_wiItemsCache).filter(w => w.parent_id === n).forEach(w => stack.push(w.id)); }
+  if (zone === 'bot' && allDescs.has(target.id)) { toast('Cannot make a descendant a parent', 'error'); return; }
+  if (zone === 'top') {
+    const tDescs = new Set();
+    const ts = [target.id];
+    while (ts.length) { const n = ts.pop(); tDescs.add(n); Object.values(_wiItemsCache).filter(w => w.parent_id === n).forEach(w => ts.push(w.id)); }
+    if (tDescs.has(drag.id)) { toast('Cannot create circular hierarchy', 'error'); return; }
+  }
+  if (zone === 'bot') {
+    await api.workItems.patch(drag.id, project, { parent_id: target.id });
+    if (_wiItemsCache[drag.id]) _wiItemsCache[drag.id].parent_id = target.id;
+    toast(`"${drag.name}" is now a child of "${target.name}"`, 'success');
+  } else {
+    await api.workItems.patch(target.id, project, { parent_id: drag.id });
+    if (_wiItemsCache[target.id]) _wiItemsCache[target.id].parent_id = drag.id;
+    toast(`"${target.name}" is now a child of "${drag.name}"`, 'success');
+  }
+  const tb = document.getElementById('wi-table-body');
+  const { selectedCatColor: catColor, selectedCatIcon: catIcon, selectedCatName: catName } = _plannerState;
+  _wiSetTableBody(tb, _wiItemsCache, catName, catColor, catIcon, project);
+}
+
+/** Attach drag-and-drop listeners to a rendered work-item tbody. */
+function _attachWorkItemDnd(tableBody, catName, project) {
+  _ensureDndHint();
+  tableBody.querySelectorAll('tr[data-wi-id]').forEach(tr => {
+    tr.addEventListener('dragstart', function(e) {
+      _dragWi = { id: this.dataset.wiId, name: this.dataset.wiName, catName };
+      _dragTag = null;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', this.dataset.wiId);
+      this.style.opacity = '0.45';
+    });
+    tr.addEventListener('dragend', function() {
+      this.style.opacity = '';
+      _dndClearHighlight();
+      _dragWi = null;
+    });
+  });
+
+  tableBody.addEventListener('dragover', function(e) {
+    const row = e.target.closest('tr[data-wi-id]');
+    if (!row || !_dragWi) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const zone = _dndGetZone(e, row);
+    if (row !== _dragOverRow || zone !== _dragZone) _dndHighlight(row, zone);
+    const h = document.getElementById('planner-dnd-hint');
+    if (h) { h.style.display = 'block'; h.style.left = (e.clientX + 16) + 'px'; h.style.top = (e.clientY + 12) + 'px'; }
+  });
+
+  tableBody.addEventListener('dragleave', function(e) {
+    if (!this.contains(e.relatedTarget)) _dndClearHighlight();
+  });
+
+  tableBody.addEventListener('drop', function(e) {
+    e.preventDefault();
+    const row = e.target.closest('tr[data-wi-id]');
+    if (!row || !_dragWi || !_dragZone) { _dndClearHighlight(); return; }
+    const zone = _dragZone;
+    const target = { id: row.dataset.wiId, name: row.dataset.wiName };
+    _dndClearHighlight();
+    if (target.id === _dragWi.id) return;
+    const drag = { ..._dragWi };
+    _dndExecuteWiDrop(zone, drag, target, project).catch(err => toast(err.message, 'error'));
+  });
 }
 
 function _ensureDndHint() {

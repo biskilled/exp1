@@ -844,3 +844,52 @@ async def get_tag_context(
         "work_items": work_items,
         "project": project,
     }
+
+
+@router.post("/migrate-to-ai-suggestions")
+async def migrate_tags_to_ai_suggestions(project: str = Query(...)):
+    """Move planner_tags that were auto-created under bug/feature/task into the ai_suggestion
+    category.  Safe: only moves tags with zero linked event rows in mem_mrr_tags."""
+    _require_db()
+    moved = 0
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            # Find ai_suggestion category id
+            cur.execute(
+                "SELECT id FROM mng_tags_categories WHERE name='ai_suggestion' LIMIT 1"
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(400, "ai_suggestion category not found")
+            ai_cat_id = row[0]
+
+            # Find tags in work-item categories with zero linked events
+            cur.execute(
+                """SELECT t.id, c.name AS cat_name, t.name
+                     FROM planner_tags t
+                     JOIN mng_tags_categories c ON c.id = t.category_id
+                    WHERE t.client_id=1 AND t.project=%s
+                      AND LOWER(c.name) IN ('bug','feature','task')
+                      AND NOT EXISTS (
+                            SELECT 1 FROM mem_mrr_tags st WHERE st.tag_id = t.id
+                          )""",
+                (project,),
+            )
+            candidates = cur.fetchall()
+            for tag_id, cat_name, tag_name in candidates:
+                # Add suggested-type prefix to description (if not already set)
+                cur.execute(
+                    """INSERT INTO planner_tags_meta (tag_id, description)
+                            VALUES (%s, %s)
+                       ON CONFLICT (tag_id) DO UPDATE
+                            SET description = EXCLUDED.description
+                       WHERE planner_tags_meta.description IS NULL
+                          OR planner_tags_meta.description = ''""",
+                    (tag_id, f"[suggested: {cat_name.lower()}] (auto-migrated)"),
+                )
+                cur.execute(
+                    "UPDATE planner_tags SET category_id=%s WHERE id=%s",
+                    (ai_cat_id, tag_id),
+                )
+                moved += 1
+    return {"moved": moved}
