@@ -166,8 +166,8 @@ _SQL_INSERT_PIPELINE_FACT = (
 
 _SQL_INSERT_PIPELINE_INTERACTION = (
     """INSERT INTO mem_mrr_prompts
-       (id, client_id, project, llm_source, event_type, response, session_id, work_item_id, created_at)
-       VALUES (%s, 1, %s, 'pipeline', 'pipeline', %s, %s, %s::uuid, NOW())"""
+       (id, client_id, project, llm_source, response, session_id, work_item_id, created_at)
+       VALUES (%s, 1, %s, 'pipeline', %s, %s, %s::uuid, NOW())"""
 )
 
 # Work item linkage to prompts is via mem_mrr_prompts.work_item_id
@@ -284,6 +284,15 @@ async def _embed_work_item(project: str, item_id: str, name: str, description: s
         log.debug(f"_embed_work_item error: {e}")
 
 
+async def _run_matching(project: str, work_item_id: str) -> None:
+    """Background task: match a work item to existing planner tags via MemoryTagging."""
+    try:
+        from memory.memory_tagging import MemoryTagging
+        await MemoryTagging().match_work_item_to_tags(project, work_item_id)
+    except Exception:
+        pass  # non-critical background task
+
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class WorkItemCreate(BaseModel):
@@ -361,7 +370,11 @@ async def list_work_items(
 
 
 @router.post("", status_code=201)
-async def create_work_item(body: WorkItemCreate, project: str | None = Query(None)):
+async def create_work_item(
+    body: WorkItemCreate,
+    background_tasks: BackgroundTasks,
+    project: str | None = Query(None),
+):
     f"""Create a new work item."""
     _require_db()
     p = _project(project or body.project)
@@ -382,6 +395,8 @@ async def create_work_item(body: WorkItemCreate, project: str | None = Query(Non
     # Embed work item content + regenerate memory files in background
     asyncio.create_task(_embed_work_item(p, item_id, body.name, body.description, body.acceptance_criteria))
     asyncio.create_task(_trigger_memory_regen(p))
+    # Match new work item to existing tags in background
+    background_tasks.add_task(_run_matching, p, item_id)
 
     return {
         "id": item_id, "name": r[1], "category_name": r[2],
@@ -442,15 +457,9 @@ async def patch_work_item(
                 raise HTTPException(404, "Work item not found")
             new_status = result[1]
 
-    # When lifecycle → done, synthesize feature memory in background
-    if body.lifecycle_status == "done":
-        from routers.route_projects import _summarize_feature_memory
-        try:
-            asyncio.create_task(_summarize_feature_memory(p, item_id))
-        except Exception:
-            pass
-
     # Re-embed if content-bearing fields changed
+    content_fields = {"name", "description", "acceptance_criteria", "implementation_plan"}
+    body_dict = body.model_dump(exclude_none=True)
     if any(getattr(body, f) is not None for f in ("name", "description", "acceptance_criteria", "implementation_plan")):
         with db.conn() as conn:
             with conn.cursor() as cur:
@@ -461,6 +470,10 @@ async def patch_work_item(
                 row = cur.fetchone()
         if row:
             asyncio.create_task(_embed_work_item(p, item_id, row[0], row[1], row[2]))
+
+    # Re-run tag matching if name, description, or summary fields changed
+    if any(f in body_dict for f in content_fields):
+        background.add_task(_run_matching, p, item_id)
 
     # Regenerate root memory files in background after any patch
     asyncio.create_task(_trigger_memory_regen(p))
@@ -475,6 +488,11 @@ async def delete_work_item(item_id: str, project: str | None = Query(None)):
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
+            # Clean up tag relations before deleting the work item
+            cur.execute(
+                "DELETE FROM mem_tags_relations WHERE related_type = 'work_item' AND related_id = %s",
+                (item_id,),
+            )
             cur.execute(_SQL_DELETE_WORK_ITEM, (item_id, p))
             if not cur.fetchone():
                 raise HTTPException(404, "Work item not found")
@@ -764,13 +782,7 @@ def _finalize_work_item_pipeline(
     if ac:
         _upsert_pipeline_fact(project, item_name, ac, rev)
 
-    try:
-        from routers.route_projects import _summarize_feature_memory
-        asyncio.create_task(_summarize_feature_memory(project, item_id))
-    except Exception as _me:
-        log.debug(f"Memory synthesis skipped: {_me}")
-
-    # Run fact extraction in background after feature memory is synthesized
+    # Run fact extraction in background
     try:
         from routers.route_projects import _extract_project_facts
         asyncio.create_task(_extract_project_facts(project))
@@ -861,11 +873,10 @@ def _finalize_react_pipeline(
     _save_pipeline_interaction(project, item_id, run_id, item_name, ac, verdict or wf.final_verdict)
 
     try:
-        from routers.route_projects import _summarize_feature_memory, _extract_project_facts
-        asyncio.create_task(_summarize_feature_memory(project, item_id))
+        from routers.route_projects import _extract_project_facts
         asyncio.create_task(_extract_project_facts(project))
-    except Exception as _me:
-        log.debug(f"Memory synthesis skipped: {_me}")
+    except Exception as _fe:
+        log.debug(f"Fact extraction skipped: {_fe}")
 
 
 async def _ensure_pipeline_workflow(project: str) -> int | None:

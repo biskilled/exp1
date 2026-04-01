@@ -355,7 +355,8 @@ async def list_tools() -> list[mcp_types.Tool]:
             description=(
                 "Return the complete database table schema for this project. "
                 "Use this when you need to write SQL queries or understand the data model. "
-                "Tables follow naming convention: mng_ (global shared), pr_ (per-project flat tables with client_id=1 AND project=<name>)."
+                "Tables follow naming convention: mng_ (global), planner_ (tag hierarchy), "
+                "mem_mrr_ (mirror/raw), mem_ai_ (AI layer), pr_ (graph workflows)."
             ),
             inputSchema={
                 "type": "object",

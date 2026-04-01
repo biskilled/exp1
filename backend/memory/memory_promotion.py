@@ -31,11 +31,11 @@ _SQL_GET_TAG_ID = """
 """
 
 _SQL_GET_WORK_ITEM = """
-    SELECT wi.name, wi.description, wi.lifecycle_status, wi.acceptance_criteria,
-           wi.implementation_plan, wi.agent_status
+    SELECT wi.id, wi.name, wi.description, wi.lifecycle_status, wi.acceptance_criteria
     FROM mem_ai_work_items wi
-    WHERE wi.client_id=1 AND wi.project=%s AND wi.tag_id=%s::uuid
-    LIMIT 1
+    JOIN mem_tags_relations r ON r.related_id = wi.id::TEXT
+        AND r.related_type = 'work_item' AND r.tag_id = %s::uuid
+    ORDER BY wi.created_at DESC LIMIT 10
 """
 
 _SQL_GET_WORK_ITEM_BY_NAME = """
@@ -47,13 +47,13 @@ _SQL_GET_WORK_ITEM_BY_NAME = """
 """
 
 _SQL_GET_MEMORY_EVENTS = """
-    SELECT me.id, me.event_type, me.source_id, me.session_id, me.content,
-           me.importance, me.created_at
+    SELECT me.id, me.summary, me.event_type, me.created_at, me.llm_source,
+           me.open_threads, me.next_steps
     FROM mem_ai_events me
-    JOIN mem_ai_tags mt ON mt.event_id = me.id
-    WHERE mt.tag_id = %s::uuid
-      AND me.client_id=1 AND me.project=%s
-    ORDER BY me.created_at
+    JOIN mem_tags_relations r ON r.related_id = me.id::TEXT
+        AND r.related_type = 'memory_event' AND r.related_layer = 'ai'
+    WHERE r.tag_id = %s::uuid
+    ORDER BY me.created_at DESC LIMIT 50
 """
 
 _SQL_GET_SYSTEM_ROLE = """
@@ -62,22 +62,15 @@ _SQL_GET_SYSTEM_ROLE = """
     LIMIT 1
 """
 
-_SQL_UPSERT_FEATURE = """
-    INSERT INTO mem_ai_features
-        (client_id, project, tag_id, work_item_status, requirements,
-         action_items, design, code_summary, file_paths, embedding, created_at, updated_at)
-    VALUES (1, %s, %s::uuid, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW(), NOW())
-    ON CONFLICT (client_id, project, tag_id)
-    DO UPDATE SET
-        work_item_status = EXCLUDED.work_item_status,
-        requirements     = EXCLUDED.requirements,
-        action_items     = EXCLUDED.action_items,
-        design           = EXCLUDED.design,
-        code_summary     = EXCLUDED.code_summary,
-        file_paths       = EXCLUDED.file_paths,
-        embedding        = EXCLUDED.embedding,
-        updated_at       = NOW()
-    RETURNING id
+_SQL_UPDATE_TAG_SNAPSHOT = """
+    UPDATE planner_tags SET
+        summary      = %s,
+        action_items = %s,
+        design       = %s,
+        code_summary = %s,
+        embedding    = %s,
+        updated_at   = NOW()
+    WHERE id = %s AND project = %s
 """
 
 _SQL_GET_CURRENT_FACTS = """
@@ -256,7 +249,8 @@ class MemoryPromotion:
     ) -> Optional[dict]:
         """
         Build the full 4-layer snapshot for a feature tag from all 6 batch types.
-        Stores the result in mem_ai_features and marks events as processed.
+        Stores the result inline on planner_tags (summary, action_items, design, code_summary,
+        embedding) and marks events as processed.
         Returns the snapshot dict or None on failure.
         """
         if not db.is_available():
@@ -272,24 +266,24 @@ class MemoryPromotion:
             return None
         tag_id = str(tag_row[0])
 
-        # Load memory events
+        # Load memory events (joined via mem_tags_relations)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_MEMORY_EVENTS, (tag_id, project))
+                cur.execute(_SQL_GET_MEMORY_EVENTS, (tag_id,))
                 events = cur.fetchall()
 
         if not events:
             log.debug(f"promote_feature_snapshot: no events for tag '{tag_name}'")
             return None
 
-        # Load work item status
+        # Load work item status (linked via mem_tags_relations)
         work_item_status = None
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_WORK_ITEM, (project, tag_id))
-                wi_row = cur.fetchone()
-        if wi_row:
-            work_item_status = wi_row[2]  # lifecycle_status
+                cur.execute(_SQL_GET_WORK_ITEM, (tag_id,))
+                wi_rows = cur.fetchall()
+        if wi_rows:
+            work_item_status = wi_rows[0][3]  # lifecycle_status from first linked work item
 
         # Load current project facts (for context)
         facts_context: dict = {}
@@ -309,10 +303,13 @@ class MemoryPromotion:
             "workflow":     [],
         }
         event_ids: list[str] = []
-        for ev_id, src_type, src_id, session_id, content, importance, created_at in events:
+        for ev_id, summary, event_type, created_at, llm_source, open_threads, next_steps in events:
             event_ids.append(str(ev_id))
-            rel = compute_relevance(importance or 1, created_at)
-            bucket = src_type if src_type in batch_types else "prompt_batch"
+            rel = compute_relevance(1, created_at)
+            bucket = event_type if event_type in batch_types else "prompt_batch"
+            content = summary or ""
+            if open_threads:
+                content += f" | threads: {open_threads}"
             batch_types[bucket].append(f"[relevance={rel:.2f}] {content}")
 
         # Build user message with all 6 batch type sections
@@ -363,32 +360,26 @@ class MemoryPromotion:
         ai_relations: list[dict] = parsed.pop("relations", []) or []
         design = parsed.get("design", {})
         code_summary = parsed.get("code_summary", {})
-        file_paths = list(code_summary.get("files", []) if isinstance(code_summary, dict) else [])
+        requirements = parsed.get("requirements", "")
+        action_items = parsed.get("action_items", "")
 
-        embed_text = " ".join(filter(None, [
-            parsed.get("requirements", ""),
-            parsed.get("action_items", ""),
-        ]))
+        embed_text = " ".join(filter(None, [requirements, action_items]))
         embedding = await _embed_text(embed_text) if embed_text.strip() else None
-
-        facts_snap = json.dumps(facts_context) if facts_context else None
 
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    _SQL_UPSERT_FEATURE,
+                    _SQL_UPDATE_TAG_SNAPSHOT,
                     (
-                        project, tag_id, work_item_status,
-                        parsed.get("requirements", ""),
-                        parsed.get("action_items", ""),
+                        requirements,
+                        action_items,
                         json.dumps(design),
                         json.dumps(code_summary),
-                        file_paths or None,
                         embedding,
+                        tag_id,
+                        project,
                     ),
                 )
-                snap_row = cur.fetchone()
-                snap_id = str(snap_row[0]) if snap_row else None
 
                 if event_ids:
                     cur.execute(_SQL_MARK_EVENTS_PROCESSED, (event_ids,))
@@ -409,11 +400,11 @@ class MemoryPromotion:
             f"{len(event_ids)} events, {relations_upserted} relations"
         )
         return {
-            "snapshot_id":        snap_id,
+            "tag_id":             tag_id,
             "tag_name":           tag_name,
             "project":            project,
-            "requirements":       parsed.get("requirements", ""),
-            "action_items":       parsed.get("action_items", ""),
+            "summary":            requirements,
+            "action_items":       action_items,
             "design":             design,
             "code_summary":       code_summary,
             "events_processed":   len(event_ids),

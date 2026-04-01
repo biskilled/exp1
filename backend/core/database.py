@@ -3,9 +3,10 @@ PostgreSQL connection pool — three-layer memory architecture.
 
 Table namespaces:
   mng_         — global + client-scoped (management tables)
-  planner_     — project tag hierarchy (planner_tags, planner_tags_meta)
-  mem_mrr_     — mirroring layer (raw source data: prompts, commits, items, messages, tags)
-  mem_ai_      — AI/embedding layer (mem_ai_events, mem_ai_tags, mem_ai_work_items, mem_ai_project_facts, mem_ai_features)
+  planner_     — project tag hierarchy (planner_tags)
+  mem_mrr_     — mirroring layer (raw source data: prompts, commits, items, messages)
+  mem_ai_      — AI/embedding layer (mem_ai_events, mem_ai_work_items, mem_ai_project_facts)
+  mem_tags_    — tag relations (mem_tags_relations)
   pr_          — project-scoped misc (graph_*, seq_counters)
 
 Falls back gracefully when DATABASE_URL is not set — callers check `is_available()`.
@@ -451,41 +452,54 @@ CREATE TABLE IF NOT EXISTS mng_tags_categories (
 
 -- ── Planner tag hierarchy ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS planner_tags (
-    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project     VARCHAR(255) NOT NULL,
-    name        TEXT         NOT NULL,
-    category_id INT          REFERENCES mng_tags_categories(id) ON DELETE SET NULL,
-    parent_id   UUID         REFERENCES planner_tags(id) ON DELETE SET NULL,
-    merged_into UUID         REFERENCES planner_tags(id) ON DELETE SET NULL,
-    status      VARCHAR(20)  NOT NULL DEFAULT 'active',
-    lifecycle   VARCHAR(20)  NOT NULL DEFAULT 'idea',
-    seq_num     INT,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE(client_id, project, name)
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id           INT         NOT NULL REFERENCES mng_clients(id),
+    project             TEXT        NOT NULL,
+    name                TEXT        NOT NULL,
+    category_id         INT         REFERENCES mng_tags_categories(id),
+    parent_id           UUID        REFERENCES planner_tags(id),
+    merged_into         UUID        REFERENCES planner_tags(id),
+    seq_num             INT,
+    source              TEXT        NOT NULL DEFAULT 'user',
+    creator             TEXT,
+    short_desc          TEXT,
+    full_desc           TEXT,
+    requirements        TEXT,
+    acceptance_criteria TEXT,
+    status              TEXT        NOT NULL DEFAULT 'open',
+    priority            SMALLINT    NOT NULL DEFAULT 3,
+    due_date            DATE,
+    requester           TEXT,
+    extra               JSONB       NOT NULL DEFAULT '{}',
+    summary             TEXT,
+    action_items        TEXT,
+    design              JSONB,
+    code_summary        JSONB,
+    is_reusable         BOOLEAN     NOT NULL DEFAULT FALSE,
+    embedding           VECTOR(1536),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(client_id, project, name, category_id)
 );
-ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 CREATE INDEX IF NOT EXISTS idx_planner_tags_cp     ON planner_tags(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_planner_tags_parent ON planner_tags(parent_id);
 CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
 
--- Planner tag metadata
-CREATE TABLE IF NOT EXISTS planner_tags_meta (
-    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    tag_id       UUID         NOT NULL UNIQUE REFERENCES planner_tags(id) ON DELETE CASCADE,
-    client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project      VARCHAR(255) NOT NULL,
-    description  TEXT         NOT NULL DEFAULT '',
-    requirements TEXT         NOT NULL DEFAULT '',
-    due_date     DATE,
-    requester    TEXT,
-    priority     SMALLINT     NOT NULL DEFAULT 3,
-    extra        JSONB        NOT NULL DEFAULT '{}',
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+-- ── Tag relations (replaces mem_mrr_tags wide junction + mem_ai_tags + mem_ai_tags_relations) ──
+CREATE TABLE IF NOT EXISTS mem_tags_relations (
+    id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    tag_id              UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
+    related_layer       TEXT         NOT NULL,
+    related_type        TEXT         NOT NULL,
+    related_id          TEXT         NOT NULL,
+    related_type_score  FLOAT,
+    related_approved    TEXT,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (tag_id, related_type, related_id)
 );
-CREATE INDEX IF NOT EXISTS idx_planner_tags_meta_cp ON planner_tags_meta(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_tag    ON mem_tags_relations(tag_id);
+CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_type   ON mem_tags_relations(related_type, related_id);
+CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_review ON mem_tags_relations(related_approved) WHERE related_approved IS NULL;
 
 -- ── Mirroring: items (requirements, decisions, meetings) ─────────────────────
 CREATE TABLE IF NOT EXISTS mem_mrr_items (
@@ -519,7 +533,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_messages_cp ON mem_mrr_messages(client_id, project);
 
--- ── Embedding / AI events table ─────────────────────────────────────────────────
+-- ── Embedding / AI events table ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_events (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -549,97 +563,6 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_events_session ON mem_ai_events(session_id
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_type    ON mem_ai_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pending ON mem_ai_events(processed_at) WHERE processed_at IS NULL;
 
--- ── Tagging: mem_mrr_tags (wide junction — all source FKs) ──────────────────
-CREATE TABLE IF NOT EXISTS mem_mrr_tags (
-    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    tag_id           UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
-    session_id       TEXT,
-    session_src_id   TEXT,
-    session_src_desc TEXT,
-    prompt_id        UUID         REFERENCES mem_mrr_prompts(id)  ON DELETE CASCADE,
-    prompt_created   TIMESTAMPTZ,
-    prompt_updated   TIMESTAMPTZ,
-    commit_id        TEXT         REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE,
-    commit_created   TIMESTAMPTZ,
-    commit_updated   TIMESTAMPTZ,
-    item_id          UUID         REFERENCES mem_mrr_items(id)    ON DELETE CASCADE,
-    item_created     TIMESTAMPTZ,
-    item_updated     TIMESTAMPTZ,
-    message_id       UUID         REFERENCES mem_mrr_messages(id) ON DELETE CASCADE,
-    message_created  TIMESTAMPTZ,
-    message_updated  TIMESTAMPTZ,
-    event_id         UUID,
-    event_created    TIMESTAMPTZ,
-    event_updated    TIMESTAMPTZ,
-    work_item_id     UUID         REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
-    work_item_created TIMESTAMPTZ,
-    work_item_updated TIMESTAMPTZ,
-    snapshot_id      UUID,
-    snapshot_created TIMESTAMPTZ,
-    snapshot_updated TIMESTAMPTZ,
-    fact_id          UUID,
-    fact_created     TIMESTAMPTZ,
-    fact_updated     TIMESTAMPTZ,
-    auto_tagged      BOOLEAN      NOT NULL DEFAULT FALSE,
-    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_tag     ON mem_mrr_tags(tag_id);
-CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_session ON mem_mrr_tags(session_id);
-CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_prompt  ON mem_mrr_tags(prompt_id);
-CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit  ON mem_mrr_tags(commit_id);
--- Partial unique indexes enable UPSERT per source type (one row per tag+source combination)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_prompt_uniq  ON mem_mrr_tags(tag_id, prompt_id)   WHERE prompt_id  IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit_uniq  ON mem_mrr_tags(tag_id, commit_id)   WHERE commit_id  IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_item_uniq    ON mem_mrr_tags(tag_id, item_id)     WHERE item_id    IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_message_uniq ON mem_mrr_tags(tag_id, message_id)  WHERE message_id IS NOT NULL;
-
--- ── AI tags on embedding events ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS mem_ai_tags (
-    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id     UUID         NOT NULL REFERENCES mem_ai_events(id) ON DELETE CASCADE,
-    tag_id       UUID         NOT NULL REFERENCES planner_tags(id)  ON DELETE CASCADE,
-    ai_suggested BOOLEAN      NOT NULL DEFAULT FALSE,  -- TRUE when tag was proposed by AI (not manually assigned)
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE(event_id, tag_id)
-);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_tags_event ON mem_ai_tags(event_id);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_tags_tag   ON mem_ai_tags(tag_id);
-
--- ── AI tag relations (global) ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS mem_ai_tags_relations (
-    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    from_tag_id  UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
-    relation     TEXT         NOT NULL,
-    to_tag_id    UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
-    note         TEXT,
-    source       VARCHAR(20)  NOT NULL DEFAULT 'manual',
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE (from_tag_id, relation, to_tag_id)
-);
-CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_from ON mem_ai_tags_relations(from_tag_id);
-CREATE INDEX IF NOT EXISTS idx_mng_tag_rel_to   ON mem_ai_tags_relations(to_tag_id);
-
--- ── 4-layer feature snapshots (mem_ai_features) ─────────────────────────────
-CREATE TABLE IF NOT EXISTS mem_ai_features (
-    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id        INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project          VARCHAR(255) NOT NULL,
-    tag_id           UUID         NOT NULL REFERENCES planner_tags(id),
-    work_item_status TEXT,        -- lifecycle_status from mem_ai_work_items at snapshot time
-    requirements     TEXT,
-    action_items     TEXT,
-    design           JSONB,
-    code_summary     JSONB,
-    file_paths       TEXT[],      -- source files from code_summary.files
-    embedding        VECTOR(1536),
-    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE(client_id, project, tag_id)
-);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_feat_cp  ON mem_ai_features(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_feat_tag ON mem_ai_features(tag_id);
-
 """
 
 # ─── Column additions to existing tables (memory infra) ──────────────────────
@@ -663,20 +586,75 @@ ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS tags;
 -- mem_ai_work_items: add tag_id + embedding (not in original schema)
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
--- mem_ai_tags: drop columns that were never used
-ALTER TABLE mem_ai_tags DROP COLUMN IF EXISTS event_updated;
-ALTER TABLE mem_ai_tags DROP COLUMN IF EXISTS work_item_id;
-ALTER TABLE mem_ai_tags DROP COLUMN IF EXISTS work_item_updated;
 -- mem_ai_project_facts: add embedding, drop unused columns
 ALTER TABLE mem_ai_project_facts ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
 ALTER TABLE mem_ai_project_facts DROP COLUMN IF EXISTS conflict_with;
--- mem_ai_features: drop columns that were always NULL or a fixed value
-ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS work_item_type;
-ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS project_facts;
-ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS prompt_ids;
-ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS commit_hashes;
-ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS design_refs;
-ALTER TABLE mem_ai_features DROP COLUMN IF EXISTS is_reusable;
+-- planner_tags: add all new columns (idempotent)
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS source              TEXT     NOT NULL DEFAULT 'user';
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS creator             TEXT;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS short_desc          TEXT;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS full_desc           TEXT;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS requirements        TEXT;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS acceptance_criteria TEXT;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS status_new          TEXT     NOT NULL DEFAULT 'open';
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS priority            SMALLINT NOT NULL DEFAULT 3;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS due_date            DATE;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS requester           TEXT;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS extra               JSONB    NOT NULL DEFAULT '{}';
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS summary             TEXT;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS action_items        TEXT;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS design              JSONB;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS code_summary        JSONB;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS is_reusable         BOOLEAN  NOT NULL DEFAULT FALSE;
+ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS embedding           VECTOR(1536);
+-- planner_tags: drop old status + lifecycle columns, rename status_new → status
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'planner_tags' AND column_name = 'status'
+        AND data_type IN ('character varying', 'varchar')
+    ) THEN
+        ALTER TABLE planner_tags DROP COLUMN IF EXISTS status;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'planner_tags' AND column_name = 'status_new'
+    ) THEN
+        ALTER TABLE planner_tags RENAME COLUMN status_new TO status;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'planner_tags' AND column_name = 'lifecycle'
+    ) THEN
+        ALTER TABLE planner_tags DROP COLUMN IF EXISTS lifecycle;
+    END IF;
+END $$;
+-- planner_tags: update unique constraint to include category_id
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE table_schema = 'public'
+          AND table_name   = 'planner_tags'
+          AND constraint_name = 'planner_tags_client_id_project_name_key'
+    ) THEN
+        ALTER TABLE planner_tags DROP CONSTRAINT planner_tags_client_id_project_name_key;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE table_schema = 'public'
+          AND table_name   = 'planner_tags'
+          AND constraint_name = 'planner_tags_project_name_cat_key'
+    ) THEN
+        ALTER TABLE planner_tags ADD CONSTRAINT planner_tags_project_name_cat_key
+            UNIQUE(client_id, project, name, category_id);
+    END IF;
+END $$;
 """
 
 

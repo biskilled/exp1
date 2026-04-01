@@ -1,19 +1,18 @@
 """
 memory_tagging.py — Layer 2 of the three-layer memory architecture.
 
-Maps planner_tags (parent-child hierarchy) to mirroring rows via mem_mrr_tags,
-and to AI events via mem_ai_tags.  Also handles the AI tag suggestion workflow:
-get_untagged → Haiku suggestion → apply or ignore.
+Maps planner_tags (parent-child hierarchy) to mirroring rows and AI events via the
+unified mem_tags_relations table (replaces the dropped mem_mrr_tags, mem_ai_tags, and
+mem_ai_tags_relations tables).  Also handles the AI tag suggestion workflow:
+get_untagged → Haiku suggestion → apply or ignore, and the 3-level work-item-to-tag
+matching pipeline (exact name → semantic embedding → Claude Haiku judgment).
 
 Public API::
 
     tagging = MemoryTagging()
     tag_id = tagging.get_or_create_tag(project, name, category_id)
-    tagging.link_to_mirroring(tag_id, session_id, session_src_desc='claude_cli', prompt_id=uuid)
-    tagging.link_to_mirroring(tag_id, session_id, commit_id=42, commit_created=ts, event_id=evt_uuid)
-    tagging.update_event_id_for_prompts(event_id, [prompt_uuid1, prompt_uuid2])
-    tagging.link_to_event(event_id, tag_id)
-    tagging.add_relation(from_tag_id, 'depends_on', to_tag_id)
+    tagging.link_to_mirroring(tag_id, 'prompt', prompt_uuid)
+    tagging.link_to_event(tag_id, event_uuid, ai_suggested=True)
     tree = tagging.get_tag_tree(project)
     tagging.tag_from_context(project, prompt_id, context_tags, session_id, src_desc)
 
@@ -21,12 +20,20 @@ Public API::
     suggestions = await tagging.suggest_tags_for_untagged(project)
     await tagging.apply_suggestion(project, source_type, source_id, tag_name, ...)
     tagging.ignore_suggestion(source_type, source_id)
+
+    # Work-item matching
+    matches = await tagging.match_work_item_to_tags(project, work_item_id)
 """
 from __future__ import annotations
 
 import logging
 from typing import Optional
 
+import anthropic
+import json
+import openai
+
+from core.config import settings
 from core.database import db
 from memory.memory_mirroring import MemoryMirroring
 
@@ -45,186 +52,19 @@ _SQL_GET_TAG = """
 _SQL_INSERT_TAG = """
     INSERT INTO planner_tags (client_id, project, name, category_id, status)
     VALUES (1, %s, %s, %s, 'active')
-    ON CONFLICT (client_id, project, name) DO NOTHING
+    ON CONFLICT (client_id, project, name, category_id) DO NOTHING
     RETURNING id
-"""
-
-# Per-source-type UPSERT SQL — one row per (tag, source) combination.
-# ON CONFLICT updates the *_updated timestamp and backfills event_id/work_item_id when available.
-_SQL_UPSERT_MRR_TAG_PROMPT = """
-    INSERT INTO mem_mrr_tags
-           (tag_id, session_id, session_src_id, session_src_desc,
-            prompt_id, prompt_created, prompt_updated,
-            work_item_id, work_item_created, work_item_updated,
-            event_id, event_created, event_updated, auto_tagged)
-    VALUES (%s::uuid, %s, %s, %s,
-            %s::uuid, %s, %s,
-            %s::uuid, %s, %s,
-            %s::uuid, %s, %s, %s)
-    ON CONFLICT (tag_id, prompt_id) WHERE prompt_id IS NOT NULL
-    DO UPDATE SET
-        prompt_updated    = COALESCE(EXCLUDED.prompt_updated,    NOW()),
-        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
-        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
-        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
-        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
-        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
-        updated_at        = NOW()
-    RETURNING id
-"""
-
-_SQL_UPSERT_MRR_TAG_COMMIT = """
-    INSERT INTO mem_mrr_tags
-           (tag_id, session_id, session_src_id, session_src_desc,
-            commit_id, commit_created, commit_updated,
-            work_item_id, work_item_created, work_item_updated,
-            event_id, event_created, event_updated, auto_tagged)
-    VALUES (%s::uuid, %s, %s, %s,
-            %s, %s, %s,
-            %s::uuid, %s, %s,
-            %s::uuid, %s, %s, %s)
-    ON CONFLICT (tag_id, commit_id) WHERE commit_id IS NOT NULL
-    DO UPDATE SET
-        commit_updated    = COALESCE(EXCLUDED.commit_updated,    NOW()),
-        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
-        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
-        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
-        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
-        updated_at        = NOW()
-    RETURNING id
-"""
-
-_SQL_UPSERT_MRR_TAG_ITEM = """
-    INSERT INTO mem_mrr_tags
-           (tag_id, session_id, session_src_id, session_src_desc,
-            item_id, item_created, item_updated,
-            work_item_id, work_item_created, work_item_updated,
-            event_id, event_created, event_updated, auto_tagged)
-    VALUES (%s::uuid, %s, %s, %s,
-            %s::uuid, %s, %s,
-            %s::uuid, %s, %s,
-            %s::uuid, %s, %s, %s)
-    ON CONFLICT (tag_id, item_id) WHERE item_id IS NOT NULL
-    DO UPDATE SET
-        item_updated      = COALESCE(EXCLUDED.item_updated,      NOW()),
-        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
-        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
-        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
-        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
-        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
-        updated_at        = NOW()
-    RETURNING id
-"""
-
-_SQL_UPSERT_MRR_TAG_MESSAGE = """
-    INSERT INTO mem_mrr_tags
-           (tag_id, session_id, session_src_id, session_src_desc,
-            message_id, message_created, message_updated,
-            work_item_id, work_item_created, work_item_updated,
-            event_id, event_created, event_updated, auto_tagged)
-    VALUES (%s::uuid, %s, %s, %s,
-            %s::uuid, %s, %s,
-            %s::uuid, %s, %s,
-            %s::uuid, %s, %s, %s)
-    ON CONFLICT (tag_id, message_id) WHERE message_id IS NOT NULL
-    DO UPDATE SET
-        message_updated   = COALESCE(EXCLUDED.message_updated,   NOW()),
-        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
-        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
-        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
-        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
-        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
-        updated_at        = NOW()
-    RETURNING id
-"""
-
-# Session-level link (no source FK) — plain insert, no uniqueness conflict expected
-_SQL_INSERT_MRR_TAG_SESSION = """
-    INSERT INTO mem_mrr_tags
-           (tag_id, session_id, session_src_id, session_src_desc,
-            work_item_id, work_item_created, auto_tagged)
-    VALUES (%s::uuid, %s, %s, %s, %s::uuid, %s, %s)
-    RETURNING id
-"""
-
-# Backfill event_id on existing mem_mrr_tags rows after a batch event is created
-_SQL_UPDATE_MRR_TAG_EVENT = """
-    UPDATE mem_mrr_tags
-       SET event_id = %s::uuid, event_updated = NOW(), updated_at = NOW()
-     WHERE prompt_id = ANY(%s::uuid[])
-       AND event_id IS NULL
-"""
-
-# ── Promote mirroring-layer tags into mem_ai_tags (one SQL per source type) ────
-# Called after each mem_ai_events row is created so the event inherits all tags
-# already on its contributing mirroring rows.  ON CONFLICT DO NOTHING is idempotent.
-
-_SQL_COPY_PROMPT_TAGS_TO_EVENT = """
-    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
-    SELECT DISTINCT %s::uuid, mt.tag_id, FALSE
-    FROM mem_mrr_tags mt
-    WHERE mt.prompt_id = ANY(%s::uuid[])
-    ON CONFLICT (event_id, tag_id) DO NOTHING
-"""
-
-_SQL_COPY_COMMIT_TAGS_TO_EVENT = """
-    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
-    SELECT DISTINCT %s::uuid, mt.tag_id, FALSE
-    FROM mem_mrr_tags mt
-    WHERE mt.commit_id = %s
-    ON CONFLICT (event_id, tag_id) DO NOTHING
-"""
-
-_SQL_COPY_ITEM_TAGS_TO_EVENT = """
-    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
-    SELECT DISTINCT %s::uuid, mt.tag_id, FALSE
-    FROM mem_mrr_tags mt
-    WHERE mt.item_id = %s::uuid
-    ON CONFLICT (event_id, tag_id) DO NOTHING
-"""
-
-_SQL_COPY_MESSAGE_TAGS_TO_EVENT = """
-    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
-    SELECT DISTINCT %s::uuid, mt.tag_id, FALSE
-    FROM mem_mrr_tags mt
-    WHERE mt.message_id = %s::uuid
-    ON CONFLICT (event_id, tag_id) DO NOTHING
-"""
-
-# AI suggestion: mem_ai_events with no mem_ai_tags rows yet (recent events only)
-_SQL_GET_UNTAGGED_EVENTS = """
-    SELECT e.id::text, e.event_type AS source_type,
-           LEFT(e.content, 500) AS content_preview, e.created_at
-    FROM mem_ai_events e
-    WHERE e.client_id=1 AND e.project=%s
-      AND NOT EXISTS (
-          SELECT 1 FROM mem_ai_tags t WHERE t.event_id = e.id
-      )
-    ORDER BY e.created_at ASC
-    LIMIT %s
-"""
-
-_SQL_INSERT_AI_TAG = """
-    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
-    VALUES (%s::uuid, %s::uuid, %s)
-    ON CONFLICT (event_id, tag_id) DO NOTHING
-"""
-
-_SQL_INSERT_RELATION = """
-    INSERT INTO mem_ai_tags_relations (from_tag_id, relation, to_tag_id, note, source)
-    VALUES (%s::uuid, %s, %s::uuid, %s, %s)
-    ON CONFLICT (from_tag_id, relation, to_tag_id) DO NOTHING
 """
 
 _SQL_LIST_TAGS = """
     SELECT t.id, t.name, t.category_id, t.parent_id, t.merged_into,
            t.status, t.lifecycle, t.seq_num, t.created_at,
            tc.name AS category_name, tc.color, tc.icon,
-           tm.description, tm.due_date, tm.priority,
-           (SELECT COUNT(*) FROM mem_mrr_tags mt WHERE mt.tag_id = t.id) AS source_count
+           t.short_desc, t.due_date, t.priority,
+           (SELECT COUNT(*) FROM mem_tags_relations mr
+            WHERE mr.tag_id = t.id) AS source_count
     FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-    LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
     WHERE t.client_id = 1 AND t.project = %s
       AND t.merged_into IS NULL
     ORDER BY t.created_at
@@ -254,48 +94,38 @@ _SQL_MERGE_TAGS = """
     RETURNING id
 """
 
-_SQL_REMAP_MRR_TAGS = """
-    UPDATE mem_mrr_tags SET tag_id=%s::uuid WHERE tag_id=%s::uuid
-"""
-
-_SQL_GET_RELATIONS = """
-    WITH project_tags AS (
-        SELECT id FROM planner_tags WHERE client_id=1 AND project=%s
-    )
-    SELECT r.id, r.from_tag_id, f.name AS from_name,
-           r.relation,
-           r.to_tag_id,   t.name AS to_name,
-           r.note, r.source, r.created_at
-    FROM mem_ai_tags_relations r
-    JOIN planner_tags f ON f.id = r.from_tag_id
-    JOIN planner_tags t ON t.id = r.to_tag_id
-    WHERE r.from_tag_id IN (SELECT id FROM project_tags)
-       OR r.to_tag_id   IN (SELECT id FROM project_tags)
-    ORDER BY r.created_at DESC
-"""
-
-_SQL_DELETE_RELATION = """
-    DELETE FROM mem_ai_tags_relations WHERE id=%s::uuid
-    RETURNING id
+_SQL_REMAP_RELATIONS = """
+    UPDATE mem_tags_relations SET tag_id=%s::uuid WHERE tag_id=%s::uuid
 """
 
 _SQL_GET_BLOCKERS = """
     WITH project_tags AS (
         SELECT id, name FROM planner_tags WHERE client_id=1 AND project=%s AND status='active'
     )
-    SELECT f.name AS from_name, r.relation, t.name AS to_name, r.note
-    FROM mem_ai_tags_relations r
-    JOIN planner_tags f ON f.id = r.from_tag_id
-    JOIN planner_tags t ON t.id = r.to_tag_id
-    WHERE r.relation IN ('blocks', 'depends_on')
-      AND (r.from_tag_id IN (SELECT id FROM project_tags)
-        OR r.to_tag_id   IN (SELECT id FROM project_tags))
-    ORDER BY r.relation, f.name
+    SELECT f.name AS from_name, r.related_type, t.name AS to_name, NULL AS note
+    FROM mem_tags_relations r
+    JOIN planner_tags f ON f.id = r.tag_id
+    JOIN planner_tags t ON t.name = r.related_id
+    WHERE r.related_type IN ('blocks', 'depends_on')
+      AND r.tag_id IN (SELECT id FROM project_tags)
+    ORDER BY r.related_type, f.name
+"""
+
+# Find mem_ai_events rows that have no mem_tags_relations entries yet
+_SQL_GET_UNTAGGED_EVENTS = """
+    SELECT me.id, me.project, me.summary, me.event_type
+    FROM mem_ai_events me
+    WHERE me.project = %s
+      AND NOT EXISTS (
+        SELECT 1 FROM mem_tags_relations r
+        WHERE r.related_type = 'memory_event' AND r.related_id = me.id::TEXT
+      )
+    ORDER BY me.created_at DESC LIMIT %s
 """
 
 
 class MemoryTagging:
-    """Maps planner_tags to mirroring rows and AI events."""
+    """Maps planner_tags to mirroring rows and AI events via mem_tags_relations."""
 
     # ── Core tag operations ─────────────────────────────────────────────────
 
@@ -330,179 +160,62 @@ class MemoryTagging:
     def link_to_mirroring(
         self,
         tag_id: str,
-        session_id: Optional[str] = None,
-        *,
-        session_src_id: Optional[str] = None,
-        session_src_desc: Optional[str] = None,
-        # Prompt FK + timestamps
-        prompt_id: Optional[str] = None,
-        prompt_created: Optional[object] = None,
-        prompt_updated: Optional[object] = None,
-        # Commit FK + timestamps (commit_hash string)
-        commit_id: Optional[str] = None,
-        commit_created: Optional[object] = None,
-        commit_updated: Optional[object] = None,
-        # Item FK + timestamps
-        item_id: Optional[str] = None,
-        item_created: Optional[object] = None,
-        item_updated: Optional[object] = None,
-        # Message FK + timestamps
-        message_id: Optional[str] = None,
-        message_created: Optional[object] = None,
-        message_updated: Optional[object] = None,
-        # Work-item FK + timestamps
-        work_item_id: Optional[str] = None,
-        work_item_created: Optional[object] = None,
-        work_item_updated: Optional[object] = None,
-        # AI-event FK + timestamps (Phase-2 — stored, no FK constraint yet)
-        event_id: Optional[str] = None,
-        event_created: Optional[object] = None,
-        event_updated: Optional[object] = None,
-        auto_tagged: bool = False,
-    ) -> Optional[str]:
-        """Insert or update a mem_mrr_tags row linking a tag to a source event.
-
-        Routes to the appropriate per-source UPSERT SQL based on which FK is non-null.
-        ON CONFLICT updates *_updated and backfills event_id/work_item_id if supplied.
-        Returns the mem_mrr_tags.id as a string.
-        """
-        if not db.is_available():
-            return None
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    if prompt_id is not None:
-                        cur.execute(_SQL_UPSERT_MRR_TAG_PROMPT, (
-                            tag_id, session_id, session_src_id, session_src_desc,
-                            prompt_id, prompt_created, prompt_updated,
-                            work_item_id, work_item_created, work_item_updated,
-                            event_id, event_created, event_updated, auto_tagged,
-                        ))
-                    elif commit_id is not None:
-                        cur.execute(_SQL_UPSERT_MRR_TAG_COMMIT, (
-                            tag_id, session_id, session_src_id, session_src_desc,
-                            commit_id, commit_created, commit_updated,
-                            work_item_id, work_item_created, work_item_updated,
-                            event_id, event_created, event_updated, auto_tagged,
-                        ))
-                    elif item_id is not None:
-                        cur.execute(_SQL_UPSERT_MRR_TAG_ITEM, (
-                            tag_id, session_id, session_src_id, session_src_desc,
-                            item_id, item_created, item_updated,
-                            work_item_id, work_item_created, work_item_updated,
-                            event_id, event_created, event_updated, auto_tagged,
-                        ))
-                    elif message_id is not None:
-                        cur.execute(_SQL_UPSERT_MRR_TAG_MESSAGE, (
-                            tag_id, session_id, session_src_id, session_src_desc,
-                            message_id, message_created, message_updated,
-                            work_item_id, work_item_created, work_item_updated,
-                            event_id, event_created, event_updated, auto_tagged,
-                        ))
-                    else:
-                        # Session-level link — no specific source FK
-                        cur.execute(_SQL_INSERT_MRR_TAG_SESSION, (
-                            tag_id, session_id, session_src_id, session_src_desc,
-                            work_item_id, work_item_created, auto_tagged,
-                        ))
-                    row = cur.fetchone()
-            return str(row[0]) if row else None
-        except Exception as e:
-            log.debug(f"MemoryTagging.link_to_mirroring error: {e}")
-            return None
-
-    def update_event_id_for_prompts(
-        self,
-        event_id: str,
-        prompt_ids: list[str],
-    ) -> None:
-        """Backfill event_id on mem_mrr_tags rows for the given prompt_ids.
-
-        Called by MemoryEmbedding after process_prompt_batch creates a mem_ai_events
-        row, so that mirroring-layer tag links know which AI event they rolled up into.
-        Only updates rows where event_id IS NULL to avoid overwriting existing links.
-        """
-        if not db.is_available() or not prompt_ids:
-            return
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_UPDATE_MRR_TAG_EVENT, (event_id, prompt_ids))
-        except Exception as e:
-            log.debug(f"MemoryTagging.update_event_id_for_prompts error: {e}")
-
-    def promote_source_tags_to_event(
-        self,
-        event_id: str,
         source_type: str,
-        source_ids: list[str],
-    ) -> int:
-        """Copy distinct tags from mem_mrr_tags source rows into mem_ai_tags.
-
-        Called after process_prompt_batch/commit/item/messages() creates a
-        mem_ai_events row so the event inherits all tags already on its sources.
-
-        source_type: 'prompt_batch' | 'commit' | 'item' | 'message'
-        source_ids:  list of prompt UUIDs, or [commit_hash], or [item_uuid], etc.
-        Returns count of mem_ai_tags rows inserted.
-        """
-        if not db.is_available() or not source_ids:
-            return 0
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    if source_type == "prompt_batch":
-                        cur.execute(_SQL_COPY_PROMPT_TAGS_TO_EVENT, (event_id, source_ids))
-                    elif source_type == "commit":
-                        cur.execute(_SQL_COPY_COMMIT_TAGS_TO_EVENT, (event_id, source_ids[0]))
-                    elif source_type == "item":
-                        cur.execute(_SQL_COPY_ITEM_TAGS_TO_EVENT, (event_id, source_ids[0]))
-                    elif source_type == "message":
-                        cur.execute(_SQL_COPY_MESSAGE_TAGS_TO_EVENT, (event_id, source_ids[0]))
-                    else:
-                        return 0
-                    count = cur.rowcount
-            if count > 0:
-                log.debug(
-                    f"promote_source_tags_to_event: {count} tag(s) → event {event_id[:8]} "
-                    f"(source={source_type})"
-                )
-            return count
-        except Exception as e:
-            log.debug(f"MemoryTagging.promote_source_tags_to_event error: {e}")
-            return 0
-
-    def link_to_event(self, event_id: str, tag_id: str, ai_suggested: bool = False) -> None:
-        """Insert a row into mem_ai_tags linking a tag to an AI event.
-
-        ai_suggested=True marks the tag as proposed by an LLM (not manually assigned).
-        """
-        if not db.is_available():
-            return
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_INSERT_AI_TAG, (event_id, tag_id, ai_suggested))
-        except Exception as e:
-            log.debug(f"MemoryTagging.link_to_event error: {e}")
-
-    def add_relation(
-        self,
-        from_tag_id: str,
-        relation: str,
-        to_tag_id: str,
-        note: Optional[str] = None,
-        source: str = "manual",
+        source_id: str,
+        auto_tagged: bool = False,
     ) -> None:
-        """Add a relationship between two planner_tags."""
-        if not db.is_available():
-            return
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_INSERT_RELATION, (from_tag_id, relation, to_tag_id, note, source))
-        except Exception as e:
-            log.debug(f"MemoryTagging.add_relation error: {e}")
+        """Link a tag to a mirrored source row (prompt, commit, item, message)."""
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
+                    VALUES (%s, 'mirror', %s, %s)
+                    ON CONFLICT (tag_id, related_type, related_id) DO NOTHING
+                """, (tag_id, source_type, str(source_id)))
+                conn.commit()
+
+    def link_to_event(self, tag_id: str, event_id: str, ai_suggested: bool = False) -> None:
+        """Link a tag to a memory event (prompt batch, commit, session summary).
+
+        ai_suggested=True leaves related_approved as NULL (pending review).
+        ai_suggested=False marks it immediately as 'approved' (manual assignment).
+        """
+        approved = None if ai_suggested else 'approved'
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, related_approved)
+                    VALUES (%s, 'ai', 'memory_event', %s, %s)
+                    ON CONFLICT (tag_id, related_type, related_id)
+                    DO UPDATE SET related_approved = EXCLUDED.related_approved
+                """, (tag_id, str(event_id), approved))
+                conn.commit()
+
+    # ── Internal relation helper ────────────────────────────────────────────
+
+    def _upsert_relation(
+        self,
+        tag_id: str,
+        layer: str,
+        rel_type: str,
+        rel_id: str,
+        score: float = None,
+        approved: str = None,
+    ) -> None:
+        """Insert or update a mem_tags_relations row."""
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO mem_tags_relations
+                        (tag_id, related_layer, related_type, related_id, related_type_score, related_approved)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (tag_id, related_type, related_id) DO UPDATE SET
+                        related_type_score = EXCLUDED.related_type_score,
+                        related_approved   = EXCLUDED.related_approved
+                """, (tag_id, layer, rel_type, str(rel_id), score, approved))
+                conn.commit()
+
+    # ── Tag tree / listing ──────────────────────────────────────────────────
 
     def get_tag_tree(self, project: str) -> list[dict]:
         """Return planner_tags as a nested parent→children tree."""
@@ -562,7 +275,7 @@ class MemoryTagging:
                     row = cur.fetchone()
                     if row:
                         from_id = str(row[0])
-                        cur.execute(_SQL_REMAP_MRR_TAGS, (into_id, from_id))
+                        cur.execute(_SQL_REMAP_RELATIONS, (into_id, from_id))
         except Exception as e:
             log.debug(f"MemoryTagging.merge_tags error: {e}")
 
@@ -574,7 +287,7 @@ class MemoryTagging:
         session_id: str,
         session_src_desc: Optional[str] = None,
     ) -> None:
-        """Create mem_mrr_tags rows for each key:value in context_tags."""
+        """Create mem_tags_relations rows for each key:value in context_tags."""
         if not context_tags or not db.is_available():
             return
         try:
@@ -586,13 +299,7 @@ class MemoryTagging:
                 )
                 tag_id = self.get_or_create_tag(project, tag_name)
                 if tag_id:
-                    self.link_to_mirroring(
-                        tag_id,
-                        session_id=session_id,
-                        session_src_desc=session_src_desc,
-                        prompt_id=prompt_id,
-                        auto_tagged=True,
-                    )
+                    self.link_to_mirroring(tag_id, "prompt", prompt_id, auto_tagged=True)
         except Exception as e:
             log.debug(f"MemoryTagging.tag_from_context error: {e}")
 
@@ -607,15 +314,20 @@ class MemoryTagging:
     ) -> bool:
         """Add a relation using tag names instead of UUIDs (creates tags if missing).
 
-        Useful from CLI, snapshot promotion, and relation extraction flows.
+        Stores a mem_tags_relations row where the 'from' tag links to the 'to' tag
+        name via related_type=relation and related_id=to_tag_uuid.
         Returns True if the relation was created/already existed.
         """
         from_id = self.get_or_create_tag(project, from_name)
         to_id   = self.get_or_create_tag(project, to_name)
         if not from_id or not to_id:
             return False
-        self.add_relation(from_id, relation, to_id, note=note, source=source)
-        return True
+        try:
+            self._upsert_relation(from_id, 'ai', relation, to_id, approved=source)
+            return True
+        except Exception as e:
+            log.debug(f"MemoryTagging.add_relation_by_name error: {e}")
+            return False
 
     def upsert_relations_from_list(
         self,
@@ -659,46 +371,6 @@ class MemoryTagging:
             log.debug(f"MemoryTagging.get_blockers_and_deps error: {e}")
             return []
 
-    def get_relations(self, project: str) -> list[dict]:
-        """Return all tag relations (both directions) for a project, with tag names."""
-        if not db.is_available():
-            return []
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_RELATIONS, (project,))
-                    rows = cur.fetchall()
-            return [
-                {
-                    "id":          str(r[0]),
-                    "from_tag_id": str(r[1]),
-                    "from_name":   r[2],
-                    "relation":    r[3],
-                    "to_tag_id":   str(r[4]),
-                    "to_name":     r[5],
-                    "note":        r[6],
-                    "source":      r[7],
-                    "created_at":  r[8].isoformat() if r[8] else None,
-                }
-                for r in rows
-            ]
-        except Exception as e:
-            log.debug(f"MemoryTagging.get_relations error: {e}")
-            return []
-
-    def delete_relation(self, relation_id: str) -> bool:
-        """Delete a tag relation by UUID. Returns True if deleted."""
-        if not db.is_available():
-            return False
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_DELETE_RELATION, (relation_id,))
-                    return cur.fetchone() is not None
-        except Exception as e:
-            log.debug(f"MemoryTagging.delete_relation error: {e}")
-            return False
-
     # ── AI suggestion flow ──────────────────────────────────────────────────
 
     async def suggest_tags_for_untagged(
@@ -708,7 +380,7 @@ class MemoryTagging:
 
         Steps:
         1. Query untagged rows across mem_mrr_* tables (ai_tags IS NULL)
-        2. Query mem_ai_events with no mem_ai_tags entries (new AI events)
+        2. Query mem_ai_events with no mem_tags_relations entries (new AI events)
         3. Load existing planner_tags for project
         4. Call Haiku with ai_tag_suggestion prompt per row
         5. Return list of suggestion dicts
@@ -727,17 +399,17 @@ class MemoryTagging:
         for stype in ("prompt", "commit", "item"):
             untagged.extend(_mirroring.get_untagged(project, stype, limit=per_type))
 
-        # Gather untagged mem_ai_events (no mem_ai_tags rows)
+        # Gather untagged mem_ai_events (no mem_tags_relations rows)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(_SQL_GET_UNTAGGED_EVENTS, (project, per_type))
                     for row in cur.fetchall():
                         untagged.append({
-                            "id":              row[0],
-                            "source_type":     row[1],  # event_type as source_type
+                            "id":              str(row[0]),
+                            "source_type":     row[3],   # event_type as source_type
                             "content_preview": row[2] or "",
-                            "layer":           "ai",    # marks this as a mem_ai_events row
+                            "layer":           "ai",     # marks this as a mem_ai_events row
                         })
         except Exception as e:
             log.debug(f"suggest_tags_for_untagged (events) error: {e}")
@@ -772,9 +444,6 @@ class MemoryTagging:
 
         try:
             from data.dl_api_keys import get_key
-            import anthropic
-            import json
-            from core.config import settings
 
             api_key = get_key("claude") or get_key("anthropic")
             if not api_key:
@@ -827,10 +496,10 @@ class MemoryTagging:
         """Apply an AI suggestion: create/get tag, link to source, mark approved.
 
         layer='mrr'  → source_type is 'prompt'|'commit'|'item'|'message';
-                       links to mem_mrr_tags and sets ai_tags='approved'.
+                       links to mem_tags_relations (mirror layer) and sets ai_tags='approved'.
         layer='ai'   → source_type is a mem_ai_events event_type string;
                        source_id is a mem_ai_events UUID;
-                       links to mem_ai_tags (ai_suggested=True).
+                       links to mem_tags_relations (ai layer, ai_suggested=True).
         """
         if not db.is_available():
             return False
@@ -848,23 +517,10 @@ class MemoryTagging:
 
             if layer == "ai":
                 # Link directly to the mem_ai_events row
-                self.link_to_event(source_id, tag_id, ai_suggested=True)
+                self.link_to_event(tag_id, source_id, ai_suggested=True)
             else:
                 # Link to the mirroring row and mark it approved
-                kwargs: dict = {
-                    "session_id": session_id,
-                    "session_src_desc": session_src_desc,
-                    "auto_tagged": True,
-                }
-                if source_type == "prompt":
-                    kwargs["prompt_id"] = source_id
-                elif source_type == "commit":
-                    kwargs["commit_id"] = source_id
-                elif source_type == "item":
-                    kwargs["item_id"] = source_id
-                elif source_type == "message":
-                    kwargs["message_id"] = source_id
-                self.link_to_mirroring(tag_id, **kwargs)
+                self.link_to_mirroring(tag_id, source_type, source_id, auto_tagged=True)
                 _mirroring.set_ai_tag_status(source_type, source_id, "approved")
 
             return True
@@ -872,8 +528,150 @@ class MemoryTagging:
             log.debug(f"MemoryTagging.apply_suggestion error: {e}")
             return False
 
-
-
     def ignore_suggestion(self, source_type: str, source_id: str) -> None:
         """Mark a row as ignored by the AI tagging flow."""
         _mirroring.set_ai_tag_status(source_type, source_id, "ignored")
+
+    # ── Work-item to tag matching ───────────────────────────────────────────
+
+    async def match_work_item_to_tags(self, project: str, work_item_id: str) -> list[dict]:
+        """3-level matching: exact name → semantic (>0.85 auto) → Claude judgment (0.70–0.85).
+
+        Returns list of dicts: {tag_id, relation, confidence}
+        """
+        wi = self._load_work_item(work_item_id)
+        if not wi:
+            return []
+
+        # Level 1 — exact name match
+        tag = self._find_exact_tag(project, wi['name'])
+        if tag:
+            self._upsert_relation(tag['id'], 'ai', 'work_item', work_item_id, score=1.0, approved='approved')
+            return [{'tag_id': tag['id'], 'relation': 'exact', 'confidence': 1.0}]
+
+        # Level 2 — semantic similarity
+        query = ' '.join(filter(None, [wi.get('name', ''), wi.get('description', ''), wi.get('summary', '')]))
+        if not query.strip():
+            return []
+
+        try:
+            emb = await self._embed_text(query)
+        except Exception:
+            return []
+
+        candidates = self._vector_search_tags(project, emb, limit=15)
+        strong = [c for c in candidates if c['score'] > 0.85]
+        border = [c for c in candidates if 0.70 < c['score'] <= 0.85]
+
+        results = []
+        for c in strong:
+            self._upsert_relation(c['id'], 'ai', 'work_item', work_item_id, score=c['score'], approved='approved')
+            results.append({'tag_id': c['id'], 'relation': 'similar', 'confidence': c['score']})
+
+        # Level 3 — Claude Haiku judgment for borderline candidates
+        if border:
+            try:
+                judgments = await self._claude_judge_candidates(wi, border)
+                for j in judgments:
+                    if j.get('relation') not in (None, 'none'):
+                        approved = 'approved' if j['relation'] == 'exact' else None
+                        self._upsert_relation(
+                            j['tag_id'], 'ai', 'work_item', work_item_id,
+                            score=j.get('confidence'), approved=approved
+                        )
+                        results.append(j)
+            except Exception:
+                pass
+
+        return results
+
+    # ── Private helpers ─────────────────────────────────────────────────────
+
+    def _load_work_item(self, work_item_id: str) -> dict | None:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, name, description, summary, category_name
+                    FROM mem_ai_work_items WHERE id = %s
+                """, (work_item_id,))
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {'id': str(row[0]), 'name': row[1], 'description': row[2] or '',
+                        'summary': row[3] or '', 'category_name': row[4] or ''}
+
+    def _find_exact_tag(self, project: str, name: str) -> dict | None:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, name, category_id FROM planner_tags
+                    WHERE project = %s AND LOWER(name) = LOWER(%s)
+                      AND status != 'archived' LIMIT 1
+                """, (project, name))
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {'id': str(row[0]), 'name': row[1], 'category_id': row[2]}
+
+    def _vector_search_tags(self, project: str, embedding: list, limit: int = 15) -> list[dict]:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, name, category_id, short_desc,
+                           1 - (embedding <=> %s::vector) AS score
+                    FROM planner_tags
+                    WHERE project = %s AND embedding IS NOT NULL AND status != 'archived'
+                    ORDER BY embedding <=> %s::vector LIMIT %s
+                """, (embedding, project, embedding, limit))
+                rows = cur.fetchall()
+                return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
+                         'short_desc': r[3], 'score': float(r[4])} for r in rows]
+
+    async def _embed_text(self, text: str) -> list:
+        """Embed text using OpenAI text-embedding-3-small."""
+        client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+        resp = await client.embeddings.create(
+            model='text-embedding-3-small',
+            input=text[:8000]
+        )
+        return resp.data[0].embedding
+
+    async def _claude_judge_candidates(self, wi: dict, candidates: list[dict]) -> list[dict]:
+        """Use Claude Haiku to judge borderline tag candidates."""
+        cand_text = '\n'.join(
+            f"- {c['name']} (score:{c['score']:.2f}) | {c.get('short_desc','')}"
+            for c in candidates
+        )
+        prompt = (
+            f"WORK ITEM: name: {wi['name']}  summary: {wi.get('description','')}\n"
+            f"CANDIDATE TAGS:\n{cand_text}\n\n"
+            "For each candidate, determine if it matches this work item.\n"
+            "Exact: same concept, scope, intent. Similar: overlapping but not identical. None: unrelated.\n"
+            'Respond ONLY in JSON: {"matches":[{"tag_name":"...","relation":"exact|similar|none","confidence":0.0-1.0}]}'
+        )
+        system = (
+            "You are a technical project memory assistant. "
+            "Given an AI-generated work item and candidate tags, determine if any match. "
+            "Respond ONLY in JSON."
+        )
+
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        msg = await client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=512,
+            system=system,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        text = msg.content[0].text.strip()
+        data = json.loads(text)
+        name_to_id = {c['name']: c['id'] for c in candidates}
+        results = []
+        for m in data.get('matches', []):
+            tid = name_to_id.get(m.get('tag_name'))
+            if tid:
+                results.append({
+                    'tag_id': tid,
+                    'relation': m.get('relation', 'none'),
+                    'confidence': float(m.get('confidence', 0.0))
+                })
+        return results

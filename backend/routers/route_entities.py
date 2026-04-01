@@ -5,9 +5,11 @@ document, and message to named features, bugs, and tasks.
 
 Underlying tables:
   mng_tags_categories  — global category vocabulary
-  planner_tags         — per-project tag registry, UUID PK
-  planner_tags_meta    — tag description / due_date / priority metadata
-  mem_mrr_tags         — unified junction: tag ↔ prompt | commit | item | message
+  planner_tags         — per-project tag registry, UUID PK; inline metadata columns
+                         (short_desc, requirements, due_date, priority, status, etc.)
+  mem_tags_relations   — unified junction: tag ↔ prompt | commit | item | message
+                         related_layer='mirror' replaces mem_mrr_tags
+                         related_layer='ai'     replaces mem_ai_tags
   mem_mrr_prompts      — prompt log
   mem_mrr_commits      — commit log
 
@@ -93,22 +95,21 @@ _SQL_GET_CATEGORY_ID = """
     SELECT id FROM mng_tags_categories WHERE client_id=1 AND name=%s
 """
 
-# planner_tags (UUID PK) + planner_tags_meta (description/due_date) + mem_mrr_tags count
+# planner_tags (UUID PK) — inline metadata + mem_tags_relations count
 # {where} is injected at call site; caller always provides at least "t.client_id=1"
 _SQL_LIST_VALUES = """
     SELECT t.id::text, t.category_id, t.name,
-           COALESCE(tm.description,'') AS description, t.status,
-           t.created_at, tm.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status,
+           COALESCE(t.short_desc,'') AS description, t.status,
+           t.created_at, t.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status,
            t.seq_num,
-           COUNT(st.id) AS event_count,
+           COUNT(r.id) AS event_count,
            tc.name AS category_name, tc.color, tc.icon
     FROM planner_tags t
     JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-    LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
-    LEFT JOIN mem_mrr_tags st ON st.tag_id = t.id
+    LEFT JOIN mem_tags_relations r ON r.tag_id = t.id AND r.related_layer = 'mirror'
     WHERE {where}
-    GROUP BY t.id, t.category_id, t.name, tm.description, t.status,
-             t.created_at, tm.due_date, t.parent_id, t.lifecycle, t.seq_num,
+    GROUP BY t.id, t.category_id, t.name, t.short_desc, t.status,
+             t.created_at, t.due_date, t.parent_id, t.lifecycle, t.seq_num,
              tc.name, tc.color, tc.icon
     ORDER BY t.parent_id NULLS FIRST, t.status, t.name
 """
@@ -117,18 +118,17 @@ _SQL_LIST_VALUES = """
 _SQL_LIST_VALUES_SUMMARY = """
     SELECT tc.id AS cat_id, tc.name AS category, tc.color, tc.icon,
            t.id::text, t.name,
-           COALESCE(tm.description,'') AS description, t.status,
-           tm.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status,
-           COUNT(DISTINCT st.id) AS event_count,
-           COUNT(DISTINCT CASE WHEN st.commit_id IS NOT NULL THEN st.id END) AS commit_count
+           COALESCE(t.short_desc,'') AS description, t.status,
+           t.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status,
+           COUNT(DISTINCT r.id) AS event_count,
+           COUNT(DISTINCT CASE WHEN r.related_type = 'commit' THEN r.id END) AS commit_count
     FROM mng_tags_categories tc
     JOIN planner_tags t ON t.category_id = tc.id AND t.client_id=1 AND t.project=%s
-    LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
-    LEFT JOIN mem_mrr_tags st ON st.tag_id = t.id
+    LEFT JOIN mem_tags_relations r ON r.tag_id = t.id AND r.related_layer = 'mirror'
     WHERE tc.client_id=1 AND t.status != 'archived'
     GROUP BY tc.id, tc.name, tc.color, tc.icon,
-             t.id, t.name, tm.description, t.status, tm.due_date, t.parent_id, t.lifecycle
-    ORDER BY tc.name, t.status, COUNT(DISTINCT st.id) DESC
+             t.id, t.name, t.short_desc, t.status, t.due_date, t.parent_id, t.lifecycle
+    ORDER BY tc.name, t.status, COUNT(DISTINCT r.id) DESC
 """
 
 _SQL_INSERT_VALUE = """
@@ -138,12 +138,11 @@ _SQL_INSERT_VALUE = """
 """
 
 _SQL_GET_VALUE_BY_SEQ = """
-    SELECT t.id::text, t.name, COALESCE(tm.description,''), t.status, t.created_at,
-           tm.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status, t.seq_num,
+    SELECT t.id::text, t.name, COALESCE(t.short_desc,''), t.status, t.created_at,
+           t.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status, t.seq_num,
            tc.name AS category_name, tc.color, tc.icon
     FROM planner_tags t
     JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-    LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
     WHERE t.client_id=1 AND t.project=%s AND t.seq_num=%s
     LIMIT 1
 """
@@ -152,19 +151,19 @@ _SQL_DELETE_VALUE = """
     DELETE FROM planner_tags WHERE id=%s::uuid RETURNING id
 """
 
-# Sources (prompts + commits) tagged with a given tag
+# Sources (prompts + commits) tagged with a given tag via mem_tags_relations
 _SQL_GET_EVENTS_FOR_VALUE = """
     SELECT pr.source_id, 'prompt' AS event_type, pr.source_id AS source_id,
            left(pr.prompt, 120) AS title, pr.created_at
-    FROM mem_mrr_tags st
-    JOIN mem_mrr_prompts pr ON pr.id = st.prompt_id AND pr.client_id=1 AND pr.project=%s
-    WHERE st.tag_id = %s::uuid
+    FROM mem_tags_relations r
+    JOIN mem_mrr_prompts pr ON pr.source_id = r.related_id AND pr.client_id=1 AND pr.project=%s
+    WHERE r.tag_id = %s::uuid AND r.related_layer = 'mirror' AND r.related_type = 'prompt'
     UNION ALL
     SELECT c.commit_hash, 'commit', c.commit_hash,
            left(c.commit_msg, 120), c.committed_at
-    FROM mem_mrr_tags st
-    JOIN mem_mrr_commits c ON c.id = st.commit_id AND c.client_id=1 AND c.project=%s
-    WHERE st.tag_id = %s::uuid
+    FROM mem_tags_relations r
+    JOIN mem_mrr_commits c ON c.commit_hash = r.related_id AND c.client_id=1 AND c.project=%s
+    WHERE r.tag_id = %s::uuid AND r.related_layer = 'mirror' AND r.related_type = 'commit'
     ORDER BY 5 DESC LIMIT %s
 """
 
@@ -172,19 +171,23 @@ _SQL_GET_EVENTS_FOR_VALUE = """
 _SQL_GET_SESSION_ENTITY_TAGS = """
     SELECT DISTINCT t.id::text AS id, t.name, t.status,
            tc.id AS category_id, tc.name AS category_name, tc.color, tc.icon
-    FROM mem_mrr_tags st
-    JOIN planner_tags t ON t.id = st.tag_id AND t.client_id=1 AND t.project=%s
+    FROM mem_tags_relations r
+    JOIN planner_tags t ON t.id = r.tag_id AND t.client_id=1 AND t.project=%s
     JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-    LEFT JOIN mem_mrr_prompts p ON p.id = st.prompt_id
-    LEFT JOIN mem_mrr_commits c ON c.id = st.commit_id
-    WHERE (p.session_id = %s OR c.session_id = %s)
+    LEFT JOIN mem_mrr_prompts p ON p.source_id = r.related_id AND r.related_type = 'prompt'
+    LEFT JOIN mem_mrr_commits c ON c.commit_hash = r.related_id AND r.related_type = 'commit'
+    WHERE r.related_layer = 'mirror'
+      AND (p.session_id = %s OR c.session_id = %s)
 """
 
-# GitHub sync: upsert tag by name+project (no description — use planner_tags_meta for that)
+# GitHub sync: upsert tag by name+project including short_desc inline
 _SQL_UPSERT_TAG_GITHUB = """
-    INSERT INTO planner_tags (client_id, project, name, category_id)
-    VALUES (1, %s, %s, %s)
-    ON CONFLICT (client_id, project, name) DO NOTHING
+    INSERT INTO planner_tags (client_id, project, name, category_id, short_desc, source, updated_at)
+    VALUES (1, %s, %s, %s, %s, 'github', NOW())
+    ON CONFLICT (client_id, project, name, category_id) DO UPDATE SET
+        short_desc = EXCLUDED.short_desc,
+        source = EXCLUDED.source,
+        updated_at = NOW()
     RETURNING (xmax = 0) AS was_inserted, id::text
 """
 
@@ -302,22 +305,38 @@ async def delete_category(cat_id: int):
 _LIFECYCLE_STATES = ["idea", "design", "development", "testing", "review", "done"]
 
 class ValueCreate(BaseModel):
-    category_id:      int = 0
-    name:             str
-    description:      str = ""
-    project:          Optional[str] = None
-    due_date:         Optional[str] = None
-    parent_id:        Optional[str] = None   # UUID string
-    category_name:    Optional[str] = None   # alternative to category_id
-    lifecycle_status: Optional[str] = None
+    category_id:          int = 0
+    name:                 str
+    description:          str = ""       # mapped to short_desc
+    project:              Optional[str] = None
+    due_date:             Optional[str] = None
+    parent_id:            Optional[str] = None   # UUID string
+    category_name:        Optional[str] = None   # alternative to category_id
+    lifecycle_status:     Optional[str] = None
+    requirements:         Optional[str] = None
+    acceptance_criteria:  Optional[str] = None
+    priority:             Optional[int] = None
+    requester:            Optional[str] = None
+    source:               Optional[str] = None
+    creator:              Optional[str] = None
+    is_reusable:          Optional[bool] = None
+    extra:                Optional[dict] = None
 
 class ValuePatch(BaseModel):
-    name:             Optional[str] = None
-    description:      Optional[str] = None
-    status:           Optional[str] = None
-    due_date:         Optional[str] = None
-    parent_id:        Optional[str] = None   # UUID string
-    lifecycle_status: Optional[str] = None
+    name:                 Optional[str] = None
+    description:          Optional[str] = None   # mapped to short_desc
+    status:               Optional[str] = None
+    due_date:             Optional[str] = None
+    parent_id:            Optional[str] = None   # UUID string
+    lifecycle_status:     Optional[str] = None
+    requirements:         Optional[str] = None
+    acceptance_criteria:  Optional[str] = None
+    priority:             Optional[int] = None
+    requester:            Optional[str] = None
+    source:               Optional[str] = None
+    creator:              Optional[str] = None
+    is_reusable:          Optional[bool] = None
+    extra:                Optional[dict] = None
 
 
 @router.get("/values")
@@ -455,19 +474,45 @@ async def create_value(body: ValueCreate):
 
             seq = next_seq(cur, p, cat_name_for_seq)
             lc = body.lifecycle_status or "idea"
-            cur.execute(
-                _SQL_INSERT_VALUE,
-                (p, body.name, cat_id, body.parent_id or None, lc, seq),
-            )
-            new_id = cur.fetchone()[0]
 
-            if body.description or body.due_date:
+            # Build inline fields for planner_tags INSERT
+            inline_fields: dict[str, object] = {}
+            if body.description:
+                inline_fields["short_desc"] = body.description
+            if body.requirements is not None:
+                inline_fields["requirements"] = body.requirements
+            if body.acceptance_criteria is not None:
+                inline_fields["acceptance_criteria"] = body.acceptance_criteria
+            if body.due_date is not None:
+                inline_fields["due_date"] = body.due_date or None
+            if body.requester is not None:
+                inline_fields["requester"] = body.requester
+            if body.priority is not None:
+                inline_fields["priority"] = body.priority
+            if body.source is not None:
+                inline_fields["source"] = body.source
+            if body.creator is not None:
+                inline_fields["creator"] = body.creator
+            if body.is_reusable is not None:
+                inline_fields["is_reusable"] = body.is_reusable
+            if body.extra is not None:
+                inline_fields["extra"] = json.dumps(body.extra)
+
+            if inline_fields:
+                extra_cols = ", ".join(inline_fields.keys())
+                extra_placeholders = ", ".join(["%s"] * len(inline_fields))
                 cur.execute(
-                    """INSERT INTO planner_tags_meta (tag_id, client_id, project, description, due_date)
-                       VALUES (%s::uuid, 1, %s, %s, %s)
-                       ON CONFLICT (tag_id) DO NOTHING""",
-                    (new_id, p, body.description, body.due_date or None),
+                    f"INSERT INTO planner_tags (client_id, project, name, category_id, parent_id, lifecycle, seq_num, {extra_cols}) "
+                    f"VALUES (1, %s, %s, %s, %s::uuid, %s, %s, {extra_placeholders}) "
+                    f"RETURNING id::text",
+                    [p, body.name, cat_id, body.parent_id or None, lc, seq] + list(inline_fields.values()),
                 )
+            else:
+                cur.execute(
+                    _SQL_INSERT_VALUE,
+                    (p, body.name, cat_id, body.parent_id or None, lc, seq),
+                )
+            new_id = cur.fetchone()[0]
 
             return {"id": new_id, "name": body.name, "project": p, "category_id": cat_id, "seq_num": seq}
 
@@ -494,68 +539,51 @@ async def get_value_by_number(seq_num: int, project: str | None = Query(None)):
 
 @router.patch("/values/{val_id}")
 async def patch_value(val_id: str, body: ValuePatch):
-    """Update a tag (val_id is a UUID string)."""
+    """Update a tag (val_id is a UUID string). All metadata is inline on planner_tags."""
     _require_db()
     tag_updates: dict[str, object] = {}
     if body.name             is not None: tag_updates["name"] = body.name
     if body.status           is not None: tag_updates["status"] = body.status
     if body.lifecycle_status is not None: tag_updates["lifecycle"] = body.lifecycle_status
     if body.parent_id        is not None: tag_updates["parent_id"] = body.parent_id or None
+    if body.description      is not None: tag_updates["short_desc"] = body.description
+    if body.due_date         is not None: tag_updates["due_date"] = body.due_date or None
+    if body.requirements     is not None: tag_updates["requirements"] = body.requirements
+    if body.acceptance_criteria is not None: tag_updates["acceptance_criteria"] = body.acceptance_criteria
+    if body.priority         is not None: tag_updates["priority"] = body.priority
+    if body.requester        is not None: tag_updates["requester"] = body.requester
+    if body.source           is not None: tag_updates["source"] = body.source
+    if body.creator          is not None: tag_updates["creator"] = body.creator
+    if body.is_reusable      is not None: tag_updates["is_reusable"] = body.is_reusable
+    if body.extra            is not None: tag_updates["extra"] = json.dumps(body.extra)
 
-    meta_fields, meta_params = [], []
-    if body.description is not None:
-        meta_fields.append("description=%s"); meta_params.append(body.description)
-    if body.due_date is not None:
-        meta_fields.append("due_date=%s"); meta_params.append(body.due_date or None)
-
-    if not tag_updates and not meta_fields:
+    if not tag_updates:
         raise HTTPException(400, "Nothing to update")
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            if tag_updates:
-                # parent_id is a UUID — cast it
-                set_parts, set_vals = [], []
-                for k, v in tag_updates.items():
-                    if k == "parent_id":
-                        set_parts.append("parent_id=%s::uuid")
-                    else:
-                        set_parts.append(f"{k}=%s")
-                    set_vals.append(v)
-                set_vals.append(val_id)
-                cur.execute(
-                    f"UPDATE planner_tags SET {','.join(set_parts)} WHERE id=%s::uuid AND client_id=1 RETURNING id",
-                    set_vals,
-                )
-                if not cur.fetchone():
-                    raise HTTPException(404, "Tag not found")
-
-            if meta_fields:
-                meta_params_list = list(meta_params) + [val_id]
-                cur.execute(
-                    f"UPDATE planner_tags_meta SET {','.join(meta_fields)}, updated_at=NOW() WHERE tag_id=%s::uuid",
-                    meta_params_list,
-                )
-                if cur.rowcount == 0:
-                    # No meta row yet — insert it
-                    cur.execute(
-                        "SELECT client_id, project FROM planner_tags WHERE id=%s::uuid", (val_id,)
-                    )
-                    tr = cur.fetchone()
-                    if tr:
-                        field_names = [f.split("=")[0] for f in meta_fields]
-                        placeholders = ",".join(["%s"] * len(meta_fields))
-                        cur.execute(
-                            f"INSERT INTO planner_tags_meta (tag_id, client_id, project, {','.join(field_names)}) "
-                            f"VALUES (%s::uuid, %s, %s, {placeholders})",
-                            [val_id, tr[0], tr[1]] + list(meta_params),
-                        )
+            # parent_id is a UUID — cast it; everything else is plain
+            set_parts, set_vals = [], []
+            for k, v in tag_updates.items():
+                if k == "parent_id":
+                    set_parts.append("parent_id=%s::uuid")
+                else:
+                    set_parts.append(f"{k}=%s")
+                set_vals.append(v)
+            set_vals.append(val_id)
+            cur.execute(
+                f"UPDATE planner_tags SET {','.join(set_parts)}, updated_at=NOW() "
+                f"WHERE id=%s::uuid AND client_id=1 RETURNING id",
+                set_vals,
+            )
+            if not cur.fetchone():
+                raise HTTPException(404, "Tag not found")
     return {"ok": True}
 
 
 @router.delete("/values/{val_id}")
 async def delete_value(val_id: str):
-    """Delete a tag (val_id is a UUID string). CASCADE deletes planner_tags_meta + mem_mrr_tags."""
+    """Delete a tag (val_id is a UUID string). CASCADE deletes mem_tags_relations rows."""
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -623,7 +651,7 @@ def _do_sync_events(p: str) -> dict[str, int]:
     """No-op stub — pr_events table was removed in the memory infra migration.
 
     Prompts live in mem_mrr_prompts; commits live in mem_mrr_commits.
-    Tagging now uses mem_mrr_tags directly.
+    Tagging now uses mem_tags_relations directly.
     """
     return {"prompt": 0, "commit": 0}
 
@@ -645,7 +673,7 @@ async def sync_events(
     background: BackgroundTasks,
     project: str | None = Query(None),
 ):
-    """No-op stub — event sync is now handled via mem_mrr_prompts + mem_mrr_commits + mem_mrr_tags."""
+    """No-op stub — event sync is now handled via mem_mrr_prompts + mem_mrr_commits + mem_tags_relations."""
     p = _project(project)
     return {"imported": {"prompt": 0, "commit": 0}, "project": p, "phase5": "noop"}
 
@@ -684,7 +712,7 @@ async def value_events(val_id: str, project: str | None = Query(None), limit: in
 # ── Auto-tag suggestions ────────────────────────────────────────────────────────
 
 async def _auto_suggest_tags(prompt_id: str, project: str, content: str) -> None:
-    """Apply session tags to a prompt via mem_mrr_tags. Silent on any error.
+    """Apply session tags to a prompt via mem_tags_relations. Silent on any error.
 
     NOTE: LLM-based suggestions are handled by generate_memory() in route_projects.py.
     This function only applies the active session's phase/feature/bug tags immediately.
@@ -720,8 +748,9 @@ async def _auto_suggest_tags(prompt_id: str, project: str, content: str) -> None
                     tag_row = cur.fetchone()
                     if tag_row:
                         cur.execute(
-                            """INSERT INTO mem_mrr_tags (tag_id, prompt_id, auto_tagged)
-                               VALUES (%s, %s::uuid, true) ON CONFLICT DO NOTHING""",
+                            """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
+                               VALUES (%s, 'mirror', 'prompt', %s)
+                               ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
                             (tag_row[0], prompt_id),
                         )
     except Exception as e:
@@ -816,37 +845,38 @@ async def session_bulk_tag(body: SessionTagBody):
                     tag_id = val_row[0]
                 else:
                     seq = next_seq(cur, p, body.category_name)
-                    cur.execute(
-                        "INSERT INTO planner_tags (client_id, project, name, category_id, seq_num) "
-                        "VALUES (1, %s, %s, %s, %s) RETURNING id::text",
-                        (p, body.value_name, cat_id, seq),
-                    )
-                    tag_id = cur.fetchone()[0]
                     if body.description:
                         cur.execute(
-                            "INSERT INTO planner_tags_meta (tag_id, client_id, project, description) "
-                            "VALUES (%s::uuid, 1, %s, %s) ON CONFLICT (tag_id) DO NOTHING",
-                            (tag_id, p, body.description),
+                            "INSERT INTO planner_tags (client_id, project, name, category_id, seq_num, short_desc) "
+                            "VALUES (1, %s, %s, %s, %s, %s) RETURNING id::text",
+                            (p, body.value_name, cat_id, seq, body.description),
                         )
+                    else:
+                        cur.execute(
+                            "INSERT INTO planner_tags (client_id, project, name, category_id, seq_num) "
+                            "VALUES (1, %s, %s, %s, %s) RETURNING id::text",
+                            (p, body.value_name, cat_id, seq),
+                        )
+                    tag_id = cur.fetchone()[0]
 
-            # Tag all prompts in this session
+            # Tag all prompts in this session via mem_tags_relations
             cur.execute(
-                """INSERT INTO mem_mrr_tags (tag_id, prompt_id, auto_tagged)
-                   SELECT %s::uuid, id, false
+                """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
+                   SELECT %s, 'mirror', 'prompt', source_id
                    FROM mem_mrr_prompts
                    WHERE client_id=1 AND project=%s AND session_id=%s
-                   ON CONFLICT DO NOTHING""",
+                   ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
                 (tag_id, p, body.session_id),
             )
             prompt_tagged = cur.rowcount
 
-            # Tag all commits in this session
+            # Tag all commits in this session via mem_tags_relations
             cur.execute(
-                """INSERT INTO mem_mrr_tags (tag_id, commit_id, auto_tagged)
-                   SELECT %s::uuid, id, false
+                """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
+                   SELECT %s, 'mirror', 'commit', commit_hash
                    FROM mem_mrr_commits
                    WHERE client_id=1 AND project=%s AND session_id=%s
-                   ON CONFLICT DO NOTHING""",
+                   ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
                 (tag_id, p, body.session_id),
             )
             commit_tagged = cur.rowcount
@@ -871,7 +901,7 @@ class TagBySourceIdBody(BaseModel):
 
 
 def _propagate_tags_phase4(p: str) -> None:
-    """Background: copy prompt tags → commits in same session (via mem_mrr_tags).
+    """Background: copy prompt tags → commits in same session (via mem_tags_relations).
 
     Called after every manual tag operation so commit tag chips stay in sync.
     """
@@ -879,16 +909,16 @@ def _propagate_tags_phase4(p: str) -> None:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO mem_mrr_tags (tag_id, commit_id, auto_tagged)
-                       SELECT DISTINCT st.tag_id, c.id, TRUE
-                       FROM mem_mrr_tags st
-                       JOIN mem_mrr_prompts pr ON pr.id = st.prompt_id
+                    """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
+                       SELECT DISTINCT r.tag_id, 'mirror', 'commit', c.commit_hash
+                       FROM mem_tags_relations r
+                       JOIN mem_mrr_prompts pr ON pr.source_id = r.related_id
                                          AND pr.client_id=1 AND pr.project=%s
                                          AND pr.session_id IS NOT NULL
                        JOIN mem_mrr_commits c ON c.session_id = pr.session_id
                                         AND c.client_id=1 AND c.project=%s
-                       WHERE st.prompt_id IS NOT NULL
-                       ON CONFLICT DO NOTHING""",
+                       WHERE r.related_layer = 'mirror' AND r.related_type = 'prompt'
+                       ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
                     (p, p),
                 )
     except Exception as exc:
@@ -922,28 +952,30 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
 
             if is_commit:
                 cur.execute(
-                    "SELECT id FROM mem_mrr_commits WHERE client_id=1 AND project=%s AND commit_hash=%s LIMIT 1",
+                    "SELECT commit_hash FROM mem_mrr_commits WHERE client_id=1 AND project=%s AND commit_hash=%s LIMIT 1",
                     (p, body.source_id),
                 )
                 row = cur.fetchone()
                 if not row:
                     raise HTTPException(404, f"Commit {body.source_id!r} not found")
                 cur.execute(
-                    """INSERT INTO mem_mrr_tags (tag_id, commit_id, auto_tagged)
-                       VALUES (%s::uuid, %s, false) ON CONFLICT DO NOTHING""",
+                    """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
+                       VALUES (%s, 'mirror', 'commit', %s)
+                       ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
                     (tag_id, row[0]),
                 )
             else:
                 cur.execute(
-                    "SELECT id FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND source_id=%s LIMIT 1",
+                    "SELECT source_id FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND source_id=%s LIMIT 1",
                     (p, body.source_id),
                 )
                 row = cur.fetchone()
                 if not row:
                     raise HTTPException(404, f"Prompt with source_id={body.source_id!r} not found")
                 cur.execute(
-                    """INSERT INTO mem_mrr_tags (tag_id, prompt_id, auto_tagged)
-                       VALUES (%s::uuid, %s, false) ON CONFLICT DO NOTHING""",
+                    """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
+                       VALUES (%s, 'mirror', 'prompt', %s)
+                       ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
                     (tag_id, row[0]),
                 )
 
@@ -965,21 +997,19 @@ async def untag_event_by_source_id(
         with conn.cursor() as cur:
             if is_commit:
                 cur.execute(
-                    """DELETE FROM mem_mrr_tags st
-                       USING mem_mrr_commits c
-                       WHERE st.commit_id = c.id
-                         AND c.client_id=1 AND c.project=%s AND c.commit_hash=%s
-                         AND st.tag_id = %s::uuid""",
-                    (p, source_id, value_id),
+                    """DELETE FROM mem_tags_relations
+                       WHERE tag_id = %s::uuid
+                         AND related_type = 'commit'
+                         AND related_id = %s""",
+                    (value_id, source_id),
                 )
             else:
                 cur.execute(
-                    """DELETE FROM mem_mrr_tags st
-                       USING mem_mrr_prompts pr
-                       WHERE st.prompt_id = pr.id
-                         AND pr.client_id=1 AND pr.project=%s AND pr.source_id=%s
-                         AND st.tag_id = %s::uuid""",
-                    (p, source_id, value_id),
+                    """DELETE FROM mem_tags_relations
+                       WHERE tag_id = %s::uuid
+                         AND related_type = 'prompt'
+                         AND related_id = %s""",
+                    (value_id, source_id),
                 )
     return {"ok": True, "source_id": source_id, "value_id": value_id}
 
@@ -995,21 +1025,25 @@ async def remove_session_tag(
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
+            # Remove from all prompts in this session
             cur.execute(
-                """DELETE FROM mem_mrr_tags st
+                """DELETE FROM mem_tags_relations r
                    USING mem_mrr_prompts pr
-                   WHERE st.prompt_id = pr.id
+                   WHERE r.related_id = pr.source_id
+                     AND r.related_type = 'prompt'
                      AND pr.client_id=1 AND pr.project=%s AND pr.session_id=%s
-                     AND st.tag_id = %s::uuid""",
+                     AND r.tag_id = %s::uuid""",
                 (p, session_id, value_id),
             )
             deleted_p = cur.rowcount
+            # Remove from all commits in this session
             cur.execute(
-                """DELETE FROM mem_mrr_tags st
+                """DELETE FROM mem_tags_relations r
                    USING mem_mrr_commits c
-                   WHERE st.commit_id = c.id
+                   WHERE r.related_id = c.commit_hash
+                     AND r.related_type = 'commit'
                      AND c.client_id=1 AND c.project=%s AND c.session_id=%s
-                     AND st.tag_id = %s::uuid""",
+                     AND r.tag_id = %s::uuid""",
                 (p, session_id, value_id),
             )
             deleted_c = cur.rowcount
@@ -1031,21 +1065,19 @@ async def get_events_source_tags(project: str | None = Query(None)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT pr.source_id, t.id::text, t.name, tc.color, tc.icon, tc.name AS cat_name
-                   FROM mem_mrr_tags st
-                   JOIN planner_tags t ON t.id = st.tag_id AND t.client_id=1 AND t.project=%s
+                """SELECT r.related_id, t.id::text, t.name, tc.color, tc.icon, tc.name AS cat_name
+                   FROM mem_tags_relations r
+                   JOIN planner_tags t ON t.id = r.tag_id AND t.client_id=1 AND t.project=%s
                    JOIN mng_tags_categories tc ON tc.id = t.category_id
-                   JOIN mem_mrr_prompts pr ON pr.id = st.prompt_id AND pr.client_id=1 AND pr.project=%s
-                   WHERE st.prompt_id IS NOT NULL
+                   WHERE r.related_layer = 'mirror' AND r.related_type = 'prompt'
                    UNION ALL
-                   SELECT c.commit_hash, t.id::text, t.name, tc.color, tc.icon, tc.name
-                   FROM mem_mrr_tags st
-                   JOIN planner_tags t ON t.id = st.tag_id AND t.client_id=1 AND t.project=%s
+                   SELECT r.related_id, t.id::text, t.name, tc.color, tc.icon, tc.name
+                   FROM mem_tags_relations r
+                   JOIN planner_tags t ON t.id = r.tag_id AND t.client_id=1 AND t.project=%s
                    JOIN mng_tags_categories tc ON tc.id = t.category_id
-                   JOIN mem_mrr_commits c ON c.commit_hash = st.commit_id AND c.client_id=1 AND c.project=%s
-                   WHERE st.commit_id IS NOT NULL
+                   WHERE r.related_layer = 'mirror' AND r.related_type = 'commit'
                    ORDER BY 1, 3""",
-                (p, p, p, p),
+                (p, p),
             )
             rows = cur.fetchall()
 
@@ -1100,7 +1132,7 @@ async def github_sync(
     """Import GitHub issues as planner_tags.
 
     Label mapping: 'bug' → bug category; 'enhancement'/'feature' → feature; else → task.
-    Idempotent: re-running updates description without duplicating tags.
+    Idempotent: re-running updates short_desc without duplicating tags.
     """
     _require_db()
     import httpx
@@ -1150,27 +1182,19 @@ async def github_sync(
                 if issue.get("milestone") and issue["milestone"].get("due_on"):
                     due = issue["milestone"]["due_on"][:10]
 
-                # Upsert tag
-                cur.execute(_SQL_UPSERT_TAG_GITHUB, (p, name, cat_id))
+                # Upsert tag with short_desc inline
+                cur.execute(_SQL_UPSERT_TAG_GITHUB, (p, name, cat_id, desc or None))
                 row = cur.fetchone()
                 if row and row[0]:
                     created += 1
-                    # Insert metadata for new tags
-                    if desc or due:
+                    # Set due_date if present (not covered by the upsert above)
+                    if due:
                         cur.execute(
-                            """INSERT INTO planner_tags_meta (tag_id, client_id, project, description, due_date)
-                               VALUES (%s::uuid, 1, %s, %s, %s) ON CONFLICT (tag_id) DO NOTHING""",
-                            (row[1], p, desc, due),
+                            "UPDATE planner_tags SET due_date=%s WHERE id=%s::uuid",
+                            (due, row[1]),
                         )
                 else:
                     updated += 1
-                    # Update description on existing tag
-                    if desc:
-                        cur.execute(
-                            """UPDATE planner_tags_meta SET description=%s, updated_at=NOW()
-                               WHERE tag_id=(SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s)""",
-                            (desc, p, name),
-                        )
 
     return {
         "created": created,

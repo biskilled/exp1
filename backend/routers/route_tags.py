@@ -2,7 +2,7 @@
 route_tags.py — Unified tag management router.
 
 Manages the per-project tag registry (planner_tags), global categories (mng_tags_categories),
-source-tag links (mem_mrr_tags), and session context persistence.
+source-tag links (mem_tags_relations), and session context persistence.
 
 Endpoints:
     Tags:
@@ -13,9 +13,13 @@ Endpoints:
         POST   /tags/merge            merge two tags
 
     Sources:
-        GET    /tags/{id}/sources     all prompts/commits/items tagged with this tag
-        POST   /tags/source           add source-tag link
+        GET    /tags/{id}/sources     all prompts/commits/items linked via mem_tags_relations
+        POST   /tags/source           add source-tag link (mem_tags_relations)
         DELETE /tags/source/{id}      remove source-tag link
+
+    Relations:
+        GET    /tags/relations        get mem_tags_relations rows filtered by tag_id or work_item_id
+        PATCH  /tags/relations/{id}   approve or reject a relation
 
     Session context:
         GET    /tags/session-context  last used tags for project
@@ -64,13 +68,16 @@ async def _trigger_memory_regen(project: str, tag_name: str | None = None) -> No
 
 _SQL_LIST_TAGS = """
     SELECT t.id, t.name, t.category_id, t.parent_id, t.merged_into,
-           t.status, t.lifecycle, t.seq_num, t.created_at,
+           t.status, t.seq_num, t.created_at,
            tc.name AS category_name, tc.color, tc.icon,
-           tm.description, tm.due_date, tm.priority,
-           (SELECT COUNT(*) FROM mem_mrr_tags st WHERE st.tag_id = t.id) AS source_count
+           t.short_desc, t.due_date, t.priority,
+           t.source, t.creator, t.full_desc, t.requirements,
+           t.acceptance_criteria, t.is_reusable, t.summary, t.action_items,
+           t.requester, t.extra,
+           t.embedding IS NOT NULL AS has_embedding,
+           (SELECT COUNT(*) FROM mem_tags_relations r WHERE r.tag_id = t.id) AS source_count
     FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-    LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
     WHERE t.client_id = 1 AND t.project = %s
       AND t.merged_into IS NULL
     ORDER BY t.created_at
@@ -78,19 +85,21 @@ _SQL_LIST_TAGS = """
 
 _SQL_GET_TAG = """
     SELECT t.id, t.name, t.category_id, t.parent_id, t.merged_into,
-           t.status, t.lifecycle, t.seq_num, t.created_at,
+           t.status, t.seq_num, t.created_at,
            tc.name AS category_name, tc.color, tc.icon,
-           tm.description, tm.due_date, tm.priority, tm.requirements, tm.requester, tm.extra
+           t.short_desc, t.due_date, t.priority, t.requirements, t.requester, t.extra,
+           t.source, t.creator, t.full_desc, t.acceptance_criteria,
+           t.is_reusable, t.summary, t.action_items,
+           t.embedding IS NOT NULL AS has_embedding
     FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-    LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
     WHERE t.client_id = 1 AND t.project = %s AND t.id = %s::uuid
 """
 
 _SQL_INSERT_TAG = """
-    INSERT INTO planner_tags (client_id, project, name, category_id, parent_id, status, lifecycle)
-    VALUES (1, %s, %s, %s, %s, %s, %s)
-    ON CONFLICT (client_id, project, name) DO NOTHING
+    INSERT INTO planner_tags (client_id, project, name, category_id, parent_id, status)
+    VALUES (1, %s, %s, %s, %s, %s)
+    ON CONFLICT (client_id, project, name, category_id) DO NOTHING
     RETURNING id, name, created_at
 """
 
@@ -100,35 +109,37 @@ _SQL_DELETE_TAG = """
 """
 
 _SQL_CHECK_TAG_SOURCES = """
-    SELECT COUNT(*) FROM mem_mrr_tags WHERE tag_id = %s::uuid
+    SELECT COUNT(*) FROM mem_tags_relations WHERE tag_id = %s::uuid
 """
 
 _SQL_GET_TAG_SOURCES = """
-    SELECT 'prompt' AS source_type, p.id::text AS source_id, p.prompt AS content, p.created_at,
-           p.session_id, NULL::text AS commit_hash
-    FROM mem_mrr_tags st
-    JOIN mem_mrr_prompts p ON p.id = st.prompt_id
-    WHERE st.tag_id = %s::uuid AND st.prompt_id IS NOT NULL
-    UNION ALL
-    SELECT 'commit' AS source_type, c.commit_hash AS source_id, c.commit_msg AS content, c.created_at,
-           c.session_id, c.commit_hash
-    FROM mem_mrr_tags st
-    JOIN mem_mrr_commits c ON c.commit_hash = st.commit_id
-    WHERE st.tag_id = %s::uuid AND st.commit_id IS NOT NULL
-    ORDER BY created_at DESC
-    LIMIT 100
+    SELECT r.related_type, r.related_id, r.related_layer, r.related_type_score,
+           r.related_approved, r.created_at
+    FROM mem_tags_relations r
+    WHERE r.tag_id = %s::uuid
+    ORDER BY r.created_at DESC
+    LIMIT 200
+"""
+
+_SQL_LIST_TAG_SOURCES = """
+    SELECT r.tag_id, COUNT(*) AS source_count,
+           SUM(CASE WHEN r.related_layer = 'mirror' THEN 1 ELSE 0 END) AS mirror_count,
+           SUM(CASE WHEN r.related_layer = 'ai' THEN 1 ELSE 0 END) AS ai_count
+    FROM mem_tags_relations r
+    JOIN planner_tags t ON t.id = r.tag_id
+    WHERE t.client_id = 1 AND t.project = %s
+    GROUP BY r.tag_id
 """
 
 _SQL_INSERT_SOURCE_TAG = """
-    INSERT INTO mem_mrr_tags
-           (tag_id, session_id, session_src_id, session_src_desc,
-            prompt_id, commit_id, item_id, message_id, auto_tagged)
-    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
+    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
+    VALUES (%s::uuid, 'mirror', %s, %s)
+    ON CONFLICT (tag_id, related_type, related_id) DO NOTHING
     RETURNING id
 """
 
 _SQL_DELETE_SOURCE_TAG = """
-    DELETE FROM mem_mrr_tags WHERE id = %s::uuid RETURNING id
+    DELETE FROM mem_tags_relations WHERE id = %s::uuid RETURNING id
 """
 
 _SQL_GET_SESSION_CONTEXT = """
@@ -173,22 +184,29 @@ class TagCreate(BaseModel):
     name: str
     category_id: Optional[int] = None
     parent_id: Optional[str] = None
-    status: str = "active"
-    lifecycle: str = "idea"
+    status: str = "open"
 
 
 class TagUpdate(BaseModel):
     name: Optional[str] = None
     category_id: Optional[int] = None
     parent_id: Optional[str] = None
+    merged_into: Optional[str] = None
     status: Optional[str] = None
-    lifecycle: Optional[str] = None
     seq_num: Optional[int] = None
-    description: Optional[str] = None
+    source: Optional[str] = None
+    creator: Optional[str] = None
+    short_desc: Optional[str] = None
+    full_desc: Optional[str] = None
     requirements: Optional[str] = None
-    due_date: Optional[str] = None
+    acceptance_criteria: Optional[str] = None
     priority: Optional[int] = None
+    due_date: Optional[str] = None
     requester: Optional[str] = None
+    extra: Optional[dict] = None
+    is_reusable: Optional[bool] = None
+    summary: Optional[str] = None
+    action_items: Optional[str] = None
 
 
 class TagMerge(BaseModel):
@@ -199,14 +217,13 @@ class TagMerge(BaseModel):
 
 class SourceTagCreate(BaseModel):
     tag_id: str
-    session_id: Optional[str] = None
-    session_src_id: Optional[str] = None
-    session_src_desc: Optional[str] = None
-    prompt_id: Optional[str] = None
-    commit_id: Optional[str] = None
-    item_id: Optional[str] = None
-    message_id: Optional[str] = None
-    auto_tagged: bool = False
+    related_type: str  # 'prompt' | 'commit' | 'item' | 'message' | 'work_item' | 'session'
+    related_id: str
+    related_layer: str = "mirror"  # 'mirror' | 'ai'
+
+
+class RelationUpdate(BaseModel):
+    related_approved: Optional[str] = None  # 'approved' | 'rejected' | None (reset to pending)
 
 
 class CategoryCreate(BaseModel):
@@ -230,24 +247,118 @@ def _require_db():
 
 
 def _row_to_tag(row: tuple) -> dict:
+    # Column order matches _SQL_LIST_TAGS (26 columns + source_count = index 25):
+    #  0  id
+    #  1  name
+    #  2  category_id
+    #  3  parent_id
+    #  4  merged_into
+    #  5  status
+    #  6  seq_num
+    #  7  created_at
+    #  8  category_name
+    #  9  color
+    # 10  icon
+    # 11  short_desc
+    # 12  due_date
+    # 13  priority
+    # 14  source
+    # 15  creator
+    # 16  full_desc
+    # 17  requirements
+    # 18  acceptance_criteria
+    # 19  is_reusable
+    # 20  summary
+    # 21  action_items
+    # 22  requester
+    # 23  extra
+    # 24  has_embedding
+    # 25  source_count  (only in _SQL_LIST_TAGS)
     return {
-        "id":            str(row[0]),
-        "name":          row[1],
-        "category_id":   row[2],
-        "parent_id":     str(row[3]) if row[3] else None,
-        "merged_into":   str(row[4]) if row[4] else None,
-        "status":        row[5],
-        "lifecycle":     row[6],
-        "seq_num":       row[7],
-        "created_at":    row[8].isoformat() if row[8] else None,
-        "category_name": row[9],
-        "color":         row[10] or "#4a90e2",
-        "icon":          row[11] or "⬡",
-        "description":   row[12] or "",
-        "due_date":      row[13].isoformat() if row[13] else None,
-        "priority":      row[14] or 3,
-        "source_count":  row[15] if len(row) > 15 else 0,
-        "children":      [],
+        "id":                  str(row[0]),
+        "name":                row[1],
+        "category_id":         row[2],
+        "parent_id":           str(row[3]) if row[3] else None,
+        "merged_into":         str(row[4]) if row[4] else None,
+        "status":              row[5],
+        "seq_num":             row[6],
+        "created_at":          row[7].isoformat() if row[7] else None,
+        "category_name":       row[8],
+        "color":               row[9] or "#4a90e2",
+        "icon":                row[10] or "⬡",
+        "short_desc":          row[11] or "",
+        "due_date":            row[12].isoformat() if row[12] else None,
+        "priority":            row[13] if row[13] is not None else 3,
+        "source":              row[14] or "user",
+        "creator":             row[15],
+        "full_desc":           row[16] or "",
+        "requirements":        row[17] or "",
+        "acceptance_criteria": row[18] or "",
+        "is_reusable":         bool(row[19]) if row[19] is not None else False,
+        "summary":             row[20] or "",
+        "action_items":        row[21] or "",
+        "requester":           row[22] or "",
+        "extra":               row[23] if row[23] is not None else {},
+        "has_embedding":       bool(row[24]) if row[24] is not None else False,
+        "source_count":        row[25] if len(row) > 25 else 0,
+        "children":            [],
+    }
+
+
+def _row_to_tag_detail(row: tuple) -> dict:
+    # Column order matches _SQL_GET_TAG (25 columns):
+    #  0  id
+    #  1  name
+    #  2  category_id
+    #  3  parent_id
+    #  4  merged_into
+    #  5  status
+    #  6  seq_num
+    #  7  created_at
+    #  8  category_name
+    #  9  color
+    # 10  icon
+    # 11  short_desc
+    # 12  due_date
+    # 13  priority
+    # 14  requirements
+    # 15  requester
+    # 16  extra
+    # 17  source
+    # 18  creator
+    # 19  full_desc
+    # 20  acceptance_criteria
+    # 21  is_reusable
+    # 22  summary
+    # 23  action_items
+    # 24  has_embedding
+    return {
+        "id":                  str(row[0]),
+        "name":                row[1],
+        "category_id":         row[2],
+        "parent_id":           str(row[3]) if row[3] else None,
+        "merged_into":         str(row[4]) if row[4] else None,
+        "status":              row[5],
+        "seq_num":             row[6],
+        "created_at":          row[7].isoformat() if row[7] else None,
+        "category_name":       row[8],
+        "color":               row[9] or "#4a90e2",
+        "icon":                row[10] or "⬡",
+        "short_desc":          row[11] or "",
+        "due_date":            row[12].isoformat() if row[12] else None,
+        "priority":            row[13] if row[13] is not None else 3,
+        "requirements":        row[14] or "",
+        "requester":           row[15] or "",
+        "extra":               row[16] if row[16] is not None else {},
+        "source":              row[17] or "user",
+        "creator":             row[18],
+        "full_desc":           row[19] or "",
+        "acceptance_criteria": row[20] or "",
+        "is_reusable":         bool(row[21]) if row[21] is not None else False,
+        "summary":             row[22] or "",
+        "action_items":        row[23] or "",
+        "has_embedding":       bool(row[24]) if row[24] is not None else False,
+        "children":            [],
     }
 
 
@@ -285,7 +396,7 @@ async def create_tag(body: TagCreate):
             cur.execute(
                 _SQL_INSERT_TAG,
                 (body.project, body.name, body.category_id,
-                 body.parent_id, body.status, body.lifecycle),
+                 body.parent_id, body.status),
             )
             row = cur.fetchone()
     if not row:
@@ -296,55 +407,57 @@ async def create_tag(body: TagCreate):
 @router.patch("/{tag_id}")
 async def update_tag(tag_id: str, body: TagUpdate):
     _require_db()
-    tag_fields: dict = {}
-    meta_fields: dict = {}
+    fields: dict = {}
     if body.name is not None:
-        tag_fields["name"] = body.name
+        fields["name"] = body.name
     if body.category_id is not None:
-        tag_fields["category_id"] = body.category_id
+        fields["category_id"] = body.category_id
     if body.parent_id is not None:
-        tag_fields["parent_id"] = body.parent_id
+        fields["parent_id"] = body.parent_id
+    if body.merged_into is not None:
+        fields["merged_into"] = body.merged_into
     if body.status is not None:
-        tag_fields["status"] = body.status
-    if body.lifecycle is not None:
-        tag_fields["lifecycle"] = body.lifecycle
+        fields["status"] = body.status
     if body.seq_num is not None:
-        tag_fields["seq_num"] = body.seq_num
-    if body.description is not None:
-        meta_fields["description"] = body.description
+        fields["seq_num"] = body.seq_num
+    if body.source is not None:
+        fields["source"] = body.source
+    if body.creator is not None:
+        fields["creator"] = body.creator
+    if body.short_desc is not None:
+        fields["short_desc"] = body.short_desc
+    if body.full_desc is not None:
+        fields["full_desc"] = body.full_desc
     if body.requirements is not None:
-        meta_fields["requirements"] = body.requirements
-    if body.due_date is not None:
-        meta_fields["due_date"] = body.due_date
+        fields["requirements"] = body.requirements
+    if body.acceptance_criteria is not None:
+        fields["acceptance_criteria"] = body.acceptance_criteria
     if body.priority is not None:
-        meta_fields["priority"] = body.priority
+        fields["priority"] = body.priority
+    if body.due_date is not None:
+        fields["due_date"] = body.due_date
     if body.requester is not None:
-        meta_fields["requester"] = body.requester
+        fields["requester"] = body.requester
+    if body.extra is not None:
+        fields["extra"] = json.dumps(body.extra)
+    if body.is_reusable is not None:
+        fields["is_reusable"] = body.is_reusable
+    if body.summary is not None:
+        fields["summary"] = body.summary
+    if body.action_items is not None:
+        fields["action_items"] = body.action_items
+
+    if not fields:
+        return {"ok": True}
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            if tag_fields:
-                sql, vals = build_update("planner_tags", tag_fields, "id = %s::uuid AND client_id = 1")
-                cur.execute(sql, (*vals, tag_id))
-            if meta_fields:
-                cur.execute(
-                    "SELECT project FROM planner_tags WHERE id = %s::uuid AND client_id = 1",
-                    (tag_id,),
-                )
-                proj_row = cur.fetchone()
-                if proj_row:
-                    now = datetime.now(timezone.utc)
-                    col_names = ", ".join(meta_fields.keys())
-                    placeholders = ", ".join(["%s"] * len(meta_fields))
-                    updates = ", ".join(f"{k} = EXCLUDED.{k}" for k in meta_fields)
-                    cur.execute(
-                        f"""INSERT INTO planner_tags_meta (tag_id, client_id, project, {col_names}, updated_at)
-                            VALUES (%s::uuid, 1, %s, {placeholders}, %s)
-                            ON CONFLICT (tag_id) DO UPDATE SET
-                            {updates},
-                            updated_at = NOW()""",
-                        (tag_id, proj_row[0], *meta_fields.values(), now),
-                    )
+            set_clause, vals = build_update(fields)
+            cur.execute(
+                f"UPDATE planner_tags SET {set_clause}, updated_at = NOW() "
+                f"WHERE id = %s::uuid AND client_id = 1",
+                vals + [tag_id],
+            )
     return {"ok": True}
 
 
@@ -370,7 +483,7 @@ async def delete_tag(tag_id: str, project: str = Query(...), force: bool = Query
 
 @router.post("/merge")
 async def merge_tags(body: TagMerge):
-    """Mark from_name as merged into into_name; re-link all source_tags."""
+    """Mark from_name as merged into into_name; re-link all mem_tags_relations rows."""
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -389,17 +502,13 @@ async def merge_tags(body: TagMerge):
             if not into_row:
                 raise HTTPException(status_code=404, detail=f"Tag '{body.into_name}' not found")
             from_id, into_id = from_row[0], into_row[0]
+            # Re-link all relations from the old tag to the new one
             cur.execute(
-                "UPDATE mem_mrr_tags SET tag_id = %s WHERE tag_id = %s",
+                "UPDATE mem_tags_relations SET tag_id = %s WHERE tag_id = %s",
                 (into_id, from_id),
             )
             cur.execute(
                 "UPDATE planner_tags SET merged_into = %s, status = 'archived' WHERE id = %s",
-                (into_id, from_id),
-            )
-            # Also remap AI-layer event tags
-            cur.execute(
-                "UPDATE mem_ai_tags SET tag_id = %s WHERE tag_id = %s",
                 (into_id, from_id),
             )
     return {"ok": True, "merged_into": str(into_id)}
@@ -409,22 +518,69 @@ async def merge_tags(body: TagMerge):
 
 @router.get("/{tag_id}/sources")
 async def get_tag_sources(tag_id: str, project: str = Query(...)):
+    """Return all source relations for a tag, enriched with content where available."""
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_TAG_SOURCES, (tag_id, tag_id))
-            rows = cur.fetchall()
-    return [
-        {
-            "source_type": row[0],
-            "source_id":   row[1],
-            "content":     (row[2] or "")[:300],
-            "created_at":  row[3].isoformat() if row[3] else None,
-            "session_id":  row[4],
-            "commit_hash": row[5],
+            cur.execute(_SQL_GET_TAG_SOURCES, (tag_id,))
+            relation_rows = cur.fetchall()
+
+    if not relation_rows:
+        return []
+
+    # Group relation rows by type for batch fetching
+    prompt_ids = [r[1] for r in relation_rows if r[0] == "prompt"]
+    commit_hashes = [r[1] for r in relation_rows if r[0] == "commit"]
+
+    prompt_details: dict[str, dict] = {}
+    commit_details: dict[str, dict] = {}
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            if prompt_ids:
+                cur.execute(
+                    "SELECT id::text, prompt, session_id, created_at "
+                    "FROM mem_mrr_prompts WHERE id::text = ANY(%s)",
+                    (prompt_ids,),
+                )
+                for pr in cur.fetchall():
+                    prompt_details[pr[0]] = {
+                        "content":    (pr[1] or "")[:300],
+                        "session_id": pr[2],
+                        "created_at": pr[3].isoformat() if pr[3] else None,
+                    }
+            if commit_hashes:
+                cur.execute(
+                    "SELECT commit_hash, commit_msg, session_id, created_at "
+                    "FROM mem_mrr_commits WHERE commit_hash = ANY(%s)",
+                    (commit_hashes,),
+                )
+                for cm in cur.fetchall():
+                    commit_details[cm[0]] = {
+                        "content":     (cm[1] or "")[:300],
+                        "session_id":  cm[2],
+                        "created_at":  cm[3].isoformat() if cm[3] else None,
+                    }
+
+    results = []
+    for row in relation_rows:
+        related_type, related_id, related_layer, score, approved, created_at = row
+        entry: dict = {
+            "related_type":    related_type,
+            "related_id":      related_id,
+            "related_layer":   related_layer,
+            "related_type_score": score,
+            "related_approved":   approved,
+            "created_at":      created_at.isoformat() if created_at else None,
+            "content":         None,
+            "session_id":      None,
         }
-        for row in rows
-    ]
+        if related_type == "prompt" and related_id in prompt_details:
+            entry.update(prompt_details[related_id])
+        elif related_type == "commit" and related_id in commit_details:
+            entry.update(commit_details[related_id])
+        results.append(entry)
+    return results
 
 
 @router.post("/source")
@@ -434,8 +590,7 @@ async def add_source_tag(body: SourceTagCreate):
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_INSERT_SOURCE_TAG,
-                (body.tag_id, body.session_id, body.session_src_id, body.session_src_desc,
-                 body.prompt_id, body.commit_id, body.item_id, body.message_id, body.auto_tagged),
+                (body.tag_id, body.related_type, body.related_id),
             )
             row = cur.fetchone()
     if not row:
@@ -534,8 +689,12 @@ async def update_category(cat_id: int, body: CategoryUpdate):
         return {"ok": True}
     with db.conn() as conn:
         with conn.cursor() as cur:
-            sql, vals = build_update("mng_tags_categories", fields, "id = %s AND client_id = 1")
-            cur.execute(sql, (*vals, cat_id))
+            set_clause, vals = build_update(fields)
+            cur.execute(
+                f"UPDATE mng_tags_categories SET {set_clause}, updated_at = NOW() "
+                f"WHERE id = %s AND client_id = 1",
+                vals + [cat_id],
+            )
     return {"ok": True}
 
 
@@ -603,7 +762,9 @@ async def generate_tag_suggestions(project: str = Query(...)):
                     """SELECT COUNT(*) FROM mem_ai_events e
                        WHERE e.client_id=1 AND e.project=%s
                          AND NOT EXISTS (
-                             SELECT 1 FROM mem_ai_tags t WHERE t.event_id = e.id
+                             SELECT 1 FROM mem_tags_relations r
+                             WHERE r.related_id = e.id::TEXT
+                               AND r.related_layer = 'ai'
                          )""",
                     (project,),
                 )
@@ -626,8 +787,8 @@ async def generate_tag_suggestions(project: str = Query(...)):
 async def apply_tag_suggestion(project: str = Query(...), body: SuggestionApplyBody = ...):
     """Apply an AI tag suggestion.
 
-    For layer='mrr': links to mem_mrr_tags and marks ai_tags='approved'.
-    For layer='ai':  links to mem_ai_tags with ai_suggested=True.
+    For layer='mrr': links to mem_tags_relations (related_layer='mirror') and marks ai_tags='approved'.
+    For layer='ai':  links to mem_tags_relations (related_layer='ai').
     """
     _require_db()
     from memory.memory_tagging import MemoryTagging
@@ -651,78 +812,85 @@ async def ignore_tag_suggestion(project: str = Query(...), body: SuggestionIgnor
     return {"ok": True}
 
 
-# ── Tag relation endpoints ────────────────────────────────────────────────────
-
-class RelationCreate(BaseModel):
-    from_tag_id: str
-    relation: str
-    to_tag_id: str
-    note: Optional[str] = None
-    source: str = "manual"
-
-
-class RelationCreateByName(BaseModel):
-    """Create a relation using tag names — tags are created if they don't exist."""
-    project: str
-    from_name: str
-    relation: str
-    to_name: str
-    note: Optional[str] = None
-    source: str = "manual"
-
+# ── Relations endpoints ───────────────────────────────────────────────────────
 
 @router.get("/relations")
-async def list_tag_relations(project: str = Query(...)):
-    """List mem_ai_tags_relations for a project (both directions) with tag names."""
-    _require_db()
-    from memory.memory_tagging import MemoryTagging
-    return MemoryTagging().get_relations(project)
+async def get_tag_relations(
+    project: str = Query(...),
+    tag_id: Optional[str] = Query(None),
+    work_item_id: Optional[str] = Query(None),
+):
+    """Get mem_tags_relations rows, filtered by tag_id or work_item_id.
 
-
-@router.post("/relations")
-async def create_tag_relation(body: RelationCreate, project: str | None = Query(None)):
-    """Add a relationship between two planner_tags (by UUID)."""
-    _require_db()
-    from memory.memory_tagging import MemoryTagging
-    MemoryTagging().add_relation(
-        body.from_tag_id, body.relation, body.to_tag_id,
-        note=body.note, source=body.source,
-    )
-    if project:
-        asyncio.create_task(_trigger_memory_regen(project))
-    return {"ok": True}
-
-
-@router.post("/relations/by-name")
-async def create_tag_relation_by_name(body: RelationCreateByName):
-    """Add a relationship using tag names — tags are created if missing.
-
-    Example: {"project": "aicli", "from_name": "retry-dashboard",
-               "relation": "depends_on", "to_name": "retry-backend",
-               "note": "Dashboard cannot ship without backend retry API"}
+    When work_item_id is provided, returns relations of type 'work_item' whose
+    related_id matches the given work item UUID. When tag_id is provided,
+    returns all relations for that tag. Both filters may be combined.
     """
     _require_db()
-    from memory.memory_tagging import MemoryTagging
-    ok = MemoryTagging().add_relation_by_name(
-        body.project, body.from_name, body.relation, body.to_name,
-        note=body.note, source=body.source,
-    )
-    if not ok:
-        raise HTTPException(status_code=400, detail="Could not resolve or create tags")
-    asyncio.create_task(_trigger_memory_regen(body.project))
-    return {"ok": True}
+    conditions = []
+    params: list = []
+
+    if tag_id:
+        conditions.append("r.tag_id = %s::uuid")
+        params.append(tag_id)
+    if work_item_id:
+        conditions.append("r.related_type = 'work_item' AND r.related_id = %s")
+        params.append(work_item_id)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT r.id, r.tag_id, r.related_layer, r.related_type, r.related_id,
+                           r.related_type_score, r.related_approved, r.created_at,
+                           t.name AS tag_name
+                    FROM mem_tags_relations r
+                    JOIN planner_tags t ON t.id = r.tag_id
+                    WHERE t.client_id = 1 AND t.project = %s
+                      {"AND " + " AND ".join(conditions) if conditions else ""}
+                    ORDER BY r.created_at DESC
+                    LIMIT 500""",
+                [project] + params,
+            )
+            rows = cur.fetchall()
+    return [
+        {
+            "id":                 str(row[0]),
+            "tag_id":             str(row[1]),
+            "related_layer":      row[2],
+            "related_type":       row[3],
+            "related_id":         row[4],
+            "related_type_score": row[5],
+            "related_approved":   row[6],
+            "created_at":         row[7].isoformat() if row[7] else None,
+            "tag_name":           row[8],
+        }
+        for row in rows
+    ]
 
 
-@router.delete("/relations/{relation_id}")
-async def delete_tag_relation(relation_id: str):
-    """Remove a tag relation by UUID."""
+@router.patch("/relations/{relation_id}")
+async def update_relation(relation_id: str, body: RelationUpdate):
+    """Approve or reject a mem_tags_relations row.
+
+    Set related_approved to 'approved', 'rejected', or null (reset to pending).
+    """
     _require_db()
-    from memory.memory_tagging import MemoryTagging
-    deleted = MemoryTagging().delete_relation(relation_id)
-    if not deleted:
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE mem_tags_relations SET related_approved = %s WHERE id = %s::uuid "
+                "RETURNING id",
+                (body.related_approved, relation_id),
+            )
+            row = cur.fetchone()
+    if not row:
         raise HTTPException(status_code=404, detail="Relation not found")
-    return {"ok": True}
+    return {"ok": True, "id": str(row[0]), "related_approved": body.related_approved}
 
+
+# ── Tag context endpoint ───────────────────────────────────────────────────────
 
 @router.get("/context")
 async def get_tag_context(
@@ -730,7 +898,7 @@ async def get_tag_context(
     project:  str = Query(...),
     limit:    int = Query(20, ge=1, le=100),
 ):
-    """Return comprehensive context for a tag: properties, AI events, mirroring rows, relations.
+    """Return comprehensive context for a tag: properties, AI events, source relations, work items.
 
     Used by the pipeline's first agent (PM) to orient on a feature/bug before planning.
     """
@@ -741,10 +909,9 @@ async def get_tag_context(
             cur.execute(
                 """SELECT t.id, t.name, t.category_id, t.parent_id,
                           c.name AS category_name, c.color, c.icon,
-                          tm.description
+                          t.short_desc, t.status, t.priority, t.summary
                    FROM planner_tags t
                    LEFT JOIN mng_tags_categories c ON c.id = t.category_id
-                   LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
                    WHERE t.client_id=1 AND t.project=%s AND t.name=%s
                    LIMIT 1""",
                 (project, tag_name),
@@ -754,10 +921,16 @@ async def get_tag_context(
                 raise HTTPException(404, f"Tag '{tag_name}' not found in project '{project}'")
             tag_id = str(tag_row[0])
             tag_info = {
-                "id": tag_id, "name": tag_row[1],
-                "category": tag_row[4], "color": tag_row[5], "icon": tag_row[6],
-                "description": tag_row[7] or "",
-                "parent_id": str(tag_row[3]) if tag_row[3] else None,
+                "id":          tag_id,
+                "name":        tag_row[1],
+                "category":    tag_row[4],
+                "color":       tag_row[5],
+                "icon":        tag_row[6],
+                "short_desc":  tag_row[7] or "",
+                "status":      tag_row[8],
+                "priority":    tag_row[9] if tag_row[9] is not None else 3,
+                "summary":     tag_row[10] or "",
+                "parent_id":   str(tag_row[3]) if tag_row[3] else None,
             }
 
             # ── Recent AI events tagged with this tag ───────────────────────
@@ -765,91 +938,85 @@ async def get_tag_context(
                 """SELECT e.id, e.event_type, e.source_id, LEFT(e.content, 400) AS preview,
                           e.summary, e.created_at
                    FROM mem_ai_events e
-                   JOIN mem_ai_tags at ON at.event_id = e.id
-                   WHERE at.tag_id = %s::uuid
+                   JOIN mem_tags_relations r ON r.related_id = e.id::TEXT
+                     AND r.related_layer = 'ai'
+                     AND r.tag_id = %s::uuid
                    ORDER BY e.created_at DESC
                    LIMIT %s""",
                 (tag_id, limit),
             )
             ai_events = [
                 {
-                    "id": str(r[0]), "event_type": r[1], "source_id": r[2],
-                    "preview": r[3], "summary": r[4],
+                    "id":         str(r[0]),
+                    "event_type": r[1],
+                    "source_id":  r[2],
+                    "preview":    r[3],
+                    "summary":    r[4],
                     "created_at": r[5].isoformat() if r[5] else None,
                 }
                 for r in cur.fetchall()
             ]
 
-            # ── Recent mirroring sources tagged with this tag ───────────────
+            # ── Recent sources (mirror + ai relations) ──────────────────────
             cur.execute(
-                """SELECT prompt_id, commit_id, item_id, message_id, created_at
-                   FROM mem_mrr_tags
-                   WHERE tag_id = %s::uuid
-                   ORDER BY created_at DESC
+                """SELECT r.related_type, r.related_id, r.related_layer,
+                          r.related_type_score, r.related_approved, r.created_at
+                   FROM mem_tags_relations r
+                   WHERE r.tag_id = %s::uuid
+                   ORDER BY r.created_at DESC
                    LIMIT %s""",
                 (tag_id, limit),
             )
-            mrr_sources = [
+            sources = [
                 {
-                    "prompt_id": str(r[0]) if r[0] else None,
-                    "commit_id": r[1],
-                    "item_id": str(r[2]) if r[2] else None,
-                    "message_id": str(r[3]) if r[3] else None,
-                    "created_at": r[4].isoformat() if r[4] else None,
+                    "related_type":       r[0],
+                    "related_id":         r[1],
+                    "related_layer":      r[2],
+                    "related_type_score": r[3],
+                    "related_approved":   r[4],
+                    "created_at":         r[5].isoformat() if r[5] else None,
                 }
                 for r in cur.fetchall()
             ]
 
-            # ── Relations involving this tag ────────────────────────────────
+            # ── Work items linked to this tag via mem_tags_relations ─────────
             cur.execute(
-                """SELECT r.id, r.relation, r.note, r.source,
-                          tf.name AS from_name, tt.name AS to_name
-                   FROM mng_ai_tags_relations r
-                   JOIN planner_tags tf ON tf.id = r.from_tag_id
-                   JOIN planner_tags tt ON tt.id = r.to_tag_id
-                   WHERE r.from_tag_id = %s::uuid OR r.to_tag_id = %s::uuid""",
-                (tag_id, tag_id),
-            )
-            relations = [
-                {
-                    "id": str(r[0]), "relation": r[1], "note": r[2], "source": r[3],
-                    "from": r[4], "to": r[5],
-                }
-                for r in cur.fetchall()
-            ]
-
-            # ── Work items referencing this tag ─────────────────────────────
-            cur.execute(
-                """SELECT id, name, category_name, lifecycle_status, status, description
-                   FROM mem_ai_work_items
-                   WHERE client_id=1 AND project=%s AND tag_id = %s::uuid
-                   ORDER BY created_at DESC
-                   LIMIT 10""",
-                (project, tag_id),
+                """SELECT wi.id, wi.name, wi.category_name, wi.status,
+                          r.related_type_score, r.related_approved
+                   FROM mem_ai_work_items wi
+                   JOIN mem_tags_relations r
+                     ON r.related_id = wi.id::TEXT
+                    AND r.related_type = 'work_item'
+                    AND r.tag_id = %s::uuid
+                   ORDER BY wi.created_at DESC
+                   LIMIT 20""",
+                (tag_id,),
             )
             work_items = [
                 {
-                    "id": str(r[0]), "name": r[1], "category": r[2],
-                    "lifecycle": r[3], "status": r[4],
-                    "description": (r[5] or "")[:200],
+                    "id":                 str(r[0]),
+                    "name":               r[1],
+                    "category":           r[2],
+                    "status":             r[3],
+                    "related_type_score": r[4],
+                    "related_approved":   r[5],
                 }
                 for r in cur.fetchall()
             ]
 
     return {
-        "tag": tag_info,
-        "ai_events": ai_events,
-        "mrr_sources": mrr_sources,
-        "relations": relations,
+        "tag":        tag_info,
+        "ai_events":  ai_events,
+        "sources":    sources,
         "work_items": work_items,
-        "project": project,
+        "project":    project,
     }
 
 
 @router.post("/migrate-to-ai-suggestions")
 async def migrate_tags_to_ai_suggestions(project: str = Query(...)):
     """Move planner_tags that were auto-created under bug/feature/task into the ai_suggestion
-    category.  Safe: only moves tags with zero linked event rows in mem_mrr_tags."""
+    category. Safe: only moves tags with zero linked relation rows in mem_tags_relations."""
     _require_db()
     moved = 0
     with db.conn() as conn:
@@ -863,7 +1030,7 @@ async def migrate_tags_to_ai_suggestions(project: str = Query(...)):
                 raise HTTPException(400, "ai_suggestion category not found")
             ai_cat_id = row[0]
 
-            # Find tags in work-item categories with zero linked events
+            # Find tags in work-item categories with zero linked relations
             cur.execute(
                 """SELECT t.id, c.name AS cat_name, t.name
                      FROM planner_tags t
@@ -871,25 +1038,25 @@ async def migrate_tags_to_ai_suggestions(project: str = Query(...)):
                     WHERE t.client_id=1 AND t.project=%s
                       AND LOWER(c.name) IN ('bug','feature','task')
                       AND NOT EXISTS (
-                            SELECT 1 FROM mem_mrr_tags st WHERE st.tag_id = t.id
+                            SELECT 1 FROM mem_tags_relations r WHERE r.tag_id = t.id
                           )""",
                 (project,),
             )
             candidates = cur.fetchall()
             for tag_id, cat_name, tag_name in candidates:
-                # Add suggested-type prefix to description (if not already set)
+                # Set short_desc if not already set
                 cur.execute(
-                    """INSERT INTO planner_tags_meta (tag_id, description)
-                            VALUES (%s, %s)
-                       ON CONFLICT (tag_id) DO UPDATE
-                            SET description = EXCLUDED.description
-                       WHERE planner_tags_meta.description IS NULL
-                          OR planner_tags_meta.description = ''""",
-                    (tag_id, f"[suggested: {cat_name.lower()}] (auto-migrated)"),
+                    """UPDATE planner_tags
+                          SET short_desc = COALESCE(NULLIF(short_desc, ''), %s),
+                              category_id = %s
+                        WHERE id = %s AND (short_desc IS NULL OR short_desc = '')""",
+                    (f"[suggested: {cat_name.lower()}] (auto-migrated)", ai_cat_id, tag_id),
                 )
-                cur.execute(
-                    "UPDATE planner_tags SET category_id=%s WHERE id=%s",
-                    (ai_cat_id, tag_id),
-                )
+                if cur.rowcount == 0:
+                    # short_desc already set, just update category
+                    cur.execute(
+                        "UPDATE planner_tags SET category_id = %s WHERE id = %s",
+                        (ai_cat_id, tag_id),
+                    )
                 moved += 1
     return {"moved": moved}

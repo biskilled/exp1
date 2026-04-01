@@ -3,7 +3,11 @@ tool_workitems.py — Agent tools for reading and creating work items.
 
 Provides direct DB access for:
   - list_work_items : query mem_ai_work_items (with optional category/status filter)
-  - create_work_item: insert a new work item into mem_ai_work_items + planner_tags
+  - create_work_item: insert a new work item into mem_ai_work_items
+
+Work item → tag linking now happens automatically via match_work_item_to_tags()
+in memory_tagging.py, called from route_work_items.py. This tool only inserts
+the mem_ai_work_items row; planner_tags management is outside the agent loop.
 
 Assigned to Product Manager and QA Engineer roles so they can triage and
 capture findings without leaving the agentic loop.
@@ -37,7 +41,8 @@ WORKITEM_TOOL_DEFS: list[dict] = [
         "name": "create_work_item",
         "description": (
             "Create a new work item (feature, bug, or task) for the project. "
-            "Also creates a matching planner_tag so the item appears in the Planner tab."
+            "Inserts a row into mem_ai_work_items; tag linking is handled automatically "
+            "by the memory pipeline."
         ),
         "input_schema": {
             "type": "object",
@@ -119,11 +124,12 @@ def _handle_list_work_items(args: dict) -> str:
 def _handle_create_work_item(args: dict) -> str:
     project       = args.get("project") or _get_active_project()
     name          = args.get("name", "").strip()
-    category_name = args.get("category_name", "task").strip()
-    description   = args.get("description", "")
+    category_name = args.get("category", args.get("category_name", "task")).strip().lower()
+    description   = args.get("description", "").strip()
+    parent_id     = args.get("parent_id")
 
     if not name:
-        return "Error: 'name' is required."
+        return "Error: work item name is required"
 
     try:
         from core.database import db
@@ -131,79 +137,21 @@ def _handle_create_work_item(args: dict) -> str:
             return "Database not available."
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # ── Find or create tag category ───────────────────────────
-                cur.execute(
-                    "SELECT id FROM mng_tags_categories WHERE client_id=1 AND name ILIKE %s LIMIT 1",
-                    (category_name,),
-                )
-                cat_row = cur.fetchone()
-                if not cat_row:
-                    cur.execute(
-                        """INSERT INTO mng_tags_categories (client_id, name)
-                           VALUES (1, %s) ON CONFLICT (client_id, name) DO NOTHING RETURNING id""",
-                        (category_name,),
-                    )
-                    cat_row = cur.fetchone()
-                    if not cat_row:
-                        cur.execute(
-                            "SELECT id FROM mng_tags_categories WHERE client_id=1 AND name ILIKE %s LIMIT 1",
-                            (category_name,),
-                        )
-                        cat_row = cur.fetchone()
-                category_id = cat_row[0] if cat_row else None
-
-                # ── Create planner_tags entry (visible in Planner) ────────
-                cur.execute(
-                    """INSERT INTO planner_tags (client_id, project, name, category_id, status)
-                       VALUES (1, %s, %s, %s, 'active')
-                       ON CONFLICT (client_id, project, name) DO NOTHING
-                       RETURNING id""",
-                    (project, name, category_id),
-                )
-                tag_row = cur.fetchone()
-                tag_id = str(tag_row[0]) if tag_row else None
-
-                # If tag existed already, look it up
-                if not tag_id:
-                    cur.execute(
-                        "SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s LIMIT 1",
-                        (project, name),
-                    )
-                    existing = cur.fetchone()
-                    tag_id = str(existing[0]) if existing else None
-
-                # ── Create planner_tags_meta with description ─────────────
-                if tag_id and description:
-                    cur.execute(
-                        """INSERT INTO planner_tags_meta (tag_id, client_id, project, description)
-                           VALUES (%s::uuid, 1, %s, %s)
-                           ON CONFLICT (tag_id) DO UPDATE SET description=EXCLUDED.description""",
-                        (tag_id, project, description),
-                    )
-
-                # ── Assign seq_num ────────────────────────────────────────
-                try:
-                    from data.dl_seq import next_seq
-                    seq = next_seq(cur, project, category_name)
-                except Exception:
-                    seq = None
-
-                # ── Insert mem_ai_work_items ──────────────────────────────
+                # ── Insert into mem_ai_work_items (AI-generated items) ────
                 cur.execute(
                     """INSERT INTO mem_ai_work_items
-                           (client_id, project, category_name, name, description,
-                            status, lifecycle_status, tag_id, seq_num)
-                       VALUES (1, %s, %s, %s, %s, 'active', 'idea', %s::uuid, %s)
-                       ON CONFLICT (client_id, project, category_name, name) DO NOTHING
+                           (client_id, project, name, category_name, description, status)
+                       VALUES (%s, %s, %s, %s, %s, 'open')
                        RETURNING id, seq_num""",
-                    (project, category_name, name, description, tag_id, seq),
+                    (1, project, name, category_name, description or None),
                 )
-                wi_row = cur.fetchone()
+                row = cur.fetchone()
+                wi_id  = str(row[0])
+                seq_num = row[1]
+                conn.commit()
 
-        if wi_row:
-            ref = f"#{wi_row[1]}" if wi_row[1] else ""
-            return f"Created {category_name} {ref}: '{name}' (id={wi_row[0]})"
-        return f"Work item '{name}' already exists in category '{category_name}'."
+        ref = f"#{seq_num}" if seq_num else ""
+        return f"Created work item {ref}: {name} (id: {wi_id})"
     except Exception as e:
         return f"Error creating work item: {e}"
 

@@ -71,39 +71,24 @@ _SQL_LATEST_SESSION = """
 """
 
 _SQL_BLOCKERS = """
-    WITH pt AS (SELECT id, name FROM planner_tags WHERE client_id=1 AND project=%s)
-    SELECT f.name, r.relation, t.name, r.note
-    FROM mem_ai_tags_relations r
-    JOIN pt f ON f.id = r.from_tag_id
-    JOIN pt t ON t.id = r.to_tag_id
-    WHERE r.relation IN ('blocks', 'depends_on')
-    ORDER BY r.relation, f.name
+    SELECT NULL, NULL, NULL, NULL WHERE FALSE
 """
 
 _SQL_ALL_RELATIONS = """
-    WITH pt AS (SELECT id, name FROM planner_tags WHERE client_id=1 AND project=%s)
-    SELECT f.name, r.relation, t.name, r.note
-    FROM mem_ai_tags_relations r
-    JOIN pt f ON f.id = r.from_tag_id
-    JOIN pt t ON t.id = r.to_tag_id
-    ORDER BY r.relation, f.name
+    SELECT NULL, NULL, NULL, NULL WHERE FALSE
 """
 
 _SQL_FEATURE_SNAPSHOTS = """
-    SELECT fs.requirements, fs.action_items, fs.design, fs.code_summary,
-           fs.work_item_status, t.name AS tag_name
-    FROM mem_ai_features fs
-    JOIN planner_tags t ON t.id = fs.tag_id
-    WHERE fs.client_id=1 AND fs.project=%s
-    ORDER BY fs.updated_at DESC
+    SELECT t.id, t.name, t.project, t.summary, t.action_items, t.design, t.code_summary
+    FROM planner_tags t
+    WHERE t.project = %s AND (t.summary IS NOT NULL OR t.action_items IS NOT NULL)
+    ORDER BY t.updated_at DESC LIMIT 20
 """
 
 _SQL_BLOCKED_TAGS = """
-    SELECT t.name, COALESCE(tm.description, '')
+    SELECT t.id, t.name, t.status, t.short_desc
     FROM planner_tags t
-    LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
-    WHERE t.client_id=1 AND t.project=%s AND t.status='blocked'
-    ORDER BY t.name
+    WHERE t.project = %s AND t.status = 'active'
 """
 
 _SQL_TOP_EVENTS = """
@@ -116,31 +101,20 @@ _SQL_TOP_EVENTS = """
 """
 
 _SQL_ACTIVE_TAGS = """
-    SELECT DISTINCT t.name
-    FROM mem_ai_features fs
-    JOIN planner_tags t ON t.id = fs.tag_id
-    JOIN mem_ai_work_items wi ON wi.tag_id = t.id
-    WHERE fs.client_id=1 AND fs.project=%s
-      AND wi.status != 'done'
-    ORDER BY t.name
+    SELECT t.id, t.name, t.status, t.short_desc, t.priority, t.due_date
+    FROM planner_tags t
+    WHERE t.project = %s AND t.status IN ('open', 'active')
+    ORDER BY t.priority ASC, t.updated_at DESC LIMIT 20
 """
 
 _SQL_FEATURE_SNAPSHOT_BY_TAG = """
-    SELECT fs.requirements, fs.action_items, fs.design, fs.code_summary, fs.work_item_status
-    FROM mem_ai_features fs
-    JOIN planner_tags t ON t.id = fs.tag_id
-    WHERE fs.client_id=1 AND fs.project=%s AND t.name=%s
-    LIMIT 1
+    SELECT t.id, t.name, t.project, t.requirements, t.summary, t.action_items, t.design, t.code_summary
+    FROM planner_tags t
+    WHERE t.id = %s AND t.project = %s
 """
 
 _SQL_FEATURE_RELATIONS = """
-    SELECT f.name AS from_name, r.relation, t.name AS to_name, r.note
-    FROM mem_ai_tags_relations r
-    JOIN planner_tags f ON f.id = r.from_tag_id
-    JOIN planner_tags t ON t.id = r.to_tag_id
-    WHERE (r.from_tag_id = (SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s LIMIT 1)
-        OR r.to_tag_id  = (SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s LIMIT 1))
-    ORDER BY r.relation
+    SELECT NULL, NULL, NULL, NULL WHERE FALSE
 """
 
 
