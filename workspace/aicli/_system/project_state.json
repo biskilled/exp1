@@ -27,11 +27,11 @@
     "pipeline_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation",
     "billing_storage": "data/provider_storage/ (provider_costs.json); pricing, coupons, user_logs in SQL tables",
     "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
-    "dev_environment": "PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root",
+    "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
     "database": "PostgreSQL 15+",
     "node_modules_build": "npm 8+ with webpack/Electron-builder; dev server Vite on localhost",
     "database_version": "PostgreSQL 15+",
-    "build_tooling": "npm 8+ with webpack/Electron-builder; Vite dev server",
+    "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
     "db_consolidation": "mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)",
     "db_tables_unified": "mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features",
     "unified_tables": "mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features",
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-01T08:28:00Z",
+  "last_memory_run": "2026-04-01T08:46:52Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic; workspace/ holds per-project content; _system/ stores project state",
@@ -157,15 +157,16 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku), OpenAI, DeepSeek, Gemini, Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files",
       "chunking": "Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev",
-      "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "build_tooling": "npm 8+ with webpack/Electron-builder; Vite dev server"
+      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment_local": "bash start_backend.sh + ui/npm run dev",
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
+      "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to enable collaborative AI-assisted development. It features dual-storage (PostgreSQL + pgvector for semantic search), unified memory tables (mem_ai_events, project_facts, work_items), async DAG workflow execution with Cytoscape visualization, and multi-provider LLM support (Claude, OpenAI, DeepSeek, Gemini, Grok) with server-side key management. Current focus is on stabilizing schema consistency, ensuring data persistence across sessions, and automating memory synthesis through Claude Haiku dual-layer processing.",
-    "memory_digest": "**2026-04-01** `project_state.json` \u2014 Unified mem_ai_* table naming consolidated across documentation; deprecated database_schema field removed to reduce duplication with db_schema. **2026-04-01** `schema_validation` \u2014 mem_ai_tags_relations DDL corrected and migrations applied; tag persistence across session switches validated and fixed via cache invalidation fix. **2026-04-01** `project_summary` \u2014 Updated to emphasize dual-storage architecture (PostgreSQL + pgvector), unified memory tables, and multi-provider LLM support with server-side key management. **2026-03-xx** `backend_startup` \u2014 Retry logic implemented to handle empty project list on first load; AiCli now selectable immediately in Recent projects. **2026-03-xx** `data_persistence` \u2014 Root cause of tag disappearance on session switch traced to cache invalidation; fix ensures persistence across workspace switches. **2026-03-xx** `memory_synthesis` \u2014 Claude Haiku dual-layer processing configured to auto-generate 5 memory files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) from mem_ai_project_facts and mem_ai_work_items with timestamp tracking."
+    "project_summary": "aicli is a shared AI memory platform that gives every LLM (Claude CLI, aicli CLI, Cursor, web UI) identical project memory, billing, multi-LLM workflows, and a unified knowledge graph. Built on FastAPI + PostgreSQL with pgvector, it provides an Electron desktop UI with xterm.js, Monaco editor, and Cytoscape.js for workflow visualization. Current focus is stabilizing the unified mem_ai_* table schema, ensuring data persistence across session switches, and automating memory synthesis from project facts and work items.",
+    "memory_digest": "**2026-03-14** `schema_consolidation` \u2014 Unified database schema completed: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, and mem_ai_features replace per-project event tables and deprecated metadata structures.\n**2026-03-14** `persistence_fix` \u2014 Tag disappearance on session switch root-caused to cache invalidation; resolved by fixing DB reload logic and ensuring tags persist in mem_ai_tags_relations with proper row ID linking.\n**2026-03-14** `documentation_alignment` \u2014 project_state.json and rules.md updated to reflect unified table naming; removed legacy database_schema field that conflicted with unified architecture.\n**2026-03-14** `memory_generation_automation` \u2014 Memory synthesis pipeline generates 5 output files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) automatically from mem_ai_project_facts and mem_ai_work_items with timestamp tracking.\n**2026-03-09** `backend_startup_race` \u2014 AiCli project appearing in Recent but unselectable on first load fixed via retry logic for empty project list handling during backend initialization.\n**2026-03-09** `schema_migration` \u2014 mem_ai_tags_relations DDL corrected and database migrations applied; persistence validated across session switches with proper tag column handling."
   }
 }

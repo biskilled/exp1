@@ -2143,7 +2143,11 @@ async def _auto_create_entities(project: str, since: str | None = None) -> int:
                 if not cat_rows:
                     return 0
                 cat_by_name = {name.lower(): cid for cid, name in cat_rows}
-                known_cats = sorted(cat_by_name.keys())
+                known_cats = sorted(k for k in cat_by_name if k != 'ai_suggestion')
+                # AI auto-creates always land in ai_suggestion (user promotes from there)
+                ai_suggestion_cat_id = cat_by_name.get('ai_suggestion')
+                if not ai_suggestion_cat_id:
+                    return 0
 
                 # Get existing entity names to avoid duplicates
                 cur.execute(_SQL_GET_ACTIVE_ENTITY_VALUES_FOR_AUTOTAG, (project,))
@@ -2210,20 +2214,21 @@ async def _auto_create_entities(project: str, since: str | None = None) -> int:
                     try:
                         if not isinstance(item, dict):
                             continue
-                        cat_name = str(item.get("category", "")).lower().strip()
+                        suggested_cat = str(item.get("category", "")).lower().strip()
                         name = str(item.get("name", "")).strip()[:120]
-                        desc = str(item.get("description", "")).strip()[:300]
+                        desc = str(item.get("description", "")).strip()[:280]
                         conf = float(item.get("confidence", 0.0))
-                        if not cat_name or not name or conf < 0.85:
+                        if not suggested_cat or not name or conf < 0.85:
                             continue
                         if name.lower() in existing_names:
                             continue
-                        cat_id = cat_by_name.get(cat_name)
-                        if not cat_id:
+                        if suggested_cat not in cat_by_name:
                             continue
+                        # Tag lands in ai_suggestion; suggested category stored in description
+                        full_desc = f"[suggested: {suggested_cat}] {desc}".strip()[:300]
                         from data.dl_seq import next_seq
-                        seq = next_seq(cur, project, cat_name)
-                        cur.execute(_SQL_INSERT_ENTITY_VALUE_AUTO, (cat_id, project, name, desc, seq))
+                        seq = next_seq(cur, project, 'ai_suggestion')
+                        cur.execute(_SQL_INSERT_ENTITY_VALUE_AUTO, (ai_suggestion_cat_id, project, name, full_desc, seq))
                         if cur.fetchone():
                             created += 1
                             existing_names.add(name.lower())

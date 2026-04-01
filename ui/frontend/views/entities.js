@@ -167,7 +167,7 @@ function _renderCategoryList() {
                 border-left:2px solid ${_plannerState.selectedCat === c.id ? 'var(--accent)' : 'transparent'}">
       <span style="color:${c.color};font-size:0.85rem">${c.icon}</span>
       <span style="font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(c.name)}</span>
-      <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${c.value_count ?? getCacheValues(c.id).length}</span>
+      <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${getCacheValues(c.id).length}</span>
     </div>`;
 
   const divider = tags.length ? `
@@ -693,9 +693,6 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(v.name)}</span>
           </div>
         </td>
-        <td style="padding:0.5rem 0.4rem;white-space:nowrap" onclick="event.stopPropagation()">
-          ${_lifecycleBadge(v.lifecycle_status, v.id)}
-        </td>
         <td style="padding:0.5rem 0.5rem;white-space:nowrap" onclick="event.stopPropagation()">
           <span style="font-size:0.6rem;color:${sc};background:${sc}22;
                        padding:0.12rem 0.4rem;border-radius:10px;white-space:nowrap;user-select:none">
@@ -772,9 +769,8 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
       <thead>
         <tr style="border-bottom:2px solid var(--border)">
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
-          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:90px">Lifecycle</th>
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500;width:75px">Status</th>
-          <th style="width:${_isWorkItemCat(catName) ? '108' : '80'}px"></th>
+          <th style="width:80px"></th>
         </tr>
       </thead>
       <tbody>
@@ -1408,8 +1404,8 @@ async function _dndExecuteDrop(zone, drag, target) {
 
   // Cycle guard for reparent operations
   if (zone !== 'mid') {
-    const dragDescs   = getCacheDescendants(catId, drag.id)   || [];
-    const targetDescs = getCacheDescendants(catId, target.id) || [];
+    const dragDescs   = getCacheDescendants(drag.id)   || [];
+    const targetDescs = getCacheDescendants(target.id) || [];
     if (zone === 'bot' && dragDescs.some(d => d.id === target.id))
       { toast('Cannot make a descendant a parent', 'error'); return; }
     if (zone === 'top' && targetDescs.some(d => d.id === drag.id))
