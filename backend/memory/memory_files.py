@@ -154,6 +154,7 @@ class MemoryFiles:
             "blockers":         [],      # (from_name, relation, to_name, note)
             "all_relations":    [],
             "features":         {},      # tag_name → snapshot dict
+            "feature_details":  [],      # list of dicts from planner_tags inline fields
             "blocked_tags":     [],      # (name, description)
             "ts":               datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         }
@@ -203,20 +204,20 @@ class MemoryFiles:
                         for r in cur.fetchall()
                     ]
 
-                    # Feature snapshots
+                    # Feature snapshots (inline on planner_tags)
                     cur.execute(_SQL_FEATURE_SNAPSHOTS, (project,))
-                    for reqs, action, design, code_sum, wi_status, tag_name in cur.fetchall():
-                        ctx["features"][tag_name] = {
-                            "requirements":    reqs or "",
+                    for t_id, t_name, t_project, summary, action, design, code_sum in cur.fetchall():
+                        ctx["features"][t_name] = {
+                            "requirements":    summary or "",
                             "action_items":    action or "",
                             "design":          design or {},
                             "code_summary":    code_sum or {},
-                            "work_item_status": wi_status or "",
+                            "work_item_status": "",
                         }
 
-                    # Blocked tags
+                    # Blocked/active tags (short_desc inline on planner_tags)
                     cur.execute(_SQL_BLOCKED_TAGS, (project,))
-                    ctx["blocked_tags"] = [(r[0], r[1]) for r in cur.fetchall()]
+                    ctx["blocked_tags"] = [(r[1], r[3] or "") for r in cur.fetchall()]
 
         except Exception as e:
             log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
