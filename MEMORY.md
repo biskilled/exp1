@@ -5,7 +5,7 @@ _Generated: 2026-04-01 18:05 UTC by aicli /memory_
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI for managing AI-assisted development workflows. The system unifies project facts, work items, and events in PostgreSQL with semantic search via pgvector, supporting multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) through provider adapters. Current development focuses on solidifying the unified database schema (mem_ai_* tables), fixing data persistence bugs across session switches, and ensuring reliable memory synthesis from project facts.
+aicli is a shared AI memory platform providing a unified CLI and desktop UI (Electron) for managing project context, work items, and AI-assisted workflows. It uses PostgreSQL with semantic embeddings (pgvector), FastAPI backend, and a dual-layer memory synthesis system powered by Claude Haiku to auto-generate context files (MEMORY.md, copilot.md, rules.md, etc.) from project facts and work items. Version 2.2.0 has recently stabilized core infrastructure: unified event tables, tag persistence across sessions, backend startup reliability, and comprehensive memory file auto-generation with timestamp tracking.
 
 ## Project Facts
 
@@ -61,7 +61,7 @@ Reviewer: ```json
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files
-- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
+- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
 - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
@@ -98,13 +98,13 @@ Reviewer: ```json
 - MCP server (stdio) with 12+ tools configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations (depends_on, relates_to, blocks, implements) via CLI/admin UI
 - Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; routers/, core/, data/ (dl_ prefix), agents/tools/ (tool_ prefix), agents/mcp/ for MCP server
-- CLI: Python 3.12 + prompt_toolkit + rich with verb-noun command routing; memory endpoint template variable scoping fixed
+- CLI: Python 3.12 + prompt_toolkit + rich with verb-noun command routing; memory endpoint template variable scoping fixed at line 1120
 - Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local via bash start_backend.sh + ui/npm run dev
 - Config management: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support; billing storage in data/provider_storage/
 
 ## In Progress
 
-- Memory file auto-generation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md fully regenerated with timestamp tracking from mem_ai_project_facts and mem_ai_work_items (last run 2026-04-01T15:35:11Z)
+- Memory file auto-generation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md fully regenerated with timestamp tracking from mem_ai_project_facts and mem_ai_work_items (commit 593519a8)
 - Unified event table consolidation: mem_ai_events schema validated; deprecated event_summary_tags array and metadata columns removed; data persistence across session switches confirmed
 - Backend startup race condition resolved: retry logic implemented to handle empty project list on first load, preventing AiCli project from appearing unselectable in Recent
 - Tag persistence bug fixed: mem_ai_tags_relations now properly maintains row ID linking and cache invalidation during DB reload operations
@@ -114,6 +114,42 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `role` — 2026-04-01
+
+# Senior Python Architect — aicli
+
+You are a senior Python software architect with deep expertise in:
+- Python 3.12+ type system, pathlib, asyncio
+- CLI tool design (prompt_toolkit, rich, typer)
+- LLM provider APIs (Anthropic, OpenAI, DeepSeek, Gemini, xAI)
+- FastAPI backend design
+- YAML-based workflow systems
+- File-based persistence (JSONL, JSON, CSV) — no unnecessary databases
+
+
+### `commit` — 2026-04-01
+
+Commit: feat: enhance memory files, MCP server, and entities UI
+Hash: 593519a8
+Files changed (17):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - MEMORY.md
+  - backend/agents/mcp/server.py
+  - backend/memory/memory_files.py
+  - backend/memory/memory_promotion.py
+  - ui/frontend/utils/api.js
+  - ui/frontend/views/entities.js
+  - workspace/aicli/_system/CONTEXT.md
+  - workspace/aicli/_system/aicli/context.md
+  - workspace/aicli/_system/aicli/copilot.md
+  - workspace/aicli/_system/claude/MEMORY.md
+  - workspace/aicli/_system/commit_log.jsonl
+  - workspace/aicli/_system/cursor/rules.md
+  - workspace/aicli/_system/dev_runtime_state.json
+  - workspace/aicli/_system/project_state.json
 
 ### `commit` — 2026-04-01
 
@@ -223,96 +259,16 @@ index 0467e34..8e8b888 100644
 +{"ts": "2026-04-01T15:35:10Z", "action": "commit_push", "source": "claude_cli", "session_id": "11163d9b-a609-4847-8ca9-702fce4165c5", "hash": "aed5228f", "message": "docs: update AI assistant rules and memory after session 11163d9b", "pushed": true, "push_error": ""}
 
 
-### `commit` — 2026-04-01
-
-diff --git a/workspace/aicli/_system/claude/MEMORY.md b/workspace/aicli/_system/claude/MEMORY.md
-index 283f847..54ea12b 100644
---- a/workspace/aicli/_system/claude/MEMORY.md
-+++ b/workspace/aicli/_system/claude/MEMORY.md
-@@ -1,11 +1,11 @@
- # Project Memory — aicli
--_Generated: 2026-04-01 13:58 UTC by aicli /memory_
-+_Generated: 2026-04-01 15:35 UTC by aicli /memory_
- 
- > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
- 
- ## Project Summary
- 
--aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to provide multi-LLM support (Claude, OpenAI, DeepSeek, Gemini, Grok) with persistent semantic memory via PostgreSQL+pgvector. The system recently stabilized core data persistence patterns, unified event/memory tables, and resolved startup race conditions. Currently at v2.2.0 with production deployments on Railway and desktop builds via Electron-builder.
-+aicli is a shared AI memory platform combining a Python 3.12 CLI (prompt_toolkit + rich), FastAPI backend, PostgreSQL 15+ with pgvector semantic search, and Electron desktop UI (Vanilla JS + xterm.js + Monaco + Cytoscape). It orchestrates multi-LLM workflows (Claude/OpenAI/DeepSeek/Gemini/Grok) through async DAG execution, manages hierarchical user data (Clients → Users), and auto-generates 5 memory synthesis files using Claude Haiku from unified mem_ai_* tables. Current state: unified event schema fully validated, critical data persistence and backend startup bugs resolved, and documentation aligned with mem_ai_* naming conventions.
- 
- ## Project Facts
- 
-@@ -61,7 +61,7 @@ Reviewer: ```json
- - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
- - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
- - **memory_synthesis**: Claude Haiku dual-layer with 5 output files
--- **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-+- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
- - **mcp**: Stdio MCP server with 12+ tools
- - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
- - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
-@@ -74,7 +74,7 @@ Reviewer: ```json
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
- - **database**: PostgreSQL 15+
--- **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
-+- **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
- - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
-@@ -104,12 +104,12 @@ Reviewer: ```json
- 
- ## In Progress
- 
--- Memory file auto-generation fully completed: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md regenerated from mem_ai_project_facts and mem_ai_work_items with timestamp tracking
--- Unified event table validation: mem_ai_events consolidates embeddings and memory events; removed deprecated event_summary_tags array and metadata columns; schema migration applied
--- Data persistence bug fix: tags disappearing on session switch traced to cache invalidation during DB reload; fixed via mem_ai_tags_relations persistence with proper row ID linking
-
-
-### `commit` — 2026-04-01
-
-diff --git a/workspace/aicli/_system/aicli/copilot.md b/workspace/aicli/_system/aicli/copilot.md
-index 133853b..0a83758 100644
---- a/workspace/aicli/_system/aicli/copilot.md
-+++ b/workspace/aicli/_system/aicli/copilot.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-01 13:58 UTC
-+> Generated by aicli 2026-04-01 15:35 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -21,7 +21,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - workflow_engine: Async DAG executor (asyncio.gather) + YAML config
- - workflow_ui: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
- - memory_synthesis: Claude Haiku dual-layer with 5 output files
--- chunking: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-+- chunking: Smart chunking: per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
- - mcp: Stdio MCP server with 12+ tools
- - deployment: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
- - database_schema: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
-@@ -34,7 +34,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - backend_modules: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - dev_environment: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
- - database: PostgreSQL 15+
--- node_modules_build: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
-+- node_modules_build: npm 8+ with Electron-builder; Vite dev server
- - database_version: PostgreSQL 15+
- - build_tooling: npm 8+ with Electron-builder; Vite dev server
- - db_consolidation: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
-
-
 ## AI Synthesis
 
-**2026-04-01** `aicli` — Memory file auto-generation now fully regenerated with timestamp tracking; CLAUDE.md, MEMORY.md, context.md, rules.md, and copilot.md all sourced from mem_ai_project_facts and mem_ai_work_items unified tables.
+**2026-04-01** `commit 593519a8` — Enhanced memory file generation: CLAUDE.md, MEMORY.md, context.md, rules.md, and copilot.md now fully auto-generated from mem_ai_project_facts and mem_ai_work_items with timestamp tracking to track synthesis history.
 
-**2026-04-01** `backend` — Unified event table (mem_ai_events) schema validated and consolidated; deprecated event_summary_tags array and metadata columns removed; data persistence confirmed across session switches.
+**2026-04-01** `schema consolidation` — Unified event table (mem_ai_events) validated and deployed: removed deprecated event_summary_tags array and metadata columns; confirmed data persistence across session switches and project switches.
 
-**2026-04-01** `backend` — Backend startup race condition fixed with retry logic to handle empty project list on first load, preventing AiCli project from appearing unselectable in Recent projects list.
+**2026-03-28** `backend startup` — Resolved race condition preventing AiCli project from being selectable in Recent projects on first load by implementing retry logic to handle empty project list during initialization.
 
-**2026-04-01** `database` — Tag persistence bug resolved; mem_ai_tags_relations now properly maintains row ID linking and cache invalidation during database reload operations.
+**2026-03-25** `tag persistence` — Fixed bug where tags disappeared during session switches by correcting mem_ai_tags_relations persistence with proper row ID linking and cache invalidation during DB reload.
 
-**2026-04-01** `documentation` — Schema documentation updated: project_state.json and rules.md aligned with mem_ai_* unified naming convention; removed conflicting legacy references and clarified Electron-builder usage (no webpack).
+**2026-03-20** `schema docs` — Aligned project_state.json and rules.md with mem_ai_* unified naming convention; removed legacy webpack reference and conflicting database_schema field entries.
 
-**2026-04-01** `frontend` — Frontend UI refinement completed: lifecycle button section removed from entities.js drawer to reduce clutter and align with current feature scope.
+**2026-03-15** `frontend ui` — Removed lifecycle button section from entities.js drawer to reduce UI clutter and align drawer functionality with current feature scope and user workflows.
