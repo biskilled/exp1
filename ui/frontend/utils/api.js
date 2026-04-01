@@ -335,6 +335,12 @@ api.tags = {
     list:   (proj)     => _get(`/tags/relations?project=${enc(proj)}`),
     create: (body)     => _post('/tags/relations', body),
     delete: (id)       => _del(`/tags/relations/${enc(id)}`),
+    listForWorkItem: (project, workItemId) =>
+      _get(`/tags/relations?project=${encodeURIComponent(project)}&work_item_id=${encodeURIComponent(workItemId)}`),
+    listForTag: (project, tagId) =>
+      _get(`/tags/relations?project=${encodeURIComponent(project)}&tag_id=${encodeURIComponent(tagId)}`),
+    approve: (id) => fetch(_base() + `/tags/relations/${encodeURIComponent(id)}`, { method: 'PATCH', headers: _headers(), body: JSON.stringify({ related_approved: 'approved' }) }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+    reject:  (id) => fetch(_base() + `/tags/relations/${encodeURIComponent(id)}`, { method: 'PATCH', headers: _headers(), body: JSON.stringify({ related_approved: 'rejected' }) }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
   },
 };
 

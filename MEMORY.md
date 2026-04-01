@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-01 18:01 UTC by aicli /memory_
+_Generated: 2026-04-01 18:02 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI (prompt_toolkit + rich), FastAPI backend, and Electron desktop UI for AI-assisted development workflows. It unifies event tracking, project facts, and work items in PostgreSQL with semantic search via pgvector embeddings, while supporting multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with an async DAG workflow executor. Currently stable on v2.2.0 with recent focus on memory synthesis automation, unified table consolidation, and backend startup reliability.
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to provide LLM-integrated project memory management. It uses PostgreSQL with pgvector for semantic search, unified event/fact/work-item tables, and supports multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with Claude Haiku for dual-layer memory synthesis. Current focus is on stabilizing unified database schema, fixing data persistence bugs, and auto-generating memory documentation files with proper timestamp tracking.
 
 ## Project Facts
 
@@ -287,4 +287,4 @@ index 05ae0fa..24e0132 100644
 
 ## AI Synthesis
 
-**[2026-04-01]** `claude` — Memory synthesis pipeline stabilized with Claude Haiku generating 5 unified output files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) from mem_ai_project_facts and mem_ai_work_items; timestamp tracking implemented. **[2026-04-01]** `claude` — Unified event table consolidation completed; mem_ai_events schema finalized with deprecated columns removed; data persistence confirmed across session switches. **[2026-03-28]** `claude` — Backend startup race condition mitigated via retry logic for empty project list on first load; prevents AiCli project from appearing unselectable. **[2026-03-25]** `claude` — Tag persistence bug fixed in mem_ai_tags_relations with proper row ID linking and cache invalidation during DB reload operations. **[2026-03-20]** `claude` — Schema documentation aligned: project_state.json and rules.md use unified mem_ai_* naming; legacy database_schema conflicts removed. **[2026-03-18]** `claude` — Frontend UI refinement: lifecycle section removed from entities.js drawer to reduce clutter while maintaining feature completeness. **[2026-03-15]** `claude` — Memory endpoint template variable scoping fixed at line 1120 in core memory logic. **[2026-03-14]** `claude` — Established dual storage model with PostgreSQL 15+ and pgvector (1536-dim embeddings) for semantic search; unified mem_ai_* table architecture.
+**2026-04-01** `auto-memory` — Memory file synthesis completed with timestamp tracking for CLAUDE.md, MEMORY.md, context.md, rules.md, and copilot.md; all generated from mem_ai_project_facts and mem_ai_work_items. **2026-04-01** `schema-consolidation` — Unified mem_ai_events table fully validated; deprecated event_summary_tags and metadata columns removed; data persistence across session switches confirmed working. **2026-04-01** `bug-fix` — Backend startup race condition resolved using retry logic to handle empty project list on first load, ensuring AiCli project remains selectable in Recent projects. **2026-04-01** `bug-fix` — Tag persistence fixed in mem_ai_tags_relations with proper row ID linking and cache invalidation during DB reload operations. **2026-04-01** `documentation` — project_state.json and rules.md updated to align with mem_ai_* unified naming convention; legacy database_schema conflicts removed. **2026-04-01** `ui-refinement` — Frontend lifecycle button section removed from entities.js drawer to reduce UI clutter.

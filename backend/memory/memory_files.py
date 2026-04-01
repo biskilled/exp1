@@ -219,6 +219,29 @@ class MemoryFiles:
                     cur.execute(_SQL_BLOCKED_TAGS, (project,))
                     ctx["blocked_tags"] = [(r[1], r[3] or "") for r in cur.fetchall()]
 
+                    # Feature details: tags with embedding or summary (inline fields)
+                    cur.execute("""
+                        SELECT t.id, t.name, t.short_desc, t.requirements, t.summary,
+                               t.action_items, t.design, t.code_summary
+                        FROM planner_tags t
+                        WHERE t.project = %s
+                          AND (t.embedding IS NOT NULL OR t.summary IS NOT NULL)
+                        ORDER BY t.updated_at DESC LIMIT 30
+                    """, (project,))
+                    ctx["feature_details"] = [
+                        {
+                            "id":           str(r[0]),
+                            "name":         r[1] or "",
+                            "short_desc":   r[2] or "",
+                            "requirements": r[3] or "",
+                            "summary":      r[4] or "",
+                            "action_items": r[5] or "",
+                            "design":       r[6] or {},
+                            "code_summary": r[7] or {},
+                        }
+                        for r in cur.fetchall()
+                    ]
+
         except Exception as e:
             log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
 
@@ -247,14 +270,15 @@ class MemoryFiles:
             return []
 
     def get_active_feature_tags(self, project: str) -> list[str]:
-        """Return tag names for active features that have snapshots."""
+        """Return tag names for active/open tags (active features that have snapshots)."""
         if not db.is_available():
             return []
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(_SQL_ACTIVE_TAGS, (project,))
-                    return [r[0] for r in cur.fetchall()]
+                    # _SQL_ACTIVE_TAGS returns (id, name, status, short_desc, priority, due_date)
+                    return [r[1] for r in cur.fetchall()]
         except Exception:
             return []
 
@@ -366,36 +390,43 @@ class MemoryFiles:
         return "\n".join(lines)
 
     def render_feature_claude_md(self, project: str, tag_name: str) -> str:
-        """Render per-feature CLAUDE.md — auto-loaded when Claude enters features/{tag}/ dir."""
+        """Render per-feature CLAUDE.md — auto-loaded when Claude enters features/{tag}/ dir.
+
+        Reads snapshot data (summary, action_items, design, code_summary) from inline
+        planner_tags fields. Relations section is omitted since mem_ai_tags_relations is dropped.
+        """
         if not db.is_available():
             return f"# Feature: {tag_name}\n_No database available._\n"
 
-        snap = {}
-        relations = []
+        snap: dict = {}
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_FEATURE_SNAPSHOT_BY_TAG, (project, tag_name))
+                    # Look up tag by name to get its id, then read inline snapshot fields
+                    cur.execute("""
+                        SELECT t.id, t.name, t.project, t.requirements, t.summary,
+                               t.action_items, t.design, t.code_summary, t.short_desc
+                        FROM planner_tags t
+                        WHERE t.project = %s AND t.name = %s
+                        LIMIT 1
+                    """, (project, tag_name))
                     row = cur.fetchone()
                     if row:
                         snap = {
-                            "requirements":    row[0] or "",
-                            "action_items":    row[1] or "",
-                            "design":          row[2] or {},
-                            "code_summary":    row[3] or {},
-                            "work_item_status": row[4] or "",
+                            "tag_id":       str(row[0]),
+                            "requirements": row[3] or row[4] or "",  # fall back to summary
+                            "action_items": row[5] or "",
+                            "design":       row[6] or {},
+                            "code_summary": row[7] or {},
+                            "short_desc":   row[8] or "",
                         }
-                    cur.execute(_SQL_FEATURE_RELATIONS, (project, tag_name, project, tag_name))
-                    relations = [
-                        {"from": r[0], "relation": r[1], "to": r[2], "note": r[3] or ""}
-                        for r in cur.fetchall()
-                    ]
         except Exception as e:
             log.debug(f"render_feature_claude_md error for '{tag_name}': {e}")
 
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        status = snap.get("work_item_status") or "unknown"
-        lines = [f"# Feature: {tag_name}", f"_Status: {status} | {ts}_", ""]
+        desc = snap.get("short_desc") or ""
+        header_line = f"_Feature: {tag_name}{' — ' + desc if desc else ''} | {ts}_"
+        lines = [f"# Feature: {tag_name}", header_line, ""]
 
         if snap.get("requirements"):
             lines += ["## Requirements", "", snap["requirements"], ""]
@@ -415,13 +446,6 @@ class MemoryFiles:
             lines += ["## Files", ""]
             for f in code["files"][:15]:
                 lines.append(f"- `{f}`")
-            lines.append("")
-
-        if relations:
-            lines += ["## Relationships", ""]
-            for r in relations:
-                note = f" _{r['note']}_" if r["note"] else ""
-                lines.append(f"- `{r['from']}` **{r['relation']}** `{r['to']}`{note}")
             lines.append("")
 
         lines += ["---", "_Auto-generated by aicli. Run `/memory` to refresh._"]

@@ -290,7 +290,7 @@ class MemoryPromotion:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(_SQL_GET_CURRENT_FACTS, (project,))
-                for f_id, f_key, f_val, _, _ in cur.fetchall():
+                for f_id, f_key, f_val, _ in cur.fetchall():
                     facts_context[f_key] = f_val
 
         # Group events by source type (all 6 batch types)

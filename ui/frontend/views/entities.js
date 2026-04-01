@@ -381,6 +381,20 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
     _wiItemsCache = {};
     items.forEach(wi => { _wiItemsCache[wi.id] = wi; });
 
+    // Load linked tag counts for all items (skip if >30 to avoid excessive requests)
+    if (items.length > 0 && items.length <= 30) {
+      await Promise.all(items.map(async wi => {
+        try {
+          const rels = await api.tags.relations.listForWorkItem(project, wi.id);
+          _wiItemsCache[wi.id]._linked_tags_count = Array.isArray(rels) ? rels.length : 0;
+        } catch {
+          _wiItemsCache[wi.id]._linked_tags_count = 0;
+        }
+      }));
+    } else {
+      items.forEach(wi => { _wiItemsCache[wi.id]._linked_tags_count = 0; });
+    }
+
     const tableBody = document.getElementById('wi-table-body');
     if (!tableBody) return;
 
@@ -480,6 +494,15 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
         <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem">
           ${wi.due_date ? wi.due_date.slice(0, 10) : '—'}
         </td>
+        <td style="padding:0.5rem 0.4rem" onclick="event.stopPropagation()">
+          ${wi._linked_tags_count > 0
+            ? `<span style="font-size:0.58rem;color:var(--accent);background:var(--accent)18;
+                            padding:0.1rem 0.35rem;border-radius:8px;cursor:pointer;white-space:nowrap"
+                     title="View linked tags"
+                     onclick="event.stopPropagation();window._wiShowLinkedTags('${wi.id}','${_esc(project)}')"
+                >${wi._linked_tags_count} tag${wi._linked_tags_count > 1 ? 's' : ''}</span>`
+            : `<span style="font-size:0.58rem;color:var(--muted)">—</span>`}
+        </td>
         <td style="padding:0.5rem 0.4rem;white-space:nowrap;text-align:right"
             onclick="event.stopPropagation()">
           <button title="Add child ${catName}"
@@ -505,6 +528,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;max-width:110px">Criteria</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:70px">Agent</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:78px">Due</th>
+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:90px">Tags</th>
           <th style="width:80px"></th>
         </tr>
       </thead>
@@ -848,8 +872,8 @@ function _renderDrawer() {
   const v     = all.find(x => x.id === _drawerValId);
   if (!v) { _plannerCloseDrawer(); return; }
 
-  const STATUS_COLORS = { active: '#27ae60', done: '#4a90e2', archived: '#888' };
-  const STATUS_LABELS = { active: '● Active', done: '✓ Done', archived: '⊘ Archived' };
+  const STATUS_COLORS = { open: '#888', active: '#27ae60', done: '#4a90e2', archived: '#666' };
+  const STATUS_LABELS = { open: '○ Open', active: '● Active', done: '✓ Done', archived: '⊘ Archived' };
 
   // Build parent path string
   const byId  = Object.fromEntries(all.map(x => [String(x.id), x]));
@@ -891,11 +915,75 @@ function _renderDrawer() {
         <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                     letter-spacing:.06em;margin-bottom:0.35rem">Status</div>
         <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${['active','done','archived'].map(s => `
+          ${['open','active','done','archived'].map(s => `
             <button style="${btnStyle(s)}"
               onclick="window._plannerDrawerSetStatus('${v.id}','${s}')">
               ${STATUS_LABELS[s]}
             </button>`).join('')}
+        </div>
+      </div>
+
+      <!-- Short Description -->
+      <div>
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.3rem">Description</div>
+        <textarea id="tag-short-desc-ta" rows="2"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);
+                 color:var(--text);font-family:var(--font);font-size:0.68rem;
+                 padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
+                 resize:vertical;box-sizing:border-box;line-height:1.5"
+          onblur="api.tags.update('${v.id}', {short_desc: this.value}).catch(e=>toast(e.message,'error'))"
+        >${_esc(v.short_desc || '')}</textarea>
+      </div>
+
+      <!-- Requirements -->
+      <div>
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.3rem">Requirements</div>
+        <textarea id="tag-req-ta" rows="3"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);
+                 color:var(--text);font-family:var(--font);font-size:0.65rem;
+                 padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
+                 resize:vertical;box-sizing:border-box;line-height:1.5"
+          onblur="api.tags.update('${v.id}', {requirements: this.value}).catch(e=>toast(e.message,'error'))"
+        >${_esc(v.requirements || '')}</textarea>
+      </div>
+
+      <!-- Acceptance Criteria -->
+      <div>
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.3rem">Acceptance Criteria</div>
+        <textarea id="tag-ac-ta" rows="3"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);
+                 color:var(--text);font-family:var(--font);font-size:0.65rem;
+                 padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
+                 resize:vertical;box-sizing:border-box;line-height:1.5"
+          onblur="api.tags.update('${v.id}', {acceptance_criteria: this.value}).catch(e=>toast(e.message,'error'))"
+        >${_esc(v.acceptance_criteria || '')}</textarea>
+      </div>
+
+      <!-- Priority + Due Date row -->
+      <div style="display:flex;gap:0.6rem">
+        <div style="flex:1">
+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                      letter-spacing:.06em;margin-bottom:0.3rem">Priority</div>
+          <select
+            onchange="api.tags.update('${v.id}', {priority: parseInt(this.value)}).catch(e=>toast(e.message,'error'))"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);
+                   color:var(--text);font-family:var(--font);font-size:0.65rem;
+                   padding:0.22rem 0.4rem;border-radius:var(--radius);outline:none">
+            ${[1,2,3,4,5].map(p => `<option value="${p}" ${(v.priority||3)===p?'selected':''}>${p === 1 ? '1 Critical' : p === 2 ? '2 High' : p === 3 ? '3 Normal' : p === 4 ? '4 Low' : '5 Minimal'}</option>`).join('')}
+          </select>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                      letter-spacing:.06em;margin-bottom:0.3rem">Due Date</div>
+          <input type="date" value="${_esc(v.due_date ? v.due_date.slice(0,10) : '')}"
+            onchange="api.tags.update('${v.id}', {due_date: this.value || null}).catch(e=>toast(e.message,'error'))"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);
+                   color:var(--text);font-family:var(--font);font-size:0.65rem;
+                   padding:0.22rem 0.4rem;border-radius:var(--radius);outline:none;
+                   box-sizing:border-box" />
         </div>
       </div>
 
@@ -1616,6 +1704,15 @@ window._plannerCatDrop = async function(e, catId, catName) {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+window._wiShowLinkedTags = async (wiId, project) => {
+  try {
+    const rels = await api.tags.relations.listForWorkItem(project, wiId);
+    if (!rels || !rels.length) { toast('No linked tags', 'info'); return; }
+    const names = rels.map(r => `${r.tag_name || r.tag_id} (${r.relation || r.related_approved || 'linked'})`).join('\n');
+    alert(`Linked tags:\n${names}`);
+  } catch (e) { toast('Error loading tags: ' + e.message, 'error'); }
+};
 
 function _esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
