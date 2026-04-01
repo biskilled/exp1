@@ -563,45 +563,76 @@ class SuggestionApplyBody(BaseModel):
     tag_name: str
     session_id: Optional[str] = None
     session_src_desc: Optional[str] = None
+    layer: str = "mrr"  # 'mrr' = mem_mrr_* row, 'ai' = mem_ai_events row
 
 
 class SuggestionIgnoreBody(BaseModel):
     source_type: str
     source_id: str
+    layer: str = "mrr"
 
 
 @router.post("/suggestions/generate")
 async def generate_tag_suggestions(project: str = Query(...)):
-    """Suggest planner_tags for all untagged mirroring rows (ai_tags IS NULL).
+    """Suggest planner_tags for untagged rows in mem_mrr_* and mem_ai_events.
 
-    Calls Haiku once per row with the ai_tag_suggestion prompt.
-    Returns: {suggestions: [...], total_untagged: N}
+    Returns: {suggestions: [...], total_untagged_mrr: N, total_untagged_ai: N}
     """
     _require_db()
     from memory.memory_tagging import MemoryTagging
     from memory.memory_mirroring import MemoryMirroring
+    from core.database import db
 
-    tagging = MemoryTagging()
+    tagging  = MemoryTagging()
     mirroring = MemoryMirroring()
 
-    total_untagged = sum(
+    total_untagged_mrr = sum(
         len(mirroring.get_untagged(project, stype, limit=1000))
         for stype in ("prompt", "commit", "item")
     )
 
+    # Count untagged AI events
+    total_untagged_ai = 0
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT COUNT(*) FROM mem_ai_events e
+                       WHERE e.client_id=1 AND e.project=%s
+                         AND NOT EXISTS (
+                             SELECT 1 FROM mem_ai_tags t WHERE t.event_id = e.id
+                         )""",
+                    (project,),
+                )
+                row = cur.fetchone()
+                total_untagged_ai = row[0] if row else 0
+    except Exception:
+        pass
+
     suggestions = await tagging.suggest_tags_for_untagged(project, batch_size=20)
-    return {"suggestions": suggestions, "total_untagged": total_untagged}
+    return {
+        "suggestions":        suggestions,
+        "total_untagged_mrr": total_untagged_mrr,
+        "total_untagged_ai":  total_untagged_ai,
+        # backward-compat alias
+        "total_untagged":     total_untagged_mrr + total_untagged_ai,
+    }
 
 
 @router.post("/suggestions/apply")
 async def apply_tag_suggestion(project: str = Query(...), body: SuggestionApplyBody = ...):
-    """Apply an AI tag suggestion: create/get tag, link to source, mark 'approved'."""
+    """Apply an AI tag suggestion.
+
+    For layer='mrr': links to mem_mrr_tags and marks ai_tags='approved'.
+    For layer='ai':  links to mem_ai_tags with ai_suggested=True.
+    """
     _require_db()
     from memory.memory_tagging import MemoryTagging
     tagging = MemoryTagging()
     ok = await tagging.apply_suggestion(
         project, body.source_type, body.source_id, body.tag_name,
         session_id=body.session_id, session_src_desc=body.session_src_desc,
+        layer=body.layer,
     )
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to apply suggestion")

@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Tag column schema correction: fixed mem_ai_tags_relations table reference (was mng_ai_tags_relations) in DDL; verified database migrations applied and testing persistence
-- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts, mem_ai_work_items, sessions
-- Tag storage architecture clarification: confirmed tags belong in mem_ai_tags_relations (linked via row id), not summary_tags array; tags sourced from MRR when applicable
-- Schema column cleanup: validating relevance of language and file_path columns in mem_ai_events; removing unnecessary metadata fields
-- Data persistence validation: tags disappearing on session switch root cause investigated; DDL updated and persistence testing underway
-- Backend startup race condition: AiCli appearing in Recent projects but unselectable due to dev environment initialization delay; retry logic in place for empty project list
+- Tag column schema correction: fixed mem_ai_tags_relations table reference in DDL; verified database migrations applied and testing persistence across session switches
+- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts and mem_ai_work_items with proper timestamp tracking
+- Unified event table validation: confirmed mem_ai_events consolidates pr_embeddings/pr_memory_events with event_type column; removed event_summary_tags array and deprecated metadata (language, file_path)
+- Backend startup race condition: AiCli appearing in Recent projects but unselectable on first load; retry logic in place for empty project list with session state persistence
+- Data persistence validation: investigated tags disappearing on session switch; root cause traced to cache invalidation triggering DB re-load; migration testing in progress
+- Schema documentation cleanup: updated project_state.json and rules.md to reflect current mem_ai_* table naming convention and removal of deprecated columns from mem_ai_events

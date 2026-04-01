@@ -39,6 +39,7 @@ from typing import Optional
 from core.config import settings
 from core.database import db
 from memory.memory_mirroring import MemoryMirroring
+from memory.memory_tagging import MemoryTagging
 
 log = logging.getLogger(__name__)
 
@@ -219,6 +220,7 @@ class MemoryEmbedding:
 
     def __init__(self) -> None:
         self._mirroring = MemoryMirroring()
+        self._tagging   = MemoryTagging()
 
     # ── Process functions ──────────────────────────────────────────────────
 
@@ -255,13 +257,19 @@ class MemoryEmbedding:
             return None
 
         embedding = await _embed(digest)
-        last_id = prompts[-1]["id"]
+        last_id   = prompts[-1]["id"]
+        prompt_ids = [p["id"] for p in prompts]
 
-        return _upsert_event(
+        event_id = _upsert_event(
             project, "prompt_batch", last_id, 0, "full", digest, embedding,
             session_id=session_id, llm_source=settings.haiku_model,
             summary=digest, importance=1,
         )
+        if event_id:
+            # Inherit tags from all N source prompts + backfill event_id on mem_mrr_tags
+            self._tagging.promote_source_tags_to_event(event_id, "prompt_batch", prompt_ids)
+            self._tagging.update_event_id_for_prompts(event_id, prompt_ids)
+        return event_id
 
     async def process_commit(
         self,
@@ -302,13 +310,17 @@ class MemoryEmbedding:
 
         embedding = await _embed(digest)
 
-        return _upsert_event(
+        event_id = _upsert_event(
             project, "commit", commit_hash_val, 0, "full", digest, embedding,
             session_id=session_id, llm_source=settings.haiku_model,
             summary=digest,
             metadata={"commit_hash": commit_hash_val, "phase": phase,
                       "feature": feature, "bug_ref": bug_ref},
         )
+        if event_id:
+            # Inherit tags from the commit's mem_mrr_tags row
+            self._tagging.promote_source_tags_to_event(event_id, "commit", [commit_hash_val])
+        return event_id
 
     async def process_item(
         self,
@@ -373,6 +385,10 @@ class MemoryEmbedding:
                 project, "item", item_id, 0, "full", digest, emb,
                 doc_type=item_type, summary=digest,
             )
+
+        # Promote item's mirroring tags to the first/only AI event chunk
+        if result_id:
+            self._tagging.promote_source_tags_to_event(result_id, "item", [item_id])
 
         # Relation extraction — lightweight Haiku call to detect tag relationships
         rel_prompt = await _load_system_role("relation_extraction") or (
@@ -440,11 +456,14 @@ class MemoryEmbedding:
             digest = text[:300]
 
         emb = await _embed(digest)
-        return _upsert_event(
+        event_id = _upsert_event(
             project, "message", message_id, 0, "full", digest, emb,
             summary=digest,
             metadata={"platform": platform, "channel": channel},
         )
+        if event_id:
+            self._tagging.promote_source_tags_to_event(event_id, "message", [message_id])
+        return event_id
 
     async def semantic_search(
         self,

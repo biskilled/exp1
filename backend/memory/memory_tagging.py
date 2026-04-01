@@ -155,6 +155,55 @@ _SQL_UPDATE_MRR_TAG_EVENT = """
        AND event_id IS NULL
 """
 
+# ── Promote mirroring-layer tags into mem_ai_tags (one SQL per source type) ────
+# Called after each mem_ai_events row is created so the event inherits all tags
+# already on its contributing mirroring rows.  ON CONFLICT DO NOTHING is idempotent.
+
+_SQL_COPY_PROMPT_TAGS_TO_EVENT = """
+    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
+    SELECT DISTINCT %s::uuid, mt.tag_id, FALSE
+    FROM mem_mrr_tags mt
+    WHERE mt.prompt_id = ANY(%s::uuid[])
+    ON CONFLICT (event_id, tag_id) DO NOTHING
+"""
+
+_SQL_COPY_COMMIT_TAGS_TO_EVENT = """
+    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
+    SELECT DISTINCT %s::uuid, mt.tag_id, FALSE
+    FROM mem_mrr_tags mt
+    WHERE mt.commit_id = %s
+    ON CONFLICT (event_id, tag_id) DO NOTHING
+"""
+
+_SQL_COPY_ITEM_TAGS_TO_EVENT = """
+    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
+    SELECT DISTINCT %s::uuid, mt.tag_id, FALSE
+    FROM mem_mrr_tags mt
+    WHERE mt.item_id = %s::uuid
+    ON CONFLICT (event_id, tag_id) DO NOTHING
+"""
+
+_SQL_COPY_MESSAGE_TAGS_TO_EVENT = """
+    INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
+    SELECT DISTINCT %s::uuid, mt.tag_id, FALSE
+    FROM mem_mrr_tags mt
+    WHERE mt.message_id = %s::uuid
+    ON CONFLICT (event_id, tag_id) DO NOTHING
+"""
+
+# AI suggestion: mem_ai_events with no mem_ai_tags rows yet (recent events only)
+_SQL_GET_UNTAGGED_EVENTS = """
+    SELECT e.id::text, e.event_type AS source_type,
+           LEFT(e.content, 500) AS content_preview, e.created_at
+    FROM mem_ai_events e
+    WHERE e.client_id=1 AND e.project=%s
+      AND NOT EXISTS (
+          SELECT 1 FROM mem_ai_tags t WHERE t.event_id = e.id
+      )
+    ORDER BY e.created_at ASC
+    LIMIT %s
+"""
+
 _SQL_INSERT_AI_TAG = """
     INSERT INTO mem_ai_tags (event_id, tag_id, ai_suggested)
     VALUES (%s::uuid, %s::uuid, %s)
@@ -381,6 +430,47 @@ class MemoryTagging:
                     cur.execute(_SQL_UPDATE_MRR_TAG_EVENT, (event_id, prompt_ids))
         except Exception as e:
             log.debug(f"MemoryTagging.update_event_id_for_prompts error: {e}")
+
+    def promote_source_tags_to_event(
+        self,
+        event_id: str,
+        source_type: str,
+        source_ids: list[str],
+    ) -> int:
+        """Copy distinct tags from mem_mrr_tags source rows into mem_ai_tags.
+
+        Called after process_prompt_batch/commit/item/messages() creates a
+        mem_ai_events row so the event inherits all tags already on its sources.
+
+        source_type: 'prompt_batch' | 'commit' | 'item' | 'message'
+        source_ids:  list of prompt UUIDs, or [commit_hash], or [item_uuid], etc.
+        Returns count of mem_ai_tags rows inserted.
+        """
+        if not db.is_available() or not source_ids:
+            return 0
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    if source_type == "prompt_batch":
+                        cur.execute(_SQL_COPY_PROMPT_TAGS_TO_EVENT, (event_id, source_ids))
+                    elif source_type == "commit":
+                        cur.execute(_SQL_COPY_COMMIT_TAGS_TO_EVENT, (event_id, source_ids[0]))
+                    elif source_type == "item":
+                        cur.execute(_SQL_COPY_ITEM_TAGS_TO_EVENT, (event_id, source_ids[0]))
+                    elif source_type == "message":
+                        cur.execute(_SQL_COPY_MESSAGE_TAGS_TO_EVENT, (event_id, source_ids[0]))
+                    else:
+                        return 0
+                    count = cur.rowcount
+            if count > 0:
+                log.debug(
+                    f"promote_source_tags_to_event: {count} tag(s) → event {event_id[:8]} "
+                    f"(source={source_type})"
+                )
+            return count
+        except Exception as e:
+            log.debug(f"MemoryTagging.promote_source_tags_to_event error: {e}")
+            return 0
 
     def link_to_event(self, event_id: str, tag_id: str, ai_suggested: bool = False) -> None:
         """Insert a row into mem_ai_tags linking a tag to an AI event.
@@ -614,24 +704,43 @@ class MemoryTagging:
     async def suggest_tags_for_untagged(
         self, project: str, batch_size: int = 20
     ) -> list[dict]:
-        """Suggest planner_tags for rows with ai_tags IS NULL.
+        """Suggest planner_tags for untagged rows in both mem_mrr_* and mem_ai_events.
 
         Steps:
-        1. Query untagged rows across prompts / commits / items
-        2. Load existing planner_tags for project
-        3. Call Haiku with ai_tag_suggestion prompt per row
-        4. Return list of suggestion dicts
+        1. Query untagged rows across mem_mrr_* tables (ai_tags IS NULL)
+        2. Query mem_ai_events with no mem_ai_tags entries (new AI events)
+        3. Load existing planner_tags for project
+        4. Call Haiku with ai_tag_suggestion prompt per row
+        5. Return list of suggestion dicts
 
         Returns: [{source_type, source_id, content_preview, suggested_tag, is_new, reasoning}]
+        source_type is 'prompt'|'commit'|'item' for mirroring rows,
+        or the event_type string (e.g. 'prompt_batch'|'commit'|'item') for AI events
+        (distinguished by an extra 'layer': 'mrr'|'ai' field).
         """
         if not db.is_available():
             return []
 
-        # Gather untagged rows
-        per_type = max(1, batch_size // 3)
+        # Gather untagged mirroring rows (ai_tags IS NULL)
+        per_type = max(1, batch_size // 4)
         untagged: list[dict] = []
         for stype in ("prompt", "commit", "item"):
             untagged.extend(_mirroring.get_untagged(project, stype, limit=per_type))
+
+        # Gather untagged mem_ai_events (no mem_ai_tags rows)
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_GET_UNTAGGED_EVENTS, (project, per_type))
+                    for row in cur.fetchall():
+                        untagged.append({
+                            "id":              row[0],
+                            "source_type":     row[1],  # event_type as source_type
+                            "content_preview": row[2] or "",
+                            "layer":           "ai",    # marks this as a mem_ai_events row
+                        })
+        except Exception as e:
+            log.debug(f"suggest_tags_for_untagged (events) error: {e}")
 
         if not untagged:
             return []
@@ -713,12 +822,20 @@ class MemoryTagging:
         tag_name: str,
         session_id: Optional[str] = None,
         session_src_desc: Optional[str] = None,
+        layer: str = "mrr",
     ) -> bool:
-        """Apply an AI suggestion: create/get tag, link to source, mark approved."""
+        """Apply an AI suggestion: create/get tag, link to source, mark approved.
+
+        layer='mrr'  → source_type is 'prompt'|'commit'|'item'|'message';
+                       links to mem_mrr_tags and sets ai_tags='approved'.
+        layer='ai'   → source_type is a mem_ai_events event_type string;
+                       source_id is a mem_ai_events UUID;
+                       links to mem_ai_tags (ai_suggested=True).
+        """
         if not db.is_available():
             return False
         try:
-            # Get the ai_suggestion category id
+            # Resolve ai_suggestion category
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(_SQL_GET_AI_SUGGESTION_CAT)
@@ -729,17 +846,27 @@ class MemoryTagging:
             if not tag_id:
                 return False
 
-            # Link to mirroring row
-            kwargs: dict = {"session_id": session_id, "session_src_desc": session_src_desc, "auto_tagged": True}
-            if source_type == "prompt":
-                kwargs["prompt_id"] = source_id
-            elif source_type == "commit":
-                kwargs["commit_id"] = source_id  # commit_hash string
-            elif source_type == "item":
-                kwargs["item_id"] = source_id
+            if layer == "ai":
+                # Link directly to the mem_ai_events row
+                self.link_to_event(source_id, tag_id, ai_suggested=True)
+            else:
+                # Link to the mirroring row and mark it approved
+                kwargs: dict = {
+                    "session_id": session_id,
+                    "session_src_desc": session_src_desc,
+                    "auto_tagged": True,
+                }
+                if source_type == "prompt":
+                    kwargs["prompt_id"] = source_id
+                elif source_type == "commit":
+                    kwargs["commit_id"] = source_id
+                elif source_type == "item":
+                    kwargs["item_id"] = source_id
+                elif source_type == "message":
+                    kwargs["message_id"] = source_id
+                self.link_to_mirroring(tag_id, **kwargs)
+                _mirroring.set_ai_tag_status(source_type, source_id, "approved")
 
-            self.link_to_mirroring(tag_id, **kwargs)
-            _mirroring.set_ai_tag_status(source_type, source_id, "approved")
             return True
         except Exception as e:
             log.debug(f"MemoryTagging.apply_suggestion error: {e}")
