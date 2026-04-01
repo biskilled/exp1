@@ -55,24 +55,17 @@ _SQL_GET_SYSTEM_ROLE = """
 
 _SQL_UPSERT_SNAPSHOT = """
     INSERT INTO mem_ai_features
-        (client_id, project, tag_id, work_item_type, requirements, action_items,
-         design, code_summary, prompt_ids, commit_hashes, file_paths, design_refs,
-         embedding, is_reusable, created_at, updated_at)
-    VALUES (1, %s, %s::uuid, %s, %s, %s, %s::jsonb, %s::jsonb,
-            %s, %s, %s, %s,
-            %s, %s, NOW(), NOW())
+        (client_id, project, tag_id, requirements, action_items,
+         design, code_summary, file_paths, embedding, created_at, updated_at)
+    VALUES (1, %s, %s::uuid, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW(), NOW())
     ON CONFLICT (client_id, project, tag_id)
     DO UPDATE SET
         requirements  = EXCLUDED.requirements,
         action_items  = EXCLUDED.action_items,
         design        = EXCLUDED.design,
         code_summary  = EXCLUDED.code_summary,
-        prompt_ids    = EXCLUDED.prompt_ids,
-        commit_hashes = EXCLUDED.commit_hashes,
         file_paths    = EXCLUDED.file_paths,
-        design_refs   = EXCLUDED.design_refs,
         embedding     = EXCLUDED.embedding,
-        is_reusable   = EXCLUDED.is_reusable,
         updated_at    = NOW()
     RETURNING id
 """
@@ -83,9 +76,9 @@ _SQL_MARK_EVENTS_PROCESSED = """
 """
 
 _SQL_GET_SNAPSHOT = """
-    SELECT fs.id, fs.tag_id, fs.work_item_type, fs.requirements, fs.action_items,
-           fs.design, fs.code_summary, fs.prompt_ids, fs.commit_hashes,
-           fs.file_paths, fs.is_reusable, fs.created_at, fs.updated_at,
+    SELECT fs.id, fs.tag_id, fs.requirements, fs.action_items,
+           fs.design, fs.code_summary, fs.file_paths,
+           fs.work_item_status, fs.created_at, fs.updated_at,
            t.name AS tag_name
     FROM mem_ai_features fs
     JOIN planner_tags t ON t.id = fs.tag_id
@@ -227,17 +220,13 @@ async def generate_snapshot(project: str, tag_name: str):
             cur.execute(
                 _SQL_UPSERT_SNAPSHOT,
                 (
-                    project, tag_id, "feature",
+                    project, tag_id,
                     parsed.get("requirements", ""),
                     parsed.get("action_items", ""),
                     json.dumps(design),
                     json.dumps(code_summary),
-                    None,           # prompt_ids
-                    None,           # commit_hashes
                     file_paths or None,
-                    None,           # design_refs
                     embedding,
-                    False,
                 ),
             )
             snap_row = cur.fetchone()
@@ -314,18 +303,15 @@ async def get_snapshot(project: str, tag_name: str):
     if not row:
         raise HTTPException(status_code=404, detail=f"No snapshot found for '{tag_name}'")
     return {
-        "id":             str(row[0]),
-        "tag_id":         str(row[1]),
-        "tag_name":       row[13],
-        "work_item_type": row[2],
-        "requirements":   row[3],
-        "action_items":   row[4],
-        "design":         row[5],
-        "code_summary":   row[6],
-        "prompt_ids":     [str(x) for x in (row[7] or [])],
-        "commit_hashes":  row[8] or [],
-        "file_paths":     row[9] or [],
-        "is_reusable":    row[10],
-        "created_at":     row[11].isoformat() if row[11] else None,
-        "updated_at":     row[12].isoformat() if row[12] else None,
+        "id":               str(row[0]),
+        "tag_id":           str(row[1]),
+        "tag_name":         row[10],
+        "requirements":     row[2],
+        "action_items":     row[3],
+        "design":           row[4],
+        "code_summary":     row[5],
+        "file_paths":       row[6] or [],
+        "work_item_status": row[7],
+        "created_at":       row[8].isoformat() if row[8] else None,
+        "updated_at":       row[9].isoformat() if row[9] else None,
     }

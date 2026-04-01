@@ -59,26 +59,25 @@ _EXT_LANG: dict[str, str] = {
 
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
-           (client_id, project, event_type, source_id, session_id, session_desc,
-            llm_source, chunk, chunk_type, content, embedding, cnt_prompts, summary,
+           (client_id, project, event_type, source_id, session_id,
+            llm_source, chunk, chunk_type, content, embedding, summary,
             doc_type, language, file_path, metadata, importance)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s,
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s,
                %s, %s, %s, %s::jsonb, %s)
        ON CONFLICT (client_id, project, event_type, source_id, chunk)
        DO UPDATE SET
            content      = EXCLUDED.content,
            embedding    = EXCLUDED.embedding,
            summary      = EXCLUDED.summary,
-           cnt_prompts  = EXCLUDED.cnt_prompts,
            llm_source   = EXCLUDED.llm_source,
            metadata     = EXCLUDED.metadata
     RETURNING id
 """
 
 _SQL_GET_COMMIT = """
-    SELECT id, commit_hash, commit_msg, summary, phase, feature, bug_ref, session_id
+    SELECT commit_hash, commit_msg, summary, phase, feature, bug_ref, session_id
     FROM mem_mrr_commits
-    WHERE client_id=1 AND project=%s AND id=%s
+    WHERE client_id=1 AND project=%s AND commit_hash=%s
 """
 
 _SQL_GET_ITEM = """
@@ -183,15 +182,16 @@ def _upsert_event(
     embedding: Optional[list[float]],
     *,
     session_id: Optional[str] = None,
-    session_desc: Optional[str] = None,
     llm_source: Optional[str] = None,
-    cnt_prompts: Optional[int] = None,
     summary: Optional[str] = None,
     doc_type: Optional[str] = None,
     language: Optional[str] = None,
     file_path: Optional[str] = None,
     metadata: dict | None = None,
     importance: int = 1,
+    # backward-compat: silently accept & ignore removed params
+    session_desc: Optional[str] = None,
+    cnt_prompts: Optional[int] = None,
 ) -> Optional[str]:
     """Insert or update a row in mem_ai_events. Returns UUID string."""
     if not db.is_available():
@@ -202,8 +202,8 @@ def _upsert_event(
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_UPSERT_EVENT,
-                    (project, source_type, source_id, session_id, session_desc,
-                     llm_source, chunk, chunk_type, content, vec_str, cnt_prompts, summary,
+                    (project, source_type, source_id, session_id,
+                     llm_source, chunk, chunk_type, content, vec_str, summary,
                      doc_type, language, file_path,
                      json.dumps(metadata or {}), importance),
                 )
@@ -259,33 +259,31 @@ class MemoryEmbedding:
 
         return _upsert_event(
             project, "prompt_batch", last_id, 0, "full", digest, embedding,
-            session_id=session_id, session_desc=session_desc,
-            llm_source=settings.haiku_model,
-            cnt_prompts=n, summary=digest, importance=1,
+            session_id=session_id, llm_source=settings.haiku_model,
+            summary=digest, importance=1,
         )
 
     async def process_commit(
         self,
         project: str,
-        commit_id: int,
-        session_desc: Optional[str] = None,
+        commit_hash: str,
     ) -> Optional[str]:
         """Digest and embed a commit from mem_mrr_commits.
 
-        Uses smart_chunk_diff for large diffs; single chunk otherwise.
-        Returns the first chunk's mem_ai_events UUID.
+        Uses commit_hash (the natural PK) as the identifier.
+        Returns the mem_ai_events UUID.
         """
         if not db.is_available():
             return None
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_COMMIT, (project, commit_id))
+                    cur.execute(_SQL_GET_COMMIT, (project, commit_hash))
                     row = cur.fetchone()
             if not row:
                 return None
 
-            row_id, commit_hash, commit_msg, summary, phase, feature, bug_ref, session_id = row
+            commit_hash_val, commit_msg, summary, phase, feature, bug_ref, session_id = row
         except Exception as e:
             log.debug(f"process_commit DB error: {e}")
             return None
@@ -294,7 +292,7 @@ class MemoryEmbedding:
             "Given a git commit message, produce a 1-2 sentence digest of what changed and why. "
             "Return plain text only."
         )
-        content = f"Commit: {commit_hash[:8]}\n{commit_msg}"
+        content = f"Commit: {commit_hash_val[:8]}\n{commit_msg}"
         if summary:
             content += f"\nSummary: {summary}"
 
@@ -303,14 +301,12 @@ class MemoryEmbedding:
             digest = commit_msg[:300]
 
         embedding = await _embed(digest)
-        source_id = str(commit_id)
 
         return _upsert_event(
-            project, "commit", source_id, 0, "full", digest, embedding,
-            session_id=session_id, session_desc=session_desc,
-            llm_source=settings.haiku_model,
+            project, "commit", commit_hash_val, 0, "full", digest, embedding,
+            session_id=session_id, llm_source=settings.haiku_model,
             summary=digest,
-            metadata={"commit_hash": commit_hash, "phase": phase,
+            metadata={"commit_hash": commit_hash_val, "phase": phase,
                       "feature": feature, "bug_ref": bug_ref},
         )
 

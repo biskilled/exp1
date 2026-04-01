@@ -412,9 +412,8 @@ CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
     category         TEXT          DEFAULT NULL,   -- 'stack'|'pattern'|'convention'|'constraint'|'client'
     valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     valid_until      TIMESTAMPTZ,
-    source_memory_id UUID,         -- historical reference (pr_memory_items dropped)
-    conflict_status  TEXT          DEFAULT NULL,   -- NULL|'ok'|'superseded'|'pending_review'
-    conflict_with    UUID          REFERENCES mem_ai_project_facts(id) ON DELETE SET NULL
+    source_memory_id UUID,         -- historical reference
+    conflict_status  TEXT          DEFAULT NULL    -- NULL|'ok'|'superseded'|'pending_review'
 );
 CREATE INDEX IF NOT EXISTS        idx_mem_ai_pf_cp      ON mem_ai_project_facts(client_id, project) WHERE valid_until IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_ai_pf_current ON mem_ai_project_facts(client_id, project, fact_key) WHERE valid_until IS NULL;
@@ -664,13 +663,11 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     event_type      TEXT         NOT NULL,  -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
     source_id       TEXT         NOT NULL,  -- UUID, commit hash, or session_id
     session_id      TEXT,
-    session_desc    TEXT,                   -- 'claude_cli'|'cursor'|'aicli'
     llm_source      VARCHAR(100) DEFAULT NULL, -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
     chunk           INT          NOT NULL DEFAULT 0,
     chunk_type      TEXT         NOT NULL DEFAULT 'full',  -- 'full'|'section'|'function'|'diff_file'
     content         TEXT         NOT NULL,
     embedding       VECTOR(1536),
-    cnt_prompts     INT,                    -- prompt_batch: how many prompts this covers
     summary         TEXT,                   -- Haiku digest or session summary bullets
     open_threads    TEXT         NOT NULL DEFAULT '',   -- session_summary only
     next_steps      TEXT         NOT NULL DEFAULT '',   -- session_summary only
@@ -735,14 +732,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_message_uniq ON mem_mrr_tags(
 
 -- ── AI tags on embedding events ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_tags (
-    id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id           UUID         NOT NULL REFERENCES mem_ai_events(id) ON DELETE CASCADE,
-    tag_id             UUID         NOT NULL REFERENCES planner_tags(id)  ON DELETE CASCADE,
-    ai_suggested       BOOLEAN      NOT NULL DEFAULT FALSE,  -- TRUE when tag was proposed by AI (not manually assigned)
-    event_updated      TIMESTAMPTZ,
-    work_item_id       UUID         REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
-    work_item_updated  TIMESTAMPTZ,
-    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id     UUID         NOT NULL REFERENCES mem_ai_events(id) ON DELETE CASCADE,
+    tag_id       UUID         NOT NULL REFERENCES planner_tags(id)  ON DELETE CASCADE,
+    ai_suggested BOOLEAN      NOT NULL DEFAULT FALSE,  -- TRUE when tag was proposed by AI (not manually assigned)
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(event_id, tag_id)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_tags_event ON mem_ai_tags(event_id);
@@ -775,25 +769,19 @@ END $$;
 
 -- ── 4-layer feature snapshots (mem_ai_features) ───────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_features (
-    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project         VARCHAR(255) NOT NULL,
-    tag_id          UUID         NOT NULL REFERENCES planner_tags(id),
-    work_item_type  TEXT         NOT NULL DEFAULT 'feature',
-    work_item_status TEXT,       -- lifecycle_status from mem_ai_work_items at snapshot time
-    requirements    TEXT,
-    action_items    TEXT,
-    design          JSONB,
-    code_summary    JSONB,
-    project_facts   JSONB,       -- key project facts at snapshot time (for context)
-    prompt_ids      UUID[],
-    commit_hashes   TEXT[],
-    file_paths      TEXT[],
-    design_refs     TEXT[],
-    embedding       VECTOR(1536),
-    is_reusable     BOOLEAN      NOT NULL DEFAULT FALSE,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id        INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project          VARCHAR(255) NOT NULL,
+    tag_id           UUID         NOT NULL REFERENCES planner_tags(id),
+    work_item_status TEXT,        -- lifecycle_status from mem_ai_work_items at snapshot time
+    requirements     TEXT,
+    action_items     TEXT,
+    design           JSONB,
+    code_summary     JSONB,
+    file_paths       TEXT[],      -- source files from code_summary.files
+    embedding        VECTOR(1536),
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project, tag_id)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_feat_cp  ON mem_ai_features(client_id, project);
@@ -953,6 +941,23 @@ ALTER TABLE mem_ai_project_facts    ADD COLUMN IF NOT EXISTS conflict_with UUID 
 ALTER TABLE mem_ai_tags             ADD COLUMN IF NOT EXISTS event_updated   TIMESTAMPTZ;
 ALTER TABLE mem_ai_tags             ADD COLUMN IF NOT EXISTS work_item_id    UUID REFERENCES mem_ai_work_items(id) ON DELETE SET NULL;
 ALTER TABLE mem_ai_tags             ADD COLUMN IF NOT EXISTS work_item_updated TIMESTAMPTZ;
+-- mem_ai_events: drop session_desc (never read) and cnt_prompts (never read)
+ALTER TABLE mem_ai_events           DROP COLUMN IF EXISTS session_desc;
+ALTER TABLE mem_ai_events           DROP COLUMN IF EXISTS cnt_prompts;
+-- mem_ai_tags: drop columns that were never written or read
+ALTER TABLE mem_ai_tags             DROP COLUMN IF EXISTS event_updated;
+ALTER TABLE mem_ai_tags             DROP COLUMN IF EXISTS work_item_id;
+ALTER TABLE mem_ai_tags             DROP COLUMN IF EXISTS work_item_updated;
+-- mem_ai_project_facts: drop embedding (never queried) and conflict_with (never read)
+ALTER TABLE mem_ai_project_facts    DROP COLUMN IF EXISTS embedding;
+ALTER TABLE mem_ai_project_facts    DROP COLUMN IF EXISTS conflict_with;
+-- mem_ai_features: drop columns that are always NULL or always a fixed value
+ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS work_item_type;
+ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS project_facts;
+ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS prompt_ids;
+ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS commit_hashes;
+ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS design_refs;
+ALTER TABLE mem_ai_features         DROP COLUMN IF EXISTS is_reusable;
 """
 
 

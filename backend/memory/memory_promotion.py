@@ -64,11 +64,9 @@ _SQL_GET_SYSTEM_ROLE = """
 
 _SQL_UPSERT_FEATURE = """
     INSERT INTO mem_ai_features
-        (client_id, project, tag_id, work_item_type, work_item_status, requirements,
-         action_items, design, code_summary, project_facts, prompt_ids, commit_hashes,
-         file_paths, design_refs, embedding, is_reusable, created_at, updated_at)
-    VALUES (1, %s, %s::uuid, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
-            %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        (client_id, project, tag_id, work_item_status, requirements,
+         action_items, design, code_summary, file_paths, embedding, created_at, updated_at)
+    VALUES (1, %s, %s::uuid, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW(), NOW())
     ON CONFLICT (client_id, project, tag_id)
     DO UPDATE SET
         work_item_status = EXCLUDED.work_item_status,
@@ -76,19 +74,14 @@ _SQL_UPSERT_FEATURE = """
         action_items     = EXCLUDED.action_items,
         design           = EXCLUDED.design,
         code_summary     = EXCLUDED.code_summary,
-        project_facts    = EXCLUDED.project_facts,
-        prompt_ids       = EXCLUDED.prompt_ids,
-        commit_hashes    = EXCLUDED.commit_hashes,
         file_paths       = EXCLUDED.file_paths,
-        design_refs      = EXCLUDED.design_refs,
         embedding        = EXCLUDED.embedding,
-        is_reusable      = EXCLUDED.is_reusable,
         updated_at       = NOW()
     RETURNING id
 """
 
 _SQL_GET_CURRENT_FACTS = """
-    SELECT id, fact_key, fact_value, embedding, created_at
+    SELECT id, fact_key, fact_value, created_at
     FROM mem_ai_project_facts
     WHERE client_id=1 AND project=%s AND valid_until IS NULL
     ORDER BY fact_key
@@ -105,7 +98,7 @@ _SQL_UPSERT_FACT = """
 
 _SQL_MARK_FACT_CONFLICT = """
     UPDATE mem_ai_project_facts
-    SET conflict_status=%s, conflict_with=%s
+    SET conflict_status=%s
     WHERE client_id=1 AND project=%s AND fact_key=%s AND valid_until IS NULL
 """
 
@@ -385,18 +378,13 @@ class MemoryPromotion:
                 cur.execute(
                     _SQL_UPSERT_FEATURE,
                     (
-                        project, tag_id, "feature", work_item_status,
+                        project, tag_id, work_item_status,
                         parsed.get("requirements", ""),
                         parsed.get("action_items", ""),
                         json.dumps(design),
                         json.dumps(code_summary),
-                        facts_snap,
-                        None,               # prompt_ids
-                        None,               # commit_hashes
                         file_paths or None,
-                        None,               # design_refs
                         embedding,
-                        False,
                     ),
                 )
                 snap_row = cur.fetchone()
@@ -479,7 +467,7 @@ class MemoryPromotion:
                     with conn.cursor() as cur:
                         cur.execute(
                             _SQL_MARK_FACT_CONFLICT,
-                            (action, old_id, project, fact_key),
+                            (action, project, fact_key),
                         )
                 return {
                     "action": action,
