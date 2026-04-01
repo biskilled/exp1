@@ -3,7 +3,6 @@ route_memory.py — Memory file generation and session summary endpoints.
 
 Session summaries are stored directly in mem_ai_events (event_type='session_summary')
 with the structured fields open_threads, next_steps, summary_tags.
-No separate pr_session_summaries table.
 
 Endpoints:
     GET  /memory/{project}/top-events           — top-N events by relevance_score

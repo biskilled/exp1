@@ -519,7 +519,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_messages_cp ON mem_mrr_messages(client_id, project);
 
--- ── Embedding / AI events table (merged from pr_embeddings + pr_memory_events) ──
+-- ── Embedding / AI events table ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_events (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -1245,12 +1245,15 @@ class _Database:
             (
                 "dev_naming_conventions",
                 "development",
-                "mng_ global tables, pr_ project tables, snake_case, no abbreviations.",
+                "mng_ global tables, mem_mrr_/mem_ai_ memory tables, pr_ workflow tables, snake_case.",
                 "## Naming Conventions\n\n"
                 "Database tables:\n"
-                "- Global / client-scoped tables: prefix `mng_` (e.g. mng_users, mng_agent_roles)\n"
-                "- Project-scoped tables: prefix `pr_` (e.g. pr_commits, pr_graph_runs)\n"
-                "- Never create new tables outside these two namespaces\n"
+                "- Global / client-scoped: prefix `mng_` (e.g. mng_users, mng_agent_roles)\n"
+                "- Memory mirror layer: prefix `mem_mrr_` (e.g. mem_mrr_prompts, mem_mrr_commits)\n"
+                "- Memory AI layer: prefix `mem_ai_` (e.g. mem_ai_events, mem_ai_work_items)\n"
+                "- Planner / tag hierarchy: prefix `planner_` (e.g. planner_tags)\n"
+                "- Graph workflow tables: prefix `pr_` (e.g. pr_graph_workflows, pr_graph_runs)\n"
+                "- Never create new tables outside these namespaces\n"
                 "- Always include `client_id INT` FK on every table\n"
                 "- Project-scoped tables also have a `project VARCHAR(100)` column\n\n"
                 "Python:\n"
@@ -1582,7 +1585,7 @@ def build_update(fields: dict) -> tuple[str, list]:
     Usage::
         set_clause, vals = build_update({"name": body.name, "color": body.color})
         cur.execute(
-            f"UPDATE mng_entity_categories SET {set_clause}, updated_at=NOW() WHERE id=%s",
+            f"UPDATE mng_tags_categories SET {set_clause}, updated_at=NOW() WHERE id=%s",
             vals + [row_id],
         )
     """

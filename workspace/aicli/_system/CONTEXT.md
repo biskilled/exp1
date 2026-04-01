@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-01 02:10 UTC — do not edit manually.
+> Auto-generated 2026-04-01 08:15 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 318
-- **Last active**: 2026-04-01T01:52:10Z
+- **Sessions**: 319
+- **Last active**: 2026-04-01T02:11:30Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -18,11 +18,11 @@
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: PostgreSQL 15+ with per-project schema
+- **storage_primary**: PostgreSQL 15+ per-project schema
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle
-- **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+- **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+- **llm_providers**: Claude (Haiku), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files
@@ -44,33 +44,36 @@
 - **build_tooling**: npm 8+ with webpack/Electron-builder; Vite dev server
 - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 - **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+- **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+- **deployment_cloud**: Railway (Dockerfile + railway.toml)
+- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ## In Progress
 
-- Tag column schema correction: fixed mem_ai_tags_relations table reference in DDL; database migrations applied and persistence validation across session switches
-- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from mem_ai_project_facts and mem_ai_work_items with timestamp tracking
-- Unified event table validation: confirmed mem_ai_events consolidates pr_embeddings/pr_memory_events; removed event_summary_tags array and deprecated metadata
+- Memory file generation automation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md auto-regenerated from unified mem_ai_* tables with timestamp tracking
+- Unified event table validation: mem_ai_events consolidates embeddings and memory events; removed event_summary_tags array and deprecated metadata columns
+- Data persistence validation: tags disappearing on session switch root cause traced to cache invalidation triggering DB re-load; fix ensures persistence across switches
+- Schema documentation cleanup: updated project_state.json and rules.md to reflect mem_ai_* unified table naming and removed deprecated columns
+- Tag column schema correction: mem_ai_tags_relations table DDL fixed; database migrations applied and persistence validated
 - Backend startup race condition: AiCli appearing in Recent projects but unselectable on first load; retry logic implemented for empty project list
-- Data persistence validation: investigated tags disappearing on session switch; root cause traced to cache invalidation triggering DB re-load
-- Schema documentation cleanup: updated project_state.json and rules.md to reflect mem_ai_* table naming and removed deprecated columns
 
 ## Key Decisions
 
-- Engine/workspace separation: aicli/ backend logic; workspace/ per-project content; _system/ project state
-- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; per-project schemas with mem_ai_* prefix tables
-- Electron UI with xterm.js + Monaco editor + Cytoscape.js; Vanilla JS frontend (no framework/bundler); Vite dev server
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients contain Users; login_as_first_level_hierarchy pattern
-- All LLM providers as independent adapters; Claude Haiku for synthesis; server holds API keys
-- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel
-- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md)
-- Unified event table mem_ai_events (id, project_id, session_id, session_desc, event_summary, event_type) consolidates embeddings and memory events
-- Tags stored in mem_ai_tags_relations (linked via row id), not summary_tags array; sourced from MRR when applicable
-- _ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load
-- Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
-- Manual relations managed via CLI/admin UI: depends_on, relates_to, blocks, implements
-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
-- Memory management pattern: load_once_on_access, update_on_save; triggered by memory endpoint and synthesis layer
-- Deployment: Railway (Dockerfile + railway.toml) for cloud; local dev via bash start_backend.sh + ui/npm run dev
+- Engine/workspace separation: aicli/ contains backend logic; workspace/ holds per-project content; _system/ stores project state
+- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) plus per-project schemas
+- Electron desktop UI: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vanilla JS frontend (no framework/bundler); Vite dev server
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients → Users; login_as_first_level_hierarchy pattern
+- All LLM providers as independent adapters (Claude/OpenAI/DeepSeek/Gemini/Grok); Claude Haiku for dual-layer memory synthesis; server holds API keys
+- Async DAG workflow executor via asyncio.gather with loop-back, max_iterations cap; Cytoscape.js visualization with 2-pane approval panel for negotiation
+- Memory synthesis: Claude Haiku dual-layer generates 5 files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) from mem_ai_project_facts and mem_ai_work_items
+- Tags stored in mem_ai_tags_relations (linked via row id), not in summary arrays; sourced from MRR when applicable; load once on project access, cache invalidation on switch
+- _ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load; backend_startup_race_condition mitigated
+- Data persistence: load_once_on_access, update_on_save pattern; tags disappearing on session switch traced to cache invalidation triggering DB re-load
+- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
+- Manual relations managed via CLI/admin UI: depends_on, relates_to, blocks, implements; smart chunking by per-class/function (Python/JS/TS), per-section (MD), per-file (diff)
+- Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; routers/, core/, data/ (dl_ prefix), agents/tools/ (tool_ prefix)
+- CLI: Python 3.12 + prompt_toolkit + rich; memory endpoint template variable scoping fixed at line 1120
+- Deployment: Railway (Dockerfile + railway.toml) for cloud; local dev via bash start_backend.sh + ui/npm run dev; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ---
 

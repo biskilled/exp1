@@ -6,7 +6,7 @@ This is Layer 2 (Working Memory) in the 5-layer memory architecture:
   - messages[] is the raw role/content list forwarded to the LLM on every turn
   - metadata holds session tags (phase, feature, bug_ref)
 
-Not an analytics store — use pr_prompts / pr_events for history, search, and synthesis.
+Not an analytics store — use mem_mrr_prompts for history, search, and synthesis.
 """
 
 import json

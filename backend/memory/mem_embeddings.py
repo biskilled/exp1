@@ -85,8 +85,8 @@ _SQL_GET_NODE_OUTPUTS = (
     "SELECT node_id, node_name, output FROM pr_graph_node_results WHERE run_id=%s AND status='done'"
 )
 
-# Propagate entity value tags from pr_event_tags into mem_ai_events.metadata.
-# The bridge is ev.source_id == e.source_id (timestamp for history, commit_hash for commit).
+# Propagate tag links from mem_mrr_tags into mem_ai_events.metadata.
+# Bridge: mem_mrr_prompts.source_id == mem_ai_events.source_id.
 # Uses || merge so existing metadata keys are preserved.
 _SQL_BACKFILL_ENTITY_TAGS = """
     UPDATE mem_ai_events e
@@ -651,10 +651,10 @@ async def ingest_document(
 
 
 async def backfill_entity_tags(project: str) -> int:
-    """Propagate entity value tags from pr_event_tags into mem_ai_events.metadata.
+    """Propagate entity tags from mem_mrr_tags into mem_ai_events.metadata.
 
     Runs after any tagging operation so embeddings become searchable by entity.
-    Finds all embeddings whose source_id matches a tagged pr_events.source_id and
+    Finds all embeddings whose source_id matches a tagged prompt source_id and
     merges an 'entity_tags' list into the metadata JSONB:
         {"entity_tags": [{"id": 5, "name": "auth", "category": "feature"}, ...]}
 

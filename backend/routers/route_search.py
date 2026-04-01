@@ -100,7 +100,7 @@ async def get_tagged_context(
     """Return prompts filtered by phase, feature, or tag.
 
     Used by MCP get_tagged_context tool to retrieve structured context for a feature/phase.
-    Queries mem_mrr_prompts (replaces old pr_events) and mem_mrr_tags (replaces pr_event_tags).
+    Queries mem_mrr_prompts and mem_mrr_tags.
     """
     if not db.is_available():
         raise HTTPException(503, "PostgreSQL required")

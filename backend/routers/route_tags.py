@@ -4,8 +4,6 @@ route_tags.py — Unified tag management router.
 Manages the per-project tag registry (planner_tags), global categories (mng_tags_categories),
 source-tag links (mem_mrr_tags), and session context persistence.
 
-Replaces mng_entity_categories + mng_entity_values with a cleaner hierarchy.
-
 Endpoints:
     Tags:
         GET    /tags                  list tags as tree (children[] nested)

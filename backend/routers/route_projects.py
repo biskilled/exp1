@@ -163,11 +163,6 @@ _SQL_GET_ACTIVE_ENTITY_VALUES_FOR_AUTOTAG = (
        ORDER BY tc.name, t.name"""
 )
 
-# Removed: _SQL_GET_UNTAGGED_EVENTS (queried pr_events — dropped)
-# Removed: _SQL_INSERT_EVENT_TAG (inserted into pr_event_tags — dropped)
-# Removed: _SQL_GET_NEW_EVENTS_FOR_RELATIONSHIPS (queried pr_events — dropped)
-# Removed: _SQL_INSERT_EVENT_LINK (inserted into pr_event_links — dropped)
-# Tagging now uses mem_mrr_tags. Relationship detection and auto-tagging are no-ops.
 
 _SQL_GET_CATEGORIES_FOR_PROJECT = (
     "SELECT id, name FROM mng_tags_categories WHERE client_id=1 ORDER BY name"
@@ -2115,97 +2110,6 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
         pass
 
 
-async def _REMOVED_sync_and_autotag_LEGACY(project: str, since: str | None = None) -> None:
-    """Legacy code preserved for reference — DO NOT CALL — uses dropped tables.
-
-    TODO: remove this after confirming _sync_and_autotag stub is sufficient.
-    """
-    _log = logging.getLogger(__name__)
-    try:
-        pass  # was: _do_sync_events(project)
-    except Exception as e:
-        _log.debug(f"_sync_and_autotag sync failed: {e}")
-        return
-
-    try:
-        from data.dl_api_keys import get_key
-        key = get_key("claude") or get_key("anthropic")
-        if not key:
-            return
-
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL_GET_ACTIVE_ENTITY_VALUES_FOR_AUTOTAG, (project,))
-                all_values = cur.fetchall()
-                if not all_values:
-                    return
-
-                # Only tag events that are new (after since) and have no tags yet
-                since_filter = "AND e.created_at > %s::timestamptz" if since else ""
-                params: list = [project]
-                if since:
-                    params.append(since)
-                sql_untagged = _SQL_GET_UNTAGGED_EVENTS.format(since_filter=since_filter)
-                cur.execute(sql_untagged, params)
-                untagged = cur.fetchall()
-
-        if not untagged:
-            return
-
-        values_list = "\n".join(f"  {vid}: {cat}/{name}" for vid, cat, name in all_values)
-        events_list = "\n".join(f"  {eid}: [{etype}] {title[:80]}" for eid, etype, title in untagged)
-
-        prompt = (
-            "You are tagging project events with entity values.\n\n"
-            f"Entity values (id: category/name):\n{values_list}\n\n"
-            f"Events to tag (id: [type] title):\n{events_list}\n\n"
-            "Return ONLY a JSON object mapping event_id (string) to an array of matching "
-            "value_ids (integers). Only include confident, specific matches.\n"
-            "Example: {\"123\": [2, 5], \"124\": [5]}"
-        )
-
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=key)
-        response = await client.messages.create(
-            model=settings.haiku_model,
-            max_tokens=600,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        content = (response.content[0].text if response.content else "").strip()
-        if "```" in content:
-            for part in content.split("```"):
-                s = part.strip()
-                if s.startswith("json"):
-                    s = s[4:].strip()
-                if s.startswith("{"):
-                    content = s
-                    break
-
-        suggestions: dict = json.loads(content)
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                for event_id_str, value_ids in suggestions.items():
-                    try:
-                        eid = int(event_id_str)
-                    except (ValueError, TypeError):
-                        continue
-                    for vid in (value_ids or []):
-                        try:
-                            cur.execute(_SQL_INSERT_EVENT_TAG, (eid, int(vid)))
-                        except Exception:
-                            pass
-
-    except Exception as e:
-        logging.getLogger(__name__).debug(f"_sync_and_autotag auto-tag failed: {e}")
-
-    # Propagate all entity tags into embedding metadata so search_memory filters work
-    try:
-        from memory.mem_embeddings import backfill_entity_tags as _bfe
-        await _bfe(project)
-    except Exception:
-        pass
-
-
 async def _detect_relationships(project: str, since: str | None = None) -> None:
     """No-op stub — pr_events + pr_event_links removed. Commit→prompt linking via mem_mrr_commits.prompt_id.
 
@@ -2214,114 +2118,13 @@ async def _detect_relationships(project: str, since: str | None = None) -> None:
     pass
 
 
-async def _REMOVED_detect_relationships_LEGACY(project: str, since: str | None = None) -> None:
-    """Legacy code preserved for reference — DO NOT CALL — uses dropped tables."""
-    _log = logging.getLogger(__name__)
-    if not db.is_available():
-        return
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                if since:
-                    where_clause = "AND created_at > %s::timestamptz"
-                    params: list = [project, since]
-                else:
-                    where_clause = ""
-                    params = [project]
-                # was: sql_events = _SQL_GET_NEW_EVENTS_FOR_RELATIONSHIPS.format(...)
-                new_events = []  # placeholder
-
-                if not new_events:
-                    return
-
-                rows_by_type: dict[str, list] = {}
-                for r in new_events:
-                    eid, etype, src_id, title, content, meta = r
-                    rows_by_type.setdefault(etype, []).append((eid, src_id, title, content, meta))
-
-                # Keyword: commits with fix/close/resolve → link to bug events
-                import re as _re
-                bug_events = {
-                    r[2].lower(): r[0]  # title.lower() → id
-                    for r in new_events if r[1] == "prompt"  # look for bug-tagged prompts
-                }
-                for eid, src_id, title, content, meta in rows_by_type.get("commit", []):
-                    msg = (title or content or "").lower()
-                    link_type = None
-                    if _re.search(r'\b(fix|fixe[sd]|close[sd]?|resolve[sd]?)\b', msg):
-                        link_type = "fixes"
-                    elif _re.search(r'\bimplements?\b', msg):
-                        link_type = "implements"
-                    if not link_type:
-                        continue
-                    # Try to link to a feature/bug event by keyword match
-                    for bug_title, bug_id in bug_events.items():
-                        if eid != bug_id and any(
-                            word in msg for word in bug_title.split()[:3] if len(word) > 4
-                        ):
-                            try:
-                                cur.execute(_SQL_INSERT_EVENT_LINK, (eid, bug_id, link_type))
-                            except Exception:
-                                pass
-
-        # Strategy 2: LLM-based relationship suggestion (only if Anthropic key available)
-        from data.dl_api_keys import get_key
-        key = get_key("claude") or get_key("anthropic")
-        if not key or len(new_events) < 2:
-            return
-
-        events_summary = "\n".join(
-            f"  {r[0]}: [{r[1]}] {r[3][:80]}" for r in new_events[:20]
-        )
-        prompt = (
-            "Analyze these project events and identify meaningful relationships between them.\n\n"
-            f"Events (id: [type] title):\n{events_summary}\n\n"
-            "Return ONLY a JSON array of relationships. Each item: "
-            "{\"from\": id, \"to\": id, \"type\": link_type}\n"
-            f"link_type must be one of: implements, fixes, causes, relates_to, references, closes\n"
-            "Only include high-confidence relationships. Return [] if none are clear.\n"
-            "Example: [{\"from\": 10, \"to\": 5, \"type\": \"fixes\"}]"
-        )
-
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=key)
-        response = await client.messages.create(
-            model=settings.haiku_model,
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = (response.content[0].text if response.content else "").strip()
-        import re as _re2
-        match = _re2.search(r'\[.*?\]', text, _re2.DOTALL)
-        if not match:
-            return
-        relationships: list = json.loads(match.group())
-
-        if not relationships:
-            return
-
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                for rel in relationships:
-                    try:
-                        cur.execute(
-                            _SQL_INSERT_EVENT_LINK,
-                            (int(rel["from"]), int(rel["to"]), rel["type"]),
-                        )
-                    except Exception:
-                        pass
-
-    except Exception as e:
-        _log.debug(f"_detect_relationships failed: {e}")
-
-
 async def _auto_create_entities(project: str, since: str | None = None) -> int:
-    """Auto-create new entity values from untagged events. Silent on error.
+    """Auto-create new planner tags from untagged prompts. Silent on error.
 
-    Scans recent untagged event titles with Haiku, identifies NEW features/bugs/tasks
-    not yet in mng_entity_values, and creates them (confidence >= 0.85 only).
+    Scans recent untagged prompts with Haiku, identifies NEW features/bugs/tasks
+    not yet in planner_tags, and creates them (confidence >= 0.85 only).
     Called from /memory as a background fire-and-forget task.
-    Returns count of newly created entity values.
+    Returns count of newly created tags.
     """
     _log = logging.getLogger(__name__)
     if not db.is_available():
@@ -2347,13 +2150,18 @@ async def _auto_create_entities(project: str, since: str | None = None) -> int:
                 existing = cur.fetchall()  # (id, category, name)
                 existing_names = {name.lower() for _, _, name in existing}
 
-                # Get untagged events since last /memory run
-                since_filter = "AND e.created_at > %s::timestamptz" if since else ""
+                # Get untagged prompts since last /memory run
+                since_sql = "AND created_at > %s::timestamptz" if since else ""
                 params: list = [project]
                 if since:
                     params.append(since)
-                sql_untagged = _SQL_GET_UNTAGGED_EVENTS.format(since_filter=since_filter)
-                cur.execute(sql_untagged, params)
+                cur.execute(
+                    "SELECT id::text, 'prompt', LEFT(prompt, 120) "
+                    "FROM mem_mrr_prompts "
+                    f"WHERE client_id=1 AND project=%s AND ai_tags IS NULL {since_sql} "
+                    "ORDER BY created_at DESC LIMIT 30",
+                    params,
+                )
                 untagged = cur.fetchall()  # (id, event_type, title)
 
         if not untagged:

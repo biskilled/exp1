@@ -28,8 +28,6 @@ from memory.mem_sessions import SessionStore
 
 # ── SQL ─────────────────────────────────────────────────────────────────────────
 
-# Removed: _SQL_INSERT_PROMPT_EVENT wrote to pr_events (dropped in memory infra migration).
-# Prompt logging now uses _SQL_INSERT_INTERACTION (mem_mrr_prompts) only.
 
 _SQL_INSERT_INTERACTION = """
     INSERT INTO mem_mrr_prompts
@@ -115,7 +113,7 @@ def _append_history(
     user_email: Optional[str] = None, ts: Optional[str] = None,
     tags: Optional[dict] = None,
 ) -> str:
-    """Write a completed exchange to the DB (mem_mrr_prompts + pr_events).
+    """Write a completed exchange to the DB (mem_mrr_prompts).
 
     DB is the primary store. JSONL files are no longer written here.
     Returns the ts string so callers can correlate the event.

@@ -3,16 +3,13 @@
 Manages the tag taxonomy and source-tag links connecting every prompt, commit,
 document, and message to named features, bugs, and tasks.
 
-After the memory-infra migration the underlying tables are:
-  mng_tags_categories  — global category vocabulary (replaces mng_entity_categories)
-  planner_tags              — per-project tag registry, UUID PK (replaces mng_entity_values)
-  planner_tags_meta          — tag description / due_date / priority metadata
-  mem_mrr_tags       — unified junction: tag ↔ prompt | commit | item | message
-  mem_mrr_prompts           — prompt log (was pr_interactions)
-  mem_mrr_commits           — commit log
-
-Tables removed (pr_events, pr_event_tags, pr_event_links, mng_entity_categories,
-mng_entity_values, mng_entity_value_links, pr_prompt_tags) are all dropped.
+Underlying tables:
+  mng_tags_categories  — global category vocabulary
+  planner_tags         — per-project tag registry, UUID PK
+  planner_tags_meta    — tag description / due_date / priority metadata
+  mem_mrr_tags         — unified junction: tag ↔ prompt | commit | item | message
+  mem_mrr_prompts      — prompt log
+  mem_mrr_commits      — commit log
 
 Endpoints:
     Categories:

@@ -1,8 +1,7 @@
 """
 memory_embedding.py — Layer 3 of the three-layer memory architecture.
 
-Embeds content via OpenAI text-embedding-3-small (1536 dims) and stores in
-mem_ai_events (merged from the former pr_embeddings + pr_memory_events tables).
+Embeds content via OpenAI text-embedding-3-small (1536 dims) and stores in mem_ai_events.
 Smart chunking splits large content into semantic units.
 
 Public API::

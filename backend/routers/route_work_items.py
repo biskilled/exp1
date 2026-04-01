@@ -170,7 +170,7 @@ _SQL_INSERT_PIPELINE_INTERACTION = (
        VALUES (%s, 1, %s, 'pipeline', 'pipeline', %s, %s, %s::uuid, NOW())"""
 )
 
-# pr_prompt_tags removed — work_item linkage is via mem_mrr_prompts.work_item_id
+# Work item linkage to prompts is via mem_mrr_prompts.work_item_id
 _SQL_INSERT_PIPELINE_INTERACTION_TAG = None  # unused after migration
 
 _SQL_PIPELINE_TAGGED_INTERACTIONS = (
@@ -534,7 +534,7 @@ async def get_work_item_interactions(
     return {"interactions": rows, "work_item_id": item_id, "project": p}
 
 
-# ── Migrate from mng_entity_values ────────────────────────────────────────────────
+# ── Migrate work items ────────────────────────────────────────────────────────────
 
 @router.post("/migrate-from-tags")
 async def migrate_from_tags(project: str | None = Query(None)):

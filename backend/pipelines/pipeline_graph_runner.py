@@ -56,15 +56,6 @@ _SQL_UPDATE_NODE_RESULT_WHERE = (
     "UPDATE pr_graph_node_results SET {set_clause}, finished_at=NOW() WHERE id=%s"
 )
 
-_SQL_GET_ACTIVE_FEATURES = """
-    SELECT ev.id, ev.name, ev.description, ev.lifecycle_status
-    FROM   mng_entity_values ev
-    JOIN   mng_entity_categories ec ON ec.id = ev.category_id
-    WHERE  ec.client_id = 1
-      AND  ec.name = 'feature'
-      AND  ev.status = 'active'
-    ORDER  BY ev.name
-"""
 
 _SQL_UPSERT_SESSION_TAG = """
     INSERT INTO mng_session_tags (client_id, session_id, phase, feature, bug_ref)
