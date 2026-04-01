@@ -622,7 +622,7 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
                         cur.execute(
                             "INSERT INTO planner_tags (client_id, project, name, status) "
                             "VALUES (1, %s, %s, 'active') "
-                            "ON CONFLICT (client_id, project, name) DO NOTHING RETURNING id",
+                            "ON CONFLICT (client_id, project, name, category_id) DO NOTHING RETURNING id",
                             (project, tag_name),
                         )
                         ins = cur.fetchone()
@@ -636,12 +636,19 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
                             tag_id = ins[0]
                         else:
                             continue
-                    # Insert source-tag link
+                    # Insert source-tag link into mem_tags_relations
+                    # Look up source_id for this prompt (external reference key)
                     cur.execute(
-                        """INSERT INTO mem_mrr_tags (tag_id, prompt_id, auto_tagged)
-                           VALUES (%s::uuid, %s::uuid, TRUE)
-                           ON CONFLICT DO NOTHING""",
-                        (tag_id, prompt_id),
+                        "SELECT source_id FROM mem_mrr_prompts WHERE id = %s::uuid LIMIT 1",
+                        (prompt_id,),
+                    )
+                    src_row = cur.fetchone()
+                    src_key = src_row[0] if src_row and src_row[0] else str(prompt_id)
+                    cur.execute(
+                        """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
+                           VALUES (%s, 'mirror', 'prompt', %s)
+                           ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
+                        (str(tag_id), src_key),
                     )
     except Exception as e:
         log.debug(f"_tag_prompt_from_context error: {e}")

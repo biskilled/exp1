@@ -539,8 +539,8 @@ async def get_tag_sources(tag_id: str, project: str = Query(...)):
         with conn.cursor() as cur:
             if prompt_ids:
                 cur.execute(
-                    "SELECT id::text, prompt, session_id, created_at "
-                    "FROM mem_mrr_prompts WHERE id::text = ANY(%s)",
+                    "SELECT source_id, prompt, session_id, created_at "
+                    "FROM mem_mrr_prompts WHERE source_id = ANY(%s)",
                     (prompt_ids,),
                 )
                 for pr in cur.fetchall():

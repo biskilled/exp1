@@ -93,15 +93,15 @@ _SQL_BACKFILL_ENTITY_TAGS = """
     SET metadata = e.metadata || jsonb_build_object('entity_tags',
         (SELECT jsonb_agg(jsonb_build_object('id', t.id::text, 'name', t.name, 'category', tc.name))
          FROM mem_mrr_prompts pr
-         JOIN mem_mrr_tags st ON st.prompt_id = pr.id
-         JOIN planner_tags t  ON t.id  = st.tag_id AND t.client_id=1
+         JOIN mem_tags_relations r ON r.related_id = pr.source_id AND r.related_type = 'prompt'
+         JOIN planner_tags t  ON t.id  = r.tag_id AND t.client_id=1
          JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
          WHERE pr.client_id=1 AND pr.project=%s AND pr.source_id = e.source_id)
     )
     WHERE e.client_id=1 AND e.project=%s
       AND EXISTS (
           SELECT 1 FROM mem_mrr_prompts pr
-          JOIN mem_mrr_tags st ON st.prompt_id = pr.id
+          JOIN mem_tags_relations r ON r.related_id = pr.source_id AND r.related_type = 'prompt'
           WHERE pr.client_id=1 AND pr.project=%s AND pr.source_id = e.source_id
       )
 """

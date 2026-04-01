@@ -22,17 +22,16 @@ from core.database import db
 _SQL_GET_ENTITY_SUMMARY = (
     """SELECT tc.name AS category, tc.icon,
               t.id::text, t.name,
-              COALESCE(tm.description, '') AS description,
-              t.status, tm.due_date, t.parent_id::text,
-              COUNT(DISTINCT st.id)                                          AS event_count,
-              COUNT(DISTINCT CASE WHEN st.commit_id IS NOT NULL THEN st.id END) AS commit_count
+              COALESCE(t.short_desc, '') AS description,
+              t.status, t.due_date, t.parent_id::text,
+              COUNT(DISTINCT r.id)                                                     AS event_count,
+              COUNT(DISTINCT CASE WHEN r.related_type = 'commit' THEN r.id END)       AS commit_count
        FROM mng_tags_categories tc
        JOIN planner_tags t ON t.category_id = tc.id AND t.client_id=1 AND t.project=%s
-       LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
-       LEFT JOIN mem_mrr_tags st ON st.tag_id = t.id
+       LEFT JOIN mem_tags_relations r ON r.tag_id = t.id AND r.related_layer = 'mirror'
        WHERE tc.client_id=1 AND t.status != 'archived'
-       GROUP BY tc.name, tc.icon, t.id, t.name, tm.description, t.status, tm.due_date, t.parent_id
-       ORDER BY tc.name, t.status, COUNT(DISTINCT st.id) DESC"""
+       GROUP BY tc.name, tc.icon, t.id, t.name, t.short_desc, t.status, t.due_date, t.parent_id
+       ORDER BY tc.name, t.status, COUNT(DISTINCT r.id) DESC"""
 )
 
 _SQL_GET_SESSIONS_UNSUMMARIZED = (
@@ -77,13 +76,13 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
        WHERE me.client_id=1 AND me.project=%s
          AND me.event_type='prompt_batch'
          AND EXISTS (
-             SELECT 1 FROM mem_mrr_tags st
-             JOIN mem_mrr_prompts p ON p.id = st.prompt_id
-             WHERE st.tag_id = (
-                 SELECT tag_id FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1
-             )
-             AND p.session_id = me.session_id
-             AND p.client_id=1
+             SELECT 1 FROM mem_tags_relations r
+             JOIN mem_mrr_prompts p ON p.source_id = r.related_id
+             JOIN mem_tags_relations rw ON rw.related_type = 'work_item' AND rw.related_id = %s
+             WHERE r.tag_id = rw.tag_id
+               AND r.related_type = 'prompt' AND r.related_layer = 'mirror'
+               AND p.session_id = me.session_id
+               AND p.client_id=1
          )
        ORDER BY me.created_at
        LIMIT 10"""

@@ -69,8 +69,8 @@ _SQL_LIST_SESSION_SUMMARIES = """
            ) AS tags,
            e.created_at
     FROM mem_ai_events e
-    LEFT JOIN mem_ai_tags mat ON mat.event_id = e.id
-    LEFT JOIN planner_tags  pt  ON pt.id = mat.tag_id
+    LEFT JOIN mem_tags_relations r ON r.related_id = e.id::TEXT AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
+    LEFT JOIN planner_tags  pt  ON pt.id = r.tag_id
     WHERE e.client_id=1 AND e.project=%s AND e.event_type='session_summary'
     GROUP BY e.id, e.session_id, e.summary, e.open_threads, e.next_steps, e.created_at
     ORDER BY e.created_at DESC

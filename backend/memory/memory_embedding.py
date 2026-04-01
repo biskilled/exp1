@@ -496,7 +496,7 @@ class MemoryEmbedding:
 
         if tag_id:
             conditions.append(
-                "id IN (SELECT event_id FROM mem_ai_tags WHERE tag_id=%s::uuid)"
+                "id::TEXT IN (SELECT related_id FROM mem_tags_relations WHERE tag_id=%s::uuid AND related_type='memory_event' AND related_layer='ai')"
             )
             params.append(tag_id)
 

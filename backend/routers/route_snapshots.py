@@ -4,9 +4,9 @@ route_snapshots.py — 4-layer feature snapshot generation endpoint.
 Generates structured knowledge artifacts from memory events:
   1. Load all mem_ai_events for a tag
   2. Call Sonnet with memory_feature_snapshot prompt from mng_system_roles
-  3. Parse JSON → upsert mem_ai_features
+  3. Parse JSON → UPDATE planner_tags inline fields (summary, action_items, design, code_summary, embedding)
   4. Extract project_facts → upsert mem_ai_project_facts
-  5. Embed requirements+action_items → mem_ai_features.embedding
+  5. Embed requirements+action_items → planner_tags.embedding
   6. Mark contributing mem_ai_events.processed_at = NOW()
 
 Endpoints:
@@ -41,8 +41,9 @@ _SQL_GET_TAG_ID = """
 _SQL_GET_MEMORY_EVENTS = """
     SELECT me.id, me.event_type, me.source_id, me.session_id, me.content, me.importance
     FROM mem_ai_events me
-    JOIN mem_ai_tags mt ON mt.event_id = me.id
-    WHERE mt.tag_id = %s::uuid
+    JOIN mem_tags_relations r ON r.related_id = me.id::TEXT
+        AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
+    WHERE r.tag_id = %s::uuid
       AND me.client_id = 1 AND me.project = %s
     ORDER BY me.created_at
 """
@@ -54,19 +55,14 @@ _SQL_GET_SYSTEM_ROLE = """
 """
 
 _SQL_UPSERT_SNAPSHOT = """
-    INSERT INTO mem_ai_features
-        (client_id, project, tag_id, requirements, action_items,
-         design, code_summary, file_paths, embedding, created_at, updated_at)
-    VALUES (1, %s, %s::uuid, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW(), NOW())
-    ON CONFLICT (client_id, project, tag_id)
-    DO UPDATE SET
-        requirements  = EXCLUDED.requirements,
-        action_items  = EXCLUDED.action_items,
-        design        = EXCLUDED.design,
-        code_summary  = EXCLUDED.code_summary,
-        file_paths    = EXCLUDED.file_paths,
-        embedding     = EXCLUDED.embedding,
-        updated_at    = NOW()
+    UPDATE planner_tags SET
+        summary      = %s,
+        action_items = %s,
+        design       = %s::jsonb,
+        code_summary = %s::jsonb,
+        embedding    = %s,
+        updated_at   = NOW()
+    WHERE id = %s::uuid AND project = %s
     RETURNING id
 """
 
@@ -76,13 +72,12 @@ _SQL_MARK_EVENTS_PROCESSED = """
 """
 
 _SQL_GET_SNAPSHOT = """
-    SELECT fs.id, fs.tag_id, fs.requirements, fs.action_items,
-           fs.design, fs.code_summary, fs.file_paths,
-           fs.work_item_status, fs.created_at, fs.updated_at,
+    SELECT t.id, t.id, t.requirements, t.action_items,
+           t.design, t.code_summary, NULL,
+           NULL, t.updated_at, t.updated_at,
            t.name AS tag_name
-    FROM mem_ai_features fs
-    JOIN planner_tags t ON t.id = fs.tag_id
-    WHERE fs.client_id = 1 AND fs.project = %s AND t.name = %s
+    FROM planner_tags t
+    WHERE t.client_id = 1 AND t.project = %s AND t.name = %s
     LIMIT 1
 """
 
@@ -220,17 +215,17 @@ async def generate_snapshot(project: str, tag_name: str):
             cur.execute(
                 _SQL_UPSERT_SNAPSHOT,
                 (
-                    project, tag_id,
                     parsed.get("requirements", ""),
                     parsed.get("action_items", ""),
                     json.dumps(design),
                     json.dumps(code_summary),
-                    file_paths or None,
                     embedding,
+                    tag_id,
+                    project,
                 ),
             )
             snap_row = cur.fetchone()
-            snap_id = str(snap_row[0]) if snap_row else None
+            snap_id = tag_id  # no separate snapshot row; tag_id is the canonical id
 
             if event_ids:
                 cur.execute(_SQL_MARK_EVENTS_PROCESSED, (event_ids,))

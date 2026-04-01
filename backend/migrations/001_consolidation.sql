@@ -110,9 +110,19 @@ CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_review ON mem_tags_relations(related
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'mem_mrr_tags') THEN
+    -- Prompts: use source_id (external timestamp key) where available, else UUID
     INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
-    SELECT tag_id, 'mirror', 'prompt', prompt_id::TEXT, created_at
-    FROM mem_mrr_tags WHERE prompt_id IS NOT NULL
+    SELECT t.tag_id, 'mirror', 'prompt', p.source_id, t.created_at
+    FROM mem_mrr_tags t
+    JOIN mem_mrr_prompts p ON p.id = t.prompt_id
+    WHERE t.prompt_id IS NOT NULL AND p.source_id IS NOT NULL
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
+    SELECT t.tag_id, 'mirror', 'prompt', t.prompt_id::TEXT, t.created_at
+    FROM mem_mrr_tags t
+    JOIN mem_mrr_prompts p ON p.id = t.prompt_id
+    WHERE t.prompt_id IS NOT NULL AND p.source_id IS NULL
     ON CONFLICT DO NOTHING;
 
     INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)

@@ -128,9 +128,9 @@ async def get_tagged_context(
             pass
 
     if effective_tag_id:
-        # Filter by applied source tag — join through mem_mrr_tags
+        # Filter by applied source tag — join through mem_tags_relations
         filters.append(
-            "p.id IN (SELECT prompt_id FROM mem_mrr_tags WHERE tag_id=%s::uuid AND prompt_id IS NOT NULL)"
+            "p.source_id IN (SELECT related_id FROM mem_tags_relations WHERE tag_id=%s::uuid AND related_type='prompt')"
         )
         params.append(effective_tag_id)
     else:

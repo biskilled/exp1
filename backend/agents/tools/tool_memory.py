@@ -165,8 +165,9 @@ def _handle_search_memory(args: dict) -> str:
                             cur.execute(
                                 """SELECT me.event_type, me.content, me.summary, me.created_at
                                    FROM mem_ai_events me
-                                   JOIN mem_ai_tags mt ON mt.event_id = me.id
-                                   JOIN planner_tags t ON t.id = mt.tag_id
+                                   JOIN mem_tags_relations r ON r.related_id = me.id::TEXT
+                                       AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
+                                   JOIN planner_tags t ON t.id = r.tag_id
                                    WHERE me.client_id=1 AND me.project=%s
                                      AND me.embedding IS NOT NULL
                                      AND t.name ILIKE %s
@@ -193,7 +194,7 @@ def _handle_search_memory(args: dict) -> str:
                     # ── Text fallback ─────────────────────────────────────
                     if not results:
                         where_extra = "AND t.name ILIKE %s" if feature else ""
-                        join_extra  = "JOIN mem_ai_tags mt ON mt.event_id = me.id JOIN planner_tags t ON t.id = mt.tag_id" if feature else ""
+                        join_extra  = "JOIN mem_tags_relations r ON r.related_id = me.id::TEXT AND r.related_layer='ai' AND r.related_type='memory_event' JOIN planner_tags t ON t.id = r.tag_id" if feature else ""
                         params: list = [project, f"%{query}%"]
                         if feature:
                             params.append(f"%{feature}%")
@@ -260,8 +261,9 @@ def _handle_get_recent_history(args: dict) -> str:
                         cur.execute(
                             """SELECT p.prompt, p.response, p.created_at
                                FROM mem_mrr_prompts p
-                               JOIN mem_mrr_tags st ON st.prompt_id = p.id
-                               JOIN planner_tags t ON t.id = st.tag_id
+                               JOIN mem_tags_relations r ON r.related_id = p.source_id
+                                   AND r.related_type = 'prompt' AND r.related_layer = 'mirror'
+                               JOIN planner_tags t ON t.id = r.tag_id
                                WHERE p.client_id=1 AND p.project=%s AND t.name ILIKE %s
                                ORDER BY p.created_at DESC LIMIT %s""",
                             (project, f"%{feature}%", limit),
@@ -369,12 +371,11 @@ def _handle_get_tag_context(args: dict) -> str:
             with conn.cursor() as cur:
                 # ── Tag + meta ────────────────────────────────────────────
                 cur.execute(
-                    """SELECT t.id, t.name, t.lifecycle, t.status,
+                    """SELECT t.id, t.name, t.status, t.status,
                               c.name AS category,
-                              tm.description, tm.requirements, tm.due_date, tm.priority
+                              t.short_desc, t.requirements, t.due_date, t.priority
                        FROM planner_tags t
                        LEFT JOIN mng_tags_categories c ON c.id = t.category_id
-                       LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
                        WHERE t.client_id=1 AND t.project=%s AND t.name=%s
                        LIMIT 1""",
                     (project, tag_name),
@@ -386,7 +387,7 @@ def _handle_get_tag_context(args: dict) -> str:
 
                 lines = [
                     f"=== Tag: {tag_row[1]} ===",
-                    f"Category: {tag_row[4] or 'unset'}  |  Lifecycle: {tag_row[2]}  |  Status: {tag_row[3]}",
+                    f"Category: {tag_row[4] or 'unset'}  |  Status: {tag_row[2]}",
                 ]
                 if tag_row[5]:
                     lines.append(f"Description: {tag_row[5]}")
@@ -395,11 +396,11 @@ def _handle_get_tag_context(args: dict) -> str:
                 if tag_row[7]:
                     lines.append(f"Due: {tag_row[7]}  Priority: {tag_row[8] or 3}")
 
-                # ── Feature snapshot ──────────────────────────────────────
+                # ── Feature snapshot (inline on planner_tags) ─────────────
                 cur.execute(
                     """SELECT requirements, action_items, design, code_summary, updated_at
-                       FROM mem_ai_features
-                       WHERE client_id=1 AND project=%s AND tag_id=%s::uuid
+                       FROM planner_tags
+                       WHERE client_id=1 AND project=%s AND id=%s::uuid
                        LIMIT 1""",
                     (project, tag_id),
                 )
@@ -425,8 +426,9 @@ def _handle_get_tag_context(args: dict) -> str:
                 cur.execute(
                     """SELECT e.event_type, e.content, e.summary, e.created_at
                        FROM mem_ai_events e
-                       JOIN mem_ai_tags at ON at.event_id = e.id
-                       WHERE at.tag_id = %s::uuid
+                       JOIN mem_tags_relations r ON r.related_id = e.id::TEXT
+                           AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
+                       WHERE r.tag_id = %s::uuid
                        ORDER BY e.created_at DESC
                        LIMIT %s""",
                     (tag_id, limit),
@@ -441,12 +443,14 @@ def _handle_get_tag_context(args: dict) -> str:
 
                 # ── Work items ────────────────────────────────────────────
                 cur.execute(
-                    """SELECT name, category_name, lifecycle_status, status,
-                              acceptance_criteria, seq_num
-                       FROM mem_ai_work_items
-                       WHERE client_id=1 AND project=%s AND tag_id=%s::uuid
-                       ORDER BY created_at DESC LIMIT 5""",
-                    (project, tag_id),
+                    """SELECT wi.name, wi.category_name, wi.lifecycle_status, wi.status,
+                              wi.acceptance_criteria, wi.seq_num
+                       FROM mem_ai_work_items wi
+                       JOIN mem_tags_relations r ON r.related_id = wi.id::TEXT
+                           AND r.related_type = 'work_item' AND r.tag_id = %s::uuid
+                       WHERE wi.client_id=1 AND wi.project=%s
+                       ORDER BY wi.created_at DESC LIMIT 5""",
+                    (tag_id, project),
                 )
                 wis = cur.fetchall()
                 if not wis:
@@ -515,25 +519,23 @@ def _handle_search_features(args: dict) -> str:
                 if vec:
                     vs = _vec_str(vec)
                     cur.execute(
-                        """SELECT t.name, f.requirements, f.action_items, f.code_summary,
-                                  f.updated_at,
-                                  1 - (f.embedding <=> %s::vector) AS score
-                           FROM mem_ai_features f
-                           JOIN planner_tags t ON t.id = f.tag_id
-                           WHERE f.client_id=1 AND f.project=%s AND f.embedding IS NOT NULL
-                           ORDER BY f.embedding <=> %s::vector
+                        """SELECT t.name, t.requirements, t.action_items, t.code_summary,
+                                  t.updated_at,
+                                  1 - (t.embedding <=> %s::vector) AS score
+                           FROM planner_tags t
+                           WHERE t.client_id=1 AND t.project=%s AND t.embedding IS NOT NULL
+                           ORDER BY t.embedding <=> %s::vector
                            LIMIT %s""",
                         (vs, project, vs, limit),
                     )
                 else:
                     # Tag name match fallback
                     cur.execute(
-                        """SELECT t.name, f.requirements, f.action_items, f.code_summary,
-                                  f.updated_at, 1.0 AS score
-                           FROM mem_ai_features f
-                           JOIN planner_tags t ON t.id = f.tag_id
-                           WHERE f.client_id=1 AND f.project=%s AND t.name ILIKE %s
-                           ORDER BY f.updated_at DESC LIMIT %s""",
+                        """SELECT t.name, t.requirements, t.action_items, t.code_summary,
+                                  t.updated_at, 1.0 AS score
+                           FROM planner_tags t
+                           WHERE t.client_id=1 AND t.project=%s AND t.name ILIKE %s
+                           ORDER BY t.updated_at DESC LIMIT %s""",
                         (project, f"%{query}%", limit),
                     )
                 rows = cur.fetchall()
