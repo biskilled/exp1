@@ -607,18 +607,21 @@ ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS design              JSONB;
 ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS code_summary        JSONB;
 ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS is_reusable         BOOLEAN  NOT NULL DEFAULT FALSE;
 ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS embedding           VECTOR(1536);
--- planner_tags: drop old status + lifecycle columns, rename status_new → status
+-- planner_tags: clean up old status/lifecycle columns (idempotent)
 DO $$ BEGIN
+    -- Drop status_new if status (TEXT) already exists — rename not needed
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'planner_tags' AND column_name = 'status'
-        AND data_type IN ('character varying', 'varchar')
+        AND data_type = 'text'
     ) THEN
-        ALTER TABLE planner_tags DROP COLUMN IF EXISTS status;
+        ALTER TABLE planner_tags DROP COLUMN IF EXISTS status_new;
     END IF;
-END $$;
-DO $$ BEGIN
-    IF EXISTS (
+    -- Rename status_new → status only when status doesn't exist yet
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'planner_tags' AND column_name = 'status'
+    ) AND EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'planner_tags' AND column_name = 'status_new'
     ) THEN
@@ -655,6 +658,91 @@ DO $$ BEGIN
             UNIQUE(client_id, project, name, category_id);
     END IF;
 END $$;
+-- ── 001_consolidation: migrate old junction tables → mem_tags_relations + DROP ──
+-- Idempotent: CREATE TABLE IF NOT EXISTS + ON CONFLICT DO NOTHING + DROP IF EXISTS
+CREATE TABLE IF NOT EXISTS mem_tags_relations (
+    id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    tag_id              UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
+    related_layer       TEXT         NOT NULL,
+    related_type        TEXT         NOT NULL,
+    related_id          TEXT         NOT NULL,
+    related_type_score  FLOAT,
+    related_approved    TEXT,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (tag_id, related_type, related_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_tag    ON mem_tags_relations(tag_id);
+CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_type   ON mem_tags_relations(related_type, related_id);
+CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_review ON mem_tags_relations(related_approved) WHERE related_approved IS NULL;
+-- Migrate planner_tags_meta → planner_tags inline columns
+DO $$ BEGIN
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='planner_tags_meta') THEN
+    UPDATE planner_tags pt SET
+        short_desc   = COALESCE(pt.short_desc, tm.description),
+        requirements = COALESCE(pt.requirements, tm.requirements),
+        due_date     = COALESCE(pt.due_date, tm.due_date),
+        requester    = COALESCE(pt.requester, tm.requester),
+        priority     = CASE WHEN pt.priority = 3 THEN COALESCE(tm.priority, 3) ELSE pt.priority END,
+        extra        = CASE WHEN pt.extra = '{}' THEN COALESCE(tm.extra, '{}') ELSE pt.extra END,
+        updated_at   = NOW()
+    FROM planner_tags_meta tm WHERE tm.tag_id = pt.id;
+  END IF;
+END $$;
+-- Migrate mem_ai_features → planner_tags inline columns
+DO $$ BEGIN
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='mem_ai_features') THEN
+    UPDATE planner_tags pt SET
+        summary      = COALESCE(pt.summary, mf.requirements),
+        action_items = COALESCE(pt.action_items, mf.action_items),
+        design       = COALESCE(pt.design, mf.design),
+        code_summary = COALESCE(pt.code_summary, mf.code_summary),
+        embedding    = COALESCE(pt.embedding, mf.embedding),
+        updated_at   = NOW()
+    FROM mem_ai_features mf WHERE mf.tag_id = pt.id AND mf.project = pt.project;
+  END IF;
+END $$;
+-- Migrate mem_mrr_tags → mem_tags_relations
+DO $$ BEGIN
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='mem_mrr_tags') THEN
+    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
+    SELECT t.tag_id, 'mirror', 'prompt', COALESCE(p.source_id, t.prompt_id::TEXT), t.created_at
+    FROM mem_mrr_tags t LEFT JOIN mem_mrr_prompts p ON p.id = t.prompt_id
+    WHERE t.prompt_id IS NOT NULL ON CONFLICT DO NOTHING;
+
+    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
+    SELECT tag_id, 'mirror', 'commit', commit_id, created_at
+    FROM mem_mrr_tags WHERE commit_id IS NOT NULL ON CONFLICT DO NOTHING;
+
+    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
+    SELECT tag_id, 'mirror', 'item', item_id::TEXT, created_at
+    FROM mem_mrr_tags WHERE item_id IS NOT NULL ON CONFLICT DO NOTHING;
+
+    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
+    SELECT tag_id, 'mirror', 'message', message_id::TEXT, created_at
+    FROM mem_mrr_tags WHERE message_id IS NOT NULL ON CONFLICT DO NOTHING;
+  END IF;
+END $$;
+-- Migrate mem_ai_tags → mem_tags_relations
+DO $$ BEGIN
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='mem_ai_tags') THEN
+    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, related_approved, created_at)
+    SELECT tag_id, 'ai', 'memory_event', event_id::TEXT,
+           CASE WHEN ai_suggested THEN NULL ELSE 'approved' END, created_at
+    FROM mem_ai_tags ON CONFLICT DO NOTHING;
+  END IF;
+END $$;
+-- Drop old tables (data already migrated above; CASCADE handles FK dependents)
+-- Note: pr_feature_snapshots was the old name for mem_ai_features
+--       mng_ai_tags_relations was the old name for mem_ai_tags_relations
+DROP TABLE IF EXISTS planner_tags_meta      CASCADE;
+DROP TABLE IF EXISTS mem_ai_features        CASCADE;
+DROP TABLE IF EXISTS pr_feature_snapshots   CASCADE;
+DROP TABLE IF EXISTS mem_ai_tags            CASCADE;
+DROP TABLE IF EXISTS mem_ai_tags_relations  CASCADE;
+DROP TABLE IF EXISTS mng_ai_tags_relations  CASCADE;
+DROP TABLE IF EXISTS mem_mrr_tags           CASCADE;
+-- Drop stale tag_id FK from mem_ai_work_items (links now via mem_tags_relations)
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS tag_id;
 """
 
 
