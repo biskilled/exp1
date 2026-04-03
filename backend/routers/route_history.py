@@ -17,6 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from psycopg2.extras import execute_values
 
 from core.config import settings
 from core.auth import get_optional_user
@@ -398,35 +399,47 @@ async def sync_commits(project: str | None = Query(None)):
     if not log_path.exists():
         return {"imported": 0, "project": p}
 
-    inserted = 0
+    # Parse all valid rows first, then batch-upsert in one round-trip
+    rows: list[tuple] = []
+    with open(log_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            commit_hash = raw.get("hash") or raw.get("commit_hash")
+            if not commit_hash:
+                continue
+            rows.append((
+                p,
+                commit_hash,
+                raw.get("message", raw.get("msg", "")),
+                raw.get("source", "git"),
+                raw.get("session_id"),
+                raw.get("ts"),
+            ))
+
+    if not rows:
+        return {"imported": 0, "project": p}
+
+    _SQL_BATCH_UPSERT = """
+        INSERT INTO mem_mrr_commits
+            (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
+        VALUES %s
+        ON CONFLICT (commit_hash) DO UPDATE SET
+            session_id = CASE
+                WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
+                THEN EXCLUDED.session_id
+                ELSE mem_mrr_commits.session_id
+            END
+    """
     with db.conn() as conn:
         with conn.cursor() as cur:
-            with open(log_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        raw = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-
-                    commit_hash = raw.get("hash") or raw.get("commit_hash")
-                    if not commit_hash:
-                        continue
-
-                    cur.execute(
-                        _SQL_UPSERT_COMMIT_FROM_LOG,
-                        (
-                            p,
-                            commit_hash,
-                            raw.get("message", raw.get("msg", "")),
-                            raw.get("source", "git"),
-                            raw.get("session_id"),
-                            raw.get("ts"),
-                        ),
-                    )
-                    inserted += cur.rowcount
+            execute_values(cur, _SQL_BATCH_UPSERT, rows)
+            inserted = cur.rowcount
 
     return {"imported": inserted, "project": p}
 

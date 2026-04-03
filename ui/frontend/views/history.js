@@ -636,7 +636,7 @@ export class HistoryView {
   async _renderCommits(container) {
     const project = state.currentProject?.name || '';
     const [data, cfgData, sourceTags] = await Promise.all([
-      api.historyCommits(project, 2000),
+      api.historyCommits(project, 500),
       api.getProjectConfig(project).catch(() => ({})),
       api.entities.getSourceTags(project).catch(() => ({})),
     ]);
@@ -732,7 +732,6 @@ export class HistoryView {
             <tr style="background:var(--surface);font-size:10px;text-transform:uppercase;color:var(--muted)">
               <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">Hash</th>
               <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">Date</th>
-              <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border)">Phase</th>
               <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border)">Tags ⬡</th>
               <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border)">Message</th>
               <th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">Prompt ↗</th>
@@ -817,11 +816,6 @@ export class HistoryView {
           onmouseleave="this.style.background=''">
         <td style="padding:4px 6px">${hashEl}</td>
         <td style="padding:4px 6px;color:var(--muted);white-space:nowrap">${dateStr}</td>
-        <td style="padding:4px 4px">
-          <span style="font-size:11px;color:${untagged ? '#e74c3c' : 'var(--muted)'}">
-            ${(c.tags||[]).find(t=>t.startsWith('phase:'))?.slice(6) || '—'}
-          </span>
-        </td>
         <td style="padding:4px 6px">
           <span id="${anchorId}" style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
             ${existingChips}

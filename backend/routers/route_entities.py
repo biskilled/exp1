@@ -100,7 +100,7 @@ _SQL_GET_CATEGORY_ID = """
 _SQL_LIST_VALUES = """
     SELECT t.id::text, t.category_id, t.name,
            COALESCE(t.short_desc,'') AS description, t.status,
-           t.created_at, t.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status,
+           t.created_at, t.due_date, t.parent_id::text, t.status AS lifecycle_status,
            t.seq_num,
            0 AS event_count,
            tc.name AS category_name, tc.color, tc.icon
@@ -115,7 +115,7 @@ _SQL_LIST_VALUES_SUMMARY = """
     SELECT tc.id AS cat_id, tc.name AS category, tc.color, tc.icon,
            t.id::text, t.name,
            COALESCE(t.short_desc,'') AS description, t.status,
-           t.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status,
+           t.due_date, t.parent_id::text, t.status AS lifecycle_status,
            0 AS event_count,
            0 AS commit_count
     FROM mng_tags_categories tc
@@ -125,14 +125,14 @@ _SQL_LIST_VALUES_SUMMARY = """
 """
 
 _SQL_INSERT_VALUE = """
-    INSERT INTO planner_tags (client_id, project, name, category_id, parent_id, lifecycle, seq_num)
+    INSERT INTO planner_tags (client_id, project, name, category_id, parent_id, status, seq_num)
     VALUES (1, %s, %s, %s, %s::uuid, %s, %s)
     RETURNING id::text
 """
 
 _SQL_GET_VALUE_BY_SEQ = """
     SELECT t.id::text, t.name, COALESCE(t.short_desc,''), t.status, t.created_at,
-           t.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status, t.seq_num,
+           t.due_date, t.parent_id::text, t.status AS lifecycle_status, t.seq_num,
            tc.name AS category_name, tc.color, tc.icon
     FROM planner_tags t
     JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1

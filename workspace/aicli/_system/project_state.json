@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-03T19:28:53Z",
+  "last_memory_run": "2026-04-03T19:48:17Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic and CLI; workspace/ contains per-project content; _system/ stores project state and memory files",
@@ -154,18 +154,16 @@
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku), OpenAI, DeepSeek, Gemini, Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment_cloud": "Railway (Dockerfile + railway.toml)",
       "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "deployment_local": "bash start_backend.sh + ui/npm run dev",
-      "database_version": "PostgreSQL 15+",
       "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform providing a unified CLI and desktop interface (Electron) for multi-project AI collaboration with PostgreSQL-backed semantic search, LLM provider abstraction, and async DAG workflow execution. The project recently consolidated memory file generation to use inline planner_tags snapshot fields as the canonical data source, standardized SQL cursor handling across modules, and enhanced memory synthesis with timestamp tracking for improved data lineage and consistency.",
-    "memory_digest": "**2026-04-02** `memory_modules` \u2014 Fixed SQL cursor tuple unpacking in memory_promotion.py and memory_files.py; _SQL_ACTIVE_TAGS query now correctly returns tag names from proper column index for reliable tag filtering. **2026-04-02** `feature_rendering` \u2014 Consolidated feature details context loading to use inline planner_tags snapshot fields (summary, action_items, design, code_summary) as primary data source instead of fragmented mem_ai_tags_relations relations. **2026-04-02** `schema_consolidation` \u2014 Removed mem_ai_tags_relations relations section from feature rendering; get_active_feature_tags() now correctly filters active/open tags with valid snapshots. **2026-04-02** `memory_synthesis` \u2014 Added timestamp tracking to memory file generation metadata; render_feature_claude_md() now reads complete tag metadata with 30-tag limit per feature for context completeness. **2026-04-01** `db_standardization` \u2014 Standardized cursor handling across memory modules with improved SQL result column ordering documentation; fixed context dict population to include id, name, short_desc, requirements, summary, action_items, design, code_summary fields."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI (prompt_toolkit + rich) with a FastAPI backend and Electron desktop UI (Vanilla JS + xterm.js + Monaco + Cytoscape) for AI-assisted development workflows. It uses PostgreSQL 15+ with pgvector semantic search and unified memory tables (mem_ai_events, mem_ai_project_facts, mem_ai_work_items) to synthesize 5 output memory files via Claude Haiku, supporting multi-provider LLM integration and async DAG-based workflow orchestration for teams managing complex projects.",
+    "memory_digest": "**2026-04-03** `project_state` \u2014 Memory synthesis architecture consolidated: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md generation now tied directly to mem_ai_project_facts and mem_ai_work_items tables with timestamp tracking. **2026-04-03** `memory_modules` \u2014 SQL cursor unpacking standardized across memory_promotion.py and memory_files.py with corrected 4-column tuple handling for _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS queries. **2026-04-03** `feature_context` \u2014 Feature details loading refactored: planner_tags inline fields (summary, action_items, design, code_summary) now serve as primary context source; get_active_feature_tags() filters to 30 most recent with proper snapshot integration. **2026-04-02** `schema_consolidation` \u2014 mem_ai_tags_relations relations section removed from feature rendering; unified inline snapshot fields established as canonical context across all memory modules. **2026-04-02** `file_generation` \u2014 Memory file lifecycle enhanced with robust cursor handling; timestamp tracking added to synthesis metadata for better audit trails."
   }
 }

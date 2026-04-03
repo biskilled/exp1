@@ -275,6 +275,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_cp       ON mem_mrr_commits(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm     ON mem_mrr_commits(committed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_session  ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt   ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags     ON mem_mrr_commits USING gin(tags);
 
 -- Work items (feature/bug/task pipeline tracking)
@@ -726,10 +727,11 @@ ALTER TABLE mem_mrr_prompts   ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFA
 ALTER TABLE mem_mrr_commits   ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE mem_mrr_items     ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE mem_mrr_messages  ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
-CREATE INDEX IF NOT EXISTS idx_mmrr_p_tags ON mem_mrr_prompts   USING gin(tags);
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags ON mem_mrr_commits   USING gin(tags);
-CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags ON mem_mrr_items     USING gin(tags);
-CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags ON mem_mrr_messages  USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_p_tags     ON mem_mrr_prompts   USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags     ON mem_mrr_commits   USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt   ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags     ON mem_mrr_items     USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags     ON mem_mrr_messages  USING gin(tags);
 UPDATE mem_mrr_commits SET tags = array_cat(tags, array_remove(ARRAY[
     CASE WHEN phase   IS NOT NULL THEN 'phase:'   || phase   END,
     CASE WHEN feature IS NOT NULL THEN 'feature:' || feature END,
