@@ -21,12 +21,19 @@ function _headers(extra = {}) {
   return h;
 }
 
+function _errMsg(e, fallback) {
+  // FastAPI 422 returns detail as array of {loc, msg, type} objects; others return a string.
+  if (!e || !e.detail) return fallback;
+  if (Array.isArray(e.detail)) return e.detail.map(d => d.msg || JSON.stringify(d)).join('; ');
+  return String(e.detail);
+}
+
 async function _get(path) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30_000);
   try {
     const r = await fetch(_base() + path, { headers: _headers(), signal: ctrl.signal });
-    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
+    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(_errMsg(e, r.statusText)); }
     return r.json();
   } finally {
     clearTimeout(timer);
@@ -38,7 +45,7 @@ async function _post(path, body = {}) {
   const timer = setTimeout(() => ctrl.abort(), 30_000);
   try {
     const r = await fetch(_base() + path, { method: 'POST', headers: _headers(), body: JSON.stringify(body), signal: ctrl.signal });
-    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
+    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(_errMsg(e, r.statusText)); }
     return r.json();
   } finally {
     clearTimeout(timer);
@@ -50,7 +57,7 @@ async function _put(path, body = {}) {
   const timer = setTimeout(() => ctrl.abort(), 30_000);
   try {
     const r = await fetch(_base() + path, { method: 'PUT', headers: _headers(), body: JSON.stringify(body), signal: ctrl.signal });
-    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
+    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(_errMsg(e, r.statusText)); }
     return r.json();
   } finally {
     clearTimeout(timer);
@@ -62,7 +69,7 @@ async function _del(path) {
   const timer = setTimeout(() => ctrl.abort(), 30_000);
   try {
     const r = await fetch(_base() + path, { method: 'DELETE', headers: _headers(), signal: ctrl.signal });
-    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(e.detail || r.statusText); }
+    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(_errMsg(e, r.statusText)); }
     return r.json();
   } finally {
     clearTimeout(timer);

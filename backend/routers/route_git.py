@@ -52,11 +52,13 @@ _SQL_LINK_COMMIT_TO_PROMPT = """
 """
 
 _SQL_LIST_COMMITS = """
-    SELECT commit_hash, commit_msg, summary, tags,
-           source, session_id, committed_at
-    FROM mem_mrr_commits
-    WHERE client_id=1 AND project=%s
-    ORDER BY committed_at DESC NULLS LAST, created_at DESC
+    SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
+           c.source, c.session_id, c.committed_at,
+           p.source_id AS prompt_source_id
+    FROM mem_mrr_commits c
+    LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
+    WHERE c.client_id=1 AND c.project=%s
+    ORDER BY c.committed_at DESC NULLS LAST, c.created_at DESC
     LIMIT %s
 """
 

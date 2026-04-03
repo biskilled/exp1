@@ -891,8 +891,12 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
     p = _project(body.project)
     tag = body.tag
 
+    if not tag:
+        raise HTTPException(400, "tag must be a non-empty string like 'phase:discovery'")
+
     is_commit = bool(re.match(r'^[0-9a-f]{7,40}$', body.source_id.lower()))
 
+    propagated_to: str | None = None
     with db.conn() as conn:
         with conn.cursor() as cur:
             if is_commit:
@@ -904,6 +908,19 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
                 )
                 if cur.rowcount == 0:
                     raise HTTPException(404, f"Commit {body.source_id!r} not found")
+                # Propagate to linked prompt (via prompt_id FK)
+                cur.execute(
+                    """UPDATE mem_mrr_prompts pr
+                       SET tags = array_append(array_remove(pr.tags, %s), %s)
+                       FROM mem_mrr_commits c
+                       WHERE c.client_id=1 AND c.project=%s AND c.commit_hash=%s
+                         AND pr.id = c.prompt_id
+                       RETURNING pr.source_id""",
+                    (tag, tag, p, body.source_id),
+                )
+                row = cur.fetchone()
+                if row:
+                    propagated_to = row[0]
             else:
                 cur.execute(
                     """UPDATE mem_mrr_prompts
@@ -913,8 +930,22 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
                 )
                 if cur.rowcount == 0:
                     raise HTTPException(404, f"Prompt with source_id={body.source_id!r} not found")
+                # Propagate to linked commit (via prompt_id FK)
+                cur.execute(
+                    """UPDATE mem_mrr_commits c
+                       SET tags = array_append(array_remove(c.tags, %s), %s)
+                       FROM mem_mrr_prompts p
+                       WHERE p.client_id=1 AND p.project=%s AND p.source_id=%s
+                         AND c.prompt_id = p.id
+                       RETURNING c.commit_hash""",
+                    (tag, tag, p, body.source_id),
+                )
+                row = cur.fetchone()
+                if row:
+                    propagated_to = row[0]
 
-    return {"ok": True, "source_id": body.source_id, "tag": tag, "project": p}
+    return {"ok": True, "source_id": body.source_id, "tag": tag, "project": p,
+            "propagated_to": propagated_to}
 
 
 @router.delete("/events/tag-by-source-id")
@@ -928,6 +959,7 @@ async def untag_event_by_source_id(
     _require_db()
     p = _project(project)
     is_commit = bool(re.match(r'^[0-9a-f]{7,40}$', source_id.lower()))
+    propagated_to: str | None = None
     with db.conn() as conn:
         with conn.cursor() as cur:
             if is_commit:
@@ -936,13 +968,39 @@ async def untag_event_by_source_id(
                     "WHERE client_id=1 AND project=%s AND commit_hash=%s",
                     (tag, p, source_id),
                 )
+                # Propagate to linked prompt
+                cur.execute(
+                    """UPDATE mem_mrr_prompts pr
+                       SET tags = array_remove(pr.tags, %s)
+                       FROM mem_mrr_commits c
+                       WHERE c.client_id=1 AND c.project=%s AND c.commit_hash=%s
+                         AND pr.id = c.prompt_id
+                       RETURNING pr.source_id""",
+                    (tag, p, source_id),
+                )
+                row = cur.fetchone()
+                if row:
+                    propagated_to = row[0]
             else:
                 cur.execute(
                     "UPDATE mem_mrr_prompts SET tags = array_remove(tags, %s) "
                     "WHERE client_id=1 AND project=%s AND source_id=%s",
                     (tag, p, source_id),
                 )
-    return {"ok": True, "source_id": source_id, "tag": tag}
+                # Propagate to linked commit
+                cur.execute(
+                    """UPDATE mem_mrr_commits c
+                       SET tags = array_remove(c.tags, %s)
+                       FROM mem_mrr_prompts p
+                       WHERE p.client_id=1 AND p.project=%s AND p.source_id=%s
+                         AND c.prompt_id = p.id
+                       RETURNING c.commit_hash""",
+                    (tag, p, source_id),
+                )
+                row = cur.fetchone()
+                if row:
+                    propagated_to = row[0]
+    return {"ok": True, "source_id": source_id, "tag": tag, "propagated_to": propagated_to}
 
 
 @router.delete("/session-tag")

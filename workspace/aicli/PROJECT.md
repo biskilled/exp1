@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Memory file generation refactoring: feature_details context loaded from planner_tags inline fields; _SQL_ACTIVE_TAGS query fixed to return tag names from correct column index
-- Schema consolidation: mem_ai_tags_relations relations section removed from feature rendering; inline snapshot fields now primary data source for feature details context
-- SQL cursor tuple unpacking standardization: memory_promotion.py _SQL_GET_CURRENT_FACTS fixed to unpack 4 columns; memory_files.py active tags query corrected for reliable tag filtering
-- Memory file lifecycle enhancement: get_active_feature_tags() now correctly filters active/open tags with snapshots; render_feature_claude_md() reads complete tag metadata
-- Feature details context loading: planner_tags query limits to 30 most recent tags; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary
-- Database cursor handling robustness: standardized tuple unpacking across memory modules with improved SQL result column ordering documentation
+- Memory file generation refactoring: feature_details context loaded from planner_tags inline fields (summary, action_items, design, code_summary); snapshot fields now primary data source for feature rendering
+- Schema consolidation: mem_ai_tags_relations relations section removed from feature rendering; inline snapshot fields integrated as canonical context source across memory modules
+- SQL cursor tuple unpacking standardization: memory_promotion.py and memory_files.py fixed for reliable column indexing; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS queries corrected for 4-column unpacking
+- Memory file lifecycle enhancement: get_active_feature_tags() correctly filters active/open tags with snapshots; render_feature_claude_md() reads complete tag metadata from planner_tags
+- Feature details context loading: planner_tags query limits to 30 most recent tags; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary from inline fields
+- Database cursor handling robustness: standardized tuple unpacking across memory modules with improved SQL result column ordering documentation; timestamp tracking added to memory synthesis metadata

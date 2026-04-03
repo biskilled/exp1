@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-03 19:16 UTC — do not edit manually.
+> Auto-generated 2026-04-03 19:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 341
-- **Last active**: 2026-04-03T17:26:36Z
+- **Sessions**: 342
+- **Last active**: 2026-04-03T19:28:31Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -25,7 +25,7 @@
 - **llm_providers**: Claude (Haiku), OpenAI, DeepSeek, Gemini, Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
-- **memory_synthesis**: Claude Haiku dual-layer with 5 output files
+- **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- Memory file generation refactoring: feature_details context loaded from planner_tags inline fields; _SQL_ACTIVE_TAGS query fixed to return tag names from correct column index
-- Schema consolidation: mem_ai_tags_relations relations section removed from feature rendering; inline snapshot fields now primary data source for feature details context
-- SQL cursor tuple unpacking standardization: memory_promotion.py _SQL_GET_CURRENT_FACTS fixed to unpack 4 columns; memory_files.py active tags query corrected for reliable tag filtering
-- Memory file lifecycle enhancement: get_active_feature_tags() now correctly filters active/open tags with snapshots; render_feature_claude_md() reads complete tag metadata
-- Feature details context loading: planner_tags query limits to 30 most recent tags; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary
-- Database cursor handling robustness: standardized tuple unpacking across memory modules with improved SQL result column ordering documentation
+- Memory file generation refactoring: feature_details context loaded from planner_tags inline fields (summary, action_items, design, code_summary); snapshot fields now primary data source for feature rendering
+- Schema consolidation: mem_ai_tags_relations relations section removed from feature rendering; inline snapshot fields integrated as canonical context source across memory modules
+- SQL cursor tuple unpacking standardization: memory_promotion.py and memory_files.py fixed for reliable column indexing; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS queries corrected for 4-column unpacking
+- Memory file lifecycle enhancement: get_active_feature_tags() correctly filters active/open tags with snapshots; render_feature_claude_md() reads complete tag metadata from planner_tags
+- Feature details context loading: planner_tags query limits to 30 most recent tags; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary from inline fields
+- Database cursor handling robustness: standardized tuple unpacking across memory modules with improved SQL result column ordering documentation; timestamp tracking added to memory synthesis metadata
 
 ## Key Decisions
 
@@ -74,7 +74,7 @@
 - Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local via bash start_backend.sh + ui/npm run dev
 - Memory file generation reads snapshot data from inline planner_tags fields (summary, action_items, design, code_summary); SQL cursor tuple unpacking standardized across memory modules
 - Config management: config.py for externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support; billing storage in data/provider_storage/
-- Memory synthesis generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items
+- Memory synthesis generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items with timestamp tracking
 
 ---
 

@@ -377,21 +377,26 @@ export class HistoryView {
         // Per-prompt linked commits (commits where prompt_source_id === this entry's ts)
         const linkedCommits = commitsByPrompt[sourceId] || [];
         const commitRow = linkedCommits.length ? `
-          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;
-                      margin-top:6px;padding:3px 6px;background:var(--surface2);
-                      border-radius:3px;border-left:2px solid var(--accent);font-size:10px">
-            <span style="color:var(--muted);font-weight:600;white-space:nowrap">⑂</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+                      margin-top:6px;padding:4px 8px;background:var(--surface2);
+                      border-radius:4px;border-left:2px solid var(--accent);font-size:10px">
+            <span style="color:var(--accent);font-weight:600;white-space:nowrap">⑂ linked commit${linkedCommits.length > 1 ? 's' : ''}:</span>
             ${linkedCommits.map(c => {
-              const hash = (c.commit_hash || '').slice(0, 8);
-              const msg  = (c.commit_msg  || '').slice(0, 70);
-              const date = (c.committed_at || '').slice(0, 10);
-              return ghBase && c.commit_hash
+              const hash    = (c.commit_hash || '').slice(0, 8);
+              const msg     = (c.commit_msg  || '').slice(0, 70);
+              const date    = (c.committed_at || '').slice(0, 10);
+              const cTags   = (c.tags || []).map(t => {
+                const col = this._tagColor(t);
+                return `<span style="font-size:9px;background:${col}22;color:${col};border:1px solid ${col}44;padding:0 3px;border-radius:2px">${this._escapeHtml(t)}</span>`;
+              }).join('');
+              const hashEl = ghBase && c.commit_hash
                 ? `<a href="${ghBase}/commit/${this._escapeHtml(c.commit_hash)}" target="_blank"
                       style="font-family:monospace;color:var(--accent);text-decoration:none;white-space:nowrap"
                       title="${this._escapeHtml(msg)} · ${date}">${hash} ↗</a>`
                 : `<span style="font-family:monospace;color:var(--accent);white-space:nowrap"
                          title="${this._escapeHtml(msg)} · ${date}">${hash}</span>`;
-            }).join('')}
+              return `<span style="display:inline-flex;align-items:center;gap:3px">${hashEl}${cTags}</span>`;
+            }).join('<span style="color:var(--muted)">·</span>')}
           </div>` : '';
 
         return `
@@ -574,16 +579,56 @@ export class HistoryView {
     }
 
     try {
-      await api.entities.tagBySourceId({ source_id: sourceId, tag: tagStr, project });
+      const result = await api.entities.tagBySourceId({ source_id: sourceId, tag: tagStr, project });
+      // Propagate: if the backend tagged a linked commit/prompt, update in-memory state
+      if (result?.propagated_to) {
+        const linked = result.propagated_to;
+        if (!this._entryTags[linked]) this._entryTags[linked] = [];
+        if (!this._entryTags[linked].includes(tagStr)) {
+          this._entryTags[linked].push(tagStr);
+        }
+        // Update DOM chip in linked commit anchor if it is currently visible
+        const linkedAnchorId = 'ca-' + linked.slice(0, 8);
+        this._addTagChipToAnchor(linkedAnchorId, tagStr, linked);
+      }
     } catch (e) {
       console.warn('Tag entry failed:', e.message);
+      // Remove optimistic chip
       if (anchor) {
+        const chip = anchor.querySelector(`[data-tag="${CSS.escape(tagStr)}"]`);
+        if (chip) chip.remove();
+        if (this._entryTags[sourceId]) {
+          this._entryTags[sourceId] = this._entryTags[sourceId].filter(t => t !== tagStr);
+        }
         const err = document.createElement('span');
-        err.style.cssText = 'font-size:10px;color:#e74c3c';
+        err.style.cssText = 'font-size:10px;color:#e74c3c;white-space:nowrap';
         err.textContent = '✕ ' + e.message;
         anchor.appendChild(err);
+        setTimeout(() => err.remove(), 4000);
       }
     }
+  }
+
+  // Add a tag chip to an anchor element identified by anchorId (if it exists in DOM)
+  _addTagChipToAnchor(anchorId, tagStr, sourceId) {
+    const anchor = document.getElementById(anchorId);
+    if (!anchor) return;
+    // Skip if chip already present
+    if (anchor.querySelector(`[data-tag="${CSS.escape(tagStr)}"]`)) return;
+    const color = this._tagColor(tagStr);
+    const chip = document.createElement('span');
+    chip.dataset.tag = tagStr;
+    chip.style.cssText = `font-size:10px;background:${color}22;color:${color};border:1px solid ${color}55;padding:1px 4px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px`;
+    chip.appendChild(document.createTextNode(tagStr));
+    const rmBtn = document.createElement('button');
+    rmBtn.textContent = '✕';
+    rmBtn.title = 'Remove tag';
+    rmBtn.style.cssText = `border:none;background:none;cursor:pointer;color:${color};font-size:9px;padding:0 1px;line-height:1;opacity:.7`;
+    rmBtn.addEventListener('click', (ev) => { ev.stopPropagation(); window._historyView._removeTag(sourceId, tagStr, anchorId); });
+    chip.appendChild(rmBtn);
+    const firstBtn = anchor.querySelector('button:not([title="Remove tag"])');
+    if (firstBtn) anchor.insertBefore(chip, firstBtn);
+    else anchor.appendChild(chip);
   }
 
   // ── Commits tab ───────────────────────────────────────────────────────────
@@ -733,13 +778,22 @@ export class HistoryView {
             style="font-family:monospace;color:var(--accent);text-decoration:none">${hashShort} ↗</a>`
       : `<span style="font-family:monospace;color:var(--accent)">${hashShort}</span>`;
 
+    // Look up linked prompt text for tooltip (if chat tab data is loaded)
+    const promptEntry = c.prompt_source_id && this._histData?.entries
+      ? this._histData.entries.find(e => e.ts === c.prompt_source_id)
+      : null;
+    const promptSnippet = promptEntry
+      ? this._escapeHtml((promptEntry.user_input || '').slice(0, 120))
+      : this._escapeHtml(c.prompt_source_id || '');
+
     // Prompt cell — clickable ⊙ HH:MM to jump to Chat tab at that entry
     const promptCell = c.prompt_source_id
       ? `<button onclick="window._historyView._jumpToPrompt('${this._escapeHtml(c.prompt_source_id)}')"
-           title="Jump to prompt at ${this._escapeHtml(c.prompt_source_id)}"
+           title="${promptSnippet}"
            style="font-family:monospace;font-size:11px;color:var(--accent);cursor:pointer;
-                  background:none;border:none;padding:0;text-decoration:underline dotted">
-           ⊙ ${c.prompt_source_id.slice(11, 16)}
+                  background:none;border:none;padding:0;text-decoration:underline dotted;max-width:120px;
+                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block">
+           ⊙ ${(c.prompt_source_id || '').slice(11, 16) || c.prompt_source_id.slice(0, 8)}
          </button>`
       : `<span style="color:var(--muted);font-size:11px">—</span>`;
 
@@ -860,7 +914,21 @@ export class HistoryView {
 
     // Persist to backend
     try {
-      await api.entities.untagBySourceId(sourceId, tagStr, project);
+      const result = await api.entities.untagBySourceId(sourceId, tagStr, project);
+      // Propagate: also remove from linked commit/prompt in memory + DOM
+      if (result?.propagated_to) {
+        const linked = result.propagated_to;
+        if (this._entryTags[linked]) {
+          this._entryTags[linked] = this._entryTags[linked].filter(t => t !== tagStr);
+        }
+        // Remove chip from linked commit anchor if visible
+        const linkedAnchorId = 'ca-' + linked.slice(0, 8);
+        const linkedAnchor = document.getElementById(linkedAnchorId);
+        if (linkedAnchor) {
+          const chip = linkedAnchor.querySelector(`[data-tag="${CSS.escape(tagStr)}"]`);
+          if (chip) chip.remove();
+        }
+      }
     } catch (e) {
       console.warn('Remove tag failed:', e.message);
       // Re-fetch tags on failure so state stays consistent
