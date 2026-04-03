@@ -26,13 +26,15 @@ log = logging.getLogger(__name__)
 
 _SQL_UPSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
-            (client_id, project, commit_hash, session_id, commit_msg, diff_summary, committed_at, source)
-        VALUES (1, %s, %s, %s, %s, %s, %s, %s)
+            (client_id, project, commit_hash, session_id, commit_msg, diff_summary, committed_at, source, tags)
+        VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
                 commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
                 diff_summary = COALESCE(EXCLUDED.diff_summary, mem_mrr_commits.diff_summary),
-                committed_at = COALESCE(EXCLUDED.committed_at, mem_mrr_commits.committed_at)
+                committed_at = COALESCE(EXCLUDED.committed_at, mem_mrr_commits.committed_at),
+                tags         = CASE WHEN EXCLUDED.tags != \'{}\' THEN EXCLUDED.tags
+                                    ELSE mem_mrr_commits.tags END
 """
 
 # Link commit → most-recent prompt in the same session that occurred before the commit.
@@ -50,8 +52,8 @@ _SQL_LINK_COMMIT_TO_PROMPT = """
 """
 
 _SQL_LIST_COMMITS = """
-    SELECT commit_hash, commit_msg, summary, phase,
-           feature, bug_ref, source, session_id, committed_at
+    SELECT commit_hash, commit_msg, summary, tags,
+           source, session_id, committed_at
     FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s
     ORDER BY committed_at DESC NULLS LAST, created_at DESC
@@ -59,7 +61,7 @@ _SQL_LIST_COMMITS = """
 """
 
 _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
-    SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+    SELECT commit_hash, commit_msg, tags, source, committed_at
           FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s
            AND (session_id = %s
@@ -68,7 +70,7 @@ _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
 """
 
 _SQL_GET_SESSION_COMMITS_BY_ID = """
-    SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+    SELECT commit_hash, commit_msg, tags, source, committed_at
           FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s AND session_id = %s
          ORDER BY committed_at
@@ -131,13 +133,28 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
     if not db.is_available():
         return
     try:
+        # Read current session tags to auto-tag the commit
+        tags_list: list[str] = []
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_GET_SESSION_TAGS, (project,))
+                    st_row = cur.fetchone()
+                    if st_row:
+                        _phase, _feature, _bug_ref = st_row[0], st_row[1], st_row[2]
+                        if _phase:   tags_list.append(f"phase:{_phase}")
+                        if _feature: tags_list.append(f"feature:{_feature}")
+                        if _bug_ref: tags_list.append(f"bug:{_bug_ref}")
+        except Exception:
+            pass
+
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # 1. Upsert the commit (includes diff_summary)
+                # 1. Upsert the commit (includes diff_summary + tags)
                 cur.execute(
                     _SQL_UPSERT_COMMIT,
                     (project, commit_hash, session_id, commit_msg, diff_summary or None,
-                     committed_at or datetime.now(timezone.utc), "commit_push"),
+                     committed_at or datetime.now(timezone.utc), "commit_push", tags_list),
                 )
 
                 # 2. Link commit → last prompt in the session (via prompt_id FK)

@@ -2,14 +2,18 @@
 # UserPromptSubmit hook — enforces session context before allowing prompts.
 #
 # Fires FIRST in UserPromptSubmit (before log_user_prompt.sh).
-# On first prompt of a session (when .agent-context is missing or stale):
-#   1. Fetches last known tags from GET /tags/session-context
-#   2. Writes .agent-context file
-#   3. Prints context to user, blocks prompt (exit 1)
-#   4. Second attempt passes (exit 0)
+#
+# Flow:
+#   1. If prompt starts with "/tag phase:xxx [feature:yyy] [bug:zzz]":
+#      → parse tags, POST to /tags/session-context, write .agent-context, exit 2
+#   2. If .agent-context exists with matching session_id AND has phase tag → exit 0
+#   3. Else: GET /tags/session-context from backend
+#      → If phase present: write .agent-context, show tags, exit 0
+#      → If no phase: exit 2 with instructions
 #
 # .agent-context format:
-#   {"session_id":"abc123","session_src":"claude_cli","tags":{"stage":"discovery"},"set_at":"..."}
+#   {"session_id":"abc","session_src":"claude_cli","tags":{"phase":"discovery","feature":"auth"},
+#    "tags_list":["phase:discovery","feature:auth"],"set_at":"..."}
 
 INPUT=$(cat)
 
@@ -77,76 +81,173 @@ except:
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# ── If context file exists and has matching session_id → pass through ──────────
+mkdir -p "$(dirname "$CONTEXT_FILE")"
+
+# ── Check if this is a /tag command ──────────────────────────────────────────
+TAG_RESULT=$(python3 -c "
+import sys, re, json
+
+prompt = sys.argv[1]
+
+# Detect /tag command
+if not prompt.strip().startswith('/tag'):
+    print('NOT_TAG_CMD')
+    sys.exit(0)
+
+# Parse: /tag phase:xxx [feature:yyy] [bug:zzz]
+tags = {}
+tags_list = []
+for m in re.finditer(r'(phase|feature|bug):(\S+)', prompt):
+    k, v = m.group(1), m.group(2)
+    tags[k] = v
+    tags_list.append(f'{k}:{v}')
+
+if 'phase' not in tags:
+    print('MISSING_PHASE')
+    sys.exit(0)
+
+# Output parsed tags as JSON
+print(json.dumps({'tags': tags, 'tags_list': tags_list}))
+" "$PROMPT_TEXT" 2>/dev/null || echo "NOT_TAG_CMD")
+
+if [ "$TAG_RESULT" = "MISSING_PHASE" ]; then
+    echo ""
+    echo "⚠ /tag requires a phase. Example:"
+    echo "  /tag phase:discovery"
+    echo "  /tag phase:development feature:auth"
+    echo "  /tag phase:bugfix bug:login-500"
+    echo ""
+    echo "Valid phases: discovery | development | testing | review | production | maintenance | bugfix"
+    echo ""
+    exit 2
+fi
+
+if [ "$TAG_RESULT" != "NOT_TAG_CMD" ] && [ -n "$TAG_RESULT" ]; then
+    # Parse the JSON result
+    TAGS_JSON=$(echo "$TAG_RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('tags', {})))")
+    TAGS_LIST=$(echo "$TAG_RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('tags_list', [])))")
+    TAGS_DISPLAY=$(echo "$TAGS_LIST" | python3 -c "import json,sys; print(', '.join(json.load(sys.stdin)))")
+
+    # POST to backend to save session tags
+    python3 -c "
+import json, sys, urllib.request
+url = sys.argv[1] + '/tags/session-context?project=' + sys.argv[2]
+payload = json.dumps({'tags': json.loads(sys.argv[3])}).encode()
+req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'}, method='POST')
+try:
+    urllib.request.urlopen(req, timeout=3)
+except Exception:
+    pass
+" "$BACKEND_URL" "$ACTIVE_PROJECT" "$TAGS_JSON" 2>/dev/null
+
+    # Write .agent-context
+    python3 -c "
+import json, sys
+tags = json.loads(sys.argv[1])
+tags_list = json.loads(sys.argv[2])
+ctx = {
+    'session_id': sys.argv[3],
+    'session_src': 'claude_cli',
+    'tags': tags,
+    'tags_list': tags_list,
+    'set_at': sys.argv[4],
+}
+open(sys.argv[5], 'w').write(json.dumps(ctx, indent=2))
+" "$TAGS_JSON" "$TAGS_LIST" "$SESSION" "$TIMESTAMP" "$CONTEXT_FILE" 2>/dev/null
+
+    echo ""
+    echo "✓ Tags set: $TAGS_DISPLAY"
+    echo "  Resubmit your message."
+    echo ""
+    exit 2
+fi
+
+# ── Context file check: matching session_id with phase tag ──────────────────
 if [ -f "$CONTEXT_FILE" ]; then
-    CONTEXT_SESSION=$(python3 -c "
+    CTX_CHECK=$(python3 -c "
 import json, sys
 try:
     d = json.loads(open(sys.argv[1]).read())
-    print(d.get('session_id', ''))
+    sid = d.get('session_id', '')
+    tags = d.get('tags', {})
+    tags_list = d.get('tags_list', [])
+    has_phase = bool(tags.get('phase')) or any(t.startswith('phase:') for t in tags_list)
+    match = (not sid or sid == sys.argv[2]) and has_phase
+    print('PASS' if match else 'FAIL')
 except:
-    print('')
-" "$CONTEXT_FILE" 2>/dev/null || echo "")
+    print('FAIL')
+" "$CONTEXT_FILE" "$SESSION" 2>/dev/null || echo "FAIL")
 
-    # If no session_id in file OR session matches → allow
-    if [ -z "$CONTEXT_SESSION" ] || [ "$CONTEXT_SESSION" = "$SESSION" ]; then
+    if [ "$CTX_CHECK" = "PASS" ]; then
         exit 0
     fi
 fi
 
-# ── Context missing or stale — fetch from backend and write file ───────────────
-mkdir -p "$(dirname "$CONTEXT_FILE")"
-
-FETCHED_TAGS=$(python3 -c "
+# ── Context missing or stale — fetch from backend ─────────────────────────────
+FETCHED=$(python3 -c "
 import json, sys, urllib.request, urllib.error
 url = sys.argv[1] + '/tags/session-context?project=' + sys.argv[2]
 try:
     resp = urllib.request.urlopen(url, timeout=2)
     data = json.loads(resp.read())
-    print(json.dumps(data.get('tags', {'stage': 'discovery'})))
+    tags = data.get('tags', {})
+    phase = tags.get('phase') or ''
+    if not phase:
+        print('NO_PHASE')
+    else:
+        tags_list = []
+        for k in ('phase', 'feature', 'bug_ref'):
+            if tags.get(k):
+                key = 'bug' if k == 'bug_ref' else k
+                tags_list.append(f'{key}:{tags[k]}')
+        print(json.dumps({'tags': tags, 'tags_list': tags_list}))
 except:
-    print('{\"stage\": \"discovery\"}')
-" "$BACKEND_URL" "$ACTIVE_PROJECT" 2>/dev/null || echo '{"stage": "discovery"}')
+    print('NO_PHASE')
+" "$BACKEND_URL" "$ACTIVE_PROJECT" 2>/dev/null || echo "NO_PHASE")
 
-# Write .agent-context
+if [ "$FETCHED" = "NO_PHASE" ]; then
+    echo ""
+    echo "⚡ No session tags. Start with:"
+    echo ""
+    echo "  /tag phase:<phase> [feature:name] [bug:ref]"
+    echo ""
+    echo "  Phases: discovery | development | testing | review | production | maintenance | bugfix"
+    echo ""
+    echo "  Examples:"
+    echo "    /tag phase:development"
+    echo "    /tag phase:development feature:auth"
+    echo "    /tag phase:bugfix bug:login-500"
+    echo ""
+    exit 2
+fi
+
+# Write .agent-context from fetched data
+TAGS_JSON=$(echo "$FETCHED" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('tags', {})))")
+TAGS_LIST=$(echo "$FETCHED" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('tags_list', [])))")
+TAGS_DISPLAY=$(echo "$TAGS_LIST" | python3 -c "import json,sys; print(', '.join(json.load(sys.stdin)))")
+
 python3 -c "
 import json, sys
 tags = json.loads(sys.argv[1])
+tags_list = json.loads(sys.argv[2])
 ctx = {
-    'session_id': sys.argv[2],
+    'session_id': sys.argv[3],
     'session_src': 'claude_cli',
     'tags': tags,
-    'set_at': sys.argv[3],
+    'tags_list': tags_list,
+    'set_at': sys.argv[4],
 }
-open(sys.argv[4], 'w').write(json.dumps(ctx, indent=2))
-" "$FETCHED_TAGS" "$SESSION" "$TIMESTAMP" "$CONTEXT_FILE" 2>/dev/null
-
-# ── Print context to user and block this prompt ────────────────────────────────
-TAGS_DISPLAY=$(python3 -c "
-import json, sys
-try:
-    tags = json.loads(sys.argv[1])
-    lines = ['  {}: {}'.format(k, v) for k, v in tags.items()]
-    print('\n'.join(lines))
-except:
-    print('  stage: discovery')
-" "$FETCHED_TAGS" 2>/dev/null || echo "  stage: discovery")
+open(sys.argv[5], 'w').write(json.dumps(ctx, indent=2))
+" "$TAGS_JSON" "$TAGS_LIST" "$SESSION" "$TIMESTAMP" "$CONTEXT_FILE" 2>/dev/null
 
 echo ""
-echo "⚡ Session context loaded. Review tags and re-send your message."
-echo ""
-echo "Tags applied to this session:"
-echo "$TAGS_DISPLAY"
-echo ""
-echo "To change: edit $CONTEXT_FILE"
-echo "Your prompt was held. Re-send to proceed."
+echo "⚡ Session tags: $TAGS_DISPLAY"
 echo ""
 
-# ── Refresh top_events.md so Claude Code loads fresh memory at session start ──
+# Refresh memory files in background
 curl -sf --connect-timeout 2 --max-time 10 \
     -X POST "${BACKEND_URL}/memory/${ACTIVE_PROJECT}/regenerate?scope=root" \
     -H "Content-Type: application/json" \
-    -o /dev/null 2>/dev/null &   # run in background, don't block session
+    -o /dev/null 2>/dev/null &
 
-# Exit 2 = block the prompt (Claude Code shows output above to user)
-exit 2
+exit 0

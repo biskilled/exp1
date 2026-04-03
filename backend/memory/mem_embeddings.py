@@ -77,7 +77,7 @@ _SQL_SEARCH_EMBEDDINGS_TPL = """SELECT event_type, source_id, chunk, chunk_type,
                         LIMIT %s"""
 
 _SQL_GET_COMMIT_META = (
-    "SELECT phase, feature, bug_ref "
+    "SELECT tags "
     "FROM mem_mrr_commits WHERE client_id=1 AND project=%s AND commit_hash=%s"
 )
 
@@ -85,26 +85,6 @@ _SQL_GET_NODE_OUTPUTS = (
     "SELECT node_id, node_name, output FROM pr_graph_node_results WHERE run_id=%s AND status='done'"
 )
 
-# Propagate tag links from mem_mrr_tags into mem_ai_events.metadata.
-# Bridge: mem_mrr_prompts.source_id == mem_ai_events.source_id.
-# Uses || merge so existing metadata keys are preserved.
-_SQL_BACKFILL_ENTITY_TAGS = """
-    UPDATE mem_ai_events e
-    SET metadata = e.metadata || jsonb_build_object('entity_tags',
-        (SELECT jsonb_agg(jsonb_build_object('id', t.id::text, 'name', t.name, 'category', tc.name))
-         FROM mem_mrr_prompts pr
-         JOIN mem_tags_relations r ON r.related_id = pr.source_id AND r.related_type = 'prompt'
-         JOIN planner_tags t  ON t.id  = r.tag_id AND t.client_id=1
-         JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-         WHERE pr.client_id=1 AND pr.project=%s AND pr.source_id = e.source_id)
-    )
-    WHERE e.client_id=1 AND e.project=%s
-      AND EXISTS (
-          SELECT 1 FROM mem_mrr_prompts pr
-          JOIN mem_tags_relations r ON r.related_id = pr.source_id AND r.related_type = 'prompt'
-          WHERE pr.client_id=1 AND pr.project=%s AND pr.source_id = e.source_id
-      )
-"""
 
 
 def _openai_key() -> str | None:
@@ -285,10 +265,8 @@ def smart_chunk_diff(diff_text: str, commit_hash: str, meta: dict | None = None)
     if meta.get("commit_msg"):
         summary_parts.append(f"Commit: {meta['commit_msg']}")
     summary_parts.append(f"Hash: {commit_hash[:8]}")
-    if meta.get("phase"):
-        summary_parts.append(f"Phase: {meta['phase']}")
-    if meta.get("feature"):
-        summary_parts.append(f"Feature: {meta['feature']}")
+    if meta.get("tags"):
+        summary_parts.append(f"Tags: {', '.join(meta['tags'])}")
     if changed_files:
         files_list = "\n".join(f"  - {f}" for f in changed_files[:20])
         summary_parts.append(f"Files changed ({len(changed_files)}):\n{files_list}")
@@ -524,7 +502,7 @@ async def ingest_history(project: str, since: str | None = None) -> int:
             if content.strip() == "Q: \nA: ":
                 continue
             meta: dict = {}
-            for k in ("provider", "source", "phase", "feature"):
+            for k in ("provider", "source"):
                 if entry.get(k):
                     meta[k] = entry[k]
             await embed_and_store(
@@ -584,7 +562,7 @@ async def ingest_commit(project: str, commit_hash: str, code_dir: str) -> int:
         commit_msg = parts[0].strip()
         diff_text = parts[1] if len(parts) > 1 else ""
 
-        # Look up commit metadata from DB (phase/feature/bug_ref)
+        # Look up commit tags from DB
         meta: dict = {"commit_msg": commit_msg}
         if db.is_available():
             try:
@@ -592,10 +570,8 @@ async def ingest_commit(project: str, commit_hash: str, code_dir: str) -> int:
                     with conn.cursor() as cur:
                         cur.execute(_SQL_GET_COMMIT_META, (project, commit_hash))
                         row = cur.fetchone()
-                        if row:
-                            if row[0]: meta["phase"] = row[0]
-                            if row[1]: meta["feature"] = row[1]
-                            if row[2]: meta["bug_ref"] = row[2]
+                        if row and row[0]:
+                            meta["tags"] = row[0]
             except Exception:
                 pass
 
@@ -648,30 +624,6 @@ async def ingest_document(
             chunk["doc_type"] = doc_type
 
     return await embed_chunks(project, "doc", source_id, chunks)
-
-
-async def backfill_entity_tags(project: str) -> int:
-    """Propagate entity tags from mem_mrr_tags into mem_ai_events.metadata.
-
-    Runs after any tagging operation so embeddings become searchable by entity.
-    Finds all embeddings whose source_id matches a tagged prompt source_id and
-    merges an 'entity_tags' list into the metadata JSONB:
-        {"entity_tags": [{"id": 5, "name": "auth", "category": "feature"}, ...]}
-
-    The || merge operator preserves existing metadata keys (phase, feature, etc.).
-    Safe to call repeatedly — idempotent. Silent on error.
-    Returns count of updated embedding rows.
-    """
-    if not db.is_available():
-        return 0
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL_BACKFILL_ENTITY_TAGS, (project, project, project))
-                return cur.rowcount
-    except Exception as e:
-        log.debug(f"backfill_entity_tags failed ({project}): {e}")
-        return 0
 
 
 async def embed_node_outputs(run_id: str, project: str) -> None:

@@ -102,15 +102,11 @@ _SQL_LIST_VALUES = """
            COALESCE(t.short_desc,'') AS description, t.status,
            t.created_at, t.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status,
            t.seq_num,
-           COUNT(r.id) AS event_count,
+           0 AS event_count,
            tc.name AS category_name, tc.color, tc.icon
     FROM planner_tags t
     JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-    LEFT JOIN mem_tags_relations r ON r.tag_id = t.id AND r.related_layer = 'mirror'
     WHERE {where}
-    GROUP BY t.id, t.category_id, t.name, t.short_desc, t.status,
-             t.created_at, t.due_date, t.parent_id, t.lifecycle, t.seq_num,
-             tc.name, tc.color, tc.icon
     ORDER BY t.parent_id NULLS FIRST, t.status, t.name
 """
 
@@ -120,15 +116,12 @@ _SQL_LIST_VALUES_SUMMARY = """
            t.id::text, t.name,
            COALESCE(t.short_desc,'') AS description, t.status,
            t.due_date, t.parent_id::text, t.lifecycle AS lifecycle_status,
-           COUNT(DISTINCT r.id) AS event_count,
-           COUNT(DISTINCT CASE WHEN r.related_type = 'commit' THEN r.id END) AS commit_count
+           0 AS event_count,
+           0 AS commit_count
     FROM mng_tags_categories tc
     JOIN planner_tags t ON t.category_id = tc.id AND t.client_id=1 AND t.project=%s
-    LEFT JOIN mem_tags_relations r ON r.tag_id = t.id AND r.related_layer = 'mirror'
     WHERE tc.client_id=1 AND t.status != 'archived'
-    GROUP BY tc.id, tc.name, tc.color, tc.icon,
-             t.id, t.name, t.short_desc, t.status, t.due_date, t.parent_id, t.lifecycle
-    ORDER BY tc.name, t.status, COUNT(DISTINCT r.id) DESC
+    ORDER BY tc.name, t.status, t.name
 """
 
 _SQL_INSERT_VALUE = """
@@ -151,33 +144,30 @@ _SQL_DELETE_VALUE = """
     DELETE FROM planner_tags WHERE id=%s::uuid RETURNING id
 """
 
-# Sources (prompts + commits) tagged with a given tag via mem_tags_relations
+# Sources (prompts + commits) tagged with a given tag via tags[] inline column
+# tag_str is built as "category_name:tag_name" at call site
 _SQL_GET_EVENTS_FOR_VALUE = """
     SELECT pr.source_id, 'prompt' AS event_type, pr.source_id AS source_id,
            left(pr.prompt, 120) AS title, pr.created_at
-    FROM mem_tags_relations r
-    JOIN mem_mrr_prompts pr ON pr.source_id = r.related_id AND pr.client_id=1 AND pr.project=%s
-    WHERE r.tag_id = %s::uuid AND r.related_layer = 'mirror' AND r.related_type = 'prompt'
+    FROM mem_mrr_prompts pr
+    WHERE pr.client_id=1 AND pr.project=%s AND %s = ANY(pr.tags)
     UNION ALL
     SELECT c.commit_hash, 'commit', c.commit_hash,
            left(c.commit_msg, 120), c.committed_at
-    FROM mem_tags_relations r
-    JOIN mem_mrr_commits c ON c.commit_hash = r.related_id AND c.client_id=1 AND c.project=%s
-    WHERE r.tag_id = %s::uuid AND r.related_layer = 'mirror' AND r.related_type = 'commit'
+    FROM mem_mrr_commits c
+    WHERE c.client_id=1 AND c.project=%s AND %s = ANY(c.tags)
     ORDER BY 5 DESC LIMIT %s
 """
 
-# Session tags: all tags applied to prompts or commits in a session
-_SQL_GET_SESSION_ENTITY_TAGS = """
-    SELECT DISTINCT t.id::text AS id, t.name, t.status,
-           tc.id AS category_id, tc.name AS category_name, tc.color, tc.icon
-    FROM mem_tags_relations r
-    JOIN planner_tags t ON t.id = r.tag_id AND t.client_id=1 AND t.project=%s
-    JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-    LEFT JOIN mem_mrr_prompts p ON p.source_id = r.related_id AND r.related_type = 'prompt'
-    LEFT JOIN mem_mrr_commits c ON c.commit_hash = r.related_id AND r.related_type = 'commit'
-    WHERE r.related_layer = 'mirror'
-      AND (p.session_id = %s OR c.session_id = %s)
+# Session tags: distinct tag strings from prompts + commits in this session
+_SQL_GET_SESSION_TAGS_FROM_MRR = """
+    SELECT DISTINCT unnest(tags) AS tag_str
+    FROM mem_mrr_prompts
+    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'
+    UNION
+    SELECT DISTINCT unnest(tags)
+    FROM mem_mrr_commits
+    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'
 """
 
 # GitHub sync: upsert tag by name+project including short_desc inline
@@ -607,9 +597,25 @@ async def list_events(
     with db.conn() as conn:
         with conn.cursor() as cur:
             if value_id:
+                # Build tag string from planner_tags UUID
+                tag_str = None
+                try:
+                    cur.execute(
+                        """SELECT tc.name || ':' || t.name FROM planner_tags t
+                           JOIN mng_tags_categories tc ON tc.id = t.category_id
+                           WHERE t.id=%s::uuid AND t.client_id=1 LIMIT 1""",
+                        (value_id,),
+                    )
+                    ts_row = cur.fetchone()
+                    if ts_row:
+                        tag_str = ts_row[0]
+                except Exception:
+                    pass
+                if not tag_str:
+                    return {"events": [], "project": p, "total": 0}
                 cur.execute(
                     _SQL_GET_EVENTS_FOR_VALUE,
-                    (p, value_id, p, value_id, limit),
+                    (p, tag_str, p, tag_str, limit),
                 )
                 rows_raw = cur.fetchall()
                 rows = [
@@ -651,7 +657,7 @@ def _do_sync_events(p: str) -> dict[str, int]:
     """No-op stub — pr_events table was removed in the memory infra migration.
 
     Prompts live in mem_mrr_prompts; commits live in mem_mrr_commits.
-    Tagging now uses mem_tags_relations directly.
+    Tagging now uses tags TEXT[] inline on MRR rows.
     """
     return {"prompt": 0, "commit": 0}
 
@@ -711,50 +717,7 @@ async def value_events(val_id: str, project: str | None = Query(None), limit: in
 
 # ── Auto-tag suggestions ────────────────────────────────────────────────────────
 
-async def _auto_suggest_tags(prompt_id: str, project: str, content: str) -> None:
-    """Apply session tags to a prompt via mem_tags_relations. Silent on any error.
 
-    NOTE: LLM-based suggestions are handled by generate_memory() in route_projects.py.
-    This function only applies the active session's phase/feature/bug tags immediately.
-    """
-    if not db.is_available():
-        return
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                # Get active session tags
-                cur.execute(
-                    "SELECT phase, feature, bug_ref FROM mng_session_tags WHERE client_id=1 AND project=%s",
-                    (project,),
-                )
-                st_row = cur.fetchone()
-                if not st_row:
-                    return
-                phase, feature, bug_ref = st_row
-
-                # Apply matching tags immediately
-                for tag_value, cat_name in [
-                    (phase, "phase"), (feature, "feature"), (bug_ref, "bug")
-                ]:
-                    if not tag_value:
-                        continue
-                    cur.execute(
-                        """SELECT t.id FROM planner_tags t
-                           JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-                           WHERE t.client_id=1 AND t.project=%s AND t.name=%s AND tc.name=%s
-                           LIMIT 1""",
-                        (project, tag_value, cat_name),
-                    )
-                    tag_row = cur.fetchone()
-                    if tag_row:
-                        cur.execute(
-                            """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
-                               VALUES (%s, 'mirror', 'prompt', %s)
-                               ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
-                            (tag_row[0], prompt_id),
-                        )
-    except Exception as e:
-        log.debug(f"_auto_suggest_tags failed (prompt {prompt_id}): {e}")
 
 
 @router.get("/suggestions")
@@ -859,31 +822,42 @@ async def session_bulk_tag(body: SessionTagBody):
                         )
                     tag_id = cur.fetchone()[0]
 
-            # Tag all prompts in this session via mem_tags_relations
+            # Tag all prompts and commits in this session via tags[] array
+            # Build tag string from category + value name
+            tag_str = body.value_name or tag_id  # fallback to UUID if no name
+            if body.category_name and body.value_name:
+                tag_str = f"{body.category_name}:{body.value_name}"
+            elif tag_id:
+                # Try to look up the tag string from planner_tags
+                cur.execute(
+                    """SELECT tc.name || ':' || t.name FROM planner_tags t
+                       JOIN mng_tags_categories tc ON tc.id = t.category_id
+                       WHERE t.id=%s::uuid LIMIT 1""",
+                    (tag_id,),
+                )
+                lookup = cur.fetchone()
+                if lookup:
+                    tag_str = lookup[0]
+
             cur.execute(
-                """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
-                   SELECT %s, 'mirror', 'prompt', source_id
-                   FROM mem_mrr_prompts
-                   WHERE client_id=1 AND project=%s AND session_id=%s
-                   ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
-                (tag_id, p, body.session_id),
+                """UPDATE mem_mrr_prompts
+                   SET tags = array_append(array_remove(tags, %s), %s)
+                   WHERE client_id=1 AND project=%s AND session_id=%s""",
+                (tag_str, tag_str, p, body.session_id),
             )
             prompt_tagged = cur.rowcount
 
-            # Tag all commits in this session via mem_tags_relations
             cur.execute(
-                """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
-                   SELECT %s, 'mirror', 'commit', commit_hash
-                   FROM mem_mrr_commits
-                   WHERE client_id=1 AND project=%s AND session_id=%s
-                   ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
-                (tag_id, p, body.session_id),
+                """UPDATE mem_mrr_commits
+                   SET tags = array_append(array_remove(tags, %s), %s)
+                   WHERE client_id=1 AND project=%s AND session_id=%s""",
+                (tag_str, tag_str, p, body.session_id),
             )
             commit_tagged = cur.rowcount
 
     return {
         "ok": True,
-        "value_id": tag_id,
+        "tag": tag_str if 'tag_str' in dir() else tag_id,
         "session_id": body.session_id,
         "events_tagged": prompt_tagged + commit_tagged,
         "project": p,
@@ -893,36 +867,15 @@ async def session_bulk_tag(body: SessionTagBody):
 # ── Per-entry tagging (History tab) ───────────────────────────────────────────
 
 class TagBySourceIdBody(BaseModel):
-    source_id:       str   # prompt source_id (timestamp) or commit hash
-    tag_id:          str   # UUID of planner_tags row
-    project:         Optional[str] = None
-    # Legacy field kept for backward compat — ignored (use tag_id)
+    source_id: str           # prompt source_id (timestamp) or commit hash
+    tag:       str           # tag string e.g. "phase:discovery", "feature:auth"
+    project:   Optional[str] = None
+    # Legacy fields kept for backward compat — ignored when tag is provided
+    tag_id:          Optional[str] = None
     entity_value_id: Optional[int] = None
 
 
-def _propagate_tags_phase4(p: str) -> None:
-    """Background: copy prompt tags → commits in same session (via mem_tags_relations).
 
-    Called after every manual tag operation so commit tag chips stay in sync.
-    """
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
-                       SELECT DISTINCT r.tag_id, 'mirror', 'commit', c.commit_hash
-                       FROM mem_tags_relations r
-                       JOIN mem_mrr_prompts pr ON pr.source_id = r.related_id
-                                         AND pr.client_id=1 AND pr.project=%s
-                                         AND pr.session_id IS NOT NULL
-                       JOIN mem_mrr_commits c ON c.session_id = pr.session_id
-                                        AND c.client_id=1 AND c.project=%s
-                       WHERE r.related_layer = 'mirror' AND r.related_type = 'prompt'
-                       ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
-                    (p, p),
-                )
-    except Exception as exc:
-        log.debug(f"Background tag propagation skipped: {exc}")
 
 
 @router.post("/events/tag-by-source-id")
@@ -932,62 +885,44 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
     source_id is either:
       - a timestamp string (prompt) → looked up in mem_mrr_prompts.source_id
       - a 7-40 char hex string (commit hash) → looked up in mem_mrr_commits.commit_hash
-    tag_id must be a valid planner_tags UUID for this project.
+    tag must be a string like "phase:discovery" or "feature:auth".
     """
     _require_db()
     p = _project(body.project)
-    tag_id = body.tag_id
+    tag = body.tag
 
     is_commit = bool(re.match(r'^[0-9a-f]{7,40}$', body.source_id.lower()))
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            # Verify tag exists
-            cur.execute(
-                "SELECT id FROM planner_tags WHERE id=%s::uuid AND client_id=1 AND project=%s",
-                (tag_id, p),
-            )
-            if not cur.fetchone():
-                raise HTTPException(404, f"Tag {tag_id!r} not found in project {p!r}")
-
             if is_commit:
                 cur.execute(
-                    "SELECT commit_hash FROM mem_mrr_commits WHERE client_id=1 AND project=%s AND commit_hash=%s LIMIT 1",
-                    (p, body.source_id),
+                    """UPDATE mem_mrr_commits
+                       SET tags = array_append(array_remove(tags, %s), %s)
+                       WHERE client_id=1 AND project=%s AND commit_hash=%s""",
+                    (tag, tag, p, body.source_id),
                 )
-                row = cur.fetchone()
-                if not row:
+                if cur.rowcount == 0:
                     raise HTTPException(404, f"Commit {body.source_id!r} not found")
-                cur.execute(
-                    """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
-                       VALUES (%s, 'mirror', 'commit', %s)
-                       ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
-                    (tag_id, row[0]),
-                )
             else:
                 cur.execute(
-                    "SELECT source_id FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND source_id=%s LIMIT 1",
-                    (p, body.source_id),
+                    """UPDATE mem_mrr_prompts
+                       SET tags = array_append(array_remove(tags, %s), %s)
+                       WHERE client_id=1 AND project=%s AND source_id=%s""",
+                    (tag, tag, p, body.source_id),
                 )
-                row = cur.fetchone()
-                if not row:
+                if cur.rowcount == 0:
                     raise HTTPException(404, f"Prompt with source_id={body.source_id!r} not found")
-                cur.execute(
-                    """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
-                       VALUES (%s, 'mirror', 'prompt', %s)
-                       ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
-                    (tag_id, row[0]),
-                )
 
-    background.add_task(_propagate_tags_phase4, p)
-    return {"ok": True, "source_id": body.source_id, "tag_id": tag_id, "project": p}
+    return {"ok": True, "source_id": body.source_id, "tag": tag, "project": p}
 
 
 @router.delete("/events/tag-by-source-id")
 async def untag_event_by_source_id(
     source_id: str = Query(...),
-    value_id:  str = Query(...),   # UUID string (was int)
+    tag:       str = Query(...),   # tag string e.g. "phase:discovery"
     project:   str | None = Query(None),
+    value_id:  str | None = Query(None),   # legacy alias — ignored when tag is provided
 ):
     """Remove a tag from a prompt or commit identified by its source_id / commit hash."""
     _require_db()
@@ -997,101 +932,80 @@ async def untag_event_by_source_id(
         with conn.cursor() as cur:
             if is_commit:
                 cur.execute(
-                    """DELETE FROM mem_tags_relations
-                       WHERE tag_id = %s::uuid
-                         AND related_type = 'commit'
-                         AND related_id = %s""",
-                    (value_id, source_id),
+                    "UPDATE mem_mrr_commits SET tags = array_remove(tags, %s) "
+                    "WHERE client_id=1 AND project=%s AND commit_hash=%s",
+                    (tag, p, source_id),
                 )
             else:
                 cur.execute(
-                    """DELETE FROM mem_tags_relations
-                       WHERE tag_id = %s::uuid
-                         AND related_type = 'prompt'
-                         AND related_id = %s""",
-                    (value_id, source_id),
+                    "UPDATE mem_mrr_prompts SET tags = array_remove(tags, %s) "
+                    "WHERE client_id=1 AND project=%s AND source_id=%s",
+                    (tag, p, source_id),
                 )
-    return {"ok": True, "source_id": source_id, "value_id": value_id}
+    return {"ok": True, "source_id": source_id, "tag": tag}
 
 
 @router.delete("/session-tag")
 async def remove_session_tag(
     session_id: str = Query(...),
-    value_id:   str = Query(...),   # UUID string (was int)
+    tag:        str = Query(...),   # tag string e.g. "phase:discovery"
     project:    str | None = Query(None),
+    value_id:   str | None = Query(None),   # legacy alias — ignored when tag is provided
 ):
     """Remove a tag from all prompts and commits in a session."""
     _require_db()
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            # Remove from all prompts in this session
             cur.execute(
-                """DELETE FROM mem_tags_relations r
-                   USING mem_mrr_prompts pr
-                   WHERE r.related_id = pr.source_id
-                     AND r.related_type = 'prompt'
-                     AND pr.client_id=1 AND pr.project=%s AND pr.session_id=%s
-                     AND r.tag_id = %s::uuid""",
-                (p, session_id, value_id),
+                "UPDATE mem_mrr_prompts SET tags = array_remove(tags, %s) "
+                "WHERE client_id=1 AND project=%s AND session_id=%s",
+                (tag, p, session_id),
             )
             deleted_p = cur.rowcount
-            # Remove from all commits in this session
             cur.execute(
-                """DELETE FROM mem_tags_relations r
-                   USING mem_mrr_commits c
-                   WHERE r.related_id = c.commit_hash
-                     AND r.related_type = 'commit'
-                     AND c.client_id=1 AND c.project=%s AND c.session_id=%s
-                     AND r.tag_id = %s::uuid""",
-                (p, session_id, value_id),
+                "UPDATE mem_mrr_commits SET tags = array_remove(tags, %s) "
+                "WHERE client_id=1 AND project=%s AND session_id=%s",
+                (tag, p, session_id),
             )
             deleted_c = cur.rowcount
-    return {"ok": True, "session_id": session_id, "value_id": value_id,
+    return {"ok": True, "session_id": session_id, "tag": tag,
             "deleted": deleted_p + deleted_c}
 
 
 @router.get("/events/source-tags")
 async def get_events_source_tags(project: str | None = Query(None)):
-    """Return a map of source_id → [tag list] for all tagged prompts and commits.
+    """Return a map of source_id → tags[] for all tagged prompts and commits.
 
     Used by the History tab to display persisted tags on each history entry.
     Returns {} (not 503) when DB is unavailable.
+    Tags are plain strings like ["phase:discovery", "feature:auth"].
     """
     if not db.is_available():
         return {}
     p = _project(project)
 
+    result: dict = {}
     with db.conn() as conn:
         with conn.cursor() as cur:
+            # Prompts
             cur.execute(
-                """SELECT r.related_id, t.id::text, t.name, tc.color, tc.icon, tc.name AS cat_name
-                   FROM mem_tags_relations r
-                   JOIN planner_tags t ON t.id = r.tag_id AND t.client_id=1 AND t.project=%s
-                   JOIN mng_tags_categories tc ON tc.id = t.category_id
-                   WHERE r.related_layer = 'mirror' AND r.related_type = 'prompt'
-                   UNION ALL
-                   SELECT r.related_id, t.id::text, t.name, tc.color, tc.icon, tc.name
-                   FROM mem_tags_relations r
-                   JOIN planner_tags t ON t.id = r.tag_id AND t.client_id=1 AND t.project=%s
-                   JOIN mng_tags_categories tc ON tc.id = t.category_id
-                   WHERE r.related_layer = 'mirror' AND r.related_type = 'commit'
-                   ORDER BY 1, 3""",
-                (p, p),
+                "SELECT source_id, tags FROM mem_mrr_prompts "
+                "WHERE client_id=1 AND project=%s AND tags != '{}'",
+                (p,),
             )
-            rows = cur.fetchall()
-
-    result: dict = {}
-    for source_id, vid, vname, color, icon, cat_name in rows:
-        if source_id not in result:
-            result[source_id] = []
-        result[source_id].append({
-            "value_id": vid,
-            "name":     vname,
-            "color":    color or "#4a90e2",
-            "icon":     icon  or "⬡",
-            "cat_name": cat_name,
-        })
+            for source_id, tags in cur.fetchall():
+                if source_id and tags:
+                    result[source_id] = list(tags)
+            # Commits
+            cur.execute(
+                "SELECT commit_hash, tags FROM mem_mrr_commits "
+                "WHERE client_id=1 AND project=%s AND tags != '{}'",
+                (p,),
+            )
+            for commit_hash, tags in cur.fetchall():
+                if commit_hash and tags:
+                    result[commit_hash] = list(tags)
     return result
 
 
@@ -1207,17 +1121,16 @@ async def github_sync(
 
 @router.get("/session-tags")
 async def get_session_entity_tags(session_id: str, project: str | None = Query(None)):
-    """Return all tags applied to prompts/commits in a session.
+    """Return all distinct tags from prompts/commits in a session.
 
-    Used by the frontend to reload the applied-tags chip bar when switching sessions.
+    Returns tag strings like ["phase:discovery", "feature:auth"].
     """
     _require_db()
     p = _project(project)
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_SESSION_ENTITY_TAGS, (p, session_id, session_id))
-            cols = [d[0] for d in cur.description]
-            tags = [dict(zip(cols, row)) for row in cur.fetchall()]
+            cur.execute(_SQL_GET_SESSION_TAGS_FROM_MRR, (p, session_id, p, session_id))
+            tags = [row[0] for row in cur.fetchall() if row[0]]
 
     return {"tags": tags, "session_id": session_id, "project": p}

@@ -41,10 +41,7 @@ _SQL_GET_TAG_ID = """
 _SQL_GET_MEMORY_EVENTS = """
     SELECT me.id, me.event_type, me.source_id, me.session_id, me.content, me.importance
     FROM mem_ai_events me
-    JOIN mem_tags_relations r ON r.related_id = me.id::TEXT
-        AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
-    WHERE r.tag_id = %s::uuid
-      AND me.client_id = 1 AND me.project = %s
+    WHERE me.client_id = 1 AND me.project = %s
     ORDER BY me.created_at
 """
 
@@ -160,7 +157,7 @@ async def generate_snapshot(project: str, tag_name: str):
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_MEMORY_EVENTS, (tag_id, project))
+            cur.execute(_SQL_GET_MEMORY_EVENTS, (project,))
             events = cur.fetchall()
 
     if not events:

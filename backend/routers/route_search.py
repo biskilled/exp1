@@ -24,8 +24,8 @@ from core.database import db
 _SQL_SEARCH_PROMPTS_BASE = (
     """SELECT p.id, 'prompt' AS event_type, p.source_id,
               left(p.prompt, 120) AS title,
-              p.phase, p.session_id,
-              p.created_at, p.metadata
+              p.tags, p.session_id,
+              p.created_at
          FROM mem_mrr_prompts p
          {where}
         ORDER BY p.created_at DESC
@@ -110,40 +110,30 @@ async def get_tagged_context(
     filters: list[str] = ["p.client_id=1", "p.project=%s"]
     params: list = [p]
 
-    effective_tag_id = tag_id
-    if not effective_tag_id and entity_value_id:
-        # Legacy: try to resolve entity_value_id → planner_tags UUID by seq_num / int PK
-        # (mng_entity_values was merged into planner_tags; seq_num may match)
+    # Filter by tags[] array (phase/feature are now inline tags)
+    if phase:
+        filters.append("('phase:' || %s) = ANY(p.tags)")
+        params.append(phase)
+    if feature:
+        filters.append("('feature:' || %s) = ANY(p.tags)")
+        params.append(feature)
+    if tag_id:
+        # tag_id is a planner_tags UUID — look up the tag name and filter by "cat:name"
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT id::text FROM planner_tags WHERE client_id=1 AND project=%s AND seq_num=%s LIMIT 1",
-                        (p, entity_value_id),
+                        """SELECT tc.name || ':' || t.name FROM planner_tags t
+                           JOIN mng_tags_categories tc ON tc.id = t.category_id
+                           WHERE t.id=%s::uuid AND t.client_id=1 LIMIT 1""",
+                        (tag_id,),
                     )
                     row = cur.fetchone()
                     if row:
-                        effective_tag_id = row[0]
+                        filters.append("%s = ANY(p.tags)")
+                        params.append(row[0])
         except Exception:
             pass
-
-    if effective_tag_id:
-        # Filter by applied source tag — join through mem_tags_relations
-        filters.append(
-            "p.source_id IN (SELECT related_id FROM mem_tags_relations WHERE tag_id=%s::uuid AND related_type='prompt')"
-        )
-        params.append(effective_tag_id)
-    else:
-        # Filter by phase / feature columns (fast indexed lookup)
-        if phase:
-            filters.append("p.phase = %s")
-            params.append(phase)
-        if feature:
-            # feature is stored in metadata JSONB or mng_session_tags (not a direct column)
-            filters.append(
-                "p.metadata->>'feature' = %s"
-            )
-            params.append(feature)
 
     where = "WHERE " + " AND ".join(filters)
     params.append(limit)
@@ -158,10 +148,9 @@ async def get_tagged_context(
         events = [
             {
                 "id": str(r[0]), "event_type": r[1], "source_id": r[2],
-                "title": r[3], "phase": r[4],
+                "title": r[3], "tags": r[4] or [],
                 "session_id": r[5],
                 "created_at": r[6].isoformat() if r[6] else None,
-                "metadata": r[7] or {},
             }
             for r in rows
         ]

@@ -6,8 +6,7 @@ Table namespaces:
   planner_     — project tag hierarchy (planner_tags)
   mem_mrr_     — mirroring layer (raw source data: prompts, commits, items, messages)
   mem_ai_      — AI/embedding layer (mem_ai_events, mem_ai_work_items, mem_ai_project_facts)
-  mem_tags_    — tag relations (mem_tags_relations)
-  pr_          — project-scoped misc (graph_*, seq_counters)
+    pr_          — project-scoped misc (graph_*, seq_counters)
 
 Falls back gracefully when DATABASE_URL is not set — callers check `is_available()`.
 
@@ -243,22 +242,19 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id    INT           NOT NULL REFERENCES mng_clients(id),
     project      VARCHAR(255)  NOT NULL,
-    work_item_id UUID          REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
     session_id   TEXT,
     llm_source   TEXT,
     source_id    TEXT,
     prompt       TEXT          NOT NULL DEFAULT '',
     response     TEXT          NOT NULL DEFAULT '',
-    phase        TEXT,
-    metadata     JSONB         NOT NULL DEFAULT '{}',
-    ai_tags      TEXT          DEFAULT NULL,
+    tags         TEXT[]        NOT NULL DEFAULT '{}',
     created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_cp      ON mem_mrr_prompts(client_id, project);
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(client_id, project, source_id) WHERE source_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC);
-CREATE INDEX IF NOT EXISTS        idx_mmrr_p_wi      ON mem_mrr_prompts(work_item_id) WHERE work_item_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS        idx_mmrr_p_tags    ON mem_mrr_prompts USING gin(tags);
 
 -- Mirroring: commits — commit_hash is the natural primary key (git hash)
 CREATE TABLE IF NOT EXISTS mem_mrr_commits (
@@ -268,20 +264,18 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     commit_msg   TEXT           NOT NULL DEFAULT '',
     summary      TEXT           NOT NULL DEFAULT '',
     diff_summary TEXT           NOT NULL DEFAULT '',
-    phase        VARCHAR(20),
-    feature      VARCHAR(255),
-    bug_ref      VARCHAR(255),
     source       VARCHAR(50)    NOT NULL DEFAULT 'git',
     session_id   VARCHAR(255),
     prompt_id    UUID           REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
     diff_details JSONB          NOT NULL DEFAULT '{}',
-    ai_tags      TEXT           DEFAULT NULL,
+    tags         TEXT[]         NOT NULL DEFAULT '{}',
     committed_at TIMESTAMPTZ,
     created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_cp       ON mem_mrr_commits(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm     ON mem_mrr_commits(committed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_session  ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags     ON mem_mrr_commits USING gin(tags);
 
 -- Work items (feature/bug/task pipeline tracking)
 CREATE TABLE IF NOT EXISTS mem_ai_work_items (
@@ -485,22 +479,6 @@ CREATE INDEX IF NOT EXISTS idx_planner_tags_cp     ON planner_tags(client_id, pr
 CREATE INDEX IF NOT EXISTS idx_planner_tags_parent ON planner_tags(parent_id);
 CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
 
--- ── Tag relations (replaces mem_mrr_tags wide junction + mem_ai_tags + mem_ai_tags_relations) ──
-CREATE TABLE IF NOT EXISTS mem_tags_relations (
-    id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    tag_id              UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
-    related_layer       TEXT         NOT NULL,
-    related_type        TEXT         NOT NULL,
-    related_id          TEXT         NOT NULL,
-    related_type_score  FLOAT,
-    related_approved    TEXT,
-    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE (tag_id, related_type, related_id)
-);
-CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_tag    ON mem_tags_relations(tag_id);
-CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_type   ON mem_tags_relations(related_type, related_id);
-CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_review ON mem_tags_relations(related_approved) WHERE related_approved IS NULL;
-
 -- ── Mirroring: items (requirements, decisions, meetings) ─────────────────────
 CREATE TABLE IF NOT EXISTS mem_mrr_items (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -512,11 +490,12 @@ CREATE TABLE IF NOT EXISTS mem_mrr_items (
     attendees   TEXT[],
     raw_text    TEXT         NOT NULL,
     summary     TEXT,
-    ai_tags     TEXT         DEFAULT NULL,
+    tags        TEXT[]       NOT NULL DEFAULT '{}',
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_cp   ON mem_mrr_items(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_type ON mem_mrr_items(item_type);
+CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags     ON mem_mrr_items USING gin(tags);
 
 -- ── Mirroring: messages (Slack, Teams, Discord) ──────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_mrr_messages (
@@ -528,10 +507,11 @@ CREATE TABLE IF NOT EXISTS mem_mrr_messages (
     thread_ref TEXT,
     messages   JSONB        NOT NULL,
     date_range TSTZRANGE,
-    ai_tags    TEXT         DEFAULT NULL,
+    tags       TEXT[]       NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_mmrr_messages_cp ON mem_mrr_messages(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mmrr_messages_cp   ON mem_mrr_messages(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags        ON mem_mrr_messages USING gin(tags);
 
 -- ── Embedding / AI events table ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_events (
@@ -576,13 +556,11 @@ ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS summary_tags;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS session_desc;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS cnt_prompts;
 -- mem_mrr_prompts: drop denormalized/redundant columns
-ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS tags;
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS event_type;
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS session_src_id;
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS session_src_desc;
 -- mem_mrr_commits: drop legacy columns
 ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS prompt_source_id;
-ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS tags;
 -- mem_ai_work_items: add tag_id + embedding (not in original schema)
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
@@ -743,6 +721,36 @@ DROP TABLE IF EXISTS mng_ai_tags_relations  CASCADE;
 DROP TABLE IF EXISTS mem_mrr_tags           CASCADE;
 -- Drop stale tag_id FK from mem_ai_work_items (links now via mem_tags_relations)
 ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS tag_id;
+-- ── 002_mrr_tags_simplification: inline tags[] replaces mem_tags_relations ──
+ALTER TABLE mem_mrr_prompts   ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE mem_mrr_commits   ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE mem_mrr_items     ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE mem_mrr_messages  ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS idx_mmrr_p_tags ON mem_mrr_prompts   USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags ON mem_mrr_commits   USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags ON mem_mrr_items     USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags ON mem_mrr_messages  USING gin(tags);
+UPDATE mem_mrr_commits SET tags = array_cat(tags, array_remove(ARRAY[
+    CASE WHEN phase   IS NOT NULL THEN 'phase:'   || phase   END,
+    CASE WHEN feature IS NOT NULL THEN 'feature:' || feature END,
+    CASE WHEN bug_ref IS NOT NULL THEN 'bug:'     || bug_ref END
+], NULL))
+WHERE (phase IS NOT NULL OR feature IS NOT NULL OR bug_ref IS NOT NULL)
+  AND NOT EXISTS (SELECT 1 FROM unnest(tags) t WHERE t LIKE 'phase:%' OR t LIKE 'feature:%' OR t LIKE 'bug:%');
+UPDATE mem_mrr_prompts SET tags = array_append(tags, 'phase:' || phase)
+WHERE phase IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM unnest(tags) t WHERE t LIKE 'phase:%');
+ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS work_item_id;
+ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS metadata;
+ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS phase;
+ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS ai_tags;
+ALTER TABLE mem_mrr_commits  DROP COLUMN IF EXISTS phase;
+ALTER TABLE mem_mrr_commits  DROP COLUMN IF EXISTS feature;
+ALTER TABLE mem_mrr_commits  DROP COLUMN IF EXISTS bug_ref;
+ALTER TABLE mem_mrr_commits  DROP COLUMN IF EXISTS ai_tags;
+ALTER TABLE mem_mrr_items    DROP COLUMN IF EXISTS ai_tags;
+ALTER TABLE mem_mrr_messages DROP COLUMN IF EXISTS ai_tags;
+DROP TABLE IF EXISTS mem_tags_relations CASCADE;
 """
 
 

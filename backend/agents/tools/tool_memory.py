@@ -165,15 +165,12 @@ def _handle_search_memory(args: dict) -> str:
                             cur.execute(
                                 """SELECT me.event_type, me.content, me.summary, me.created_at
                                    FROM mem_ai_events me
-                                   JOIN mem_tags_relations r ON r.related_id = me.id::TEXT
-                                       AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
-                                   JOIN planner_tags t ON t.id = r.tag_id
                                    WHERE me.client_id=1 AND me.project=%s
                                      AND me.embedding IS NOT NULL
-                                     AND t.name ILIKE %s
+                                     AND %s = ANY(me.summary_tags)
                                    ORDER BY me.embedding <=> %s::vector
                                    LIMIT %s""",
-                                (project, f"%{feature}%", vs, limit),
+                                (project, feature, vs, limit),
                             )
                         else:
                             cur.execute(
@@ -193,22 +190,25 @@ def _handle_search_memory(args: dict) -> str:
 
                     # ── Text fallback ─────────────────────────────────────
                     if not results:
-                        where_extra = "AND t.name ILIKE %s" if feature else ""
-                        join_extra  = "JOIN mem_tags_relations r ON r.related_id = me.id::TEXT AND r.related_layer='ai' AND r.related_type='memory_event' JOIN planner_tags t ON t.id = r.tag_id" if feature else ""
-                        params: list = [project, f"%{query}%"]
                         if feature:
-                            params.append(f"%{feature}%")
-                        params.append(limit)
-                        cur.execute(
-                            f"""SELECT me.event_type, me.content, me.summary, me.created_at
-                                FROM mem_ai_events me
-                                {join_extra}
-                                WHERE me.client_id=1 AND me.project=%s
-                                  AND me.content ILIKE %s
-                                  {where_extra}
-                                ORDER BY me.created_at DESC LIMIT %s""",
-                            params,
-                        )
+                            cur.execute(
+                                """SELECT me.event_type, me.content, me.summary, me.created_at
+                                   FROM mem_ai_events me
+                                   WHERE me.client_id=1 AND me.project=%s
+                                     AND me.content ILIKE %s
+                                     AND %s = ANY(me.summary_tags)
+                                   ORDER BY me.created_at DESC LIMIT %s""",
+                                (project, f"%{query}%", feature, limit),
+                            )
+                        else:
+                            cur.execute(
+                                """SELECT event_type, content, summary, created_at
+                                   FROM mem_ai_events
+                                   WHERE client_id=1 AND project=%s
+                                     AND content ILIKE %s
+                                   ORDER BY created_at DESC LIMIT %s""",
+                                (project, f"%{query}%", limit),
+                            )
                         for row in cur.fetchall():
                             ts = row[3].strftime("%Y-%m-%d") if row[3] else "?"
                             text = (row[2] or row[1] or "")[:400]
@@ -261,12 +261,10 @@ def _handle_get_recent_history(args: dict) -> str:
                         cur.execute(
                             """SELECT p.prompt, p.response, p.created_at
                                FROM mem_mrr_prompts p
-                               JOIN mem_tags_relations r ON r.related_id = p.source_id
-                                   AND r.related_type = 'prompt' AND r.related_layer = 'mirror'
-                               JOIN planner_tags t ON t.id = r.tag_id
-                               WHERE p.client_id=1 AND p.project=%s AND t.name ILIKE %s
+                               WHERE p.client_id=1 AND p.project=%s
+                                 AND %s = ANY(p.tags)
                                ORDER BY p.created_at DESC LIMIT %s""",
-                            (project, f"%{feature}%", limit),
+                            (project, f"feature:{feature}", limit),
                         )
                     else:
                         cur.execute(
@@ -426,12 +424,10 @@ def _handle_get_tag_context(args: dict) -> str:
                 cur.execute(
                     """SELECT e.event_type, e.content, e.summary, e.created_at
                        FROM mem_ai_events e
-                       JOIN mem_tags_relations r ON r.related_id = e.id::TEXT
-                           AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
-                       WHERE r.tag_id = %s::uuid
+                       WHERE e.client_id=1 AND e.project=%s
                        ORDER BY e.created_at DESC
                        LIMIT %s""",
-                    (tag_id, limit),
+                    (project, limit),
                 )
                 events = cur.fetchall()
                 if events:
@@ -443,27 +439,14 @@ def _handle_get_tag_context(args: dict) -> str:
 
                 # ── Work items ────────────────────────────────────────────
                 cur.execute(
-                    """SELECT wi.name, wi.category_name, wi.lifecycle_status, wi.status,
-                              wi.acceptance_criteria, wi.seq_num
-                       FROM mem_ai_work_items wi
-                       JOIN mem_tags_relations r ON r.related_id = wi.id::TEXT
-                           AND r.related_type = 'work_item' AND r.tag_id = %s::uuid
-                       WHERE wi.client_id=1 AND wi.project=%s
-                       ORDER BY wi.created_at DESC LIMIT 5""",
-                    (tag_id, project),
+                    """SELECT name, category_name, lifecycle_status, status,
+                              acceptance_criteria, seq_num
+                       FROM mem_ai_work_items
+                       WHERE client_id=1 AND project=%s AND name ILIKE %s
+                       ORDER BY created_at DESC LIMIT 5""",
+                    (project, f"%{tag_name}%"),
                 )
                 wis = cur.fetchall()
-                if not wis:
-                    # Also try matching by name
-                    cur.execute(
-                        """SELECT name, category_name, lifecycle_status, status,
-                                  acceptance_criteria, seq_num
-                           FROM mem_ai_work_items
-                           WHERE client_id=1 AND project=%s AND name ILIKE %s
-                           ORDER BY created_at DESC LIMIT 5""",
-                        (project, f"%{tag_name}%"),
-                    )
-                    wis = cur.fetchall()
                 if wis:
                     lines.append("\n--- Work Items ---")
                     for wi in wis:

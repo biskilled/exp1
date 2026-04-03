@@ -32,8 +32,8 @@ from memory.mem_sessions import SessionStore
 _SQL_INSERT_INTERACTION = """
     INSERT INTO mem_mrr_prompts
            (client_id, project, session_id, llm_source, source_id,
-            prompt, response, phase, metadata, created_at)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+            prompt, response, tags, created_at)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz)
        ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
 """
 
@@ -41,12 +41,6 @@ _SQL_INSERT_TRANSACTION = """
     INSERT INTO mng_transactions
        (user_id, type, amount_usd, base_cost_usd, description, ref)
        VALUES (%s, %s, %s, %s, %s, %s)
-"""
-
-_SQL_GET_PROMPT_BY_SOURCE = """
-    SELECT id::text FROM mem_mrr_prompts
-    WHERE client_id=1 AND project=%s AND event_type='prompt' AND source_id=%s
-    LIMIT 1
 """
 
 _SQL_GET_SESSION_FEATURE = """
@@ -82,7 +76,9 @@ _SQL_INSERT_GRAPH_RUN = """
 """
 
 _SQL_UPDATE_COMMIT_PHASE = """
-    UPDATE mem_mrr_commits SET phase=%s
+    UPDATE mem_mrr_commits
+    SET tags = ARRAY(SELECT t FROM unnest(tags) t WHERE t NOT LIKE 'phase:%%')
+              || CASE WHEN %s IS NOT NULL THEN ARRAY['phase:' || %s] ELSE ARRAY[]::TEXT[] END
     WHERE client_id=1 AND project=%s AND session_id=%s
 """
 
@@ -124,8 +120,12 @@ def _append_history(
     if not db.is_available():
         return ts
 
-    phase = (tags or {}).get("phase") or None
-    meta  = json.dumps({"user": user_email or user_id, "source": "ui"})
+    # Convert legacy dict tags to new tags[] string format
+    tags_list: list[str] = []
+    for k, v in (tags or {}).items():
+        if v:
+            prefix = "bug" if k == "bug_ref" else k
+            tags_list.append(f"{prefix}:{v}")
 
     try:
         with db.conn() as conn:
@@ -136,7 +136,7 @@ def _append_history(
                     (project, session_id, None, "ui",
                      provider, ts,
                      (user_msg or "")[:4000], (response or "")[:8000],
-                     phase, meta, ts),
+                     tags_list, ts),
                 )
     except Exception:
         pass  # never break chat because of logging
@@ -302,7 +302,7 @@ async def _stream_response(
         _append_history(project, provider, message, content, session_id, user_id, user_email, ts=_ts, tags=tags)
         _update_runtime_state(project, provider, message, session_id, user_id)
 
-        # Fire-and-forget: embed + auto-tag suggestions + proactive feature detection
+        # Fire-and-forget: embed + proactive feature detection
         try:
             from memory.mem_embeddings import embed_and_store as _embed
             asyncio.create_task(_embed(
@@ -310,11 +310,8 @@ async def _stream_response(
                 chunk_index=0, chunk_type="full",
                 metadata={"provider": provider, "source": "ui"},
             ))
-            # Auto-tag suggestions for the event we just created
+            # Proactive feature auto-detection (first prompt in new session only)
             if db.is_available():
-                from routers.route_entities import _auto_suggest_tags
-                asyncio.create_task(_auto_suggest_tags_for_event(_ts, project, message))
-                # Proactive feature auto-detection (first prompt in new session only)
                 asyncio.create_task(
                     _auto_detect_session_feature(session_id, project, message, messages)
                 )
@@ -330,19 +327,6 @@ async def _stream_response(
     except Exception as e:
         yield f"data: [ERROR] {e}\n\n"
 
-
-async def _auto_suggest_tags_for_event(ts: str, project: str, user_msg: str) -> None:
-    """Look up the prompt by source_id then apply session tags. Silent on error."""
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL_GET_PROMPT_BY_SOURCE, (project, ts))
-                row = cur.fetchone()
-        if row:
-            from routers.route_entities import _auto_suggest_tags
-            await _auto_suggest_tags(row[0], project, user_msg)
-    except Exception:
-        pass
 
 
 async def _auto_detect_session_feature(
@@ -490,10 +474,11 @@ class HookLogRequest(BaseModel):
     prompt: str
     source: str = "claude_cli"
     provider: str = "claude"
-    phase: str | None = None
-    feature: str | None = None
-    session_src_id: str | None = None   # opaque session identifier from the hook script
-    context_tags: dict = {}   # {stage: "discovery", feature: "auth", ...} from .agent-context
+    tags: list[str] = []              # ["phase:discovery", "feature:auth"] — preferred
+    phase: str | None = None          # legacy alias → "phase:{phase}" added to tags
+    feature: str | None = None        # legacy alias → "feature:{feature}" added to tags
+    session_src_id: str | None = None
+    context_tags: dict = {}           # legacy — ignored when tags[] is provided
 
 
 class HookResponseRequest(BaseModel):
@@ -600,59 +585,6 @@ async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
         log.debug(f"_generate_memory_batch error: {e}")
 
 
-async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: dict) -> None:
-    """Create mem_mrr_tags rows for each key:value in context_tags (auto_tagged=True)."""
-    if not context_tags or not db.is_available():
-        return
-    try:
-        from datetime import datetime as _dt, timezone as _tz
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                for key, value in context_tags.items():
-                    tag_name = f"{key}:{value}" if key not in ("feature", "bug_ref") else str(value)
-                    # get_or_create tag
-                    cur.execute(
-                        "SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s",
-                        (project, tag_name),
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        tag_id = row[0]
-                    else:
-                        cur.execute(
-                            "INSERT INTO planner_tags (client_id, project, name, status) "
-                            "VALUES (1, %s, %s, 'active') "
-                            "ON CONFLICT (client_id, project, name, category_id) DO NOTHING RETURNING id",
-                            (project, tag_name),
-                        )
-                        ins = cur.fetchone()
-                        if not ins:
-                            cur.execute(
-                                "SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s",
-                                (project, tag_name),
-                            )
-                            ins = cur.fetchone()
-                        if ins:
-                            tag_id = ins[0]
-                        else:
-                            continue
-                    # Insert source-tag link into mem_tags_relations
-                    # Look up source_id for this prompt (external reference key)
-                    cur.execute(
-                        "SELECT source_id FROM mem_mrr_prompts WHERE id = %s::uuid LIMIT 1",
-                        (prompt_id,),
-                    )
-                    src_row = cur.fetchone()
-                    src_key = src_row[0] if src_row and src_row[0] else str(prompt_id)
-                    cur.execute(
-                        """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
-                           VALUES (%s, 'mirror', 'prompt', %s)
-                           ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
-                        (str(tag_id), src_key),
-                    )
-    except Exception as e:
-        log.debug(f"_tag_prompt_from_context error: {e}")
-
 
 @router.post("/{project}/hook-log")
 async def hook_log_prompt(project: str, body: HookLogRequest):
@@ -666,37 +598,34 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
     if not db.is_available():
         return {"ok": False, "reason": "db_unavailable"}
     try:
-        prompt_id = None
+        # Build tags list: prefer body.tags; fall back to legacy phase/feature fields
+        tags_list = list(body.tags) if body.tags else []
+        if not tags_list:
+            if body.phase:
+                tags_list.append(f"phase:{body.phase}")
+            if body.feature:
+                tags_list.append(f"feature:{body.feature}")
+        # Also merge any context_tags dict (legacy fallback)
+        if not tags_list and body.context_tags:
+            for k, v in body.context_tags.items():
+                if v:
+                    prefix = "bug" if k == "bug_ref" else k
+                    tags_list.append(f"{prefix}:{v}")
+
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
                     (project, body.session_id, body.source, ts,
                      (body.prompt or "")[:4000], "",
-                     body.phase,
-                     json.dumps({"source": body.source, "provider": body.provider,
-                                 "feature": body.feature,
-                                 "context_tags": body.context_tags}),
-                     ts),
+                     tags_list, ts),
                 )
-                # Fetch the inserted prompt id
-                cur.execute(
-                    "SELECT id FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND source_id=%s",
-                    (project, ts),
-                )
-                row = cur.fetchone()
-                if row:
-                    prompt_id = str(row[0])
 
         # Fire memory batch digest every N prompts (fire-and-forget)
         count = _count_session_prompts(project, body.session_id)
         batch_size = _get_batch_size(project)
         if count > 0 and count % batch_size == 0:
             asyncio.create_task(_generate_memory_batch(project, body.session_id, batch_size))
-
-        # Tag prompt with context_tags if provided
-        if body.context_tags and prompt_id:
-            asyncio.create_task(_tag_prompt_from_context(project, prompt_id, body.context_tags))
 
         return {"ok": True, "ts": ts}
     except Exception as e:
@@ -850,9 +779,6 @@ async def chat(
         user_email = full_user.get("email") if full_user else None
         _append_history(project, req.provider, req.message, content, session_id, user_id, user_email, ts=_ts, tags=req.tags or {})
         _update_runtime_state(project, req.provider, req.message, session_id, user_id)
-        if db.is_available():
-            asyncio.create_task(_auto_suggest_tags_for_event(_ts, project, req.message))
-
         # Log usage + debit balance
         input_t = result.get("input_tokens", 0)
         output_t = result.get("output_tokens", 0)
@@ -921,15 +847,14 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
         except Exception:
             pass  # read-only filesystem or concurrent write — best-effort
 
-    # 2. Update commits table phase (events table has no session_id column;
-    #    history.jsonl is the source of truth for the History chat filter)
+    # 2. Update commits table tags[] (phase column dropped — tags[] used instead)
     if db.is_available():
         import logging as _log
         _logger = _log.getLogger(__name__)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_UPDATE_COMMIT_PHASE, (phase, project, session_id))
+                    cur.execute(_SQL_UPDATE_COMMIT_PHASE, (phase, phase, project, session_id))
                     c_rows = cur.rowcount
             _logger.info(
                 f"backfill_session_phase: project={project} session={session_id[:8]} "

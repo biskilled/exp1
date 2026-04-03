@@ -75,7 +75,7 @@ _SQL_UPSERT_EVENT = """
 """
 
 _SQL_GET_COMMIT = """
-    SELECT commit_hash, commit_msg, summary, phase, feature, bug_ref, session_id
+    SELECT commit_hash, commit_msg, summary, tags, session_id
     FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s AND commit_hash=%s
 """
@@ -264,10 +264,6 @@ class MemoryEmbedding:
             session_id=session_id, llm_source=settings.haiku_model,
             summary=digest, importance=1,
         )
-        if event_id:
-            # Inherit tags from all N source prompts + backfill event_id on mem_mrr_tags
-            self._tagging.promote_source_tags_to_event(event_id, "prompt_batch", prompt_ids)
-            self._tagging.update_event_id_for_prompts(event_id, prompt_ids)
         return event_id
 
     async def process_commit(
@@ -290,7 +286,7 @@ class MemoryEmbedding:
             if not row:
                 return None
 
-            commit_hash_val, commit_msg, summary, phase, feature, bug_ref, session_id = row
+            commit_hash_val, commit_msg, summary, tags, session_id = row
         except Exception as e:
             log.debug(f"process_commit DB error: {e}")
             return None
@@ -313,12 +309,8 @@ class MemoryEmbedding:
             project, "commit", commit_hash_val, 0, "full", digest, embedding,
             session_id=session_id, llm_source=settings.haiku_model,
             summary=digest,
-            metadata={"commit_hash": commit_hash_val, "phase": phase,
-                      "feature": feature, "bug_ref": bug_ref},
+            metadata={"commit_hash": commit_hash_val, "tags": tags or []},
         )
-        if event_id:
-            # Inherit tags from the commit's mem_mrr_tags row
-            self._tagging.promote_source_tags_to_event(event_id, "commit", [commit_hash_val])
         return event_id
 
     async def process_item(
@@ -385,9 +377,8 @@ class MemoryEmbedding:
                 doc_type=item_type, summary=digest,
             )
 
-        # Promote item's mirroring tags to the first/only AI event chunk
-        if result_id:
-            self._tagging.promote_source_tags_to_event(result_id, "item", [item_id])
+        if not result_id:
+            return None
 
         # Relation extraction — lightweight Haiku call to detect tag relationships
         rel_prompt = await _load_system_role("relation_extraction") or (
@@ -460,8 +451,6 @@ class MemoryEmbedding:
             summary=digest,
             metadata={"platform": platform, "channel": channel},
         )
-        if event_id:
-            self._tagging.promote_source_tags_to_event(event_id, "message", [message_id])
         return event_id
 
     async def semantic_search(
@@ -470,12 +459,8 @@ class MemoryEmbedding:
         query: str,
         limit: int = 10,
         source_types: Optional[list[str]] = None,
-        tag_id: Optional[str] = None,
     ) -> list[dict]:
-        """Cosine similarity search over mem_ai_events.embedding.
-
-        Optionally filter by source_types list and/or tag_id (mem_ai_tags).
-        """
+        """Cosine similarity search over mem_ai_events.embedding."""
         if not db.is_available():
             return []
 
@@ -493,12 +478,6 @@ class MemoryEmbedding:
             placeholders = ",".join(["%s"] * len(source_types))
             conditions.append(f"event_type IN ({placeholders})")
             params.extend(source_types)
-
-        if tag_id:
-            conditions.append(
-                "id::TEXT IN (SELECT related_id FROM mem_tags_relations WHERE tag_id=%s::uuid AND related_type='memory_event' AND related_layer='ai')"
-            )
-            params.append(tag_id)
 
         where_clause = " AND ".join(conditions)
         sql = _SQL_SEARCH_TPL.format(where=where_clause)

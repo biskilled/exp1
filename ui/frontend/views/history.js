@@ -29,9 +29,9 @@ export class HistoryView {
     this._cachedProject = null;
     this._histData      = null;   // { entries, total, filtered }
     this._commitData    = null;   // { commits, source }
-    this._tagCache      = null;
-    this._tagCacheMap   = {};
-    this._entryTags     = {};     // sourceId → [{value_id, name, icon, color, cat_name}]
+    this._tagCache      = null;   // [{cat, values}] from planner_tags grouped by category
+    this._tagCacheMap   = {};     // "cat:name" → {color, label}
+    this._entryTags     = {};     // sourceId → string[] (e.g. ["phase:discovery","feature:auth"])
     this._chatGhBase    = '';
     this._ghBase        = '';
 
@@ -134,9 +134,8 @@ export class HistoryView {
     // Step 1: fetch history (newest 500) + config in parallel
     this._setLoadingMsg('Fetching history entries…');
     const _ts = Date.now();
-    const [histRes, catsRes, cfgData] = await Promise.all([
+    const [histRes, cfgData] = await Promise.all([
       fetch(_histUrl(`/history/chat?limit=500&_t=${_ts}`)).then(r => r.json()),
-      api.entities.listCategories(project).catch(() => ({ categories: [] })),
       api.getProjectConfig(project).catch(() => ({})),
     ]);
 
@@ -148,17 +147,17 @@ export class HistoryView {
     if (ghBase.startsWith('git@')) ghBase = ghBase.replace(/^git@([^:]+):/, 'https://$1/');
     this._chatGhBase = ghBase;
 
-    // Step 2: build tag cache (categories already loaded above)
+    // Step 2: build tag cache from planner_tags
     this._setLoadingMsg(`Building tag index (${total} entries)…`);
-    await this._buildTagCache(project, catsRes.categories || []);
+    await this._buildTagCache(project);
 
     // Step 3: render immediately so user sees data
     this._renderChatContainer(container);
 
     // Step 4: load source tags in background (non-blocking — chips appear after render)
     api.entities.getSourceTags(project).then(sourceTags => {
-      for (const [sid, tags] of Object.entries(sourceTags || {})) {
-        if (!this._entryTags[sid]) this._entryTags[sid] = tags;
+      for (const [sid, tagArr] of Object.entries(sourceTags || {})) {
+        if (!this._entryTags[sid]) this._entryTags[sid] = tagArr;
       }
     }).catch(() => {});
 
@@ -175,7 +174,7 @@ export class HistoryView {
     const serverTotal = this._histData?.total   || entries.length;
     const filtered   = this._histData?.filtered || 0;
     const hasMore    = this._histData?.has_more  || false;
-    const untagged   = entries.filter(e => !e.phase && !e.feature).length;
+    const untagged   = entries.filter(e => !e.tags?.some(t => t.startsWith('phase:'))).length;
 
     container.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:5px 8px;
@@ -275,7 +274,7 @@ export class HistoryView {
 
     let entries = this._histData?.entries || [];
     if (srcFilter)   entries = entries.filter(e => (e.source || 'ui') === srcFilter);
-    if (phaseFilter) entries = entries.filter(e => e.phase === phaseFilter);
+    if (phaseFilter) entries = entries.filter(e => e.tags?.includes('phase:' + phaseFilter));
     if (query) {
       const q = query.toLowerCase();
       entries = entries.filter(e =>
@@ -338,23 +337,24 @@ export class HistoryView {
         </div>` : '';
 
       const entriesHtml = group.entries.map((e, idx) => {
-        const isUntagged  = !e.phase && !e.feature;
+        const isUntagged  = !e.tags?.some(t => t.startsWith('phase:'));
         const borderColor = isUntagged ? '#e74c3c' : 'var(--border)';
         const entryId     = `he-${(sid || 'ns').slice(0, 6)}-${start + idx}`;
         const anchorId    = `ha-${entryId}`;
         const sourceId    = e.ts || '';
 
-        // Pre-existing tag chips from DB + in-session tagging
+        // Pre-existing tag chips from DB (string array)
         const existing = this._entryTags[sourceId] || [];
-        const existingChips = existing.map(t =>
-          `<span data-value-id="${t.value_id}"
-                 style="font-size:10px;background:${t.color}22;color:${t.color};border:1px solid ${t.color}55;padding:1px 4px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px">
-             ${this._escapeHtml(t.icon || '⬡')} ${this._escapeHtml(t.name)}
-             <button onclick="event.stopPropagation();window._historyView._removeTag('${this._escapeHtml(sourceId)}',${t.value_id},'${anchorId}')"
-               style="border:none;background:none;cursor:pointer;color:${t.color};font-size:9px;padding:0 1px;line-height:1;opacity:.7"
+        const existingChips = existing.map(tag => {
+          const color = this._tagColor(tag);
+          return `<span data-tag="${this._escapeHtml(tag)}"
+                 style="font-size:10px;background:${color}22;color:${color};border:1px solid ${color}55;padding:1px 4px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px">
+             ${this._escapeHtml(tag)}
+             <button onclick="event.stopPropagation();window._historyView._removeTag('${this._escapeHtml(sourceId)}','${this._escapeHtml(tag)}','${anchorId}')"
+               style="border:none;background:none;cursor:pointer;color:${color};font-size:9px;padding:0 1px;line-height:1;opacity:.7"
                title="Remove tag">✕</button>
-           </span>`
-        ).join('');
+           </span>`;
+        }).join('');
 
         const outputHtml = e.output
           ? `<div style="margin-top:6px">
@@ -402,7 +402,7 @@ export class HistoryView {
             <span style="color:var(--muted)">${e.ts?.slice(0, 16) || ''}</span>
             <span style="color:var(--accent)">${e.provider || ''}</span>
             <span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">${e.source || 'ui'}</span>
-            ${e.phase ? `<span style="background:rgba(74,144,226,.15);color:#4a90e2;padding:1px 5px;border-radius:3px">${e.phase}</span>` : ''}
+            ${(e.tags||[]).filter(t=>t.startsWith('phase:')).map(t=>`<span style="background:rgba(74,144,226,.15);color:#4a90e2;padding:1px 5px;border-radius:3px">${this._escapeHtml(t.slice(6))}</span>`).join('')}
             ${isUntagged ? `<span style="color:#e74c3c;font-size:10px">⚠ untagged</span>` : ''}
             <span id="${anchorId}" style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
               ${existingChips}
@@ -463,19 +463,24 @@ export class HistoryView {
 
   // ── Tag picker (shared by chat entries + commits) ─────────────────────────
 
-  async _buildTagCache(project, categories) {
+  async _buildTagCache(project, _categories) {
     this._tagCache    = [];
     this._tagCacheMap = {};
-    const cats = categories.length
-      ? categories
-      : ((await api.entities.listCategories(project).catch(() => ({ categories: [] }))).categories || []);
-    for (const cat of cats) {
-      const vals = ((await api.entities.listValues(project, cat.id, { status: 'active' }).catch(() => ({ values: [] }))).values || []);
-      if (vals.length) this._tagCache.push({ cat, values: vals });
-      for (const v of vals) {
-        this._tagCacheMap[v.id] = { color: cat.color || '#4a90e2', name: v.name, catName: cat.name, icon: cat.icon || '⬡' };
+    try {
+      const res = await api.tags.list(project);
+      const tags = res.tags || res || [];
+      // Group by category_name for picker display
+      const groups = {};
+      for (const t of tags) {
+        const catName = t.category_name || 'other';
+        const color   = t.color || '#4a90e2';
+        const tagStr  = `${catName}:${t.name}`;
+        if (!groups[catName]) groups[catName] = { cat: { name: catName, color }, values: [] };
+        groups[catName].values.push({ name: t.name, tagStr });
+        this._tagCacheMap[tagStr] = { color, label: tagStr };
       }
-    }
+      this._tagCache = Object.values(groups);
+    } catch (_) {}
   }
 
   _openEntryTagPicker(sourceId, anchorId) {
@@ -502,11 +507,11 @@ export class HistoryView {
           ${groups.map(({ cat, values }) => `
             <div class="etag-group">
               <div style="font-size:10px;color:var(--muted);font-weight:600;padding:2px 4px;text-transform:uppercase;letter-spacing:.5px">
-                ${this._escapeHtml(cat.icon || '')} ${this._escapeHtml(cat.name)}
+                ${this._escapeHtml(cat.name)}
               </div>
               ${values.map(v => `
                 <div class="etag-item" data-catname="${this._escapeHtml(cat.name)}"
-                  onclick="window._historyView._tagEntryWith('${this._escapeHtml(sourceId)}',${v.id},'${anchorId}')"
+                  onclick="window._historyView._tagEntryWith('${this._escapeHtml(sourceId)}','${this._escapeHtml(v.tagStr)}','${anchorId}')"
                   style="padding:3px 10px;cursor:pointer;border-radius:3px;font-size:12px;color:${this._escapeHtml(cat.color || 'var(--text)')}"
                   onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background=''">
                   ${this._escapeHtml(v.name)}
@@ -539,40 +544,37 @@ export class HistoryView {
     });
   }
 
-  async _tagEntryWith(sourceId, valueId, anchorId) {
+  async _tagEntryWith(sourceId, tagStr, anchorId) {
     const project = state.currentProject?.name || '';
     document.querySelectorAll('.entry-tag-picker').forEach(el => el.remove());
-    const anchor  = document.getElementById(anchorId);
-    const info    = this._tagCacheMap?.[valueId] || {};
-    const color   = info.color || '#4a90e2';
+    const anchor = document.getElementById(anchorId);
+    const color  = this._tagColor(tagStr);
 
     // Track in _entryTags so it survives re-renders
     if (!this._entryTags[sourceId]) this._entryTags[sourceId] = [];
-    // Avoid duplicates
-    if (!this._entryTags[sourceId].some(t => t.value_id === valueId)) {
-      this._entryTags[sourceId].push({ value_id: valueId, icon: info.icon || '⬡', name: info.name || 'tagged', color, cat_name: info.catName || '' });
+    if (!this._entryTags[sourceId].includes(tagStr)) {
+      this._entryTags[sourceId].push(tagStr);
     }
 
-    // Render chip into anchor immediately (with data-value-id and ✕ for removal)
+    // Render chip into anchor immediately
     if (anchor) {
       const chip = document.createElement('span');
-      chip.dataset.valueId = String(valueId);
+      chip.dataset.tag = tagStr;
       chip.style.cssText = `font-size:10px;background:${color}22;color:${color};border:1px solid ${color}55;padding:1px 4px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px`;
-      chip.appendChild(document.createTextNode(`${info.icon || '⬡'} ${info.name || 'tagged'}`));
+      chip.appendChild(document.createTextNode(tagStr));
       const rmBtn = document.createElement('button');
       rmBtn.textContent = '✕';
       rmBtn.title = 'Remove tag';
       rmBtn.style.cssText = `border:none;background:none;cursor:pointer;color:${color};font-size:9px;padding:0 1px;line-height:1;opacity:.7`;
-      rmBtn.addEventListener('click', (ev) => { ev.stopPropagation(); window._historyView._removeTag(sourceId, valueId, anchorId); });
+      rmBtn.addEventListener('click', (ev) => { ev.stopPropagation(); window._historyView._removeTag(sourceId, tagStr, anchorId); });
       chip.appendChild(rmBtn);
-      // Insert before the "+ Tag" button
       const firstBtn = anchor.querySelector('button:not([title="Remove tag"])');
       if (firstBtn) anchor.insertBefore(chip, firstBtn);
       else anchor.appendChild(chip);
     }
 
     try {
-      await api.entities.tagBySourceId({ source_id: sourceId, entity_value_id: valueId, project });
+      await api.entities.tagBySourceId({ source_id: sourceId, tag: tagStr, project });
     } catch (e) {
       console.warn('Tag entry failed:', e.message);
       if (anchor) {
@@ -588,17 +590,16 @@ export class HistoryView {
 
   async _renderCommits(container) {
     const project = state.currentProject?.name || '';
-    const [data, cfgData, catsRes, sourceTags] = await Promise.all([
+    const [data, cfgData, sourceTags] = await Promise.all([
       api.historyCommits(project, 2000),
       api.getProjectConfig(project).catch(() => ({})),
-      this._tagCache ? Promise.resolve(null) : api.entities.listCategories(project).catch(() => ({ categories: [] })),
       api.entities.getSourceTags(project).catch(() => ({})),
     ]);
-    if (catsRes) await this._buildTagCache(project, catsRes.categories || []);
+    if (!this._tagCache) await this._buildTagCache(project);
 
     // Load commit tags into _entryTags (same dict as prompt tags — keyed by source_id = commit_hash)
-    for (const [sid, tags] of Object.entries(sourceTags || {})) {
-      if (!this._entryTags[sid]) this._entryTags[sid] = tags;
+    for (const [sid, tagArr] of Object.entries(sourceTags || {})) {
+      if (!this._entryTags[sid]) this._entryTags[sid] = tagArr;
     }
 
     this._commitData = data;
@@ -617,8 +618,8 @@ export class HistoryView {
 
     // Apply phase filter (no auto-populate — default is "All phases")
     const phaseFilter = this._commitFilter.phase || '';
-    const commits = phaseFilter ? allCommits.filter(c => c.phase === phaseFilter) : allCommits;
-    const untagged = allCommits.filter(c => !c.phase).length;
+    const commits = phaseFilter ? allCommits.filter(c => c.tags?.includes('phase:' + phaseFilter)) : allCommits;
+    const untagged = allCommits.filter(c => !c.tags?.some(t => t.startsWith('phase:'))).length;
 
     const PHASES = [
       ['', 'All phases'], ['discovery', 'Discovery'], ['development', 'Development'],
@@ -710,7 +711,7 @@ export class HistoryView {
   _changeCommitPage(delta) {
     const allCommits = this._commitData?.commits || [];
     const phaseFilter = this._commitFilter.phase || '';
-    const commits = phaseFilter ? allCommits.filter(c => c.phase === phaseFilter) : allCommits;
+    const commits = phaseFilter ? allCommits.filter(c => c.tags?.includes('phase:' + phaseFilter)) : allCommits;
     const totalPages = Math.ceil(commits.length / _PAGE_SIZE);
     this._commitPage = Math.max(1, Math.min(totalPages, this._commitPage + delta));
     const container  = document.getElementById('history-content');
@@ -719,7 +720,7 @@ export class HistoryView {
   }
 
   _commitRow(c, i) {
-    const untagged   = !c.phase;
+    const untagged   = !c.tags?.some(t => t.startsWith('phase:'));
     const rowBorder  = untagged ? 'border-left:3px solid #e74c3c' : 'border-left:3px solid transparent';
     const dateStr    = c.committed_at ? c.committed_at.slice(0, 10) : '';
     const ghBase     = this._ghBase || '';
@@ -742,17 +743,18 @@ export class HistoryView {
          </button>`
       : `<span style="color:var(--muted);font-size:11px">—</span>`;
 
-    // Tag chips from _entryTags keyed by commit_hash
+    // Tag chips from _entryTags keyed by commit_hash (string[])
     const existing      = this._entryTags[hashFull] || [];
-    const existingChips = existing.map(t =>
-      `<span data-value-id="${t.value_id}"
-             style="font-size:10px;background:${t.color}22;color:${t.color};border:1px solid ${t.color}55;padding:1px 4px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px">
-         ${this._escapeHtml(t.icon || '⬡')} ${this._escapeHtml(t.name)}
-         <button onclick="event.stopPropagation();window._historyView._removeTag('${this._escapeHtml(hashFull)}',${t.value_id},'${anchorId}')"
-           style="border:none;background:none;cursor:pointer;color:${t.color};font-size:9px;padding:0 1px;line-height:1;opacity:.7"
+    const existingChips = existing.map(tag => {
+      const color = this._tagColor(tag);
+      return `<span data-tag="${this._escapeHtml(tag)}"
+             style="font-size:10px;background:${color}22;color:${color};border:1px solid ${color}55;padding:1px 4px;border-radius:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px">
+         ${this._escapeHtml(tag)}
+         <button onclick="event.stopPropagation();window._historyView._removeTag('${this._escapeHtml(hashFull)}','${this._escapeHtml(tag)}','${anchorId}')"
+           style="border:none;background:none;cursor:pointer;color:${color};font-size:9px;padding:0 1px;line-height:1;opacity:.7"
            title="Remove tag">✕</button>
-       </span>`
-    ).join('');
+       </span>`;
+    }).join('');
 
     return `
       <tr data-commit-id="${c.id || ''}" data-hash="${this._escapeHtml(hashFull)}"
@@ -763,7 +765,7 @@ export class HistoryView {
         <td style="padding:4px 6px;color:var(--muted);white-space:nowrap">${dateStr}</td>
         <td style="padding:4px 4px">
           <span style="font-size:11px;color:${untagged ? '#e74c3c' : 'var(--muted)'}">
-            ${c.phase || '—'}
+            ${(c.tags||[]).find(t=>t.startsWith('phase:'))?.slice(6) || '—'}
           </span>
         </td>
         <td style="padding:4px 6px">
@@ -815,7 +817,7 @@ export class HistoryView {
     const filter  = this._histFilter || {};
     let filtered  = [...entries];
     if (filter.source)  filtered = filtered.filter(e => (e.source || 'ui') === filter.source);
-    if (filter.phase)   filtered = filtered.filter(e => e.phase === filter.phase);
+    if (filter.phase)   filtered = filtered.filter(e => e.tags?.includes('phase:' + filter.phase));
     const idx = filtered.findIndex(e => e.ts === promptSourceId);
     if (idx >= 0) {
       this._histPage = Math.floor(idx / _PAGE_SIZE) + 1;
@@ -841,31 +843,31 @@ export class HistoryView {
 
   // ── Tag removal ────────────────────────────────────────────────────────────
 
-  async _removeTag(sourceId, valueId, anchorId) {
+  async _removeTag(sourceId, tagStr, anchorId) {
     const project = state.currentProject?.name || '';
 
     // Remove from in-memory state immediately (optimistic)
     if (this._entryTags[sourceId]) {
-      this._entryTags[sourceId] = this._entryTags[sourceId].filter(t => t.value_id !== valueId);
+      this._entryTags[sourceId] = this._entryTags[sourceId].filter(t => t !== tagStr);
     }
 
     // Remove chip from DOM
     const anchor = document.getElementById(anchorId);
     if (anchor) {
-      const chip = anchor.querySelector(`[data-value-id="${valueId}"]`);
+      const chip = anchor.querySelector(`[data-tag="${CSS.escape(tagStr)}"]`);
       if (chip) chip.remove();
     }
 
     // Persist to backend
     try {
-      await api.entities.untagBySourceId(sourceId, valueId, project);
+      await api.entities.untagBySourceId(sourceId, tagStr, project);
     } catch (e) {
       console.warn('Remove tag failed:', e.message);
       // Re-fetch tags on failure so state stays consistent
       try {
         const fresh = await api.entities.getSourceTags(project);
-        for (const [sid, tags] of Object.entries(fresh || {})) {
-          this._entryTags[sid] = tags;
+        for (const [sid, tagArr] of Object.entries(fresh || {})) {
+          this._entryTags[sid] = tagArr;
         }
       } catch (_) {}
     }
@@ -1018,6 +1020,12 @@ export class HistoryView {
         el.style.display = el.textContent.toLowerCase().includes(query.toLowerCase()) ? '' : 'none';
       });
     }
+  }
+
+  _tagColor(tagStr) {
+    const prefix = (tagStr || '').split(':')[0];
+    const MAP = { phase: '#3b82f6', feature: '#22c55e', bug: '#ef4444' };
+    return MAP[prefix] || '#4a90e2';
   }
 
   _escapeHtml(text) {

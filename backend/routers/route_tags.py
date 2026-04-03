@@ -75,7 +75,7 @@ _SQL_LIST_TAGS = """
            t.acceptance_criteria, t.is_reusable, t.summary, t.action_items,
            t.requester, t.extra,
            t.embedding IS NOT NULL AS has_embedding,
-           (SELECT COUNT(*) FROM mem_tags_relations r WHERE r.tag_id = t.id) AS source_count
+           0 AS source_count
     FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
     WHERE t.client_id = 1 AND t.project = %s
@@ -108,39 +108,13 @@ _SQL_DELETE_TAG = """
     RETURNING id
 """
 
-_SQL_CHECK_TAG_SOURCES = """
-    SELECT COUNT(*) FROM mem_tags_relations WHERE tag_id = %s::uuid
-"""
 
-_SQL_GET_TAG_SOURCES = """
-    SELECT r.related_type, r.related_id, r.related_layer, r.related_type_score,
-           r.related_approved, r.created_at
-    FROM mem_tags_relations r
-    WHERE r.tag_id = %s::uuid
-    ORDER BY r.created_at DESC
-    LIMIT 200
-"""
 
-_SQL_LIST_TAG_SOURCES = """
-    SELECT r.tag_id, COUNT(*) AS source_count,
-           SUM(CASE WHEN r.related_layer = 'mirror' THEN 1 ELSE 0 END) AS mirror_count,
-           SUM(CASE WHEN r.related_layer = 'ai' THEN 1 ELSE 0 END) AS ai_count
-    FROM mem_tags_relations r
-    JOIN planner_tags t ON t.id = r.tag_id
-    WHERE t.client_id = 1 AND t.project = %s
-    GROUP BY r.tag_id
-"""
 
-_SQL_INSERT_SOURCE_TAG = """
-    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
-    VALUES (%s::uuid, 'mirror', %s, %s)
-    ON CONFLICT (tag_id, related_type, related_id) DO NOTHING
-    RETURNING id
-"""
 
-_SQL_DELETE_SOURCE_TAG = """
-    DELETE FROM mem_tags_relations WHERE id = %s::uuid RETURNING id
-"""
+
+
+
 
 _SQL_GET_SESSION_CONTEXT = """
     SELECT extra FROM mng_session_tags
@@ -466,14 +440,6 @@ async def delete_tag(tag_id: str, project: str = Query(...), force: bool = Query
     _require_db()
     with db.conn() as conn:
         with conn.cursor() as cur:
-            if not force:
-                cur.execute(_SQL_CHECK_TAG_SOURCES, (tag_id,))
-                count = cur.fetchone()[0]
-                if count > 0:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Tag has {count} source links. Use force=true to delete anyway.",
-                    )
             cur.execute(_SQL_DELETE_TAG, (tag_id, project))
             row = cur.fetchone()
     if not row:
@@ -502,11 +468,6 @@ async def merge_tags(body: TagMerge):
             if not into_row:
                 raise HTTPException(status_code=404, detail=f"Tag '{body.into_name}' not found")
             from_id, into_id = from_row[0], into_row[0]
-            # Re-link all relations from the old tag to the new one
-            cur.execute(
-                "UPDATE mem_tags_relations SET tag_id = %s WHERE tag_id = %s",
-                (into_id, from_id),
-            )
             cur.execute(
                 "UPDATE planner_tags SET merged_into = %s, status = 'archived' WHERE id = %s",
                 (into_id, from_id),
@@ -518,96 +479,76 @@ async def merge_tags(body: TagMerge):
 
 @router.get("/{tag_id}/sources")
 async def get_tag_sources(tag_id: str, project: str = Query(...)):
-    """Return all source relations for a tag, enriched with content where available."""
+    """Return prompts and commits tagged with this tag via their tags[] array.
+
+    Builds the tag string as "category:name" from the planner_tags row,
+    then queries mem_mrr_prompts and mem_mrr_commits WHERE tag_str = ANY(tags).
+    """
     _require_db()
+
+    # Resolve tag string from UUID
+    tag_str = None
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_TAG_SOURCES, (tag_id,))
-            relation_rows = cur.fetchall()
+            cur.execute(
+                """SELECT tc.name || ':' || t.name FROM planner_tags t
+                   JOIN mng_tags_categories tc ON tc.id = t.category_id
+                   WHERE t.id=%s::uuid AND t.client_id=1 LIMIT 1""",
+                (tag_id,),
+            )
+            row = cur.fetchone()
+            if row:
+                tag_str = row[0]
 
-    if not relation_rows:
+    if not tag_str:
         return []
 
-    # Group relation rows by type for batch fetching
-    prompt_ids = [r[1] for r in relation_rows if r[0] == "prompt"]
-    commit_hashes = [r[1] for r in relation_rows if r[0] == "commit"]
-
-    prompt_details: dict[str, dict] = {}
-    commit_details: dict[str, dict] = {}
-
+    results = []
     with db.conn() as conn:
         with conn.cursor() as cur:
-            if prompt_ids:
-                cur.execute(
-                    "SELECT source_id, prompt, session_id, created_at "
-                    "FROM mem_mrr_prompts WHERE source_id = ANY(%s)",
-                    (prompt_ids,),
-                )
-                for pr in cur.fetchall():
-                    prompt_details[pr[0]] = {
-                        "content":    (pr[1] or "")[:300],
-                        "session_id": pr[2],
-                        "created_at": pr[3].isoformat() if pr[3] else None,
-                    }
-            if commit_hashes:
-                cur.execute(
-                    "SELECT commit_hash, commit_msg, session_id, created_at "
-                    "FROM mem_mrr_commits WHERE commit_hash = ANY(%s)",
-                    (commit_hashes,),
-                )
-                for cm in cur.fetchall():
-                    commit_details[cm[0]] = {
-                        "content":     (cm[1] or "")[:300],
-                        "session_id":  cm[2],
-                        "created_at":  cm[3].isoformat() if cm[3] else None,
-                    }
-
-    results = []
-    for row in relation_rows:
-        related_type, related_id, related_layer, score, approved, created_at = row
-        entry: dict = {
-            "related_type":    related_type,
-            "related_id":      related_id,
-            "related_layer":   related_layer,
-            "related_type_score": score,
-            "related_approved":   approved,
-            "created_at":      created_at.isoformat() if created_at else None,
-            "content":         None,
-            "session_id":      None,
-        }
-        if related_type == "prompt" and related_id in prompt_details:
-            entry.update(prompt_details[related_id])
-        elif related_type == "commit" and related_id in commit_details:
-            entry.update(commit_details[related_id])
-        results.append(entry)
+            cur.execute(
+                "SELECT source_id, LEFT(prompt,300), session_id, created_at "
+                "FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND %s = ANY(tags) "
+                "ORDER BY created_at DESC LIMIT 100",
+                (project, tag_str),
+            )
+            for row in cur.fetchall():
+                results.append({
+                    "related_type":  "prompt",
+                    "related_id":    row[0],
+                    "related_layer": "mirror",
+                    "content":       row[1],
+                    "session_id":    row[2],
+                    "created_at":    row[3].isoformat() if row[3] else None,
+                })
+            cur.execute(
+                "SELECT commit_hash, LEFT(commit_msg,300), session_id, committed_at "
+                "FROM mem_mrr_commits WHERE client_id=1 AND project=%s AND %s = ANY(tags) "
+                "ORDER BY committed_at DESC LIMIT 100",
+                (project, tag_str),
+            )
+            for row in cur.fetchall():
+                results.append({
+                    "related_type":  "commit",
+                    "related_id":    row[0],
+                    "related_layer": "mirror",
+                    "content":       row[1],
+                    "session_id":    row[2],
+                    "created_at":    row[3].isoformat() if row[3] else None,
+                })
     return results
 
 
 @router.post("/source")
 async def add_source_tag(body: SourceTagCreate):
-    _require_db()
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                _SQL_INSERT_SOURCE_TAG,
-                (body.tag_id, body.related_type, body.related_id),
-            )
-            row = cur.fetchone()
-    if not row:
-        raise HTTPException(status_code=409, detail="Source-tag link already exists")
-    return {"id": str(row[0])}
+    """Deprecated: use POST /entities/events/tag-by-source-id with a tag string instead."""
+    raise HTTPException(410, "mem_tags_relations removed — use tag-by-source-id with tag string")
 
 
 @router.delete("/source/{source_tag_id}")
 async def remove_source_tag(source_tag_id: str):
-    _require_db()
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_SQL_DELETE_SOURCE_TAG, (source_tag_id,))
-            row = cur.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Source-tag link not found")
-    return {"ok": True}
+    """Deprecated: use DELETE /entities/events/tag-by-source-id with a tag string instead."""
+    raise HTTPException(410, "mem_tags_relations removed — use tag-by-source-id with tag string")
 
 
 # ── Session context endpoints ─────────────────────────────────────────────────
@@ -736,80 +677,29 @@ class SuggestionIgnoreBody(BaseModel):
 
 @router.post("/suggestions/generate")
 async def generate_tag_suggestions(project: str = Query(...)):
-    """Suggest planner_tags for untagged rows in mem_mrr_* and mem_ai_events.
+    """AI tag suggestions for MRR rows dropped — tags are now set explicitly via hooks.
 
-    Returns: {suggestions: [...], total_untagged_mrr: N, total_untagged_ai: N}
+    Returns empty suggestions list for backward compatibility.
+    AI suggestions for work items (mem_ai_work_items) are handled via the pipeline.
     """
-    _require_db()
-    from memory.memory_tagging import MemoryTagging
-    from memory.memory_mirroring import MemoryMirroring
-    from core.database import db
-
-    tagging  = MemoryTagging()
-    mirroring = MemoryMirroring()
-
-    total_untagged_mrr = sum(
-        len(mirroring.get_untagged(project, stype, limit=1000))
-        for stype in ("prompt", "commit", "item")
-    )
-
-    # Count untagged AI events
-    total_untagged_ai = 0
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT COUNT(*) FROM mem_ai_events e
-                       WHERE e.client_id=1 AND e.project=%s
-                         AND NOT EXISTS (
-                             SELECT 1 FROM mem_tags_relations r
-                             WHERE r.related_id = e.id::TEXT
-                               AND r.related_layer = 'ai'
-                         )""",
-                    (project,),
-                )
-                row = cur.fetchone()
-                total_untagged_ai = row[0] if row else 0
-    except Exception:
-        pass
-
-    suggestions = await tagging.suggest_tags_for_untagged(project, batch_size=20)
     return {
-        "suggestions":        suggestions,
-        "total_untagged_mrr": total_untagged_mrr,
-        "total_untagged_ai":  total_untagged_ai,
-        # backward-compat alias
-        "total_untagged":     total_untagged_mrr + total_untagged_ai,
+        "suggestions":        [],
+        "total_untagged_mrr": 0,
+        "total_untagged_ai":  0,
+        "total_untagged":     0,
     }
 
 
 @router.post("/suggestions/apply")
 async def apply_tag_suggestion(project: str = Query(...), body: SuggestionApplyBody = ...):
-    """Apply an AI tag suggestion.
-
-    For layer='mrr': links to mem_tags_relations (related_layer='mirror') and marks ai_tags='approved'.
-    For layer='ai':  links to mem_tags_relations (related_layer='ai').
-    """
-    _require_db()
-    from memory.memory_tagging import MemoryTagging
-    tagging = MemoryTagging()
-    ok = await tagging.apply_suggestion(
-        project, body.source_type, body.source_id, body.tag_name,
-        session_id=body.session_id, session_src_desc=body.session_src_desc,
-        layer=body.layer,
-    )
-    if not ok:
-        raise HTTPException(status_code=500, detail="Failed to apply suggestion")
-    return {"ok": True}
+    """Deprecated: AI tag suggestions for MRR rows removed. Use tag-by-source-id instead."""
+    raise HTTPException(410, "AI tag suggestion pipeline for MRR removed — use POST /entities/events/tag-by-source-id")
 
 
 @router.post("/suggestions/ignore")
 async def ignore_tag_suggestion(project: str = Query(...), body: SuggestionIgnoreBody = ...):
-    """Mark a source row's AI tagging as 'ignored'."""
-    _require_db()
-    from memory.memory_tagging import MemoryTagging
-    MemoryTagging().ignore_suggestion(body.source_type, body.source_id)
-    return {"ok": True}
+    """Deprecated: AI tag suggestions for MRR rows removed."""
+    raise HTTPException(410, "AI tag suggestion pipeline for MRR removed")
 
 
 # ── Relations endpoints ───────────────────────────────────────────────────────
@@ -820,74 +710,14 @@ async def get_tag_relations(
     tag_id: Optional[str] = Query(None),
     work_item_id: Optional[str] = Query(None),
 ):
-    """Get mem_tags_relations rows, filtered by tag_id or work_item_id.
-
-    When work_item_id is provided, returns relations of type 'work_item' whose
-    related_id matches the given work item UUID. When tag_id is provided,
-    returns all relations for that tag. Both filters may be combined.
-    """
-    _require_db()
-    conditions = []
-    params: list = []
-
-    if tag_id:
-        conditions.append("r.tag_id = %s::uuid")
-        params.append(tag_id)
-    if work_item_id:
-        conditions.append("r.related_type = 'work_item' AND r.related_id = %s")
-        params.append(work_item_id)
-
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""SELECT r.id, r.tag_id, r.related_layer, r.related_type, r.related_id,
-                           r.related_type_score, r.related_approved, r.created_at,
-                           t.name AS tag_name
-                    FROM mem_tags_relations r
-                    JOIN planner_tags t ON t.id = r.tag_id
-                    WHERE t.client_id = 1 AND t.project = %s
-                      {"AND " + " AND ".join(conditions) if conditions else ""}
-                    ORDER BY r.created_at DESC
-                    LIMIT 500""",
-                [project] + params,
-            )
-            rows = cur.fetchall()
-    return [
-        {
-            "id":                 str(row[0]),
-            "tag_id":             str(row[1]),
-            "related_layer":      row[2],
-            "related_type":       row[3],
-            "related_id":         row[4],
-            "related_type_score": row[5],
-            "related_approved":   row[6],
-            "created_at":         row[7].isoformat() if row[7] else None,
-            "tag_name":           row[8],
-        }
-        for row in rows
-    ]
+    """Deprecated: mem_tags_relations table removed. Returns empty list."""
+    return []
 
 
 @router.patch("/relations/{relation_id}")
 async def update_relation(relation_id: str, body: RelationUpdate):
-    """Approve or reject a mem_tags_relations row.
-
-    Set related_approved to 'approved', 'rejected', or null (reset to pending).
-    """
-    _require_db()
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE mem_tags_relations SET related_approved = %s WHERE id = %s::uuid "
-                "RETURNING id",
-                (body.related_approved, relation_id),
-            )
-            row = cur.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Relation not found")
-    return {"ok": True, "id": str(row[0]), "related_approved": body.related_approved}
+    """Deprecated: mem_tags_relations table removed."""
+    raise HTTPException(410, "mem_tags_relations removed")
 
 
 # ── Tag context endpoint ───────────────────────────────────────────────────────
@@ -933,17 +763,15 @@ async def get_tag_context(
                 "parent_id":   str(tag_row[3]) if tag_row[3] else None,
             }
 
-            # ── Recent AI events tagged with this tag ───────────────────────
+            # ── Recent AI events for this project ──────────────────────────
             cur.execute(
                 """SELECT e.id, e.event_type, e.source_id, LEFT(e.content, 400) AS preview,
                           e.summary, e.created_at
                    FROM mem_ai_events e
-                   JOIN mem_tags_relations r ON r.related_id = e.id::TEXT
-                     AND r.related_layer = 'ai'
-                     AND r.tag_id = %s::uuid
+                   WHERE e.client_id=1 AND e.project=%s
                    ORDER BY e.created_at DESC
                    LIMIT %s""",
-                (tag_id, limit),
+                (project, limit),
             )
             ai_events = [
                 {
@@ -957,52 +785,57 @@ async def get_tag_context(
                 for r in cur.fetchall()
             ]
 
-            # ── Recent sources (mirror + ai relations) ──────────────────────
+            # ── Recent sources (prompts + commits via tags[]) ─────────────
+            tag_str_full = tag_info.get("category", "") + ":" + tag_info.get("name", "")
             cur.execute(
-                """SELECT r.related_type, r.related_id, r.related_layer,
-                          r.related_type_score, r.related_approved, r.created_at
-                   FROM mem_tags_relations r
-                   WHERE r.tag_id = %s::uuid
-                   ORDER BY r.created_at DESC
-                   LIMIT %s""",
-                (tag_id, limit),
+                """SELECT source_id, 'prompt', created_at FROM mem_mrr_prompts
+                   WHERE client_id=1 AND project=%s AND %s = ANY(tags)
+                   ORDER BY created_at DESC LIMIT %s""",
+                (project, tag_str_full, limit),
             )
             sources = [
                 {
-                    "related_type":       r[0],
-                    "related_id":         r[1],
-                    "related_layer":      r[2],
-                    "related_type_score": r[3],
-                    "related_approved":   r[4],
-                    "created_at":         r[5].isoformat() if r[5] else None,
+                    "related_type": "prompt",
+                    "related_id":   r[0],
+                    "related_layer": "mirror",
+                    "created_at":   r[2].isoformat() if r[2] else None,
+                }
+                for r in cur.fetchall()
+            ]
+            cur.execute(
+                """SELECT commit_hash, 'commit', committed_at FROM mem_mrr_commits
+                   WHERE client_id=1 AND project=%s AND %s = ANY(tags)
+                   ORDER BY committed_at DESC LIMIT %s""",
+                (project, tag_str_full, limit),
+            )
+            sources += [
+                {
+                    "related_type": "commit",
+                    "related_id":   r[0],
+                    "related_layer": "mirror",
+                    "created_at":   r[2].isoformat() if r[2] else None,
                 }
                 for r in cur.fetchall()
             ]
 
-            # ── Work items linked to this tag via mem_tags_relations ─────────
-            cur.execute(
-                """SELECT wi.id, wi.name, wi.category_name, wi.status,
-                          r.related_type_score, r.related_approved
-                   FROM mem_ai_work_items wi
-                   JOIN mem_tags_relations r
-                     ON r.related_id = wi.id::TEXT
-                    AND r.related_type = 'work_item'
-                    AND r.tag_id = %s::uuid
-                   ORDER BY wi.created_at DESC
-                   LIMIT 20""",
-                (tag_id,),
-            )
-            work_items = [
-                {
-                    "id":                 str(r[0]),
-                    "name":               r[1],
-                    "category":           r[2],
-                    "status":             r[3],
-                    "related_type_score": r[4],
-                    "related_approved":   r[5],
-                }
-                for r in cur.fetchall()
-            ]
+            # ── Work items linked to this tag (via mem_tags_relations for AI layer) ─
+            work_items = []
+            try:
+                cur.execute(
+                    """SELECT wi.id, wi.name, wi.category_name, wi.status
+                       FROM mem_ai_work_items wi
+                       WHERE wi.client_id=1 AND wi.project=%s
+                         AND (wi.name ILIKE %s OR wi.category_name || ':' || wi.name = %s)
+                       ORDER BY wi.created_at DESC
+                       LIMIT 20""",
+                    (project, f"%{tag_info.get('name', '')}%", tag_str_full),
+                )
+                work_items = [
+                    {"id": str(r[0]), "name": r[1], "category": r[2], "status": r[3]}
+                    for r in cur.fetchall()
+                ]
+            except Exception:
+                pass
 
     return {
         "tag":        tag_info,
@@ -1036,10 +869,7 @@ async def migrate_tags_to_ai_suggestions(project: str = Query(...)):
                      FROM planner_tags t
                      JOIN mng_tags_categories c ON c.id = t.category_id
                     WHERE t.client_id=1 AND t.project=%s
-                      AND LOWER(c.name) IN ('bug','feature','task')
-                      AND NOT EXISTS (
-                            SELECT 1 FROM mem_tags_relations r WHERE r.tag_id = t.id
-                          )""",
+                      AND LOWER(c.name) IN ('bug','feature','task')""",
                 (project,),
             )
             candidates = cur.fetchall()

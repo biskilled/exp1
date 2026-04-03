@@ -488,11 +488,6 @@ async def delete_work_item(item_id: str, project: str | None = Query(None)):
     p = _project(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            # Clean up tag relations before deleting the work item
-            cur.execute(
-                "DELETE FROM mem_tags_relations WHERE related_type = 'work_item' AND related_id = %s",
-                (item_id,),
-            )
             cur.execute(_SQL_DELETE_WORK_ITEM, (item_id, p))
             if not cur.fetchone():
                 raise HTTPException(404, "Work item not found")

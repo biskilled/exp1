@@ -25,8 +25,8 @@ from core.database import db
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
 _SQL_LIST_COMMITS = """
-    SELECT commit_hash, commit_msg, summary, phase,
-           feature, bug_ref, source, session_id, committed_at
+    SELECT commit_hash, commit_msg, summary, tags,
+           source, session_id, committed_at
     FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s
     ORDER BY committed_at DESC NULLS LAST, created_at DESC
@@ -53,14 +53,14 @@ _SQL_UPDATE_COMMIT_META = (
 # Base form matches by session_id only; extended form adds a committed_at range.
 # Build dynamically in the handler; see session_commits() below.
 _SQL_SESSION_COMMITS_BASE = """
-    SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+    SELECT commit_hash, commit_msg, tags, source, committed_at
           FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s AND session_id = %s
          ORDER BY committed_at
 """
 
 _SQL_SESSION_COMMITS_WITH_WINDOW = """
-    SELECT commit_hash, commit_msg, phase, feature, source, committed_at
+    SELECT commit_hash, commit_msg, tags, source, committed_at
           FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s
            AND (session_id = %s
@@ -236,7 +236,7 @@ async def chat_history(
 
                     cur.execute(
                         f"""SELECT source_id, session_id, llm_source, prompt,
-                                   response, phase, tags, metadata, created_at
+                                   response, tags, created_at
                             FROM mem_mrr_prompts
                             WHERE client_id=1 AND project=%s
                               AND prompt IS NOT NULL AND prompt != ''
@@ -249,15 +249,13 @@ async def chat_history(
 
             entries = [
                 {
-                    "ts":         r[0] or (r[8].strftime("%Y-%m-%dT%H:%M:%SZ") if r[8] else ""),
+                    "ts":         r[0] or (r[6].strftime("%Y-%m-%dT%H:%M:%SZ") if r[6] else ""),
                     "source":     r[2] or "ui",
                     "session_id": r[1],
                     "provider":   r[2] or "unknown",
                     "user_input": r[3],
                     "output":     r[4] or "",
-                    "phase":      r[5],
-                    "tags":       r[6] or [],
-                    "metadata":   r[7] or {},
+                    "tags":       r[5] or [],
                 }
                 for r in rows
             ]
@@ -293,9 +291,8 @@ async def chat_history(
 
 
 class CommitPatch(BaseModel):
-    phase:   str | None = None
-    feature: str | None = None
-    bug_ref: str | None = None
+    add_tag:  str | None = None   # e.g. "phase:discovery" — appended to tags[]
+    remove_tag: str | None = None  # e.g. "phase:discovery" — removed from tags[]
     summary: str | None = None
 
 
@@ -341,12 +338,9 @@ async def commits_history(
                     "commit_hash": raw.get("hash", ""),
                     "commit_msg": raw.get("message", raw.get("msg", "")),
                     "summary": "",
-                    "phase": None,
-                    "feature": None,
-                    "bug_ref": None,
                     "source": raw.get("source", "git"),
                     "session_id": raw.get("session_id"),
-                    "tags": {},
+                    "tags": [],
                     "committed_at": raw.get("ts"),
                 })
             except json.JSONDecodeError:
@@ -358,7 +352,7 @@ async def commits_history(
 
 @router.patch("/commits/{commit_hash}")
 async def patch_commit(commit_hash: str, body: CommitPatch, project: str | None = Query(None)):
-    """Update metadata (phase, feature, bug_ref, summary, tags) for a commit row."""
+    """Update metadata (add_tag, remove_tag, summary) for a commit row."""
     if not db.is_available():
         raise HTTPException(status_code=503, detail="PostgreSQL not available")
     p = project or settings.active_project or "default"
@@ -366,15 +360,12 @@ async def patch_commit(commit_hash: str, body: CommitPatch, project: str | None 
     updates: list[str] = []
     params: list = []
 
-    if body.phase is not None:
-        updates.append("phase = %s")
-        params.append(body.phase or None)
-    if body.feature is not None:
-        updates.append("feature = %s")
-        params.append(body.feature or None)
-    if body.bug_ref is not None:
-        updates.append("bug_ref = %s")
-        params.append(body.bug_ref or None)
+    if body.add_tag is not None:
+        updates.append("tags = array_append(array_remove(tags, %s), %s)")
+        params.extend([body.add_tag, body.add_tag])
+    if body.remove_tag is not None:
+        updates.append("tags = array_remove(tags, %s)")
+        params.append(body.remove_tag)
     if body.summary is not None:
         updates.append("summary = %s")
         params.append(body.summary)
@@ -754,9 +745,8 @@ async def session_commits(
                             "commit_hash": c.get("hash", ""),
                             "commit_msg":  c.get("message", c.get("msg", "")),
                             "committed_at": ts,
-                            "phase":   c.get("phase"),
-                            "feature": c.get("feature"),
-                            "source":  c.get("source", "git"),
+                            "tags":   c.get("tags", []),
+                            "source": c.get("source", "git"),
                         })
                 except Exception:
                     pass

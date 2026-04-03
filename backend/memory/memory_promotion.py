@@ -33,8 +33,7 @@ _SQL_GET_TAG_ID = """
 _SQL_GET_WORK_ITEM = """
     SELECT wi.id, wi.name, wi.description, wi.lifecycle_status, wi.acceptance_criteria
     FROM mem_ai_work_items wi
-    JOIN mem_tags_relations r ON r.related_id = wi.id::TEXT
-        AND r.related_type = 'work_item' AND r.tag_id = %s::uuid
+    WHERE wi.client_id=1 AND wi.project=%s
     ORDER BY wi.created_at DESC LIMIT 10
 """
 
@@ -50,9 +49,7 @@ _SQL_GET_MEMORY_EVENTS = """
     SELECT me.id, me.summary, me.event_type, me.created_at, me.llm_source,
            me.open_threads, me.next_steps
     FROM mem_ai_events me
-    JOIN mem_tags_relations r ON r.related_id = me.id::TEXT
-        AND r.related_type = 'memory_event' AND r.related_layer = 'ai'
-    WHERE r.tag_id = %s::uuid
+    WHERE me.client_id=1 AND me.project=%s
     ORDER BY me.created_at DESC LIMIT 50
 """
 
@@ -266,21 +263,21 @@ class MemoryPromotion:
             return None
         tag_id = str(tag_row[0])
 
-        # Load memory events (joined via mem_tags_relations)
+        # Load recent memory events for this project
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_MEMORY_EVENTS, (tag_id,))
+                cur.execute(_SQL_GET_MEMORY_EVENTS, (project,))
                 events = cur.fetchall()
 
         if not events:
-            log.debug(f"promote_feature_snapshot: no events for tag '{tag_name}'")
+            log.debug(f"promote_feature_snapshot: no events for project '{project}'")
             return None
 
-        # Load work item status (linked via mem_tags_relations)
+        # Load recent work items for this project
         work_item_status = None
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_WORK_ITEM, (tag_id,))
+                cur.execute(_SQL_GET_WORK_ITEM, (project,))
                 wi_rows = cur.fetchall()
         if wi_rows:
             work_item_status = wi_rows[0][3]  # lifecycle_status from first linked work item

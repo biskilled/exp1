@@ -272,15 +272,15 @@ api.entities = {
   sessionTag:           (body)                  => _post('/entities/session-tag', body),
   // Reload entity tags for a session (used when switching sessions in UI)
   getEntitySessionTags: (sessionId, project)    => _get(`/entities/session-tags?session_id=${encodeURIComponent(sessionId)}&${_pq(project)}`),
-  // Tag a single event by its source_id (history.jsonl timestamp or commit hash)
+  // Tag a single event by its source_id — body: {source_id, tag: "cat:name", project?}
   tagBySourceId:        (body)                  => _post('/entities/events/tag-by-source-id', body),
-  // Remove a tag from an event by source_id (History/Commits ✕ button)
-  untagBySourceId:      (sourceId, valueId, project) =>
-    _del(`/entities/events/tag-by-source-id?source_id=${encodeURIComponent(sourceId)}&value_id=${valueId}&${_pq(project)}`),
+  // Remove a tag string from an event by source_id (History/Commits ✕ button)
+  untagBySourceId:      (sourceId, tag, project) =>
+    _del(`/entities/events/tag-by-source-id?source_id=${encodeURIComponent(sourceId)}&tag=${encodeURIComponent(tag)}&${_pq(project)}`),
   // Remove a tag from all events in a session (Chat ✕ button on applied chips)
-  untagSession:         (sessionId, valueId, project) =>
-    _del(`/entities/session-tag?session_id=${encodeURIComponent(sessionId)}&value_id=${valueId}&${_pq(project)}`),
-  // Return source_id → [tags] map for all tagged events (prompts + commits)
+  untagSession:         (sessionId, tag, project) =>
+    _del(`/entities/session-tag?session_id=${encodeURIComponent(sessionId)}&tag=${encodeURIComponent(tag)}&${_pq(project)}`),
+  // Return source_id → string[] map for all tagged events (prompts + commits)
   getSourceTags:        (project)               => _get(`/entities/events/source-tags?${_pq(project)}`),
 
   // Tag suggestions (auto-tag loop)
