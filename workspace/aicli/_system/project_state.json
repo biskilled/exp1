@@ -46,7 +46,7 @@
     "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients \u2192 Users with login_as_first_level_hierarchy pattern",
     "LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) \u2192 str contract; Claude Haiku for dual-layer memory synthesis generating 5 output files",
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel for chat negotiation",
-    "Memory synthesis: Claude Haiku generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items",
+    "Memory synthesis: Claude Haiku generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items with timestamp tracking",
     "_ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load preventing startup race conditions",
     "Data persistence: load_once_on_access, update_on_save pattern; tags stored in mem_ai_tags_relations with row ID linking; per-feature CLAUDE.md auto-loaded when entering features/{tag}/ directory",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-01T18:16:48Z",
+  "last_memory_run": "2026-04-02T09:56:40Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic and CLI; workspace/ contains per-project content; _system/ stores project state and memory files",
@@ -129,7 +129,7 @@
       "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients \u2192 Users with login_as_first_level_hierarchy pattern",
       "LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) \u2192 str contract; Claude Haiku for dual-layer memory synthesis generating 5 output files",
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel for chat negotiation",
-      "Memory synthesis: Claude Haiku generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items",
+      "Memory synthesis: Claude Haiku generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items with timestamp tracking",
       "_ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load preventing startup race conditions",
       "Data persistence: load_once_on_access, update_on_save pattern; tags stored in mem_ai_tags_relations with row ID linking; per-feature CLAUDE.md auto-loaded when entering features/{tag}/ directory",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
@@ -160,11 +160,14 @@
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev",
+      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment_local": "bash start_backend.sh + ui/npm run dev",
+      "config_management": "config.py + YAML pipelines + pyproject.toml",
       "database": "PostgreSQL 15+",
       "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining Claude CLI + desktop Electron UI with PostgreSQL semantic storage (pgvector). It unifies project memory across 5 synthesized files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) using Claude Haiku dual-layer synthesis, structured around a DAG workflow executor with provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok). Current development focuses on stabilizing memory file generation by standardizing SQL tuple unpacking and ensuring inline snapshot fields correctly populate feature context through refined planner_tags queries.",
-    "memory_digest": "**[2026-04-01]** `dev` \u2014 Session 338: Memory file generation refactored with feature_details context loaded from inline planner_tags fields (summary, action_items, design, code_summary). _SQL_ACTIVE_TAGS query corrected for reliable tag name retrieval and column index alignment. Schema consolidation removed mem_ai_tags_relations relations section from feature rendering, establishing inline snapshot fields as primary data source for feature context. SQL cursor tuple unpacking standardized across memory_promotion.py and memory_files.py with corrected column counts (4 instead of 5). get_active_feature_tags() now properly filters active/open tags with snapshots; render_feature_claude_md() reads complete tag metadata from 30-most-recent planner_tags query. Database cursor handling made robust with documented tuple unpacking patterns, ensuring consistent data access across memory lifecycle operations."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to create context-aware AI assistants. It uses PostgreSQL with pgvector for semantic search, unified memory tables (mem_ai_* schema), and async DAG workflows to synthesize project memory via Claude Haiku into 5 markdown files. Currently refactoring memory file generation to standardize SQL cursor handling and consolidate feature context loading from inline planner_tags snapshots instead of fragmented relations.",
+    "memory_digest": "**2026-04-01** `refactor` \u2014 Standardized SQL cursor tuple unpacking across memory modules (memory_promotion.py, memory_files.py) to handle consistent column counts and prevent unpacking errors. **2026-04-01** `schema` \u2014 Consolidated feature rendering to use inline planner_tags snapshot fields (summary, action_items, design, code_summary) as primary data source instead of mem_ai_tags_relations relations section. **2026-04-01** `query` \u2014 Fixed _SQL_ACTIVE_TAGS query in memory_files.py to correctly extract tag names from proper column index and filter by active/open status with snapshots. **2026-04-01** `lifecycle` \u2014 Enhanced get_active_feature_tags() to reliably filter active/open tags and render_feature_claude_md() to load complete tag metadata for context generation. **2026-04-01** `context` \u2014 Feature details context loading now retrieves 30 most recent planner_tags and populates context dict with id, name, short_desc, requirements, summary, action_items, design, and code_summary fields. **2026-03-14** `architecture` \u2014 Consolidated memory synthesis architecture: per-feature CLAUDE.md auto-loaded when entering features/{tag}/ directory; timestamp tracking added to 5-file memory output (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md)."
   }
 }
