@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-05 17:28 UTC by aicli /memory_
+_Generated: 2026-04-05 17:32 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+**aicli** is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to enable AI-assisted project management with semantic search, multi-LLM provider support, and workflow automation. Currently at v2.2.0, the project has recently focused on unifying the UI (consolidating tag/feature/bug management into a single Planner interface), fixing session ordering and phase persistence, and implementing intelligent AI suggestion workflows with cross-view synchronization. The system persists to PostgreSQL 15+ with pgvector embeddings and supports deployment to Railway, desktop (Electron-builder), and local development.
 
 ## Project Facts
 
@@ -102,7 +106,7 @@ Reviewer: ```json
 
 - Session ordering fixed: sessions now order by created_at instead of updated_at to prevent phase/tag updates from reordering list
 - Phase persistence enhanced: loads from DB on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/WF
-- Commit-per-prompt inline display: replaced session-level strip with commits at bottom of each prompt entry (accent left-border, hash ⤴ link showing only that prompt's commits)
+- Commit-per-prompt inline display: replaced session-level strip with commits at bottom of each prompt entry (accent left-border, hash ↗ link showing only that prompt's commits)
 - Tag deduplication and cross-view sync: 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
 - AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; suggested tags marked with distinct color/mark; tags appear immediately in Planner
 - Planner tab unified redesign: consolidated tag management into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tags split
@@ -256,3 +260,7 @@ index 76f95c7..069268d 100644
 +- Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
 +- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup (2026-03-15)
 +- AI suggestions auto-save to session — suggestions create
+
+## AI Synthesis
+
+**[2026-03-15]** `claude_cli` — Consolidated Planner tab from 4 separate views (Features, Tags, Bugs, Tags) into single unified tag management interface with category support, active/inactive status, descriptions, and creation dates. **[2026-03-15]** `claude_cli` — Fixed session ordering to use created_at instead of updated_at to prevent tag/phase updates from reordering the session list in chronological order. **[2026-03-15]** `claude_cli` — Replaced session-level commit strip with inline commit displays at bottom of each prompt entry, showing only commits linked to that specific prompt with accent left-border and hash links. **[2026-03-15]** `claude_cli` — Implemented phase persistence across UI/CLI/WF with PATCH /chat/sessions/{id}/tags endpoint, red ⚠ badge for missing phase, and proper DB loading on app initialization. **[2026-03-15]** `claude_cli` — Achieved 149 total tags with 0 duplicates; tag removal via ✕ buttons now propagates synchronously across Chat, History, and Commits views simultaneously. **[2026-03-15]** `claude_cli` — Built AI suggestion auto-save system where LLM-suggested tags are created in proper categories via _acceptSuggestedTag, marked with distinct visual indicators (color/mark), and appear immediately in Planner. **[2026-03-09]** `claude_cli` — Enhanced /memory endpoint to summarize LLM responses instead of storing full output, auto-suggest relevant tags based on existing taxonomy or new categories, and provide better user controls for accepting/creating suggested tags. **[2026-03-09]** `claude_cli` — Restructured tag management: moved from history tab into dedicated Planner tab with ability to add categories and tags with category-based selection in Chat tab (+) listbox.
