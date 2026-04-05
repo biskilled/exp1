@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-05 17:06 UTC by aicli /memory_
+_Generated: 2026-04-05 17:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python 3.12 CLI, FastAPI backend, and Electron desktop UI with PostgreSQL + pgvector for semantic search. The project provides unified session/tag management, LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok), workflow automation via async DAG execution, and comprehensive memory synthesis—currently focused on UI consolidation (Planner tab), session persistence, and memory response summarization.
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI with PostgreSQL + pgvector for semantic search. It manages project knowledge through unified event/tag/fact tables, LLM-powered memory synthesis, and DAG-based workflows. Currently polishing session ordering, phase persistence, tag management UI consolidation (Planner tab), and commit-per-prompt display with cross-view synchronization.
 
 ## Project Facts
 
@@ -91,7 +91,7 @@ Reviewer: ```json
 - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
-- Claude Haiku dual-layer memory synthesis generating 5 files: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md with timestamp tracking
+- Claude Haiku dual-layer memory synthesis generating 5 files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) with LLM response summarization instead of full output
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - _ensure_shared_schema pattern for initialization; retry logic handles empty project list preventing startup race conditions
 - Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking
@@ -99,14 +99,14 @@ Reviewer: ```json
 - Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
 - UI unified: Planner tab for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created tags
 - Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list
-- Memory synthesis: summaries of LLM responses instead of full output; suggested tags auto-saved to session via _acceptSuggestedTag
-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
+- Tag suggestions auto-saved to session via _acceptSuggestedTag; tag management flows through Chat tab (+) with category selection and deduplication
+- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 
 ## In Progress
 
 - Session ordering fixed: sessions now order by created_at instead of updated_at to prevent phase/tag updates from reordering list
 - Phase persistence enhanced: loads from DB on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/WF
-- Commit-per-prompt inline display: replaced session-level strip with commits at bottom of each prompt entry (accent left-border, hash ↗ link showing only that prompt's commits)
+- Commit-per-prompt inline display: replaced session-level strip with commits at bottom of each prompt entry (accent left-border, hash ⤴ link showing only that prompt's commits)
 - Tag deduplication and cross-view sync: 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
 - AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; suggested tags marked with distinct color/mark; tags appear immediately in Planner
 - Planner tab unified redesign: consolidated tag management into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tags split
@@ -263,4 +263,14 @@ index 76f95c7..069268d 100644
 
 ## AI Synthesis
 
-**[2026-03-15]** `claude_cli` — Session ordering fixed: sessions now order by created_at instead of updated_at to prevent phase/tag updates from reordering the list while maintaining chronological integrity. **[2026-03-15]** `claude_cli` — Phase persistence enhanced: phase loads from database on initialization, persists via PATCH /chat/sessions/{id}/tags endpoint, and displays red ⚠ badge on sessions without phase across UI/CLI/workflow. **[2026-03-15]** `claude_cli` — Commit-per-prompt display redesigned: replaced session-level commit strip with inline commits at bottom of each prompt entry, featuring accent left-border and hash ↗ link showing only that specific prompt's commits. **[2026-03-15]** `claude_cli` — Tag deduplication completed: 149 total tags with 0 duplicates; removal via ✕ buttons now propagates changes across Chat/History/Commits tabs simultaneously. **[2026-03-09]** `claude_cli` — Planner tab unified: consolidated all tag management into single tags view supporting category, active/inactive status, short description, and created date; removed Feature/Bugs/Tags split. **[2026-03-09]** `claude_cli` — AI suggestion auto-save implemented: suggestions now create tags in proper category via _acceptSuggestedTag, marked with distinct color/mark, and appear immediately in Planner; tag management unified to Chat tab only.
+**2026-03-15** `claude_cli` — Session ordering corrected to use created_at instead of updated_at, preventing phase/tag updates from reordering the session list chronologically. Phase persistence now loads from DB on app init and saves via PATCH /chat/sessions/{id}/tags endpoint, with red ⚠ badge indicating missing phases across UI/CLI/Workflow.
+
+**2026-03-15** `claude_cli` — Commit display refactored to show inline at bottom of each prompt entry rather than session-level strip; commits display accent left-border with hash link (⤴) showing only commits relevant to that specific prompt.
+
+**2026-03-15** `claude_cli` — Tag deduplication completed: 149 total tags with zero duplicates; tag removal via ✕ buttons now propagates synchronously across Chat, History, and Commits tabs simultaneously.
+
+**2026-03-15** `claude_cli` — Pagination implemented for Chat/History/Commits with offset ranges (e.g., '1–100 / 204') and ◀ ▶ navigation controls; unified history loads all archives on app startup.
+
+**2026-03-15** `claude_cli` — AI suggestion auto-save enabled: suggestions immediately create tags in proper category via _acceptSuggestedTag async call, tags appear in Planner tab, phase filtering fully functional.
+
+**2026-03-09** `claude_cli` — Planner tab unified into single tags management view (category, active/inactive status, short description, created date); tag suggestions marked with distinct color/mark to differentiate from user-created tags; /memory function enhanced to summarize LLM responses and suggest relevant tags.
