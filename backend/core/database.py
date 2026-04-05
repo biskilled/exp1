@@ -242,8 +242,8 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id    INT           NOT NULL REFERENCES mng_clients(id),
     project      VARCHAR(255)  NOT NULL,
-    session_id   TEXT,
     llm_source   TEXT,
+    session_id   TEXT,
     source_id    TEXT,
     prompt       TEXT          NOT NULL DEFAULT '',
     response     TEXT          NOT NULL DEFAULT '',
@@ -295,9 +295,10 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     agent_run_id        UUID,
     agent_status        VARCHAR(20),
     tags                TEXT[]        NOT NULL DEFAULT '{}',
-    embedding           VECTOR(1536),
+    seq_num             INT,
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    embedding           VECTOR(1536),
     UNIQUE(client_id, project, category_name, name)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cp     ON mem_ai_work_items(client_id, project);
@@ -312,11 +313,11 @@ CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
     fact_key         TEXT          NOT NULL,
     fact_value       TEXT          NOT NULL,
     category         TEXT          DEFAULT NULL,   -- 'stack'|'pattern'|'convention'|'constraint'|'client'
-    embedding        VECTOR(1536),
     valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     valid_until      TIMESTAMPTZ,
     source_memory_id UUID,         -- historical reference
-    conflict_status  TEXT          DEFAULT NULL    -- NULL|'ok'|'superseded'|'pending_review'
+    conflict_status  TEXT          DEFAULT NULL,   -- NULL|'ok'|'superseded'|'pending_review'
+    embedding        VECTOR(1536)
 );
 CREATE INDEX IF NOT EXISTS        idx_mem_ai_pf_cp      ON mem_ai_project_facts(client_id, project) WHERE valid_until IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_ai_pf_current ON mem_ai_project_facts(client_id, project, fact_key) WHERE valid_until IS NULL;
@@ -329,6 +330,7 @@ CREATE TABLE IF NOT EXISTS pr_graph_workflows (
     name           VARCHAR(255)   NOT NULL,
     description    TEXT           NOT NULL DEFAULT '',
     max_iterations INTEGER        NOT NULL DEFAULT 3,
+    log_directory  TEXT           NOT NULL DEFAULT '',
     created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project, name)
@@ -352,6 +354,15 @@ CREATE TABLE IF NOT EXISTS pr_graph_nodes (
     approval_msg     TEXT           NOT NULL DEFAULT '',
     position_x       REAL           NOT NULL DEFAULT 100,
     position_y       REAL           NOT NULL DEFAULT 100,
+    inputs           JSONB          DEFAULT '[]',
+    outputs          JSONB          DEFAULT '[]',
+    stateless        BOOLEAN        DEFAULT FALSE,
+    retry_config     JSONB          DEFAULT '{}',
+    success_criteria TEXT           DEFAULT '',
+    order_index      INT            NOT NULL DEFAULT 0,
+    max_retry        INT            NOT NULL DEFAULT 3,
+    continue_on_fail BOOLEAN        NOT NULL DEFAULT FALSE,
+    auto_commit      BOOLEAN        NOT NULL DEFAULT FALSE,
     created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
@@ -391,7 +402,8 @@ CREATE TABLE IF NOT EXISTS pr_graph_runs (
     started_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     finished_at    TIMESTAMPTZ,
     total_cost_usd NUMERIC(12, 8) NOT NULL DEFAULT 0,
-    error          TEXT
+    error          TEXT,
+    current_node   TEXT           DEFAULT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pr_gr_cp       ON pr_graph_runs(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_pr_gr_workflow ON pr_graph_runs(workflow_id);
@@ -471,9 +483,9 @@ CREATE TABLE IF NOT EXISTS planner_tags (
     design              JSONB,
     code_summary        JSONB,
     is_reusable         BOOLEAN     NOT NULL DEFAULT FALSE,
-    embedding           VECTOR(1536),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    embedding           VECTOR(1536),
     UNIQUE(client_id, project, name, category_id)
 );
 CREATE INDEX IF NOT EXISTS idx_planner_tags_cp     ON planner_tags(client_id, project);
@@ -519,14 +531,13 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     id                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id            INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project              VARCHAR(255) NOT NULL,
+    llm_source           VARCHAR(100) DEFAULT NULL,  -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
     event_type           TEXT         NOT NULL,   -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
     source_id            TEXT         NOT NULL,   -- UUID, commit hash, or session_id
     session_id           TEXT,
-    llm_source           VARCHAR(100) DEFAULT NULL,  -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
     chunk                INT          NOT NULL DEFAULT 0,
     chunk_type           TEXT         NOT NULL DEFAULT 'full',  -- 'full'|'section'|'function'|'diff_file'
     content              TEXT         NOT NULL,
-    embedding            VECTOR(1536),
     summary              TEXT,                        -- Haiku digest or session summary bullets
     session_action_items TEXT         NOT NULL DEFAULT '',   -- session_summary only (merged threads + next steps)
     doc_type             TEXT,                        -- item: 'requirement'|'decision'|'meeting'
@@ -536,6 +547,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     importance           SMALLINT     NOT NULL DEFAULT 1,
     processed_at         TIMESTAMPTZ,
     created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    embedding            VECTOR(1536),
     UNIQUE(client_id, project, event_type, source_id, chunk)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_cp      ON mem_ai_events(client_id, project);
@@ -636,80 +648,8 @@ DO $$ BEGIN
             UNIQUE(client_id, project, name, category_id);
     END IF;
 END $$;
--- ── 001_consolidation: migrate old junction tables → mem_tags_relations + DROP ──
--- Idempotent: CREATE TABLE IF NOT EXISTS + ON CONFLICT DO NOTHING + DROP IF EXISTS
-CREATE TABLE IF NOT EXISTS mem_tags_relations (
-    id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    tag_id              UUID         NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
-    related_layer       TEXT         NOT NULL,
-    related_type        TEXT         NOT NULL,
-    related_id          TEXT         NOT NULL,
-    related_type_score  FLOAT,
-    related_approved    TEXT,
-    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE (tag_id, related_type, related_id)
-);
-CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_tag    ON mem_tags_relations(tag_id);
-CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_type   ON mem_tags_relations(related_type, related_id);
-CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_review ON mem_tags_relations(related_approved) WHERE related_approved IS NULL;
--- Migrate planner_tags_meta → planner_tags inline columns
-DO $$ BEGIN
-  IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='planner_tags_meta') THEN
-    UPDATE planner_tags pt SET
-        short_desc   = COALESCE(pt.short_desc, tm.description),
-        requirements = COALESCE(pt.requirements, tm.requirements),
-        due_date     = COALESCE(pt.due_date, tm.due_date),
-        requester    = COALESCE(pt.requester, tm.requester),
-        priority     = CASE WHEN pt.priority = 3 THEN COALESCE(tm.priority, 3) ELSE pt.priority END,
-        extra        = CASE WHEN pt.extra = '{}' THEN COALESCE(tm.extra, '{}') ELSE pt.extra END,
-        updated_at   = NOW()
-    FROM planner_tags_meta tm WHERE tm.tag_id = pt.id;
-  END IF;
-END $$;
--- Migrate mem_ai_features → planner_tags inline columns
-DO $$ BEGIN
-  IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='mem_ai_features') THEN
-    UPDATE planner_tags pt SET
-        summary      = COALESCE(pt.summary, mf.requirements),
-        action_items = COALESCE(pt.action_items, mf.action_items),
-        design       = COALESCE(pt.design, mf.design),
-        code_summary = COALESCE(pt.code_summary, mf.code_summary),
-        embedding    = COALESCE(pt.embedding, mf.embedding),
-        updated_at   = NOW()
-    FROM mem_ai_features mf WHERE mf.tag_id = pt.id AND mf.project = pt.project;
-  END IF;
-END $$;
--- Migrate mem_mrr_tags → mem_tags_relations
-DO $$ BEGIN
-  IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='mem_mrr_tags') THEN
-    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
-    SELECT t.tag_id, 'mirror', 'prompt', COALESCE(p.source_id, t.prompt_id::TEXT), t.created_at
-    FROM mem_mrr_tags t LEFT JOIN mem_mrr_prompts p ON p.id = t.prompt_id
-    WHERE t.prompt_id IS NOT NULL ON CONFLICT DO NOTHING;
-
-    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
-    SELECT tag_id, 'mirror', 'commit', commit_id, created_at
-    FROM mem_mrr_tags WHERE commit_id IS NOT NULL ON CONFLICT DO NOTHING;
-
-    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
-    SELECT tag_id, 'mirror', 'item', item_id::TEXT, created_at
-    FROM mem_mrr_tags WHERE item_id IS NOT NULL ON CONFLICT DO NOTHING;
-
-    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
-    SELECT tag_id, 'mirror', 'message', message_id::TEXT, created_at
-    FROM mem_mrr_tags WHERE message_id IS NOT NULL ON CONFLICT DO NOTHING;
-  END IF;
-END $$;
--- Migrate mem_ai_tags → mem_tags_relations
-DO $$ BEGIN
-  IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='mem_ai_tags') THEN
-    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, related_approved, created_at)
-    SELECT tag_id, 'ai', 'memory_event', event_id::TEXT,
-           CASE WHEN ai_suggested THEN NULL ELSE 'approved' END, created_at
-    FROM mem_ai_tags ON CONFLICT DO NOTHING;
-  END IF;
-END $$;
--- Drop old tables (data already migrated above; CASCADE handles FK dependents)
+-- ── 001_consolidation: drop old junction/meta tables ────────────────────────
+-- Data was migrated in previous runs; DROP IF EXISTS is idempotent and fast.
 -- Note: pr_feature_snapshots was the old name for mem_ai_features
 --       mng_ai_tags_relations was the old name for mem_ai_tags_relations
 DROP TABLE IF EXISTS planner_tags_meta      CASCADE;
@@ -726,21 +666,6 @@ ALTER TABLE mem_mrr_prompts   ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAU
 ALTER TABLE mem_mrr_commits   ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE mem_mrr_items     ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE mem_mrr_messages  ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '{}';
-CREATE INDEX IF NOT EXISTS idx_mmrr_p_tags     ON mem_mrr_prompts   USING gin(tags);
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags     ON mem_mrr_commits   USING gin(tags);
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt   ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags     ON mem_mrr_items     USING gin(tags);
-CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags     ON mem_mrr_messages  USING gin(tags);
--- Migrate phase/feature/bug_ref columns → tags JSONB (idempotent guard: skip if tags already has 'phase' key)
-UPDATE mem_mrr_commits SET tags = tags
-  || jsonb_strip_nulls(jsonb_build_object(
-       'phase',   phase,
-       'feature', feature,
-       'bug',     bug_ref))
-WHERE (phase IS NOT NULL OR feature IS NOT NULL OR bug_ref IS NOT NULL)
-  AND NOT (tags ? 'phase' OR tags ? 'feature' OR tags ? 'bug');
-UPDATE mem_mrr_prompts SET tags = tags || jsonb_build_object('phase', phase)
-WHERE phase IS NOT NULL AND NOT (tags ? 'phase');
 ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS work_item_id;
 ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS metadata;
 ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS phase;
@@ -773,6 +698,9 @@ END
 WHERE open_threads IS NOT NULL AND open_threads != '';
 ALTER TABLE mem_ai_events RENAME COLUMN next_steps TO session_action_items;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS open_threads;
+-- ── 005_column_reorder ─────────────────────────────────────────────────────────
+-- llm_source moved to after project; embedding moved to last column (all 4 tables).
+-- PostgreSQL cannot reorder via ALTER TABLE — CREATE TABLE changes apply to clean installs only.
 """
 
 

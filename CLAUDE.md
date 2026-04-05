@@ -37,9 +37,9 @@ You are a senior Python software architect with deep expertise in:
 - Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
-- UI/UX consolidated: Planner tab unified for tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created tags
+- UI unified: Planner tab for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created tags
 - Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list
-- Memory synthesis improved: summaries of LLM responses instead of full output; suggested tags auto-saved to session via _acceptSuggestedTag
+- Memory synthesis: summaries of LLM responses instead of full output; suggested tags auto-saved to session via _acceptSuggestedTag
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
 
 ---
