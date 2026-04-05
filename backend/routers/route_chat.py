@@ -31,9 +31,9 @@ from memory.mem_sessions import SessionStore
 
 _SQL_INSERT_INTERACTION = """
     INSERT INTO mem_mrr_prompts
-           (client_id, project, session_id, llm_source, source_id,
+           (client_id, project, session_id, source_id,
             prompt, response, tags, created_at)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+       VALUES (1, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
        ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
 """
 
@@ -131,13 +131,14 @@ def _append_history(
             prefix = "bug" if k == "bug_ref" else k
             tags_dict[prefix] = v
 
+    tags_dict["source"] = provider or "aicli"
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # mem_mrr_prompts — feeds memory distillation pipeline
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
-                    (project, session_id, provider, ts,
+                    (project, session_id, ts,
                      (user_msg or "")[:4000], (response or "")[:8000],
                      _json.dumps(tags_dict), ts),
                 )
@@ -617,13 +618,15 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
 
         import json as _json
         from core.tags import tags_to_dict as _tags_to_dict
+        hook_tags = _tags_to_dict(tags_list)
+        hook_tags["source"] = body.source or "claude_cli"
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
-                    (project, body.session_id, body.source, ts,
+                    (project, body.session_id, ts,
                      (body.prompt or "")[:4000], "",
-                     _json.dumps(_tags_to_dict(tags_list)), ts),
+                     _json.dumps(hook_tags), ts),
                 )
 
         # Fire memory batch digest every N prompts (fire-and-forget)

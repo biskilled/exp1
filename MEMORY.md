@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-05 22:43 UTC by aicli /memory_
+_Generated: 2026-04-05 22:45 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI + FastAPI backend + Electron desktop UI for conversational development workflows. It integrates multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok) with PostgreSQL + pgvector semantic storage, dual-layer memory synthesis, and async DAG workflow orchestration. Current focus is on UI refinements: session ordering, phase persistence, commit-per-prompt display, tag deduplication, and unified Planner tab consolidation—all verified stable and deployed across desktop/cloud (Railway) and local dev environments.
+**aicli** is a shared AI memory platform combining a Python CLI + FastAPI backend with an Electron desktop UI for managing AI-generated project insights. It unifies memory events, tags, project facts, and work items in PostgreSQL with pgvector semantic search, supports multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok), and executes async DAG workflows with visual approval panels. Current focus: stabilizing session ordering, phase persistence, commit-per-prompt display, tag deduplication, and unified Planner UI for centralized tag management.
 
 ## Project Facts
 
@@ -353,4 +353,4 @@ index da83136..8cf5059 100644
 
 ## AI Synthesis
 
-**2026-04-05** `project_state.json` — Session ordering refactored to use created_at instead of updated_at, preventing tag/phase updates from reordering chronological session list. **2026-04-05** `phase_persistence` — Phase field now loads from database on initialization and persists via PATCH endpoint; missing phases marked with red ⚠ badge across UI/CLI/workflow. **2026-04-05** `commit_display` — Replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link) to show per-prompt commit context. **2026-04-05** `tag_deduplication` — Verified 149 total tags with 0 duplicates; removal via ✕ buttons propagates synchronously across Chat/History/Commits tabs. **2026-04-05** `ai_suggestions` — Suggestions auto-save as tags in proper category via _acceptSuggestedTag, marked distinctly with separate color, appearing immediately in Planner tab. **2026-04-05** `planner_redesign` — Planner tab consolidated from Feature/Bugs/Tags split into single unified tags view with category, active/inactive status, short description, and created date metadata.
+**2026-04-05** `project_state.json` — Session ordering by created_at implemented to prevent phase/tag updates from reordering chronological list; timestamp tracking maintains historical integrity. **2026-04-05** `phase_persistence` — Phase persistence layer loads from database on init, saves via PATCH /chat/sessions/{id}/tags, displays red ⚠ badge across UI/CLI for missing phase. **2026-04-05** `commit_display` — Replaced session-level commit strip with commit-per-prompt inline display at entry bottom (accent left-border, hash ↗ link), showing only commits for that specific prompt. **2026-04-05** `tag_deduplication` — Verified 149 total tags with 0 duplicates; removal via ✕ buttons propagates across Chat/History/Commits simultaneously with cross-view sync. **2026-04-05** `tag_suggestions` — AI suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color and auto-save; appear immediately in Planner. **2026-04-05** `planner_redesign` — Unified Planner tab consolidated into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tags split for centralized management.
