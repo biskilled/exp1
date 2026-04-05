@@ -74,7 +74,7 @@ _SQL_UPSERT_EVENT = """
 """
 
 _SQL_GET_COMMIT = """
-    SELECT commit_hash, commit_msg, summary, tags, session_id, diff_details
+    SELECT commit_hash, commit_msg, summary, tags, session_id
     FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s AND commit_hash=%s
 """
@@ -83,6 +83,12 @@ _SQL_UPDATE_COMMIT_TAGS = """
     UPDATE mem_mrr_commits
     SET tags = tags || %s::jsonb
     WHERE commit_hash = %s AND client_id = 1
+"""
+
+_SQL_UPDATE_COMMIT_SUMMARY = """
+    UPDATE mem_mrr_commits
+    SET summary = %s
+    WHERE commit_hash = %s AND client_id = 1 AND (summary IS NULL OR summary = '')
 """
 
 _SQL_GET_ITEM = """
@@ -362,7 +368,7 @@ class MemoryEmbedding:
             if not row:
                 return None
 
-            commit_hash_val, commit_msg, summary, mrr_tags, session_id, diff_details = row
+            commit_hash_val, commit_msg, existing_summary, mrr_tags, session_id = row
             mrr_tags = mrr_tags or {}
         except Exception as e:
             log.debug(f"process_commit DB error: {e}")
@@ -373,33 +379,16 @@ class MemoryEmbedding:
             'Return JSON only: {"summary": "1-2 sentence digest of what changed and why", "action_items": ""}'
         )
         user_content = f"Commit: {commit_hash_val[:8]}\n{commit_msg}"
-        if summary:
-            user_content += f"\nSummary: {summary}"
+        if existing_summary:
+            user_content += f"\nSummary: {existing_summary}"
 
         raw = await _haiku(sys_prompt, user_content, max_tokens=200)
         summary_text, action_items = _parse_haiku_json(raw, commit_msg[:300]) if raw else (commit_msg[:300], "")
 
         embedding = await _embed(summary_text)
 
-        # Extract file stats from diff_details JSONB
-        files_tag: dict = {}
-        languages_set: set = set()
-        if diff_details and isinstance(diff_details, dict):
-            for f in diff_details.get("files", []):
-                name = f.get("path") or f.get("name", "")
-                rows_changed = (f.get("additions", 0) or 0) + (f.get("deletions", 0) or 0)
-                if name:
-                    files_tag[name] = rows_changed
-                    lang = _detect_language(name)
-                    if lang:
-                        languages_set.add(lang)
-
         # Merge MRR classification tags + commit-specific metadata
         base_tags: dict = {**mrr_tags, "commit_hash": commit_hash_val}
-        if files_tag:
-            base_tags["files"] = files_tag
-        if languages_set:
-            base_tags["languages"] = sorted(languages_set)
 
         # chunk=0: Haiku digest — carries tags["llm"]
         digest_tags = {**base_tags, "llm": settings.haiku_model}
@@ -409,21 +398,17 @@ class MemoryEmbedding:
             summary=summary_text, action_items=action_items, tags=digest_tags,
         )
 
-        # Back-propagate file/language stats + llm tag to mem_mrr_commits.tags
+        # Back-propagate summary + llm tag to mem_mrr_commits (visible in history UI)
         try:
-            commit_tag_update: dict = {"llm": settings.haiku_model}
-            if files_tag:
-                commit_tag_update["files"] = files_tag
-            if languages_set:
-                commit_tag_update["languages"] = sorted(languages_set)
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    cur.execute(_SQL_UPDATE_COMMIT_SUMMARY, (summary_text, commit_hash_val))
                     cur.execute(_SQL_UPDATE_COMMIT_TAGS,
-                                (json.dumps(commit_tag_update), commit_hash_val))
+                                (json.dumps({"llm": settings.haiku_model}), commit_hash_val))
         except Exception as e:
             log.debug(f"process_commit tag update error: {e}")
 
-        # Per-file diff chunks (raw embed, no llm tag)
+        # Per-file diff chunks (raw embed, no llm tag) + back-propagate file stats to mrr
         try:
             code_dir = settings.code_dir
             if code_dir:
@@ -438,6 +423,18 @@ class MemoryEmbedding:
                         diff_chunks = MemoryEmbedding.smart_chunk_diff(
                             diff_text, commit_hash_val, {"commit_msg": commit_msg}
                         )
+                        # Back-propagate file/language stats from summary chunk to mrr
+                        summary_chunk_tags = diff_chunks[0].get("tags", {}) if diff_chunks else {}
+                        mrr_stat_update: dict = {}
+                        if summary_chunk_tags.get("files"):
+                            mrr_stat_update["files"] = summary_chunk_tags["files"]
+                        if summary_chunk_tags.get("languages"):
+                            mrr_stat_update["languages"] = summary_chunk_tags["languages"]
+                        if mrr_stat_update:
+                            with db.conn() as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute(_SQL_UPDATE_COMMIT_TAGS,
+                                                (json.dumps(mrr_stat_update), commit_hash_val))
                         # Skip chunk[0] (summary) — Haiku digest is already chunk=0
                         for i, dc in enumerate(diff_chunks[1:], start=1):
                             dc_content = dc.get("content", "")

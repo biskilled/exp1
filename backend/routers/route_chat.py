@@ -522,69 +522,12 @@ def _get_batch_size(project: str) -> int:
 
 
 async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
-    """Generate a digest for the last N prompts in the session → mem_ai_events."""
+    """Generate a Haiku digest + embedding for the last N prompts → mem_ai_events."""
     try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT id, prompt, response FROM mem_mrr_prompts
-                       WHERE client_id=1 AND project=%s AND session_id=%s
-                         AND response != ''
-                       ORDER BY created_at DESC LIMIT %s""",
-                    (project, session_id, n),
-                )
-                prompts = list(reversed(cur.fetchall()))
-        if not prompts:
-            return
-
-        # Build prompt for Haiku
-        pairs = "\n\n".join(
-            f"Q: {(p[1] or '')[:500]}\nA: {(p[2] or '')[:800]}"
-            for p in prompts
-        )
-        # Load system role
-        sys_prompt = "Given N sequential prompt/response pairs, extract a 1-2 sentence digest capturing what was decided, built, or discovered. Return plain text only, no preamble."
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT content FROM mng_system_roles "
-                        "WHERE client_id=1 AND name='memory_batch_digest' AND is_active=TRUE LIMIT 1"
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        sys_prompt = row[0]
-        except Exception:
-            pass
-
-        from data.dl_api_keys import get_key
-        import anthropic
-        api_key = get_key("claude") or get_key("anthropic")
-        if not api_key:
-            return
-        client = anthropic.AsyncAnthropic(api_key=api_key)
-        resp = await client.messages.create(
-            model=settings.haiku_model,
-            max_tokens=200,
-            system=sys_prompt,
-            messages=[{"role": "user", "content": pairs}],
-        )
-        content = (resp.content[0].text if resp.content else "").strip()
-        if not content:
-            return
-
-        last_prompt_id = str(prompts[-1][0])
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO mem_ai_events
-                           (client_id, project, event_type, source_id, chunk, session_id, content, importance)
-                       VALUES (1, %s, 'prompt_batch', %s::uuid, 0, %s, %s, 1)
-                       ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING
-                       RETURNING id""",
-                    (project, last_prompt_id, session_id, content),
-                )
-        log.debug(f"Memory batch digest generated for {project}/{session_id}")
+        from memory.memory_embedding import MemoryEmbedding
+        event_id = await MemoryEmbedding().process_prompt_batch(project, session_id, n)
+        if event_id:
+            log.debug(f"Memory batch digest generated for {project}/{session_id}: {event_id}")
     except Exception as e:
         log.debug(f"_generate_memory_batch error: {e}")
 

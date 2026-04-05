@@ -265,7 +265,6 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     diff_summary TEXT           NOT NULL DEFAULT '',
     session_id   VARCHAR(255),
     prompt_id    UUID           REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
-    diff_details JSONB          NOT NULL DEFAULT '{}',
     tags         JSONB          NOT NULL DEFAULT '{}',
     committed_at TIMESTAMPTZ,
     created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
@@ -729,6 +728,10 @@ ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS source;
 UPDATE mem_ai_events SET tags = tags || jsonb_build_object('llm', llm_source)
  WHERE llm_source IS NOT NULL AND llm_source <> '';
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS llm_source;
+-- ── 008_drop_diff_details ────────────────────────────────────────────────────
+-- diff_details was never populated by any code path; process_commit() fetches
+-- diffs directly via git. Drop it and store file stats in tags["files"] instead.
+ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS diff_details;
 """
 
 

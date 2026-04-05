@@ -41,8 +41,8 @@ _SQL_INSERT_PROMPT = """
 _SQL_INSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
            (client_id, project, commit_hash, commit_msg, summary,
-            session_id, committed_at, diff_details, tags)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
+            session_id, committed_at, tags)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s::jsonb)
        ON CONFLICT (commit_hash) DO NOTHING
     RETURNING commit_hash
 """
@@ -172,8 +172,9 @@ class MemoryMirroring:
         source: str = "git",
         session_id: Optional[str] = None,
         committed_at: Optional[str] = None,
-        diff_details: str = "{}",
         tags: Optional[list[str] | dict] = None,
+        # backward-compat: diff_details accepted but ignored (column dropped)
+        diff_details: str = "{}",
     ) -> Optional[str]:
         """Insert a commit into mem_mrr_commits. Returns commit_hash or None."""
         if not db.is_available():
@@ -186,8 +187,7 @@ class MemoryMirroring:
                     cur.execute(
                         _SQL_INSERT_COMMIT,
                         (project, commit_hash, commit_msg, summary,
-                         session_id, committed_at, diff_details,
-                         json.dumps(tags_dict)),
+                         session_id, committed_at, json.dumps(tags_dict)),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None

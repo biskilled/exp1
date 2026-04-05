@@ -10,6 +10,7 @@ Endpoints:
     GET  /memory/{project}/session-summaries    — list recent session summaries
     POST /memory/{project}/regenerate           — regenerate context files from DB
     GET  /memory/{project}/llm-prompt           — get rendered system prompt (compact|full|gemini)
+    POST /memory/{project}/embed-commits        — run Haiku digest + embedding for all unprocessed commits
 """
 from __future__ import annotations
 
@@ -360,3 +361,51 @@ async def get_llm_prompt(
         content = mf.render_gemini_context(ctx)
 
     return {"variant": variant, "project": project, "content": content}
+
+
+@router.post("/{project}/embed-commits")
+async def embed_commits(
+    project: str,
+    limit: int = Query(50, description="Max commits to process in one call"),
+):
+    """Run process_commit() for commits that have no Haiku digest yet.
+
+    Selects commits where tags->>'llm' IS NULL (never processed), runs Haiku
+    digest + embedding for each, back-propagates summary and llm tag to
+    mem_mrr_commits. Returns count processed.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT commit_hash FROM mem_mrr_commits
+                       WHERE client_id=1 AND project=%s
+                         AND (tags->>'llm') IS NULL
+                       ORDER BY committed_at DESC NULLS LAST
+                       LIMIT %s""",
+                    (project, limit),
+                )
+                hashes = [r[0] for r in cur.fetchall()]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not hashes:
+        return {"processed": 0, "project": project, "note": "all commits already processed"}
+
+    from memory.memory_embedding import MemoryEmbedding
+    emb = MemoryEmbedding()
+    processed = 0
+    errors = 0
+    for h in hashes:
+        try:
+            result = await emb.process_commit(project, h)
+            if result:
+                processed += 1
+        except Exception as e:
+            log.debug(f"embed_commits {h}: {e}")
+            errors += 1
+
+    return {"processed": processed, "errors": errors, "project": project}

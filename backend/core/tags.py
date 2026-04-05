@@ -12,9 +12,13 @@ from __future__ import annotations
 import json
 
 # Internal pipeline metadata keys stored in tags JSONB but never shown as UI chips.
-# "source" = which platform sent the data (e.g. "claude_cli", "git")
-# "llm"    = which model produced digest content (e.g. "claude-haiku-4-5-20251001")
-_SYSTEM_KEYS: frozenset[str] = frozenset({"source", "llm", "event", "chunk_type"})
+# "source"       = which platform sent the data (e.g. "claude_cli", "git")
+# "event"        = embedding pipeline event classifier
+# "chunk_type"   = embedding chunk type
+# "commit_hash"  = redundant (already shown as primary field)
+# "files"        = large dict of changed files (too verbose for a chip)
+# NOTE: "llm" is intentionally NOT here — it shows as a visible tag chip.
+_SYSTEM_KEYS: frozenset[str] = frozenset({"source", "event", "chunk_type", "commit_hash", "files"})
 
 # JSONB filter expression: strips system keys before comparing to '{}'
 # Used in WHERE clauses to find rows with user-applied tags only.
