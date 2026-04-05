@@ -242,7 +242,6 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id    INT           NOT NULL REFERENCES mng_clients(id),
     project      VARCHAR(255)  NOT NULL,
-    llm_source   TEXT,
     session_id   TEXT,
     source_id    TEXT,
     prompt       TEXT          NOT NULL DEFAULT '',
@@ -264,7 +263,6 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     commit_msg   TEXT           NOT NULL DEFAULT '',
     summary      TEXT           NOT NULL DEFAULT '',
     diff_summary TEXT           NOT NULL DEFAULT '',
-    source       VARCHAR(50)    NOT NULL DEFAULT 'git',
     session_id   VARCHAR(255),
     prompt_id    UUID           REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
     diff_details JSONB          NOT NULL DEFAULT '{}',
@@ -531,7 +529,6 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project      VARCHAR(255) NOT NULL,
-    llm_source   VARCHAR(100) DEFAULT NULL,  -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
     event_type   TEXT         NOT NULL,   -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
     source_id    TEXT         NOT NULL,   -- UUID, commit hash, or session_id
     session_id   TEXT,
@@ -721,6 +718,17 @@ ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS language;
 ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS file_path;
 ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS action_items TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_tags ON mem_ai_events USING gin(tags);
+-- ── 007_source_llm_tags ──────────────────────────────────────────────────────
+-- Move legacy named columns into the unified tags JSONB dict (idempotent).
+UPDATE mem_mrr_prompts SET tags = tags || jsonb_build_object('source', llm_source)
+ WHERE llm_source IS NOT NULL AND llm_source <> '';
+ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS llm_source;
+UPDATE mem_mrr_commits SET tags = tags || jsonb_build_object('source', source)
+ WHERE source IS NOT NULL AND source <> '';
+ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS source;
+UPDATE mem_ai_events SET tags = tags || jsonb_build_object('llm', llm_source)
+ WHERE llm_source IS NOT NULL AND llm_source <> '';
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS llm_source;
 """
 
 

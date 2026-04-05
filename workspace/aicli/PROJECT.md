@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Session ordering by created_at implemented to maintain chronological list and prevent phase/tag updates from reordering sessions
+- Session ordering by created_at verified: maintains chronological list and prevents phase/tag updates from reordering sessions
 - Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/workflow
-- Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link)
+- Commit-per-prompt inline display deployed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link)
 - Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
 - AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner
-- Planner tab unified redesign: consolidated into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tags split
+- Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, created date

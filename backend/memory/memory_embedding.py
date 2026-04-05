@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -60,15 +61,14 @@ _EXT_LANG: dict[str, str] = {
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
            (client_id, project, event_type, source_id, session_id,
-            llm_source, chunk, chunk_type, content, embedding, summary, action_items, tags, importance)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
+            chunk, chunk_type, content, embedding, summary, action_items, tags, importance)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
        ON CONFLICT (client_id, project, event_type, source_id, chunk)
        DO UPDATE SET
            content      = EXCLUDED.content,
            embedding    = EXCLUDED.embedding,
            summary      = EXCLUDED.summary,
            action_items = EXCLUDED.action_items,
-           llm_source   = EXCLUDED.llm_source,
            tags         = EXCLUDED.tags
     RETURNING id
 """
@@ -106,6 +106,10 @@ _SQL_SEARCH_TPL = """
     ORDER BY embedding <=> %s::vector
     LIMIT %s
 """
+
+_SQL_GET_NODE_OUTPUTS = (
+    "SELECT node_id, node_name, output FROM pr_graph_node_results WHERE run_id=%s AND status='done'"
+)
 
 
 def _openai_key() -> Optional[str]:
@@ -196,7 +200,6 @@ def _upsert_event(
     embedding: Optional[list[float]],
     *,
     session_id: Optional[str] = None,
-    llm_source: Optional[str] = None,
     summary: Optional[str] = None,
     action_items: str = "",
     tags: dict | None = None,
@@ -207,14 +210,16 @@ def _upsert_event(
     file_path: Optional[str] = None,
     importance: int = 1,
     # ignored legacy params
+    llm_source: Optional[str] = None,  # deprecated — put in tags["llm"] instead
     session_desc: Optional[str] = None,
     cnt_prompts: Optional[int] = None,
 ) -> Optional[str]:
     """Insert or update a row in mem_ai_events. Returns UUID string.
 
-    tags: unified dict merging MRR classification tags + source-specific metadata,
-          e.g. {"phase": "discovery", "commit_hash": "abc123", "platform": "slack"}.
+    tags: unified dict — use tags["source"] for originating platform,
+          tags["llm"] for the model that produced digest content.
     doc_type / language / file_path are accepted for backward-compat and merged into tags.
+    llm_source is accepted for backward-compat and merged into tags["llm"] if not already set.
     """
     if not db.is_available():
         return None
@@ -227,6 +232,9 @@ def _upsert_event(
         merged.setdefault("language", language)
     if file_path:
         merged.setdefault("file", file_path)
+    # Backward-compat: if caller passed llm_source kwarg, fold into tags["llm"]
+    if llm_source:
+        merged.setdefault("llm", llm_source)
     # Auto-add system classifiers so all events are consistently tagged
     enriched: dict = {"event": source_type, "chunk_type": chunk_type}
     enriched.update(merged)  # caller tags override system keys
@@ -237,7 +245,7 @@ def _upsert_event(
                 cur.execute(
                     _SQL_UPSERT_EVENT,
                     (project, source_type, source_id, session_id,
-                     llm_source, chunk, chunk_type, content, vec_str, summary,
+                     chunk, chunk_type, content, vec_str, summary,
                      action_items, json.dumps(enriched), importance),
                 )
                 row = cur.fetchone()
@@ -309,11 +317,29 @@ class MemoryEmbedding:
         except Exception:
             pass
 
+        event_tags = {**mrr_tags, "llm": settings.haiku_model}
         event_id = _upsert_event(
             project, "prompt_batch", last_id, 0, "full", summary_text, embedding,
-            session_id=session_id, llm_source=settings.haiku_model,
-            summary=summary_text, action_items=action_items, tags=mrr_tags, importance=1,
+            session_id=session_id,
+            summary=summary_text, action_items=action_items, tags=event_tags, importance=1,
         )
+
+        # Chunk long responses (raw embed, no LLM)
+        chunk_idx = 1
+        for p in prompts:
+            resp = p.get("response", "")
+            if len(resp.split()) > 400:
+                resp_chunks = MemoryEmbedding.smart_chunk_text(resp)
+                if len(resp_chunks) > 1:
+                    for rc in resp_chunks:
+                        rc_emb = await _embed(rc["content"])
+                        _upsert_event(
+                            project, "prompt_batch", last_id, chunk_idx,
+                            rc.get("chunk_type", "section"), rc["content"], rc_emb,
+                            session_id=session_id, tags=mrr_tags, importance=1,
+                        )
+                        chunk_idx += 1
+
         return event_id
 
     async def process_commit(
@@ -369,30 +395,61 @@ class MemoryEmbedding:
                         languages_set.add(lang)
 
         # Merge MRR classification tags + commit-specific metadata
-        event_tags: dict = {**mrr_tags, "commit_hash": commit_hash_val}
+        base_tags: dict = {**mrr_tags, "commit_hash": commit_hash_val}
         if files_tag:
-            event_tags["files"] = files_tag
+            base_tags["files"] = files_tag
         if languages_set:
-            event_tags["languages"] = sorted(languages_set)
+            base_tags["languages"] = sorted(languages_set)
 
+        # chunk=0: Haiku digest — carries tags["llm"]
+        digest_tags = {**base_tags, "llm": settings.haiku_model}
         event_id = _upsert_event(
             project, "commit", commit_hash_val, 0, "full", summary_text, embedding,
-            session_id=session_id, llm_source=settings.haiku_model,
-            summary=summary_text, action_items=action_items, tags=event_tags,
+            session_id=session_id,
+            summary=summary_text, action_items=action_items, tags=digest_tags,
         )
 
-        # Back-propagate file/language stats to mem_mrr_commits.tags
-        if files_tag:
-            try:
-                commit_tag_update = {"files": files_tag}
-                if languages_set:
-                    commit_tag_update["languages"] = sorted(languages_set)
-                with db.conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(_SQL_UPDATE_COMMIT_TAGS,
-                                    (json.dumps(commit_tag_update), commit_hash_val))
-            except Exception as e:
-                log.debug(f"process_commit tag update error: {e}")
+        # Back-propagate file/language stats + llm tag to mem_mrr_commits.tags
+        try:
+            commit_tag_update: dict = {"llm": settings.haiku_model}
+            if files_tag:
+                commit_tag_update["files"] = files_tag
+            if languages_set:
+                commit_tag_update["languages"] = sorted(languages_set)
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_UPDATE_COMMIT_TAGS,
+                                (json.dumps(commit_tag_update), commit_hash_val))
+        except Exception as e:
+            log.debug(f"process_commit tag update error: {e}")
+
+        # Per-file diff chunks (raw embed, no llm tag)
+        try:
+            code_dir = settings.code_dir
+            if code_dir:
+                result = subprocess.run(
+                    ["git", "show", "--format=%B%n---DIFF---", commit_hash_val],
+                    cwd=code_dir, capture_output=True, text=True, timeout=30,
+                )
+                if result.returncode == 0:
+                    parts = result.stdout.split("\n---DIFF---\n", 1)
+                    diff_text = parts[1] if len(parts) > 1 else ""
+                    if diff_text.strip():
+                        diff_chunks = MemoryEmbedding.smart_chunk_diff(
+                            diff_text, commit_hash_val, {"commit_msg": commit_msg}
+                        )
+                        # Skip chunk[0] (summary) — Haiku digest is already chunk=0
+                        for i, dc in enumerate(diff_chunks[1:], start=1):
+                            dc_content = dc.get("content", "")
+                            dc_tags = {**base_tags, **dc.get("tags", {})}
+                            dc_emb = await _embed(dc_content)
+                            _upsert_event(
+                                project, "commit", commit_hash_val, i, "diff_file",
+                                dc_content, dc_emb,
+                                session_id=session_id, tags=dc_tags,
+                            )
+        except Exception as e:
+            log.debug(f"process_commit diff chunks error: {e}")
 
         return event_id
 
@@ -799,6 +856,35 @@ class MemoryEmbedding:
 
         return chunks
 
+    @staticmethod
+    def smart_chunk_text(text: str, max_words: int = 400) -> list[dict]:
+        """Split plain text (prompts, responses, raw items) on paragraph breaks.
+
+        Targets ~max_words per chunk. Returns list of chunk dicts with
+        chunk_type='full' (single chunk) or 'section' (multi-chunk).
+        """
+        paragraphs = [p.strip() for p in re.split(r'\n{2,}', text) if p.strip()]
+        chunks: list[str] = []
+        current: list[str] = []
+        word_count = 0
+        for para in paragraphs:
+            wc = len(para.split())
+            if word_count + wc > max_words and current:
+                chunks.append('\n\n'.join(current))
+                current, word_count = [para], wc
+            else:
+                current.append(para)
+                word_count += wc
+        if current:
+            chunks.append('\n\n'.join(current))
+        if not chunks:
+            return [{"content": text[:6000], "chunk_type": "full", "chunk_index": 0, "tags": {}}]
+        chunk_type = "full" if len(chunks) == 1 else "section"
+        return [
+            {"content": c[:6000], "chunk_type": chunk_type, "chunk_index": i, "tags": {}}
+            for i, c in enumerate(chunks)
+        ]
+
 
 # ── Backward-compat wrapper (delegates to the old mem_embeddings.py public API) ─
 
@@ -807,19 +893,24 @@ async def embed_and_store(
     source_type: str,
     source_id: str,
     content: str,
-    **chunk_meta,
+    chunk_index: int = 0,
+    chunk_type: str = "full",
+    doc_type: Optional[str] = None,
+    language: Optional[str] = None,
+    file_path: Optional[str] = None,
+    metadata: Optional[dict] = None,
+    tags: Optional[dict] = None,
+    **_extra,  # absorb any extra legacy kwargs silently
 ) -> None:
-    """Backward-compatible wrapper: embed content and store in mem_ai_events."""
+    """Embed content and store in mem_ai_events. Silently no-ops on error."""
     vec = await _embed(content)
-    chunk = chunk_meta.get("chunk_index", 0)
-    chunk_type = chunk_meta.get("chunk_type", "full")
     _upsert_event(
-        project, source_type, source_id, chunk, chunk_type, content, vec,
-        doc_type=chunk_meta.get("doc_type"),
-        language=chunk_meta.get("language"),
-        file_path=chunk_meta.get("file_path"),
-        metadata=chunk_meta.get("metadata"),
-        tags=chunk_meta.get("tags"),
+        project, source_type, source_id, chunk_index, chunk_type, content, vec,
+        doc_type=doc_type,
+        language=language,
+        file_path=file_path,
+        metadata=metadata,
+        tags=tags,
     )
 
 
@@ -835,7 +926,195 @@ async def semantic_search(
     return await emb.semantic_search(project, query, limit, source_types=source_types)
 
 
+async def embed_chunks(
+    project: str,
+    source_type: str,
+    source_id: str,
+    chunks: list[dict],
+) -> int:
+    """Embed a list of pre-computed chunk dicts. Returns number embedded."""
+    count = 0
+    for chunk in chunks:
+        await embed_and_store(
+            project=project,
+            source_type=source_type,
+            source_id=source_id,
+            content=chunk.get("content", ""),
+            chunk_index=chunk.get("chunk_index", 0),
+            chunk_type=chunk.get("chunk_type", "full"),
+            doc_type=chunk.get("doc_type"),
+            language=chunk.get("language"),
+            file_path=chunk.get("file_path"),
+            metadata=chunk.get("metadata", {}),
+        )
+        count += 1
+    return count
+
+
+async def ingest_history(project: str, since: Optional[str] = None) -> int:
+    """Embed history.jsonl entries. Returns count of newly embedded entries."""
+    history_path = Path(settings.workspace_dir) / project / "_system" / "history.jsonl"
+    if not history_path.exists():
+        return 0
+    embedded = 0
+    try:
+        for line in history_path.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ts = entry.get("ts", "")
+            if since and ts and ts <= since:
+                continue
+            user_input = entry.get("user_input", "")
+            output = entry.get("output", "")
+            source_id = ts or f"hist_{embedded}"
+            content = f"Q: {user_input}\nA: {output}"
+            if content.strip() == "Q: \nA: ":
+                continue
+            meta: dict = {}
+            for k in ("provider", "source"):
+                if entry.get(k):
+                    meta[k] = entry[k]
+            await embed_and_store(
+                project, "history", source_id, content,
+                chunk_index=0, chunk_type="full", metadata=meta,
+            )
+            embedded += 1
+    except Exception as e:
+        log.warning(f"ingest_history failed: {e}")
+    return embedded
+
+
+async def ingest_roles(project: str) -> int:
+    """Embed all role .md files in workspace/{project}/prompts/roles/. Returns count."""
+    roles_dir = Path(settings.workspace_dir) / project / "prompts" / "roles"
+    if not roles_dir.exists():
+        return 0
+    embedded = 0
+    try:
+        for md_file in sorted(roles_dir.rglob("*.md")):
+            rel = str(md_file.relative_to(roles_dir))
+            content = md_file.read_text()
+            chunks = MemoryEmbedding.smart_chunk_markdown(content, doc_type="role")
+            for chunk in chunks:
+                await embed_and_store(
+                    project, "role", rel, chunk["content"],
+                    chunk_index=chunk["chunk_index"],
+                    chunk_type=chunk["chunk_type"],
+                    doc_type="role",
+                    language="markdown",
+                    metadata=chunk.get("metadata", {}),
+                )
+            embedded += 1
+    except Exception as e:
+        log.warning(f"ingest_roles failed: {e}")
+    return embedded
+
+
+async def ingest_commit(project: str, commit_hash: str, code_dir: str) -> int:
+    """Fetch git diff for a commit, chunk it, and embed. Returns chunks embedded."""
+    if not code_dir:
+        return 0
+    try:
+        result = subprocess.run(
+            ["git", "show", "--format=%B%n---DIFF---", commit_hash],
+            cwd=code_dir, capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            return 0
+        output = result.stdout
+        parts = output.split("\n---DIFF---\n", 1)
+        commit_msg = parts[0].strip()
+        diff_text = parts[1] if len(parts) > 1 else ""
+        meta: dict = {"commit_msg": commit_msg}
+        if db.is_available():
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT tags FROM mem_mrr_commits "
+                            "WHERE client_id=1 AND project=%s AND commit_hash=%s",
+                            (project, commit_hash),
+                        )
+                        row = cur.fetchone()
+                        if row and row[0]:
+                            meta["tags"] = row[0]
+            except Exception:
+                pass
+        if not diff_text.strip():
+            await embed_and_store(
+                project, "commit", commit_hash, commit_msg,
+                chunk_index=0, chunk_type="summary", metadata=meta,
+            )
+            return 1
+        chunks = MemoryEmbedding.smart_chunk_diff(diff_text, commit_hash, meta)
+        return await embed_chunks(project, "commit", commit_hash, chunks)
+    except Exception as e:
+        log.debug(f"ingest_commit failed ({commit_hash}): {e}")
+        return 0
+
+
+async def ingest_document(
+    project: str,
+    doc_path: str,
+    content: str,
+    doc_type: str = "doc",
+    metadata: Optional[dict] = None,
+) -> int:
+    """Chunk and embed a document (markdown or code file). Returns chunks embedded."""
+    extra_meta = metadata or {}
+    language = _detect_language(doc_path)
+    source_id = doc_path.replace("/", "_").replace(" ", "_").replace("\\", "_")
+    if language == "markdown":
+        chunks = MemoryEmbedding.smart_chunk_markdown(content, doc_type=doc_type)
+    elif language in ("python", "javascript", "typescript", "go", "rust", "java"):
+        chunks = MemoryEmbedding.smart_chunk_code(content, doc_path)
+    else:
+        chunks = [{
+            "content": content[:8000], "chunk_type": "full", "chunk_index": 0,
+            "language": language, "file_path": doc_path, "metadata": {},
+        }]
+    for chunk in chunks:
+        chunk.setdefault("metadata", {}).update(extra_meta)
+        if not chunk.get("file_path"):
+            chunk["file_path"] = doc_path
+        if not chunk.get("doc_type"):
+            chunk["doc_type"] = doc_type
+    return await embed_chunks(project, "doc", source_id, chunks)
+
+
+async def embed_node_outputs(run_id: str, project: str) -> None:
+    """Embed all completed node outputs from a graph run. Silent on error."""
+    if not db.is_available():
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_GET_NODE_OUTPUTS, (run_id,))
+                rows = cur.fetchall()
+        for node_id, node_name, output in rows:
+            if output:
+                source_id = f"{run_id}:{node_id}"
+                content = f"[{node_name}]\n{output}"
+                await embed_and_store(
+                    project, "node_output", source_id, content,
+                    chunk_index=0, chunk_type="full",
+                )
+    except Exception as e:
+        log.debug(f"embed_node_outputs failed: {e}")
+
+
+async def backfill_entity_tags(project: str) -> None:
+    """Stub — entity tag backfill not implemented."""
+    pass
+
+
 # Module-level smart chunking (backward compat)
 smart_chunk_code     = MemoryEmbedding.smart_chunk_code
 smart_chunk_markdown = MemoryEmbedding.smart_chunk_markdown
 smart_chunk_diff     = MemoryEmbedding.smart_chunk_diff
+smart_chunk_text     = MemoryEmbedding.smart_chunk_text
+get_embedding        = _embed  # trivial alias

@@ -31,9 +31,9 @@ log = logging.getLogger(__name__)
 
 _SQL_INSERT_PROMPT = """
     INSERT INTO mem_mrr_prompts
-           (client_id, project, session_id, llm_source, source_id,
+           (client_id, project, session_id, source_id,
             prompt, response, tags, created_at)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+       VALUES (1, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
        ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
     RETURNING id
 """
@@ -41,8 +41,8 @@ _SQL_INSERT_PROMPT = """
 _SQL_INSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
            (client_id, project, commit_hash, commit_msg, summary,
-            source, session_id, committed_at, diff_details, tags)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
+            session_id, committed_at, diff_details, tags)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
        ON CONFLICT (commit_hash) DO NOTHING
     RETURNING commit_hash
 """
@@ -128,7 +128,8 @@ class MemoryMirroring:
         response: str,
         *,
         source_id: Optional[str] = None,
-        llm_source: str = "claude_cli",
+        source: str = "claude_cli",
+        llm_source: str = "",  # backward-compat alias for source
         tags: Optional[list[str] | dict] = None,
         ts: Optional[str] = None,
     ) -> Optional[str]:
@@ -138,14 +139,18 @@ class MemoryMirroring:
         from datetime import datetime, timezone
         if ts is None:
             ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # llm_source is kept for backward compat; source takes precedence
+        effective_source = source or llm_source or "claude_cli"
+        tags_dict = tags_to_dict(tags)
+        tags_dict["source"] = effective_source
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_PROMPT,
-                        (project, session_id, llm_source, source_id,
+                        (project, session_id, source_id,
                          (prompt or "")[:4000], (response or "")[:8000],
-                         json.dumps(tags_to_dict(tags)), ts),
+                         json.dumps(tags_dict), ts),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None
@@ -169,14 +174,16 @@ class MemoryMirroring:
         """Insert a commit into mem_mrr_commits. Returns commit_hash or None."""
         if not db.is_available():
             return None
+        tags_dict = tags_to_dict(tags)
+        tags_dict["source"] = source
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_COMMIT,
                         (project, commit_hash, commit_msg, summary,
-                         source, session_id, committed_at, diff_details,
-                         json.dumps(tags_to_dict(tags))),
+                         session_id, committed_at, diff_details,
+                         json.dumps(tags_dict)),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None
