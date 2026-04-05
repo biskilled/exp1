@@ -46,7 +46,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.seq_num,
               tc.color, tc.icon,
               (SELECT COUNT(*) FROM mem_mrr_prompts p
-               WHERE p.work_item_id = w.id) AS interaction_count
+               WHERE p.client_id=1 AND 'work-item:' || w.id::text = ANY(p.tags)) AS interaction_count
        FROM mem_ai_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.category_name
        WHERE {where}
@@ -94,10 +94,10 @@ _SQL_GET_CATEGORY_ID = (
 )
 
 _SQL_GET_INTERACTIONS = (
-    """SELECT i.id, i.session_id, i.event_type, i.source_id,
-              i.prompt, i.response, i.phase, i.created_at
+    """SELECT i.id, i.session_id, i.source_id,
+              i.prompt, i.response, i.created_at
        FROM mem_mrr_prompts i
-       WHERE i.work_item_id=%s::uuid AND i.client_id=1 AND i.project=%s
+       WHERE 'work-item:' || %s = ANY(i.tags) AND i.client_id=1 AND i.project=%s
        ORDER BY i.created_at DESC LIMIT %s"""
 )
 
@@ -166,17 +166,14 @@ _SQL_INSERT_PIPELINE_FACT = (
 
 _SQL_INSERT_PIPELINE_INTERACTION = (
     """INSERT INTO mem_mrr_prompts
-       (id, client_id, project, llm_source, response, session_id, work_item_id, created_at)
-       VALUES (%s, 1, %s, 'pipeline', %s, %s, %s::uuid, NOW())"""
+       (id, client_id, project, llm_source, response, session_id, tags, created_at)
+       VALUES (%s, 1, %s, 'pipeline', %s, %s, ARRAY[CONCAT('work-item:', %s)], NOW())"""
 )
 
-# Work item linkage to prompts is via mem_mrr_prompts.work_item_id
-_SQL_INSERT_PIPELINE_INTERACTION_TAG = None  # unused after migration
-
 _SQL_PIPELINE_TAGGED_INTERACTIONS = (
-    """SELECT i.event_type, i.response, i.created_at
+    """SELECT i.response, i.created_at
        FROM mem_mrr_prompts i
-       WHERE i.work_item_id = %s::uuid
+       WHERE 'work-item:' || %s = ANY(i.tags)
        ORDER BY i.created_at DESC LIMIT 30"""
 )
 
@@ -186,7 +183,7 @@ _SQL_PIPELINE_TAGGED_COMMITS = (
        WHERE c.client_id=1
          AND c.session_id IN (
              SELECT DISTINCT session_id FROM mem_mrr_prompts
-             WHERE work_item_id = %s::uuid AND session_id IS NOT NULL
+             WHERE 'work-item:' || %s = ANY(tags) AND session_id IS NOT NULL
          )
        ORDER BY c.committed_at DESC LIMIT 10"""
 )
@@ -630,9 +627,9 @@ def _build_pipeline_context(
                 rows = cur.fetchall()
         if rows:
             lines += ["", "## Tagged Interactions (most recent first)"]
-            for role, content, ts in reversed(rows):
+            for content, ts in reversed(rows):
                 short = (content or "")[:400]
-                lines.append(f"[{role}] {short}")
+                lines.append(short)
     except Exception as _e:
         log.debug(f"Could not fetch tagged interactions: {_e}")
 
