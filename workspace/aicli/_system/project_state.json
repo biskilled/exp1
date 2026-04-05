@@ -15,7 +15,7 @@
     "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
     "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
     "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
-    "memory_synthesis": "Claude Haiku dual-layer with 5 output files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) + timestamp tracking",
+    "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking",
     "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
     "mcp": "Stdio MCP server with 12+ tools",
     "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev",
@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Memory file generation refactoring: planner_tags inline fields (summary, action_items, design, code_summary) now canonical context source; snapshot fields integrated across memory modules",
-    "SQL cursor tuple unpacking standardization: memory_promotion.py and memory_files.py fixed for reliable 4-column unpacking; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS corrected",
-    "Feature details context loading: planner_tags query limited to 30 most recent; render_feature_claude_md() reads complete tag metadata from inline snapshot fields",
+    "Memory file generation refactoring: planner_tags inline fields now canonical context source; snapshot fields integrated across memory modules for reliable synthesis",
+    "SQL cursor tuple unpacking standardization: memory_promotion.py and memory_files.py fixed for robust 4-column unpacking; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS corrected",
+    "Feature details context loading: planner_tags query optimized to 30 most recent; render_feature_claude_md() reads complete tag metadata from inline snapshot fields",
     "Memory file lifecycle enhancement: get_active_feature_tags() filters active/open tags with snapshots; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary",
     "Database cursor handling robustness: standardized tuple unpacking with improved SQL result column ordering; timestamp tracking added to memory synthesis metadata",
-    "Schema consolidation: mem_ai_tags_relations relations section removed from feature rendering; inline snapshot fields integrated as primary data source"
+    "Backend refactoring and cleanup: routers and core modules restructured; dev_runtime_state.json and commit logs updated after session 5b19c863"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-03T20:07:54Z",
+  "last_memory_run": "2026-04-05T11:02:58Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ contains backend logic and CLI; workspace/ contains per-project content; _system/ stores project state and memory files",
@@ -140,12 +140,12 @@
       "Cost tracking via provider_costs.json with fallback pricing; billing storage in data/provider_storage/ with rich table output"
     ],
     "in_progress": [
-      "Memory file generation refactoring: planner_tags inline fields (summary, action_items, design, code_summary) now canonical context source; snapshot fields integrated across memory modules",
-      "SQL cursor tuple unpacking standardization: memory_promotion.py and memory_files.py fixed for reliable 4-column unpacking; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS corrected",
-      "Feature details context loading: planner_tags query limited to 30 most recent; render_feature_claude_md() reads complete tag metadata from inline snapshot fields",
+      "Memory file generation refactoring: planner_tags inline fields now canonical context source; snapshot fields integrated across memory modules for reliable synthesis",
+      "SQL cursor tuple unpacking standardization: memory_promotion.py and memory_files.py fixed for robust 4-column unpacking; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS corrected",
+      "Feature details context loading: planner_tags query optimized to 30 most recent; render_feature_claude_md() reads complete tag metadata from inline snapshot fields",
       "Memory file lifecycle enhancement: get_active_feature_tags() filters active/open tags with snapshots; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary",
       "Database cursor handling robustness: standardized tuple unpacking with improved SQL result column ordering; timestamp tracking added to memory synthesis metadata",
-      "Schema consolidation: mem_ai_tags_relations relations section removed from feature rendering; inline snapshot fields integrated as primary data source"
+      "Backend refactoring and cleanup: routers and core modules restructured; dev_runtime_state.json and commit logs updated after session 5b19c863"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -154,18 +154,18 @@
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) + timestamp tracking",
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev",
       "database": "PostgreSQL 15+",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
-      "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables"
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
+      "config_management": "config.py + YAML pipelines + pyproject.toml"
     },
-    "project_summary": "aicli is a shared AI memory platform combining Claude CLI, FastAPI backend, Electron desktop UI, and PostgreSQL with pgvector for semantic search. It synthesizes project context into memory files (CLAUDE.md, MEMORY.md, etc.) via async DAG workflows, supporting multiple LLM providers with cost tracking and hierarchical user authentication. Currently refactoring memory generation to use inline planner_tags snapshot fields as canonical context, standardizing SQL cursor handling, and consolidating schema across unified tables.",
-    "memory_digest": "**2026-03-14** `PROJECT.md` \u2014 Consolidated aicli architecture with unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) replacing per-project fragmentation; established login_as_first_level_hierarchy auth pattern.\n**Recent** `memory_modules` \u2014 Standardized SQL cursor tuple unpacking across memory_promotion.py and memory_files.py for reliable 4-column result handling; fixed _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS query column ordering.\n**Recent** `feature_context` \u2014 Integrated planner_tags inline snapshot fields (summary, action_items, design, code_summary) as canonical context source; removed mem_ai_tags_relations relations section from feature rendering, simplified to 30 most recent tags.\n**Recent** `memory_lifecycle` \u2014 Enhanced get_active_feature_tags() to filter open tags with snapshots; render_feature_claude_md() now reads complete tag metadata including requirements and design fields from inline planner_tags.\n**Recent** `database_robustness` \u2014 Added timestamp tracking to memory synthesis metadata; improved SQL result column ordering documentation for cursor unpacking standardization.\n**Removed** `git_supervisor.py, env_loader.py, cost_tracker.py` \u2014 Archived legacy Git automation, environment loading, and early cost tracking modules; retained cost calculation logic in provider_costs.json model."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI with PostgreSQL/pgvector storage. It provides LLM-powered workflow execution via async DAG pipelines, memory synthesis using Claude Haiku, and semantic search across unified mem_ai_* tables, supporting multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with JWT authentication and MCP tool integration. Recent work has focused on stabilizing memory file generation through planner_tags snapshot integration and standardizing database cursor handling for robust context synthesis.",
+    "memory_digest": "**2026-03-18** `claude_cli` \u2014 Refactored backend core and routers with improved module structure (commit 5d2afe58); standardized SQL cursor tuple unpacking across memory_promotion.py and memory_files.py for robust 4-column result handling. **2026-03-18** `claude_cli` \u2014 Integrated planner_tags inline snapshot fields (summary, action_items, design, code_summary) as canonical context source for memory file generation; enhanced render_feature_claude_md() to read complete metadata. **2026-03-18** `claude_cli` \u2014 Optimized get_active_feature_tags() to filter active/open tags with snapshots; context dict now populated with id, name, short_desc, requirements, summary, action_items, design, code_summary for feature details loading. **2026-03-18** `claude_cli` \u2014 Added timestamp tracking to memory synthesis metadata; improved SQL result column ordering for memory file lifecycle reliability. **2026-03-18** `claude_cli` \u2014 Cleaned up aicli system files post-session; dev_runtime_state.json updated to session 129 with latest timestamps and commit logs synchronized (commit bde6bc20)."
   }
 }

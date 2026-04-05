@@ -131,17 +131,23 @@ export class HistoryView {
   async _renderChat(container) {
     const project = state.currentProject?.name || '';
 
-    // Step 1: fetch history (newest 500) + config in parallel
+    // Step 1: fetch history, config, and source tags in parallel
     this._setLoadingMsg('Fetching history entries…');
     const _ts = Date.now();
-    const [histRes, cfgData] = await Promise.all([
+    const [histRes, cfgData, sourceTags] = await Promise.all([
       fetch(_histUrl(`/history/chat?limit=500&_t=${_ts}`)).then(r => r.json()),
       api.getProjectConfig(project).catch(() => ({})),
+      api.entities.getSourceTags(project).catch(() => ({})),
     ]);
 
     const total = histRes.total || 0;
     this._histData = histRes;
     this._histPage = 1;
+
+    // Populate entry tags from DB (overwrite in-memory so DB is source of truth)
+    for (const [sid, tagArr] of Object.entries(sourceTags || {})) {
+      this._entryTags[sid] = tagArr;
+    }
 
     let ghBase = (cfgData.github_repo || '').replace(/\.git$/, '').replace(/\/$/, '');
     if (ghBase.startsWith('git@')) ghBase = ghBase.replace(/^git@([^:]+):/, 'https://$1/');
@@ -151,17 +157,10 @@ export class HistoryView {
     this._setLoadingMsg(`Building tag index (${total} entries)…`);
     await this._buildTagCache(project);
 
-    // Step 3: render immediately so user sees data
+    // Step 3: render with tags already populated
     this._renderChatContainer(container);
 
-    // Step 4: load source tags in background (non-blocking — chips appear after render)
-    api.entities.getSourceTags(project).then(sourceTags => {
-      for (const [sid, tagArr] of Object.entries(sourceTags || {})) {
-        if (!this._entryTags[sid]) this._entryTags[sid] = tagArr;
-      }
-    }).catch(() => {});
-
-    // Step 5: pre-load commits in background for the Commits tab (lazy)
+    // Step 4: pre-load commits in background for the Commits tab (lazy)
     if (!this._commitData) {
       api.historyCommits(project, 500).then(d => {
         this._commitData = d;
@@ -468,19 +467,24 @@ export class HistoryView {
 
   // ── Tag picker (shared by chat entries + commits) ─────────────────────────
 
-  async _buildTagCache(project, _categories) {
+  async _buildTagCache(project) {
     this._tagCache    = [];
     this._tagCacheMap = {};
     try {
       const res = await api.tags.list(project);
-      const tags = res.tags || res || [];
+      // Flatten tree (list_tags returns roots with nested children)
+      const flat = [];
+      const _flatten = (items) => {
+        for (const t of (items || [])) { flat.push(t); if (t.children?.length) _flatten(t.children); }
+      };
+      _flatten(Array.isArray(res) ? res : (res.tags || []));
       // Group by category_name for picker display
       const groups = {};
-      for (const t of tags) {
+      for (const t of flat) {
         const catName = t.category_name || 'other';
         const color   = t.color || '#4a90e2';
         const tagStr  = `${catName}:${t.name}`;
-        if (!groups[catName]) groups[catName] = { cat: { name: catName, color }, values: [] };
+        if (!groups[catName]) groups[catName] = { cat: { name: catName, color, id: t.category_id }, values: [] };
         groups[catName].values.push({ name: t.name, tagStr });
         this._tagCacheMap[tagStr] = { color, label: tagStr };
       }
@@ -500,30 +504,35 @@ export class HistoryView {
       'border:1px solid var(--border);border-radius:6px;padding:6px;min-width:180px;' +
       'max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.25)';
 
-    if (!groups.length) {
-      picker.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:4px 8px">No tags.<br>Create tags in Planner.</div>`;
-    } else {
-      const fid = `etf-${Date.now()}`;
-      picker.innerHTML = `
-        <input id="${fid}" placeholder="Filter…" oninput="window._historyView._filterTagPicker('${fid}')"
-          style="width:100%;box-sizing:border-box;margin-bottom:4px;padding:3px 6px;border:1px solid var(--border);
-                 border-radius:3px;background:var(--surface);color:var(--text);font-size:11px"/>
-        <div id="etag-groups">
-          ${groups.map(({ cat, values }) => `
-            <div class="etag-group">
-              <div style="font-size:10px;color:var(--muted);font-weight:600;padding:2px 4px;text-transform:uppercase;letter-spacing:.5px">
-                ${this._escapeHtml(cat.name)}
-              </div>
-              ${values.map(v => `
-                <div class="etag-item" data-catname="${this._escapeHtml(cat.name)}"
-                  onclick="window._historyView._tagEntryWith('${this._escapeHtml(sourceId)}','${this._escapeHtml(v.tagStr)}','${anchorId}')"
-                  style="padding:3px 10px;cursor:pointer;border-radius:3px;font-size:12px;color:${this._escapeHtml(cat.color || 'var(--text)')}"
-                  onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background=''">
-                  ${this._escapeHtml(v.name)}
-                </div>`).join('')}
-            </div>`).join('')}
-        </div>`;
-    }
+    const fid = `etf-${Date.now()}`;
+    const sEsc = this._escapeHtml(sourceId);
+    const aEsc = this._escapeHtml(anchorId);
+    picker.innerHTML = `
+      <input id="${fid}" placeholder="Filter or type cat:name…"
+        oninput="window._historyView._filterTagPicker('${fid}','${sEsc}','${aEsc}')"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();window._historyView._pickerCreateFromInput('${fid}','${sEsc}','${aEsc}')}"
+        style="width:100%;box-sizing:border-box;margin-bottom:4px;padding:3px 6px;border:1px solid var(--border);
+               border-radius:3px;background:var(--surface);color:var(--text);font-size:11px"/>
+      <div id="etag-groups">
+        ${groups.length ? groups.map(({ cat, values }) => `
+          <div class="etag-group">
+            <div style="font-size:10px;color:var(--muted);font-weight:600;padding:2px 4px;text-transform:uppercase;letter-spacing:.5px">
+              ${this._escapeHtml(cat.name)}
+            </div>
+            ${values.map(v => `
+              <div class="etag-item" data-catname="${this._escapeHtml(cat.name)}" data-tagstr="${this._escapeHtml(v.tagStr)}"
+                onclick="window._historyView._tagEntryWith('${sEsc}','${this._escapeHtml(v.tagStr)}','${aEsc}')"
+                style="padding:3px 10px;cursor:pointer;border-radius:3px;font-size:12px;color:${this._escapeHtml(cat.color || 'var(--text)')}"
+                onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background=''">
+                ${this._escapeHtml(v.name)}
+              </div>`).join('')}
+          </div>`).join('') : `<div style="font-size:11px;color:var(--muted);padding:4px 8px">No existing tags. Type <em>cat:name</em> and press Enter.</div>`}
+      </div>
+      <div id="etag-create-${fid}" style="display:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:11px;
+           color:var(--accent);border-top:1px solid var(--border);margin-top:4px"
+        onclick="window._historyView._pickerCreateFromInput('${fid}','${sEsc}','${aEsc}')"
+        onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background=''">
+      </div>`;
 
     anchor.appendChild(picker);
     picker.querySelector('input')?.focus();
@@ -538,15 +547,63 @@ export class HistoryView {
     }, 10);
   }
 
-  _filterTagPicker(fid) {
-    const q = document.getElementById(fid)?.value?.toLowerCase() || '';
+  _filterTagPicker(fid, sourceId, anchorId) {
+    const q    = document.getElementById(fid)?.value?.trim() || '';
+    const qLow = q.toLowerCase();
     document.querySelectorAll('.etag-item').forEach(item => {
-      item.style.display = (!q || item.textContent.toLowerCase().includes(q) ||
-        (item.dataset.catname || '').toLowerCase().includes(q)) ? '' : 'none';
+      item.style.display = (!qLow
+        || item.textContent.toLowerCase().includes(qLow)
+        || (item.dataset.catname || '').toLowerCase().includes(qLow)
+        || (item.dataset.tagstr  || '').toLowerCase().includes(qLow)) ? '' : 'none';
     });
     document.querySelectorAll('.etag-group').forEach(g => {
       g.style.display = [...g.querySelectorAll('.etag-item')].some(i => i.style.display !== 'none') ? '' : 'none';
     });
+    // Show "Create" chip when input contains ":" and exact tag doesn't already exist
+    const createEl = document.getElementById(`etag-create-${fid}`);
+    if (createEl) {
+      if (q && q.includes(':') && !this._tagCacheMap[q]) {
+        createEl.textContent = `✚ Create "${q}"`;
+        createEl.style.display = '';
+      } else {
+        createEl.style.display = 'none';
+      }
+    }
+  }
+
+  // Called when user presses Enter in the picker input or clicks "✚ Create"
+  async _pickerCreateFromInput(fid, sourceId, anchorId) {
+    const q = document.getElementById(fid)?.value?.trim() || '';
+    if (!q) return;
+    document.querySelectorAll('.entry-tag-picker').forEach(el => el.remove());
+    if (q.includes(':')) {
+      await this._createAndTagWith(sourceId, q, anchorId);
+    } else {
+      // No colon → treat as bare tag name under unknown category — just apply it
+      await this._tagEntryWith(sourceId, q, anchorId);
+    }
+  }
+
+  // Create a planner_tag from "cat:name" string, then apply it
+  async _createAndTagWith(sourceId, tagStr, anchorId) {
+    const project  = state.currentProject?.name || '';
+    const colonIdx = tagStr.indexOf(':');
+    const catName  = tagStr.slice(0, colonIdx);
+    const name     = tagStr.slice(colonIdx + 1).trim();
+    if (!name) return;
+    const group      = this._tagCache?.find(g => g.cat.name === catName);
+    const category_id = group?.cat.id || null;
+    try {
+      await api.tags.create({ project, name, category_id });
+      await this._buildTagCache(project);  // refresh so new tag appears next time
+    } catch (e) {
+      // 409 = already exists — that's fine, just apply the tag
+      if (!e.message?.includes('already exists')) {
+        console.warn('Tag create failed:', e.message);
+        return;
+      }
+    }
+    await this._tagEntryWith(sourceId, tagStr, anchorId);
   }
 
   async _tagEntryWith(sourceId, tagStr, anchorId) {
