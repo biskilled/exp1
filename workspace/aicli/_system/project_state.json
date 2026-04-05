@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-05T23:28:03Z",
+  "last_memory_run": "2026-04-05T23:28:22Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -161,13 +161,12 @@
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "deployment_local": "bash start_backend.sh + ui/npm run dev",
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev",
       "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "database_version": "PostgreSQL 15+",
       "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "**aicli** is a shared AI memory platform combining a Python CLI + FastAPI backend + Electron desktop UI to capture, organize, and synthesize project knowledge using Claude AI, semantic PostgreSQL search, and workflow automation. Currently at v2.2.0, the project has consolidated UI components (Planner tab, Chat with tags), fixed critical session ordering and persistence bugs, and deployed inline commit tracking with tag deduplication across all views.",
-    "memory_digest": "**2026-04-05** `project_state.json` \u2014 Session ordering refactored to use created_at instead of updated_at, preventing tag/phase updates from reordering chronological list; phase persistence now loads from database on init with red \u26a0 badge for missing phases. **2026-04-05** `project_state.json` \u2014 Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash \u2197 link showing only that prompt's commits). **2026-04-05** `project_state.json` \u2014 Tag deduplication verified across system: 149 total tags with 0 duplicates; removal via \u2715 buttons now propagates across Chat/History/Commits views simultaneously. **2026-04-05** `project_state.json` \u2014 AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag, marked distinctly with separate color, appear immediately in Planner tab. **2026-04-05** `project_state.json` \u2014 Planner tab unified redesign: consolidated into single tags view with category, active/inactive status, short description, and created date; removed Feature/Bugs/Tags split. **Earlier** `project_state.json` \u2014 Backend startup race condition fixed with retry_logic_handles_empty_project_list_on_first_load pattern; _ensure_shared_schema convention replaces ensure_project_schema for robust schema initialization."
+    "project_summary": "**aicli** is a shared AI memory platform combining a Python 3.12 CLI, FastAPI backend, and Electron desktop UI to provide project memory synthesis, semantic search, and workflow automation. It uses PostgreSQL 15+ with pgvector embeddings, supports multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok), and employs async DAG workflows with real-time web visualization. The system unifies event tracking, tag management, project facts, and work items while maintaining strict session chronology and preventing data loss on concurrent updates.",
+    "memory_digest": "**2026-04-05** `project_state` \u2014 Session ordering refactored to use created_at instead of updated_at, preventing tag/phase updates from reordering chronological session list. **2026-04-05** `project_state` \u2014 Phase persistence enhanced with database loading on init and red \u26a0 badge for missing phases across UI/CLI/workflow views. **2026-04-05** `project_state` \u2014 Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash links. **2026-04-05** `project_state` \u2014 Tag deduplication verified: 149 total tags with 0 duplicates; removal via \u2715 buttons propagates simultaneously across Chat/History/Commits views. **2026-04-05** `project_state` \u2014 AI suggestion auto-save implemented: suggestions create tags in proper category via _acceptSuggestedTag, marked distinctly with separate color, appear immediately in Planner. **2026-04-05** `project_state` \u2014 Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, and created date properties."
   }
 }

@@ -3,6 +3,10 @@ _Generated: 2026-04-05 23:27 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
+## Project Summary
+
+**aicli** is a shared AI memory platform combining a Python 3.12 CLI, FastAPI backend, and Electron desktop UI to provide project memory synthesis, semantic search, and workflow automation. It uses PostgreSQL 15+ with pgvector embeddings, supports multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok), and employs async DAG workflows with real-time web visualization. The system unifies event tracking, tag management, project facts, and work items while maintaining strict session chronology and preventing data loss on concurrent updates.
+
 ## Project Facts
 
 - **auth_pattern**: login_as_first_level_hierarchy
@@ -377,3 +381,7 @@ index da83136..8cf5059 100644
 -- Tag suggestions marked distinctly (separate color/mark) and auto-saved via _acceptSuggestedTag; phase persistence with red ⚠ badge for missing phase
 -- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
 -- Backend: 
+
+## AI Synthesis
+
+**2026-04-05** `project_state` — Session ordering refactored to use created_at instead of updated_at, preventing tag/phase updates from reordering chronological session list. **2026-04-05** `project_state` — Phase persistence enhanced with database loading on init and red ⚠ badge for missing phases across UI/CLI/workflow views. **2026-04-05** `project_state` — Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash links. **2026-04-05** `project_state` — Tag deduplication verified: 149 total tags with 0 duplicates; removal via ✕ buttons propagates simultaneously across Chat/History/Commits views. **2026-04-05** `project_state` — AI suggestion auto-save implemented: suggestions create tags in proper category via _acceptSuggestedTag, marked distinctly with separate color, appear immediately in Planner. **2026-04-05** `project_state` — Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, and created date properties.
