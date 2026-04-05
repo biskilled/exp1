@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-05 17:24 UTC by aicli /memory_
+_Generated: 2026-04-05 17:28 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI with PostgreSQL + pgvector for semantic search. It manages project knowledge through unified event/tag/fact tables, LLM-powered memory synthesis, and DAG-based workflows. Currently polishing session ordering, phase persistence, tag management UI consolidation (Planner tab), and commit-per-prompt display with cross-view synchronization.
 
 ## Project Facts
 
@@ -260,17 +256,3 @@ index 76f95c7..069268d 100644
 +- Tag deduplication and cross-view synchronization — 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
 +- Pagination for Chat/History/Commits — displays offset ranges (e.g., '1–100 / 204') with ◀ ▶ navigation; unified history loads all archives on startup (2026-03-15)
 +- AI suggestions auto-save to session — suggestions create
-
-## AI Synthesis
-
-**2026-03-15** `claude_cli` — Session ordering corrected to use created_at instead of updated_at, preventing phase/tag updates from reordering the session list chronologically. Phase persistence now loads from DB on app init and saves via PATCH /chat/sessions/{id}/tags endpoint, with red ⚠ badge indicating missing phases across UI/CLI/Workflow.
-
-**2026-03-15** `claude_cli` — Commit display refactored to show inline at bottom of each prompt entry rather than session-level strip; commits display accent left-border with hash link (⤴) showing only commits relevant to that specific prompt.
-
-**2026-03-15** `claude_cli` — Tag deduplication completed: 149 total tags with zero duplicates; tag removal via ✕ buttons now propagates synchronously across Chat, History, and Commits tabs simultaneously.
-
-**2026-03-15** `claude_cli` — Pagination implemented for Chat/History/Commits with offset ranges (e.g., '1–100 / 204') and ◀ ▶ navigation controls; unified history loads all archives on app startup.
-
-**2026-03-15** `claude_cli` — AI suggestion auto-save enabled: suggestions immediately create tags in proper category via _acceptSuggestedTag async call, tags appear in Planner tab, phase filtering fully functional.
-
-**2026-03-09** `claude_cli` — Planner tab unified into single tags management view (category, active/inactive status, short description, created date); tag suggestions marked with distinct color/mark to differentiate from user-created tags; /memory function enhanced to summarize LLM responses and suggest relevant tags.
