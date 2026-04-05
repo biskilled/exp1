@@ -77,12 +77,14 @@ _SQL_GET_LAST_N_PROMPTS = """
     LIMIT %s
 """
 
-# "Untagged" = tags dict is empty ({})
+# "Untagged" = no user-facing classification tags (phase/feature/bug etc.)
+# System keys (source, llm) are always present but do not count as "tagged".
 _SQL_GET_UNTAGGED_PROMPTS = """
     SELECT source_id, 'prompt' AS source_type,
            (prompt || ' ' || response)[:500] AS content_preview, created_at
     FROM mem_mrr_prompts
-    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
+    WHERE client_id=1 AND project=%s
+      AND (tags - 'source' - 'llm') = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """
@@ -91,7 +93,8 @@ _SQL_GET_UNTAGGED_COMMITS = """
     SELECT commit_hash, 'commit' AS source_type,
            (commit_hash || ' ' || commit_msg)[:500] AS content_preview, created_at
     FROM mem_mrr_commits
-    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
+    WHERE client_id=1 AND project=%s
+      AND (tags - 'source' - 'llm') = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """
@@ -99,7 +102,8 @@ _SQL_GET_UNTAGGED_COMMITS = """
 _SQL_GET_UNTAGGED_ITEMS = """
     SELECT id::text, 'item' AS source_type, raw_text[:500] AS content_preview, created_at
     FROM mem_mrr_items
-    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
+    WHERE client_id=1 AND project=%s
+      AND (tags - 'source' - 'llm') = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """

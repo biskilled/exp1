@@ -164,12 +164,14 @@ _SQL_GET_EVENTS_FOR_VALUE = """
 # Expands JSONB dict {"phase":"discovery","feature":"auth"} → "phase:discovery", "feature:auth"
 _SQL_GET_SESSION_TAGS_FROM_MRR = """
     SELECT DISTINCT (key || ':' || value) AS tag_str
-    FROM mem_mrr_prompts, jsonb_each_text(tags)
-    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'::jsonb
+    FROM mem_mrr_prompts, jsonb_each_text(tags - 'source' - 'llm')
+    WHERE client_id=1 AND project=%s AND session_id=%s
+      AND (tags - 'source' - 'llm') != '{}'::jsonb
     UNION
     SELECT DISTINCT (key || ':' || value)
-    FROM mem_mrr_commits, jsonb_each_text(tags)
-    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'::jsonb
+    FROM mem_mrr_commits, jsonb_each_text(tags - 'source' - 'llm')
+    WHERE client_id=1 AND project=%s AND session_id=%s
+      AND (tags - 'source' - 'llm') != '{}'::jsonb
 """
 
 # GitHub sync: upsert tag by name+project including short_desc inline
@@ -1054,19 +1056,21 @@ async def get_events_source_tags(project: str | None = Query(None)):
     result: dict = {}
     with db.conn() as conn:
         with conn.cursor() as cur:
-            # Prompts
+            # Prompts — only rows with user-facing tags (exclude source/llm-only rows)
             cur.execute(
                 "SELECT source_id, tags FROM mem_mrr_prompts "
-                "WHERE client_id=1 AND project=%s AND tags != '{}'::jsonb",
+                "WHERE client_id=1 AND project=%s "
+                "AND (tags - 'source' - 'llm') != '{}'::jsonb",
                 (p,),
             )
             for source_id, tags in cur.fetchall():
                 if source_id and tags:
                     result[source_id] = tags_to_list(tags)
-            # Commits
+            # Commits — only rows with user-facing tags
             cur.execute(
                 "SELECT commit_hash, tags FROM mem_mrr_commits "
-                "WHERE client_id=1 AND project=%s AND tags != '{}'::jsonb",
+                "WHERE client_id=1 AND project=%s "
+                "AND (tags - 'source' - 'llm') != '{}'::jsonb",
                 (p,),
             )
             for commit_hash, tags in cur.fetchall():

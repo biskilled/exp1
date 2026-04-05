@@ -28,7 +28,7 @@ from core.tags import tags_to_list, parse_tag
 
 _SQL_LIST_COMMITS = """
     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
-           c.source, c.session_id, c.committed_at,
+           c.tags->>'source' AS source, c.session_id, c.committed_at,
            p.source_id AS prompt_source_id
     FROM mem_mrr_commits c
     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
@@ -39,14 +39,17 @@ _SQL_LIST_COMMITS = """
 
 _SQL_UPSERT_COMMIT_FROM_LOG = """
     INSERT INTO mem_mrr_commits
-        (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
-    VALUES (1, %s, %s, %s, %s, %s, %s)
+        (client_id, project, commit_hash, commit_msg, session_id, committed_at,
+         tags)
+    VALUES (1, %s, %s, %s, %s, %s,
+            jsonb_build_object('source', %s))
     ON CONFLICT (commit_hash) DO UPDATE SET
         session_id = CASE
             WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
             THEN EXCLUDED.session_id
             ELSE mem_mrr_commits.session_id
-        END
+        END,
+        tags = mem_mrr_commits.tags || EXCLUDED.tags
 """
 
 _SQL_UPDATE_COMMIT_META = (
@@ -57,14 +60,14 @@ _SQL_UPDATE_COMMIT_META = (
 # Base form matches by session_id only; extended form adds a committed_at range.
 # Build dynamically in the handler; see session_commits() below.
 _SQL_SESSION_COMMITS_BASE = """
-    SELECT commit_hash, commit_msg, tags, source, committed_at
+    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
           FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s AND session_id = %s
          ORDER BY committed_at
 """
 
 _SQL_SESSION_COMMITS_WITH_WINDOW = """
-    SELECT commit_hash, commit_msg, tags, source, committed_at
+    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
           FROM mem_mrr_commits
          WHERE client_id=1 AND project=%s
            AND (session_id = %s
@@ -226,7 +229,7 @@ async def chat_history(
                     ) + ")"
                     noise_args = tuple(f"{pat}%" for pat in _NOISE_PATTERNS)
 
-                    provider_filter = " AND llm_source = %s" if provider else ""
+                    provider_filter = " AND tags->>'source' = %s" if provider else ""
                     provider_arg    = (provider,) if provider else ()
 
                     cur.execute(
@@ -239,7 +242,7 @@ async def chat_history(
                     total = cur.fetchone()[0]
 
                     cur.execute(
-                        f"""SELECT source_id, session_id, llm_source, prompt,
+                        f"""SELECT source_id, session_id, tags->>'source' AS source, prompt,
                                    response, tags, created_at
                             FROM mem_mrr_prompts
                             WHERE client_id=1 AND project=%s
@@ -322,6 +325,8 @@ async def commits_history(
                 for r in rows:
                     if r.get("committed_at"):
                         r["committed_at"] = r["committed_at"].isoformat()
+                    if isinstance(r.get("tags"), dict):
+                        r["tags"] = tags_to_list(r["tags"])
                 return {"commits": rows, "project": p, "source": "db"}
 
     # Fallback: read commit_log.jsonl — no tag enrichment
@@ -416,14 +421,15 @@ async def sync_commits(project: str | None = Query(None)):
             commit_hash = raw.get("hash") or raw.get("commit_hash")
             if not commit_hash:
                 continue
+            source_val = raw.get("source", "git")
             rows.append((
                 1,                                        # client_id
                 p,
                 commit_hash,
                 raw.get("message", raw.get("msg", "")),
-                raw.get("source", "git"),
                 raw.get("session_id"),
                 raw.get("ts"),
+                json.dumps({"source": source_val}),
             ))
 
     if not rows:
@@ -431,14 +437,15 @@ async def sync_commits(project: str | None = Query(None)):
 
     _SQL_BATCH_UPSERT = """
         INSERT INTO mem_mrr_commits
-            (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
+            (client_id, project, commit_hash, commit_msg, session_id, committed_at, tags)
         VALUES %s
         ON CONFLICT (commit_hash) DO UPDATE SET
             session_id = CASE
                 WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
                 THEN EXCLUDED.session_id
                 ELSE mem_mrr_commits.session_id
-            END
+            END,
+            tags = mem_mrr_commits.tags || EXCLUDED.tags
     """
     with db.conn() as conn:
         with conn.cursor() as cur:
