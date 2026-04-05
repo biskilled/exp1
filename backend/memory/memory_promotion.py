@@ -47,7 +47,7 @@ _SQL_GET_WORK_ITEM_BY_NAME = """
 
 _SQL_GET_MEMORY_EVENTS = """
     SELECT me.id, me.summary, me.event_type, me.created_at, me.llm_source,
-           me.open_threads, me.next_steps
+           me.session_action_items
     FROM mem_ai_events me
     WHERE me.client_id=1 AND me.project=%s
     ORDER BY me.created_at DESC LIMIT 50
@@ -300,13 +300,13 @@ class MemoryPromotion:
             "workflow":     [],
         }
         event_ids: list[str] = []
-        for ev_id, summary, event_type, created_at, llm_source, open_threads, next_steps in events:
+        for ev_id, summary, event_type, created_at, llm_source, session_action_items in events:
             event_ids.append(str(ev_id))
             rel = compute_relevance(1, created_at)
             bucket = event_type if event_type in batch_types else "prompt_batch"
             content = summary or ""
-            if open_threads:
-                content += f" | threads: {open_threads}"
+            if session_action_items:
+                content += f" | actions: {session_action_items}"
             batch_types[bucket].append(f"[relevance={rel:.2f}] {content}")
 
         # Build user message with all 6 batch type sections

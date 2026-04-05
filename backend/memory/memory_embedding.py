@@ -203,6 +203,9 @@ def _upsert_event(
         return None
     # Accept legacy `metadata` kwarg — merge into tags
     merged = {**(metadata or {}), **(tags or {})}
+    # Auto-add system classifiers so all events are consistently tagged
+    enriched: dict = {"event": source_type, "chunk_type": chunk_type}
+    enriched.update(merged)  # caller tags override system keys
     vec_str = f"[{','.join(str(x) for x in embedding)}]" if embedding else None
     try:
         with db.conn() as conn:
@@ -212,7 +215,7 @@ def _upsert_event(
                     (project, source_type, source_id, session_id,
                      llm_source, chunk, chunk_type, content, vec_str, summary,
                      doc_type, language, file_path,
-                     json.dumps(merged), importance),
+                     json.dumps(enriched), importance),
                 )
                 row = cur.fetchone()
         return str(row[0]) if row else None
@@ -264,12 +267,28 @@ class MemoryEmbedding:
 
         embedding = await _embed(digest)
         last_id   = prompts[-1]["id"]
-        prompt_ids = [p["id"] for p in prompts]
+
+        # Fetch MRR tags from the most recent prompt in this session
+        mrr_tags: dict = {}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT tags FROM mem_mrr_prompts "
+                        "WHERE client_id=1 AND project=%s AND session_id=%s "
+                        "ORDER BY created_at DESC LIMIT 1",
+                        (project, session_id),
+                    )
+                    tr = cur.fetchone()
+                    if tr:
+                        mrr_tags = tr[0] or {}
+        except Exception:
+            pass
 
         event_id = _upsert_event(
             project, "prompt_batch", last_id, 0, "full", digest, embedding,
             session_id=session_id, llm_source=settings.haiku_model,
-            summary=digest, importance=1,
+            summary=digest, tags=mrr_tags, importance=1,
         )
         return event_id
 

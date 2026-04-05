@@ -516,27 +516,26 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags        ON mem_mrr_messages USING gin(
 
 -- ── Embedding / AI events table ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_events (
-    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project         VARCHAR(255) NOT NULL,
-    llm_source      VARCHAR(100) DEFAULT NULL, -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
-    event_type      TEXT         NOT NULL,  -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
-    source_id       TEXT         NOT NULL,  -- UUID, commit hash, or session_id
-    session_id      TEXT,
-    chunk           INT          NOT NULL DEFAULT 0,
-    chunk_type      TEXT         NOT NULL DEFAULT 'full',  -- 'full'|'section'|'function'|'diff_file'
-    content         TEXT         NOT NULL,
-    embedding       VECTOR(1536),
-    summary         TEXT,                   -- Haiku digest or session summary bullets
-    open_threads    TEXT         NOT NULL DEFAULT '',   -- session_summary only
-    next_steps      TEXT         NOT NULL DEFAULT '',   -- session_summary only
-    doc_type        TEXT,                   -- item: 'requirement'|'decision'|'meeting'
-    language        TEXT,                   -- code chunk: 'python'|'javascript'|…
-    file_path       TEXT,                   -- code/commit chunk: source file path
-    tags            JSONB        NOT NULL DEFAULT '{}',  -- unified classification+metadata dict
-    importance      SMALLINT     NOT NULL DEFAULT 1,
-    processed_at    TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    id                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id            INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project              VARCHAR(255) NOT NULL,
+    event_type           TEXT         NOT NULL,   -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
+    source_id            TEXT         NOT NULL,   -- UUID, commit hash, or session_id
+    session_id           TEXT,
+    llm_source           VARCHAR(100) DEFAULT NULL,  -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
+    chunk                INT          NOT NULL DEFAULT 0,
+    chunk_type           TEXT         NOT NULL DEFAULT 'full',  -- 'full'|'section'|'function'|'diff_file'
+    content              TEXT         NOT NULL,
+    embedding            VECTOR(1536),
+    summary              TEXT,                        -- Haiku digest or session summary bullets
+    session_action_items TEXT         NOT NULL DEFAULT '',   -- session_summary only (merged threads + next steps)
+    doc_type             TEXT,                        -- item: 'requirement'|'decision'|'meeting'
+    language             TEXT,                        -- code chunk: 'python'|'javascript'|…
+    file_path            TEXT,                        -- code/commit chunk: source file path
+    tags                 JSONB        NOT NULL DEFAULT '{}',  -- unified classification+metadata dict
+    importance           SMALLINT     NOT NULL DEFAULT 1,
+    processed_at         TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     UNIQUE(client_id, project, event_type, source_id, chunk)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_cp      ON mem_ai_events(client_id, project);
@@ -763,6 +762,17 @@ ALTER TABLE mem_mrr_items     ALTER COLUMN tags DROP DEFAULT, ALTER COLUMN tags 
 ALTER TABLE mem_mrr_messages  ALTER COLUMN tags DROP DEFAULT, ALTER COLUMN tags TYPE JSONB USING '{}'::jsonb, ALTER COLUMN tags SET DEFAULT '{}';
 ALTER TABLE mem_ai_events RENAME COLUMN metadata TO tags;
 ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '{}';
+-- ── 004_mem_ai_events_refactor ────────────────────────────────────────────────────────────────
+-- Merge open_threads into next_steps before renaming/dropping
+UPDATE mem_ai_events
+SET next_steps = CASE
+    WHEN open_threads != '' AND next_steps != '' THEN open_threads || E'\n' || next_steps
+    WHEN open_threads != ''                      THEN open_threads
+    ELSE next_steps
+END
+WHERE open_threads IS NOT NULL AND open_threads != '';
+ALTER TABLE mem_ai_events RENAME COLUMN next_steps TO session_action_items;
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS open_threads;
 """
 
 

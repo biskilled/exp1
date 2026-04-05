@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Memory file generation refactoring: planner_tags inline fields established as canonical context source; snapshot fields integrated across memory modules for reliable synthesis
-- SQL cursor tuple unpacking standardization: memory_promotion.py and memory_files.py fixed for robust 4-column unpacking; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS corrected
-- Feature details context loading: planner_tags query optimized to 30 most recent; render_feature_claude_md() reads complete tag metadata from inline snapshot fields
-- Memory file lifecycle enhancement: get_active_feature_tags() filters active/open tags with snapshots; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary
-- Database cursor handling robustness: standardized tuple unpacking with improved SQL result column ordering; timestamp tracking added to memory synthesis metadata
-- Backend refactoring and cleanup: routers and core modules restructured; dev_runtime_state.json and commit logs updated; session count now 345
+- Session ordering fixed: sessions now order by created_at instead of updated_at to prevent phase/tag updates from reordering list (2026-03-15)
+- Phase persistence enhanced: loads from DB on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/WF (2026-03-15)
+- Commit-per-prompt inline display: replaced session-level strip with commits at bottom of each prompt entry (accent left-border, hash ↗ link showing only that prompt's commits) (2026-03-15)
+- Tag deduplication and cross-view sync: 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
+- AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; suggested tags marked with distinct color/mark; tags appear immediately in Planner (2026-03-15)
+- Planner tab unified redesign: consolidated tag management into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tags split (2026-03-15)

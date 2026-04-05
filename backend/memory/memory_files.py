@@ -63,7 +63,7 @@ _SQL_ACTIVE_WORK_ITEMS = """
 """
 
 _SQL_LATEST_SESSION = """
-    SELECT summary, open_threads, next_steps, created_at, session_id
+    SELECT summary, session_action_items, created_at, session_id
     FROM mem_ai_events
     WHERE client_id=1 AND project=%s AND event_type='session_summary'
     ORDER BY created_at DESC
@@ -183,11 +183,10 @@ class MemoryFiles:
                     row = cur.fetchone()
                     if row:
                         ctx["latest_session"] = {
-                            "summary":      row[0] or "",
-                            "open_threads": row[1] or "",
-                            "next_steps":   row[2] or "",
-                            "created_at":   row[3].strftime("%Y-%m-%d %H:%M") if row[3] else "",
-                            "session_id":   row[4] or "",
+                            "summary":              row[0] or "",
+                            "session_action_items": row[1] or "",
+                            "created_at":           row[2].strftime("%Y-%m-%d %H:%M") if row[2] else "",
+                            "session_id":           row[3] or "",
                         }
 
                     # Blockers and dependencies
@@ -335,17 +334,11 @@ class MemoryFiles:
                 if bullet.strip():
                     lines.append(bullet if bullet.startswith("-") else f"- {bullet.strip()}")
             lines.append("")
-            if sess.get("open_threads"):
-                lines += ["### Open Threads", ""]
-                for t in sess["open_threads"].strip().splitlines():
-                    if t.strip():
-                        lines.append(t if t.startswith("-") else f"- {t.strip()}")
-                lines.append("")
-            if sess.get("next_steps"):
-                lines += ["### Next Steps", ""]
-                for ns in sess["next_steps"].strip().splitlines():
-                    if ns.strip():
-                        lines.append(ns if ns.startswith("-") else f"- {ns.strip()}")
+            if sess.get("session_action_items"):
+                lines += ["### Action Items", ""]
+                for item in sess["session_action_items"].strip().splitlines():
+                    if item.strip():
+                        lines.append(item if item.startswith("-") else f"- {item.strip()}")
                 lines.append("")
 
         # Conventions
@@ -586,10 +579,8 @@ class MemoryFiles:
             for bullet in sess["summary"].strip().splitlines():
                 if bullet.strip():
                     lines.append(bullet if bullet.startswith("-") else f"- {bullet.strip()}")
-            if sess.get("open_threads"):
-                lines += ["", "Open threads:", sess["open_threads"]]
-            if sess.get("next_steps"):
-                lines += ["", "Next steps:", sess["next_steps"]]
+            if sess.get("session_action_items"):
+                lines += ["", "Action items:", sess["session_action_items"]]
             lines.append("")
 
         return "\n".join(lines)
@@ -630,10 +621,8 @@ class MemoryFiles:
         if sess and sess.get("summary"):
             lines += [f"## Recent Session ({sess['created_at']})", ""]
             lines.append(sess["summary"])
-            if sess.get("open_threads"):
-                lines += ["", "**Open Threads:**", sess["open_threads"]]
-            if sess.get("next_steps"):
-                lines += ["", "**Next Steps:**", sess["next_steps"]]
+            if sess.get("session_action_items"):
+                lines += ["", "**Action Items:**", sess["session_action_items"]]
             lines.append("")
 
         # Feature snapshots (active features only)

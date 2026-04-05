@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-05 15:16 UTC — do not edit manually.
+> Auto-generated 2026-04-05 16:26 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 347
-- **Last active**: 2026-04-05T12:40:02Z
+- **Sessions**: 348
+- **Last active**: 2026-04-05T16:26:32Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -25,7 +25,7 @@
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
-- **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking
+- **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- Memory file generation refactoring: planner_tags inline fields established as canonical context source; snapshot fields integrated across memory modules for reliable synthesis
-- SQL cursor tuple unpacking standardization: memory_promotion.py and memory_files.py fixed for robust 4-column unpacking; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS corrected
-- Feature details context loading: planner_tags query optimized to 30 most recent; render_feature_claude_md() reads complete tag metadata from inline snapshot fields
-- Memory file lifecycle enhancement: get_active_feature_tags() filters active/open tags with snapshots; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary
-- Database cursor handling robustness: standardized tuple unpacking with improved SQL result column ordering; timestamp tracking added to memory synthesis metadata
-- Backend refactoring and cleanup: routers and core modules restructured; dev_runtime_state.json and commit logs updated; session count now 345
+- Session ordering fixed: sessions now order by created_at instead of updated_at to prevent phase/tag updates from reordering list (2026-03-15)
+- Phase persistence enhanced: loads from DB on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/WF (2026-03-15)
+- Commit-per-prompt inline display: replaced session-level strip with commits at bottom of each prompt entry (accent left-border, hash ↗ link showing only that prompt's commits) (2026-03-15)
+- Tag deduplication and cross-view sync: 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously (2026-03-15)
+- AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; suggested tags marked with distinct color/mark; tags appear immediately in Planner (2026-03-15)
+- Planner tab unified redesign: consolidated tag management into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tags split (2026-03-15)
 
 ## Key Decisions
 
@@ -71,10 +71,10 @@
 - Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
-- MCP server (stdio) with 12+ tools for embedding and data retrieval; environment-configured via BACKEND_URL and ACTIVE_PROJECT
+- UI/UX consolidated: Planner tab unified for tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created tags
+- Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list
+- Memory synthesis improved: summaries of LLM responses instead of full output; suggested tags auto-saved to session via _acceptSuggestedTag
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
-- Memory file generation reads inline planner_tags fields (summary, action_items, design, code_summary); SQL cursor tuple unpacking standardized
-- Config management: config.py for settings, YAML for pipeline definitions, pyproject.toml for IDE; cost tracking via provider_costs.json with fallback pricing
 
 ---
 

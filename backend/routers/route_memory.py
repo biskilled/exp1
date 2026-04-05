@@ -2,7 +2,7 @@
 route_memory.py — Memory file generation and session summary endpoints.
 
 Session summaries are stored directly in mem_ai_events (event_type='session_summary')
-with the structured fields open_threads, next_steps, summary_tags.
+with the structured field session_action_items (merged threads + next steps).
 
 Endpoints:
     GET  /memory/{project}/top-events           — top-N events by relevance_score
@@ -47,24 +47,22 @@ _SQL_GET_SYSTEM_ROLE = """
 _SQL_UPSERT_SESSION_SUMMARY = """
     INSERT INTO mem_ai_events
         (client_id, project, event_type, source_id, session_id,
-         chunk, chunk_type, content, summary, open_threads, next_steps,
-         llm_source, importance, created_at)
+         chunk, chunk_type, content, summary, session_action_items,
+         llm_source, importance, tags, created_at)
     VALUES (1, %s, 'session_summary', %s, %s,
-            0, 'full', %s, %s, %s, %s, %s, 2, NOW())
+            0, 'full', %s, %s, %s, %s, 2, %s::jsonb, NOW())
     ON CONFLICT (client_id, project, event_type, source_id, chunk)
     DO UPDATE SET
-        content      = EXCLUDED.content,
-        summary      = EXCLUDED.summary,
-        open_threads = EXCLUDED.open_threads,
-        next_steps   = EXCLUDED.next_steps,
-        llm_source   = EXCLUDED.llm_source
+        content              = EXCLUDED.content,
+        summary              = EXCLUDED.summary,
+        session_action_items = EXCLUDED.session_action_items,
+        llm_source           = EXCLUDED.llm_source,
+        tags                 = EXCLUDED.tags
     RETURNING id
 """
 
 _SQL_LIST_SESSION_SUMMARIES = """
-    SELECT e.id, e.session_id, e.summary, e.open_threads, e.next_steps,
-           COALESCE(e.summary_tags, '{}'::text[]) AS tags,
-           e.created_at
+    SELECT e.id, e.session_id, e.summary, e.session_action_items, e.tags, e.created_at
     FROM mem_ai_events e
     WHERE e.client_id=1 AND e.project=%s AND e.event_type='session_summary'
     ORDER BY e.created_at DESC
@@ -122,7 +120,7 @@ async def _generate_session_summary(
 ) -> Optional[dict]:
     """
     Read session prompts, call Haiku with session_end_synthesis prompt,
-    return {summary, open_threads, next_steps}.
+    return {summary, session_action_items}.
     """
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -151,8 +149,7 @@ async def _generate_session_summary(
         "Return JSON only:\n"
         "{\n"
         "  \"summary\": \"3-6 bullet points of what was decided/built/fixed\",\n"
-        "  \"open_threads\": \"unresolved questions or partially-done items (bullet list or empty string)\",\n"
-        "  \"next_steps\": \"suggested follow-up actions (bullet list or empty string)\"\n"
+        "  \"action_items\": \"bullet list merging unresolved threads AND next steps (empty string if none)\"\n"
         "}\n"
         "No preamble, no markdown fences."
     )
@@ -165,9 +162,8 @@ async def _generate_session_summary(
         return None
 
     return {
-        "summary":      parsed.get("summary", ""),
-        "open_threads": parsed.get("open_threads", ""),
-        "next_steps":   parsed.get("next_steps", ""),
+        "summary":              parsed.get("summary", ""),
+        "session_action_items": parsed.get("action_items", ""),
     }
 
 
@@ -244,20 +240,22 @@ async def create_session_summary(
         return {"status": "no_data", "session_id": session_id}
 
     summary_text = result["summary"]
+    session_action_items = result["session_action_items"]
     combined_content = "\n\n".join(filter(None, [
         f"Summary:\n{summary_text}",
-        f"Open Threads:\n{result['open_threads']}" if result["open_threads"] else "",
-        f"Next Steps:\n{result['next_steps']}" if result["next_steps"] else "",
+        f"Action Items:\n{session_action_items}" if session_action_items else "",
     ]))
 
     haiku_model = getattr(settings, "haiku_model", "claude-haiku-4-5-20251001")
+    import json as _json
+    auto_tags = _json.dumps({"event": "session_summary", "chunk_type": "full"})
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_UPSERT_SESSION_SUMMARY,
                 (project, session_id, session_id,
                  combined_content, summary_text,
-                 result["open_threads"], result["next_steps"], haiku_model),
+                 session_action_items, haiku_model, auto_tags),
             )
             row = cur.fetchone()
             event_id = str(row[0]) if row else None
@@ -267,10 +265,11 @@ async def create_session_summary(
 
     log.info(f"Session summary stored in mem_ai_events for '{project}' session={session_id}")
     return {
-        "status":     "created",
-        "id":         event_id,
-        "session_id": session_id,
-        **result,
+        "status":              "created",
+        "id":                  event_id,
+        "session_id":          session_id,
+        "summary":             summary_text,
+        "session_action_items": session_action_items,
     }
 
 
@@ -288,13 +287,12 @@ async def list_session_summaries(
     return {
         "summaries": [
             {
-                "id":           str(r[0]),
-                "session_id":   r[1],
-                "summary":      r[2],
-                "open_threads": r[3],
-                "next_steps":   r[4],
-                "tags":         r[5] or [],
-                "created_at":   r[6].isoformat() if r[6] else None,
+                "id":                   str(r[0]),
+                "session_id":           r[1],
+                "summary":              r[2],
+                "session_action_items": r[3],
+                "tags":                 r[4] or {},
+                "created_at":           r[5].isoformat() if r[5] else None,
             }
             for r in rows
         ],
