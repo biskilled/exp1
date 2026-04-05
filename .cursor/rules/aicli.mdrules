@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 18:10 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 18:14 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -56,7 +56,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking and suggested/user-created distinction
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list
-- Unified UI: Planner tab consolidates all tag management (single tags view with category/status/properties); Chat (+) for tag selection with category filtering
+- Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat (+) with category filtering
 - Tag suggestions marked distinctly (separate color/mark) and auto-saved via _acceptSuggestedTag; phase persistence with red ⚠ badge for missing phase
 - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
 - Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
