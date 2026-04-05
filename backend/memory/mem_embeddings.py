@@ -52,24 +52,21 @@ _EXT_LANG: dict[str, str] = {
 
 _SQL_UPSERT_EMBEDDING = """INSERT INTO mem_ai_events
                            (client_id, project, event_type, source_id, chunk, content,
-                            embedding, chunk_type, doc_type, language, file_path, metadata)
-                       VALUES (1, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s::jsonb)
+                            embedding, chunk_type, tags)
+                       VALUES (1, %s, %s, %s, %s, %s, %s::vector, %s, %s::jsonb)
                        ON CONFLICT (client_id, project, event_type, source_id, chunk)
                        DO UPDATE SET
                            content=EXCLUDED.content,
                            embedding=EXCLUDED.embedding,
                            chunk_type=EXCLUDED.chunk_type,
-                           doc_type=EXCLUDED.doc_type,
-                           language=EXCLUDED.language,
-                           file_path=EXCLUDED.file_path,
-                           metadata=EXCLUDED.metadata,
+                           tags=EXCLUDED.tags,
                            created_at=NOW()"""
 
 # Base search template — client_id=1 and project=%s are listed first to match
 # the (client_id, project, event_type) index. Dynamic WHERE filters are appended
 # at runtime; %s placeholders for query_vec and limit are appended by the caller.
 _SQL_SEARCH_EMBEDDINGS_TPL = """SELECT event_type, source_id, chunk, chunk_type,
-                               content, language, file_path, doc_type, metadata,
+                               content, tags,
                                1 - (embedding <=> %s::vector) AS score
                         FROM mem_ai_events
                         WHERE {where}
@@ -325,6 +322,15 @@ async def embed_and_store(
     if not content or not content.strip():
         return
 
+    # Merge legacy individual params into tags dict
+    tags_dict: dict = metadata or {}
+    if doc_type:
+        tags_dict.setdefault("doc_type", doc_type)
+    if language:
+        tags_dict.setdefault("language", language)
+    if file_path:
+        tags_dict.setdefault("file", file_path)
+
     try:
         import openai
         client = openai.AsyncOpenAI(api_key=key)
@@ -333,7 +339,6 @@ async def embed_and_store(
             input=content[:8000],
         )
         vector = response.data[0].embedding
-        meta_json = json.dumps(metadata or {})
 
         with db.conn() as conn:
             with conn.cursor() as cur:
@@ -342,7 +347,7 @@ async def embed_and_store(
                     (
                         project, source_type, source_id, chunk_index,
                         content[:4000], str(vector), chunk_type,
-                        doc_type, language, file_path, meta_json,
+                        json.dumps(tags_dict),
                     ),
                 )
     except Exception as e:
@@ -418,29 +423,31 @@ async def semantic_search(
             filters.append("event_type = ANY(%s)")
             params.append(source_types)
         if language:
-            filters.append("language=%s")
+            filters.append("tags->>'language' = %s")
             params.append(language)
         if doc_type:
-            filters.append("doc_type=%s")
+            filters.append("tags->>'doc_type' = %s")
             params.append(doc_type)
         if file_path:
-            filters.append("file_path ILIKE %s")
-            params.append(f"%{file_path}%")
+            filters.append(
+                "(tags->'file'->>'name' ILIKE %s "
+                "OR EXISTS (SELECT 1 FROM jsonb_array_elements(tags->'files') f WHERE f->>'name' ILIKE %s))"
+            )
+            params.extend([f"%{file_path}%", f"%{file_path}%"])
         if chunk_types:
             filters.append("chunk_type = ANY(%s)")
             params.append(chunk_types)
         if phase:
-            filters.append("metadata->>'phase' = %s")
+            filters.append("tags->>'phase' = %s")
             params.append(phase)
         if feature:
-            filters.append("metadata->>'feature' = %s")
+            filters.append("tags->>'feature' = %s")
             params.append(feature)
         if entity_name:
-            # JSONB containment: metadata @> '{"entity_tags":[{"name":"auth"}]}'
-            filters.append("metadata @> %s::jsonb")
+            filters.append("tags @> %s::jsonb")
             params.append(json.dumps({"entity_tags": [{"name": entity_name}]}))
         if entity_category:
-            filters.append("metadata @> %s::jsonb")
+            filters.append("tags @> %s::jsonb")
             params.append(json.dumps({"entity_tags": [{"category": entity_category}]}))
 
         where = " AND ".join(filters)
@@ -454,17 +461,23 @@ async def semantic_search(
                 )
                 rows = cur.fetchall()
 
-        return [
-            {
+        results = []
+        for r in rows:
+            tags = r[5] or {}
+            file_info = tags.get("file")
+            results.append({
                 "event_type": r[0], "source_id": r[1],
                 "chunk_index": r[2], "chunk_type": r[3],
-                "content": r[4], "language": r[5],
-                "file_path": r[6], "doc_type": r[7],
-                "metadata": r[8] or {},
-                "score": float(r[9]),
-            }
-            for r in rows
-        ]
+                "content": r[4],
+                # backward-compat: reconstruct from tags
+                "language":  tags.get("language"),
+                "file_path": file_info.get("name") if isinstance(file_info, dict) else file_info,
+                "doc_type":  tags.get("doc_type"),
+                "metadata":  tags,
+                "tags":      tags,
+                "score":     float(r[6]),
+            })
+        return results
     except Exception as e:
         log.debug(f"semantic_search failed: {e}")
         return []

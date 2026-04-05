@@ -528,32 +528,30 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags        ON mem_mrr_messages USING gin(
 
 -- ── Embedding / AI events table ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_events (
-    id                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id            INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project              VARCHAR(255) NOT NULL,
-    llm_source           VARCHAR(100) DEFAULT NULL,  -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
-    event_type           TEXT         NOT NULL,   -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
-    source_id            TEXT         NOT NULL,   -- UUID, commit hash, or session_id
-    session_id           TEXT,
-    chunk                INT          NOT NULL DEFAULT 0,
-    chunk_type           TEXT         NOT NULL DEFAULT 'full',  -- 'full'|'section'|'function'|'diff_file'
-    content              TEXT         NOT NULL,
-    summary              TEXT,                        -- Haiku digest or session summary bullets
-    session_action_items TEXT         NOT NULL DEFAULT '',   -- session_summary only (merged threads + next steps)
-    doc_type             TEXT,                        -- item: 'requirement'|'decision'|'meeting'
-    language             TEXT,                        -- code chunk: 'python'|'javascript'|…
-    file_path            TEXT,                        -- code/commit chunk: source file path
-    tags                 JSONB        NOT NULL DEFAULT '{}',  -- unified classification+metadata dict
-    importance           SMALLINT     NOT NULL DEFAULT 1,
-    processed_at         TIMESTAMPTZ,
-    created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    embedding            VECTOR(1536),
+    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project      VARCHAR(255) NOT NULL,
+    llm_source   VARCHAR(100) DEFAULT NULL,  -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
+    event_type   TEXT         NOT NULL,   -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
+    source_id    TEXT         NOT NULL,   -- UUID, commit hash, or session_id
+    session_id   TEXT,
+    chunk        INT          NOT NULL DEFAULT 0,
+    chunk_type   TEXT         NOT NULL DEFAULT 'full',  -- 'full'|'section'|'function'|'diff_file'
+    content      TEXT         NOT NULL,
+    summary      TEXT,                        -- Haiku digest or session summary bullets
+    action_items TEXT         NOT NULL DEFAULT '',   -- bullets for open threads + next steps (all event types)
+    tags         JSONB        NOT NULL DEFAULT '{}',  -- unified classification+metadata dict
+    importance   SMALLINT     NOT NULL DEFAULT 1,
+    processed_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    embedding    VECTOR(1536),
     UNIQUE(client_id, project, event_type, source_id, chunk)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_cp      ON mem_ai_events(client_id, project);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_session ON mem_ai_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_type    ON mem_ai_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pending ON mem_ai_events(processed_at) WHERE processed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mem_ai_events_tags    ON mem_ai_events USING gin(tags);
 
 """
 
@@ -701,6 +699,28 @@ ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS open_threads;
 -- ── 005_column_reorder ─────────────────────────────────────────────────────────
 -- llm_source moved to after project; embedding moved to last column (all 4 tables).
 -- PostgreSQL cannot reorder via ALTER TABLE — CREATE TABLE changes apply to clean installs only.
+-- ── 006_tags_columns ───────────────────────────────────────────────────────────
+-- Collapse doc_type / language / file_path into tags; rename session_action_items → action_items.
+-- Data preservation: copy column values into tags before dropping.
+UPDATE mem_ai_events
+SET tags = tags
+    || CASE WHEN doc_type  IS NOT NULL THEN jsonb_build_object('doc_type',  doc_type)  ELSE '{}'::jsonb END
+    || CASE WHEN language   IS NOT NULL THEN jsonb_build_object('language',  language)  ELSE '{}'::jsonb END
+    || CASE WHEN file_path  IS NOT NULL THEN jsonb_build_object('file',      file_path) ELSE '{}'::jsonb END
+WHERE doc_type IS NOT NULL OR language IS NOT NULL OR file_path IS NOT NULL;
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='mem_ai_events' AND column_name='session_action_items'
+    ) THEN
+        ALTER TABLE mem_ai_events RENAME COLUMN session_action_items TO action_items;
+    END IF;
+END $$;
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS doc_type;
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS language;
+ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS file_path;
+ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS action_items TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_mem_ai_events_tags ON mem_ai_events USING gin(tags);
 """
 
 

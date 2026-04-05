@@ -60,24 +60,29 @@ _EXT_LANG: dict[str, str] = {
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
            (client_id, project, event_type, source_id, session_id,
-            llm_source, chunk, chunk_type, content, embedding, summary,
-            doc_type, language, file_path, tags, importance)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s,
-               %s, %s, %s, %s::jsonb, %s)
+            llm_source, chunk, chunk_type, content, embedding, summary, action_items, tags, importance)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
        ON CONFLICT (client_id, project, event_type, source_id, chunk)
        DO UPDATE SET
-           content    = EXCLUDED.content,
-           embedding  = EXCLUDED.embedding,
-           summary    = EXCLUDED.summary,
-           llm_source = EXCLUDED.llm_source,
-           tags       = EXCLUDED.tags
+           content      = EXCLUDED.content,
+           embedding    = EXCLUDED.embedding,
+           summary      = EXCLUDED.summary,
+           action_items = EXCLUDED.action_items,
+           llm_source   = EXCLUDED.llm_source,
+           tags         = EXCLUDED.tags
     RETURNING id
 """
 
 _SQL_GET_COMMIT = """
-    SELECT commit_hash, commit_msg, summary, tags, session_id
+    SELECT commit_hash, commit_msg, summary, tags, session_id, diff_details
     FROM mem_mrr_commits
     WHERE client_id=1 AND project=%s AND commit_hash=%s
+"""
+
+_SQL_UPDATE_COMMIT_TAGS = """
+    UPDATE mem_mrr_commits
+    SET tags = tags || %s::jsonb
+    WHERE commit_hash = %s AND client_id = 1
 """
 
 _SQL_GET_ITEM = """
@@ -94,7 +99,7 @@ _SQL_LOAD_PROMPT = """
 
 _SQL_SEARCH_TPL = """
     SELECT event_type, source_id, chunk, chunk_type, content,
-           language, file_path, doc_type, tags, session_id,
+           tags, session_id,
            1 - (embedding <=> %s::vector) AS score
     FROM mem_ai_events
     WHERE {where}
@@ -172,6 +177,15 @@ async def _load_system_role(name: str) -> Optional[str]:
         return None
 
 
+def _parse_haiku_json(raw: str, fallback: str) -> tuple[str, str]:
+    """Return (summary, action_items). Handles plain-text fallback gracefully."""
+    try:
+        parsed = json.loads(raw)
+        return parsed.get("summary", fallback), parsed.get("action_items", "")
+    except (json.JSONDecodeError, AttributeError):
+        return raw or fallback, ""
+
+
 def _upsert_event(
     project: str,
     source_type: str,
@@ -184,13 +198,15 @@ def _upsert_event(
     session_id: Optional[str] = None,
     llm_source: Optional[str] = None,
     summary: Optional[str] = None,
+    action_items: str = "",
+    tags: dict | None = None,
+    # backward-compat: callers may still pass these; merged into tags
+    metadata: dict | None = None,
     doc_type: Optional[str] = None,
     language: Optional[str] = None,
     file_path: Optional[str] = None,
-    tags: dict | None = None,
-    # backward-compat aliases
-    metadata: dict | None = None,
     importance: int = 1,
+    # ignored legacy params
     session_desc: Optional[str] = None,
     cnt_prompts: Optional[int] = None,
 ) -> Optional[str]:
@@ -198,11 +214,19 @@ def _upsert_event(
 
     tags: unified dict merging MRR classification tags + source-specific metadata,
           e.g. {"phase": "discovery", "commit_hash": "abc123", "platform": "slack"}.
+    doc_type / language / file_path are accepted for backward-compat and merged into tags.
     """
     if not db.is_available():
         return None
     # Accept legacy `metadata` kwarg — merge into tags
     merged = {**(metadata or {}), **(tags or {})}
+    # Merge legacy individual column params into tags
+    if doc_type:
+        merged.setdefault("doc_type", doc_type)
+    if language:
+        merged.setdefault("language", language)
+    if file_path:
+        merged.setdefault("file", file_path)
     # Auto-add system classifiers so all events are consistently tagged
     enriched: dict = {"event": source_type, "chunk_type": chunk_type}
     enriched.update(merged)  # caller tags override system keys
@@ -214,8 +238,7 @@ def _upsert_event(
                     _SQL_UPSERT_EVENT,
                     (project, source_type, source_id, session_id,
                      llm_source, chunk, chunk_type, content, vec_str, summary,
-                     doc_type, language, file_path,
-                     json.dumps(enriched), importance),
+                     action_items, json.dumps(enriched), importance),
                 )
                 row = cur.fetchone()
         return str(row[0]) if row else None
@@ -258,14 +281,15 @@ class MemoryEmbedding:
         )
 
         sys_prompt = await _load_system_role("prompt_batch_digest") or (
-            "Given N sequential prompt/response pairs, extract a 1-2 sentence digest "
-            "capturing what was decided, built, or discovered. Return plain text only."
+            "Given N sequential prompt/response pairs, extract a digest. "
+            'Return JSON only: {"summary": "1-2 sentence digest", "action_items": "- bullet or empty string"}'
         )
-        digest = await _haiku(sys_prompt, pairs, max_tokens=200)
-        if not digest:
+        raw = await _haiku(sys_prompt, pairs, max_tokens=250)
+        if not raw:
             return None
+        summary_text, action_items = _parse_haiku_json(raw, pairs[:200])
 
-        embedding = await _embed(digest)
+        embedding = await _embed(summary_text)
         last_id   = prompts[-1]["id"]
 
         # Fetch MRR tags from the most recent prompt in this session
@@ -286,9 +310,9 @@ class MemoryEmbedding:
             pass
 
         event_id = _upsert_event(
-            project, "prompt_batch", last_id, 0, "full", digest, embedding,
+            project, "prompt_batch", last_id, 0, "full", summary_text, embedding,
             session_id=session_id, llm_source=settings.haiku_model,
-            summary=digest, tags=mrr_tags, importance=1,
+            summary=summary_text, action_items=action_items, tags=mrr_tags, importance=1,
         )
         return event_id
 
@@ -312,34 +336,64 @@ class MemoryEmbedding:
             if not row:
                 return None
 
-            commit_hash_val, commit_msg, summary, mrr_tags, session_id = row
-            # mrr_tags is already a dict from JSONB column
+            commit_hash_val, commit_msg, summary, mrr_tags, session_id, diff_details = row
             mrr_tags = mrr_tags or {}
         except Exception as e:
             log.debug(f"process_commit DB error: {e}")
             return None
 
         sys_prompt = await _load_system_role("commit_digest") or (
-            "Given a git commit message, produce a 1-2 sentence digest of what changed and why. "
-            "Return plain text only."
+            "Given a git commit message, produce a digest. "
+            'Return JSON only: {"summary": "1-2 sentence digest of what changed and why", "action_items": ""}'
         )
-        content = f"Commit: {commit_hash_val[:8]}\n{commit_msg}"
+        user_content = f"Commit: {commit_hash_val[:8]}\n{commit_msg}"
         if summary:
-            content += f"\nSummary: {summary}"
+            user_content += f"\nSummary: {summary}"
 
-        digest = await _haiku(sys_prompt, content, max_tokens=150)
-        if not digest:
-            digest = commit_msg[:300]
+        raw = await _haiku(sys_prompt, user_content, max_tokens=200)
+        summary_text, action_items = _parse_haiku_json(raw, commit_msg[:300]) if raw else (commit_msg[:300], "")
 
-        embedding = await _embed(digest)
+        embedding = await _embed(summary_text)
+
+        # Extract file stats from diff_details JSONB
+        files_tag: dict = {}
+        languages_set: set = set()
+        if diff_details and isinstance(diff_details, dict):
+            for f in diff_details.get("files", []):
+                name = f.get("path") or f.get("name", "")
+                rows_changed = (f.get("additions", 0) or 0) + (f.get("deletions", 0) or 0)
+                if name:
+                    files_tag[name] = rows_changed
+                    lang = _detect_language(name)
+                    if lang:
+                        languages_set.add(lang)
 
         # Merge MRR classification tags + commit-specific metadata
-        event_tags = {**mrr_tags, "commit_hash": commit_hash_val}
+        event_tags: dict = {**mrr_tags, "commit_hash": commit_hash_val}
+        if files_tag:
+            event_tags["files"] = files_tag
+        if languages_set:
+            event_tags["languages"] = sorted(languages_set)
+
         event_id = _upsert_event(
-            project, "commit", commit_hash_val, 0, "full", digest, embedding,
+            project, "commit", commit_hash_val, 0, "full", summary_text, embedding,
             session_id=session_id, llm_source=settings.haiku_model,
-            summary=digest, tags=event_tags,
+            summary=summary_text, action_items=action_items, tags=event_tags,
         )
+
+        # Back-propagate file/language stats to mem_mrr_commits.tags
+        if files_tag:
+            try:
+                commit_tag_update = {"files": files_tag}
+                if languages_set:
+                    commit_tag_update["languages"] = sorted(languages_set)
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(_SQL_UPDATE_COMMIT_TAGS,
+                                    (json.dumps(commit_tag_update), commit_hash_val))
+            except Exception as e:
+                log.debug(f"process_commit tag update error: {e}")
+
         return event_id
 
     async def process_item(
@@ -402,23 +456,24 @@ class MemoryEmbedding:
                 emb = await _embed(content)
                 event_id = _upsert_event(
                     project, "item", item_id, i, "section", content[:6000], emb,
-                    doc_type=item_type,
-                    tags={**item_mrr_tags, "title": sec.get("title", ""), "section_index": str(i)},
+                    tags={**item_mrr_tags, "doc_type": item_type,
+                          "title": sec.get("title", ""), "section_index": str(i)},
                 )
                 if i == 0:
                     first_id = event_id
             result_id = first_id
         else:
             sys_prompt = await _load_system_role("item_digest") or (
-                "Summarise this document in 1-2 sentences. Return plain text only."
+                "Summarise this document. "
+                'Return JSON only: {"summary": "1-2 sentence digest", "action_items": "- bullet or empty string"}'
             )
-            digest = await _haiku(sys_prompt, raw_text[:3000], max_tokens=150)
-            if not digest:
-                digest = (summary or raw_text)[:300]
-            emb = await _embed(digest)
+            raw = await _haiku(sys_prompt, raw_text[:3000], max_tokens=200)
+            item_summary, item_action_items = _parse_haiku_json(raw, (summary or raw_text)[:300]) if raw else ((summary or raw_text)[:300], "")
+            emb = await _embed(item_summary)
             result_id = _upsert_event(
-                project, "item", item_id, 0, "full", digest, emb,
-                doc_type=item_type, summary=digest, tags=item_mrr_tags,
+                project, "item", item_id, 0, "full", item_summary, emb,
+                summary=item_summary, action_items=item_action_items,
+                tags={**item_mrr_tags, "doc_type": item_type},
             )
 
         if not result_id:
@@ -483,11 +538,11 @@ class MemoryEmbedding:
         )[:6000]
 
         sys_prompt = await _load_system_role("message_chunk_digest") or (
-            "Summarise this message thread chunk in 1-2 sentences. Return plain text only."
+            "Summarise this message thread chunk. "
+            'Return JSON only: {"summary": "1-2 sentence digest", "action_items": "- bullet or empty string"}'
         )
-        digest = await _haiku(sys_prompt, text, max_tokens=150)
-        if not digest:
-            digest = text[:300]
+        raw = await _haiku(sys_prompt, text, max_tokens=200)
+        msg_summary, msg_action_items = _parse_haiku_json(raw, text[:300]) if raw else (text[:300], "")
 
         # Fetch MRR tags for this message to merge into event
         mrr_tags: dict = {}
@@ -504,10 +559,10 @@ class MemoryEmbedding:
         except Exception:
             pass
 
-        emb = await _embed(digest)
+        emb = await _embed(msg_summary)
         event_id = _upsert_event(
-            project, "message", message_id, 0, "full", digest, emb,
-            summary=digest,
+            project, "message", message_id, 0, "full", msg_summary, emb,
+            summary=msg_summary, action_items=msg_action_items,
             tags={**mrr_tags, "platform": platform, "channel": channel or ""},
         )
         return event_id
@@ -546,22 +601,25 @@ class MemoryEmbedding:
                 with conn.cursor() as cur:
                     cur.execute(sql, [vec_str] + params + [vec_str, limit])
                     rows = cur.fetchall()
-            return [
-                {
+            results = []
+            for r in rows:
+                tags = r[5] or {}
+                file_info = tags.get("file")
+                results.append({
                     "event_type": r[0],
                     "source_id":   r[1],
                     "chunk":       r[2],
                     "chunk_type":  r[3],
                     "content":     r[4],
-                    "language":    r[5],
-                    "file_path":   r[6],
-                    "doc_type":    r[7],
-                    "tags":        r[8] or {},
-                    "session_id":  r[9],
-                    "score":       float(r[10]),
-                }
-                for r in rows
-            ]
+                    # backward-compat: reconstruct from tags
+                    "language":    tags.get("language"),
+                    "file_path":   file_info.get("name") if isinstance(file_info, dict) else file_info,
+                    "doc_type":    tags.get("doc_type"),
+                    "tags":        tags,
+                    "session_id":  r[6],
+                    "score":       float(r[7]),
+                })
+            return results
         except Exception as e:
             log.debug(f"MemoryEmbedding.semantic_search error: {e}")
             return []
@@ -696,24 +754,48 @@ class MemoryEmbedding:
             files_list = "\n".join(f"  - {f}" for f in changed_files[:20])
             summary_parts.append(f"Files changed ({len(changed_files)}):\n{files_list}")
 
-        chunks.append({
-            "content": "\n".join(summary_parts), "chunk_type": "summary",
-            "chunk_index": 0, "language": None, "file_path": None,
-            "metadata": {**meta, "changed_files": changed_files},
-        })
-
+        # Accumulate per-file stats for summary tags
+        file_stats: list[dict] = []
         for section in file_sections:
             if not section.strip() or not section.startswith("diff --git"):
                 continue
             file_match = re.match(r'diff --git a/(.*?) b/', section)
             filepath = file_match.group(1) if file_match else None
-            language = _detect_language(filepath) if filepath else None
-            chunks.append({
-                "content": section[:6000], "chunk_type": "diff_file",
-                "chunk_index": len(chunks), "language": language,
-                "file_path": filepath,
-                "metadata": {**meta, "file": filepath},
-            })
+            if not filepath:
+                continue
+            lang = _detect_language(filepath)
+            section_lines = section.splitlines()
+            added   = sum(1 for ln in section_lines if ln.startswith('+') and not ln.startswith('+++'))
+            removed = sum(1 for ln in section_lines if ln.startswith('-') and not ln.startswith('---'))
+            file_stats.append({"name": filepath, "language": lang, "added": added, "removed": removed})
+
+        # Summary chunk tags: files dict (name→rows_changed) + languages list
+        files_tag = {s["name"]: s["added"] + s["removed"] for s in file_stats}
+        languages_list = sorted({s["language"] for s in file_stats if s["language"]})
+        summary_tags: dict = {**meta, "commit_hash": commit_hash, "changed_files": changed_files}
+        if files_tag:
+            summary_tags["files"] = files_tag
+        if languages_list:
+            summary_tags["languages"] = languages_list
+
+        chunks.append({
+            "content": "\n".join(summary_parts), "chunk_type": "summary",
+            "chunk_index": 0,
+            "tags": summary_tags,
+        })
+
+        for stat in file_stats:
+            filepath = stat["name"]
+            # Find the matching section text
+            for section in file_sections:
+                m = re.match(r'diff --git a/(.*?) b/', section)
+                if m and m.group(1) == filepath:
+                    chunks.append({
+                        "content": section[:6000], "chunk_type": "diff_file",
+                        "chunk_index": len(chunks),
+                        "tags": {**meta, "commit_hash": commit_hash, "file": stat},
+                    })
+                    break
 
         return chunks
 
@@ -737,6 +819,7 @@ async def embed_and_store(
         language=chunk_meta.get("language"),
         file_path=chunk_meta.get("file_path"),
         metadata=chunk_meta.get("metadata"),
+        tags=chunk_meta.get("tags"),
     )
 
 
