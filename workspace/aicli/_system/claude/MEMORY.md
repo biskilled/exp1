@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-05 11:02 UTC by aicli /memory_
+_Generated: 2026-04-05 11:14 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI with PostgreSQL/pgvector storage. It provides LLM-powered workflow execution via async DAG pipelines, memory synthesis using Claude Haiku, and semantic search across unified mem_ai_* tables, supporting multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with JWT authentication and MCP tool integration. Recent work has focused on stabilizing memory file generation through planner_tags snapshot integration and standardizing database cursor handling for robust context synthesis.
+aicli is a shared AI memory platform that synthesizes development context across projects using Claude Haiku, storing semantic embeddings in PostgreSQL with pgvector. It provides a Python CLI, FastAPI backend, and Electron desktop UI with async DAG workflows, multi-LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), and memory files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) auto-generated from planner tags. Currently in session 345, the project is focused on stabilizing memory file generation through standardized SQL cursor handling and canonical inline field sourcing.
 
 ## Project Facts
 
@@ -86,124 +86,230 @@ Reviewer: ```json
 
 ## Key Decisions
 
-- Engine/workspace separation: aicli/ contains backend logic and CLI; workspace/ contains per-project content; _system/ stores project state and memory files
-- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) replace per-project fragmentation
-- Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vite dev server for local development
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients → Users with login_as_first_level_hierarchy pattern
-- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract; Claude Haiku for dual-layer memory synthesis
-- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel for chat negotiation
-- _ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load preventing startup race conditions
-- Data persistence: load_once_on_access, update_on_save pattern; tags stored in mem_ai_tags_relations with row ID linking
+- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables replace per-project fragmentation
+- Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
+- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
+- Claude Haiku dual-layer memory synthesis generating 5 files: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md with timestamp tracking
+- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+- _ensure_shared_schema pattern for initialization; retry logic handles empty project list preventing startup race conditions
+- Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
-- Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; organized as routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for data access
+- Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
 - MCP server (stdio) with 12+ tools for embedding and data retrieval; environment-configured via BACKEND_URL and ACTIVE_PROJECT
-- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop; local via bash start_backend.sh + ui/npm run dev
-- Memory file generation reads snapshot data from inline planner_tags fields (summary, action_items, design, code_summary); SQL cursor tuple unpacking standardized
-- Config management: config.py for externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
-- Cost tracking via provider_costs.json with fallback pricing; billing storage in data/provider_storage/ with rich table output
+- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
+- Memory file generation reads inline planner_tags fields (summary, action_items, design, code_summary); SQL cursor tuple unpacking standardized
+- Config management: config.py for settings, YAML for pipeline definitions, pyproject.toml for IDE; cost tracking via provider_costs.json with fallback pricing
 
 ## In Progress
 
-- Memory file generation refactoring: planner_tags inline fields now canonical context source; snapshot fields integrated across memory modules for reliable synthesis
+- Memory file generation refactoring: planner_tags inline fields established as canonical context source; snapshot fields integrated across memory modules for reliable synthesis
 - SQL cursor tuple unpacking standardization: memory_promotion.py and memory_files.py fixed for robust 4-column unpacking; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS corrected
 - Feature details context loading: planner_tags query optimized to 30 most recent; render_feature_claude_md() reads complete tag metadata from inline snapshot fields
 - Memory file lifecycle enhancement: get_active_feature_tags() filters active/open tags with snapshots; context dict populated with id, name, short_desc, requirements, summary, action_items, design, code_summary
 - Database cursor handling robustness: standardized tuple unpacking with improved SQL result column ordering; timestamp tracking added to memory synthesis metadata
-- Backend refactoring and cleanup: routers and core modules restructured; dev_runtime_state.json and commit logs updated after session 5b19c863
+- Backend refactoring and cleanup: routers and core modules restructured; dev_runtime_state.json and commit logs updated; session count now 345
 
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit` — 2026-04-03
+### `commit` — 2026-04-05
+
+diff --git a/workspace/aicli/_system/project_state.json b/workspace/aicli/_system/project_state.json
+index fb14048..bcea0cc 100644
+--- a/workspace/aicli/_system/project_state.json
++++ b/workspace/aicli/_system/project_state.json
+@@ -12,10 +12,10 @@
+     "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+     "db_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
+     "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
+-    "llm_providers": "Claude (Haiku), OpenAI, DeepSeek, Gemini, Grok",
++    "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
+     "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
+     "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
+-    "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking",
++    "memory_synthesis": "Claude Haiku dual-layer with 5 output files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) + timestamp tracking",
+     "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
+     "mcp": "Stdio MCP server with 12+ tools",
+     "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev",
+@@ -25,7 +25,7 @@
+     "llm_provider_adapters": "agents/providers/ with pr_ prefix for pricing and provider implementations",
+     "pipeline_engine": "Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix",
+     "pipeline_ui": "Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation",
+-    "billing_storage": "data/provider_storage/ (provider_costs.json); pricing, coupons, user_logs in SQL tables",
++    "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables",
+     "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
+     "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
+     "database": "PostgreSQL 15+",
+@@ -44,17 +44,17 @@
+     "Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) replace per-project fragmentation",
+     "Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vite dev server for local development",
+     "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients \u2192 Users with login_as_first_level_hierarchy pattern",
+-    "LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) \u2192 str contract; Claude Haiku for dual-layer memory synthesis generating 5 output files",
++    "LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) \u2192 str contract; Claude Haiku for dual-layer memory synthesis",
+     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel for chat negotiation",
+     "_ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load preventing startup race conditions",
+-    "Data persistence: load_once_on_access, update_on_save pattern; tags stored in mem_ai_tags_relations with row ID linking; per-feature CLAUDE.md auto-loaded when entering features/{tag}/ directory",
++    "Data persistence: loa
+
+### `commit` — 2026-04-05
 
 diff --git a/workspace/aicli/_system/dev_runtime_state.json b/workspace/aicli/_system/dev_runtime_state.json
-index c5cc214..1e28815 100644
+index 81fc788..fd30f4a 100644
 --- a/workspace/aicli/_system/dev_runtime_state.json
 +++ b/workspace/aicli/_system/dev_runtime_state.json
 @@ -1,8 +1,8 @@
  {
--  "last_updated": "2026-03-18T12:41:57Z",
-+  "last_updated": "2026-03-18T12:42:04Z",
-   "last_session_id": "5b19c863-f99a-439c-b595-b415d0d342ed",
--  "last_session_ts": "2026-03-18T12:41:57Z",
--  "session_count": 128,
-+  "last_session_ts": "2026-03-18T12:42:04Z",
-+  "session_count": 129,
+-  "last_updated": "2026-04-03T20:07:29Z",
++  "last_updated": "2026-04-05T11:02:33Z",
+   "last_session_id": "6ffb562b-40dd-4aea-80a1-408ce5204f03",
+-  "last_session_ts": "2026-04-03T20:07:29Z",
+-  "session_count": 344,
++  "last_session_ts": "2026-04-05T11:02:33Z",
++  "session_count": 345,
    "last_provider": "claude",
    "last_prompt_preview": "hellow, how are you ?",
    "source": "claude_cli"
 
 
-### `commit` — 2026-04-03
+### `commit` — 2026-04-05
+
+diff --git a/workspace/aicli/_system/cursor/rules.md b/workspace/aicli/_system/cursor/rules.md
+index 4a6bf52..c5a7350 100644
+--- a/workspace/aicli/_system/cursor/rules.md
++++ b/workspace/aicli/_system/cursor/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-03 19:47 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-03 20:07 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -17,10 +17,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+ - **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+-- **llm_providers**: Claude (Haiku), OpenAI, DeepSeek, Gemini, Grok
++- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+ - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+-- **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking
++- **memory_synthesis**: Claude Haiku dual-layer with 5 output files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) + timestamp tracking
+ - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+ - **mcp**: Stdio MCP server with 12+ tools
+ - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
+@@ -30,7 +30,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+ - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+ - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+-- **billing_storage**: data/provider_storage/ (provider_costs.json); pricing, coupons, user_logs in SQL tables
++- **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+ - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+ - **database**: PostgreSQL 15+
+@@ -50,14 +50,14 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) replace per-project fragmentation
+ - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vite dev server for local development
+ - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients → Users with login_as_first_level_hierarchy pattern
+-- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract; Claude Haiku for dual-layer memory synthesis generating 5 output files
++- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract; Claude Haiku for dual-layer memory synthesis
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel for chat negotiation
+ - _ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load preventing start
+
+### `commit` — 2026-04-05
 
 diff --git a/workspace/aicli/_system/commit_log.jsonl b/workspace/aicli/_system/commit_log.jsonl
-index 6837faa..b485bc4 100644
+index db5701c..df3d6ba 100644
 --- a/workspace/aicli/_system/commit_log.jsonl
 +++ b/workspace/aicli/_system/commit_log.jsonl
-@@ -207,3 +207,5 @@
- {"ts": "2026-03-18T11:53:09Z", "action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "dabf6d48", "message": "chore: clear aicli system state after session 5b19c863", "pushed": true, "push_error": ""}
- {"action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "5d2afe58", "message": "feat: refactor backend core and routers with improved structure", "files_count": 32, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-03-18T12:41:50Z"}
- {"ts": "2026-03-18T12:41:47Z", "action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "5d2afe58", "message": "feat: refactor backend core and routers with improved structure", "pushed": true, "push_error": ""}
-+{"action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "bde6bc20", "message": "chore: clean up aicli system files after claude session", "files_count": 26, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-03-18T12:42:00Z"}
-+{"ts": "2026-03-18T12:41:56Z", "action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "bde6bc20", "message": "chore: clean up aicli system files after claude session", "pushed": true, "push_error": ""}
+@@ -603,3 +603,5 @@
+ {"ts": "2026-04-03T19:28:31Z", "action": "commit_push", "source": "claude_cli", "session_id": "6ffb562b-40dd-4aea-80a1-408ce5204f03", "hash": "bf2c52b8", "message": "chore: update system files and memory after claude session 6ffb562b", "pushed": true, "push_error": ""}
+ {"action": "commit_push", "source": "claude_cli", "session_id": "6ffb562b-40dd-4aea-80a1-408ce5204f03", "hash": "41bdb6bf", "message": "chore: update system state and session artifacts after cli session", "files_count": 37, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-04-03T19:48:05Z"}
+ {"ts": "2026-04-03T19:47:58Z", "action": "commit_push", "source": "claude_cli", "session_id": "6ffb562b-40dd-4aea-80a1-408ce5204f03", "hash": "41bdb6bf", "message": "chore: update system state and session artifacts after cli session", "pushed": true, "push_error": ""}
++{"action": "commit_push", "source": "claude_cli", "session_id": "6ffb562b-40dd-4aea-80a1-408ce5204f03", "hash": "25c29556", "message": "chore: update system context and session state after cli session", "files_count": 34, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-04-03T20:07:38Z"}
++{"ts": "2026-04-03T20:07:29Z", "action": "commit_push", "source": "claude_cli", "session_id": "6ffb562b-40dd-4aea-80a1-408ce5204f03", "hash": "25c29556", "message": "chore: update system context and session state after cli session", "pushed": true, "push_error": ""}
 
 
-### `commit` — 2026-04-03
+### `commit` — 2026-04-05
 
-Commit: chore: clean up aicli system files after claude session 5b19c863
-Hash: 6596579f
-Files changed (2):
-  - workspace/aicli/_system/commit_log.jsonl
-  - workspace/aicli/_system/dev_runtime_state.json
+diff --git a/workspace/aicli/_system/claude/MEMORY.md b/workspace/aicli/_system/claude/MEMORY.md
+index fe4cb75..9459ca4 100644
+--- a/workspace/aicli/_system/claude/MEMORY.md
++++ b/workspace/aicli/_system/claude/MEMORY.md
+@@ -1,11 +1,11 @@
+ # Project Memory — aicli
+-_Generated: 2026-04-03 19:47 UTC by aicli /memory_
++_Generated: 2026-04-03 20:07 UTC by aicli /memory_
+ 
+ > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+ 
+ ## Project Summary
+ 
+-aicli is a shared AI memory platform combining a Python CLI (prompt_toolkit + rich) with a FastAPI backend and Electron desktop UI (Vanilla JS + xterm.js + Monaco + Cytoscape) for AI-assisted development workflows. It uses PostgreSQL 15+ with pgvector semantic search and unified memory tables (mem_ai_events, mem_ai_project_facts, mem_ai_work_items) to synthesize 5 output memory files via Claude Haiku, supporting multi-provider LLM integration and async DAG-based workflow orchestration for teams managing complex projects.
++aicli is a shared AI memory platform combining Claude CLI, FastAPI backend, Electron desktop UI, and PostgreSQL with pgvector for semantic search. It synthesizes project context into memory files (CLAUDE.md, MEMORY.md, etc.) via async DAG workflows, supporting multiple LLM providers with cost tracking and hierarchical user authentication. Currently refactoring memory generation to use inline planner_tags snapshot fields as canonical context, standardizing SQL cursor handling, and consolidating schema across unified tables.
+ 
+ ## Project Facts
+ 
+@@ -57,10 +57,10 @@ Reviewer: ```json
+ - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+ - **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+-- **llm_providers**: Claude (Haiku), OpenAI, DeepSeek, Gemini, Grok
++- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+ - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+-- **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking
++- **memory_synthesis**: Claude Haiku dual-layer with 5 output files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) + timestamp tracking
+ - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+ - **mcp**: Stdio MCP server with 12+ tools
+ - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
+@@ -70,7 +70,7 @@ Reviewer: ```json
+ - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+ - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+ - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+-- **billing_storage**: data/provider_storage/ (provider_costs.json); pricing, coupons, user_logs in SQL tables
++- **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+ - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+ - **database**: PostgreSQL 15+
+@@ -90,26 +90,26 @@ Reviewer: ```json
+ - Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_f
 
-### `commit` — 2026-04-03
+### `commit` — 2026-04-05
 
-diff --git a/workspace/aicli/_system/history.jsonl b/workspace/aicli/_system/history.jsonl
-index f609d20..8a08267 100644
---- a/workspace/aicli/_system/history.jsonl
-+++ b/workspace/aicli/_system/history.jsonl
-@@ -66,3 +66,4 @@
- {"ts": "2026-03-18T10:46:16Z", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "provider": "claude", "user_input": "looks better. why memory_items and project_facts are under systeme managament tables? there are not part of project ?", "output": "All endpoints working. Let me update MEMORY.md to reflect the final table structure:", "user": null, "feature": null, "tags": [], "stop_reason": "end_turn"}
- {"ts": "2026-03-18T11:51:51Z", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "provider": "claude", "user_input": "I do see the table mng_session_tags, I also see session_tags.json file at the project workspace - is it in used , what is it for ?", "output": "Everything is working. Here's the final state:\n\n**Database \u2014 24 tables, clean split:**\n\n| Prefix | Count | Tables |\n|--------|-------|--------|\n| `mng_` | 14 | Global config: users, billing, entity taxonomy, graph workflows, agent roles |\n| `pr_local_aicli_` | 10 | Project data: commits, events, embeddings, event_tags, event_links, **work_items, interactions, interaction_tags, memory_items, project_facts** |\n\n**Code changes made:**\n- `database.py` \u2014 DDL for the 5 memory tables moved from `_ensure_schema()` \u2192 `ensure_project_schema()` (created per-project on first access)\n- `work_items.py`, `projects.py`, `chat.py`, `entities.py`, `work_item_pipeline.py`, `migrate_to_memory_layers.py` \u2014 all replaced hardcoded `mng_*` names with `db.project_table(\"work_items\", p)` etc. computed dynamically\n\nThe split is now semantically correct: `mng_` is truly global configuration, `pr_` is per-project data.", "user": null, "feature": null, "tags": [], "stop_reason": "end_turn"}
- {"ts": "2026-03-18T12:00:53Z", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "provider": "claude", "user_input": "clean that up . also I do remember there was graph support for memroy usage, but I dont see any record in. how graph tables are used in the app, who suppose to manage that? this is not suppose to be at client level ?", "output": "All endpoints working correctly. Here's a summary of everything done:\n\n**All `mng_graph_*` references eliminated** across 4 files:\n\n| File | Changes |\n|------|---------|\n| `routers/graph_workflows.py` | Added `project: str = Query(\"\")` to 12 endpoints; all `mng_graph_*` \u2192 `db.project_table()` |\n| `core/graph_runner.py` | Added `tbl_g*` vars in `_execute_node`, `run_graph_workflow`, `resume_graph_workflow` |\n| `routers/work_items.py` | Added graph table vars in `run_pipeline` + `_ensure_pipeline_workflow`; fixed 2 typos (`VALUES...)f\"` \u2192 `VALUES...)\"`)|\n| `core/embeddings.py` | `tbl_gnr = db.project_table(...)` in `embed_node_outputs` |\n| `core/database.py` | Rewrote graph DDL: UUID PKs, correct column names (`position_x/y`, `role_file`, `role_prompt`, `inject_context`, etc.); `agent_run_id UUID` (no broken FK) |\n\nBackend starts clean, all endpoints return 200.", "user": null, "feature": null, "tags": [], "stop_reason": "end_turn"}
-+{"ts": "2026-03-18T12:51:11Z", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "provider": "claude", "user_input": "I would like to make sure the client table are also aligned - for example mng_session_tags - is related to client (that can have multiple projects) also entitiy is per client. currently, as I am testing there is only one client (local), but the goal is to have registered paid clients. all cleint table will start with cl_ for example mng_session_tags which is related to all tags for client local will be called cl_local_session_tags. I would like to have 3 layers - general managmenet tables (mng), per client table (client can have multip
-
-### `commit` — 2026-04-03
-
-diff --git a/workspace/aicli/_system/dev_runtime_state.json b/workspace/aicli/_system/dev_runtime_state.json
-index 1e28815..aebdda7 100644
---- a/workspace/aicli/_system/dev_runtime_state.json
-+++ b/workspace/aicli/_system/dev_runtime_state.json
-@@ -1,8 +1,8 @@
- {
--  "last_updated": "2026-03-18T12:42:04Z",
--  "last_session_id": "5b19c863-f99a-439c-b595-b415d0d342ed",
--  "last_session_ts": "2026-03-18T12:42:04Z",
--  "session_count": 129,
-+  "last_updated": "2026-03-18T13:45:25Z",
-+  "last_session_id": "f69836d1-1f44-4838-867f-55ffd5a2cacc",
-+  "last_session_ts": "2026-03-18T13:45:25Z",
-+  "session_count": 130,
-   "last_provider": "claude",
-   "last_prompt_preview": "hellow, how are you ?",
-   "source": "claude_cli"
-
-
-### `commit` — 2026-04-03
-
-diff --git a/workspace/aicli/_system/commit_log.jsonl b/workspace/aicli/_system/commit_log.jsonl
-index b485bc4..07c3064 100644
---- a/workspace/aicli/_system/commit_log.jsonl
-+++ b/workspace/aicli/_system/commit_log.jsonl
-@@ -209,3 +209,5 @@
- {"ts": "2026-03-18T12:41:47Z", "action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "5d2afe58", "message": "feat: refactor backend core and routers with improved structure", "pushed": true, "push_error": ""}
- {"action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "bde6bc20", "message": "chore: clean up aicli system files after claude session", "files_count": 26, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-03-18T12:42:00Z"}
- {"ts": "2026-03-18T12:41:56Z", "action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "bde6bc20", "message": "chore: clean up aicli system files after claude session", "pushed": true, "push_error": ""}
-+{"action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "6596579f", "message": "chore: clean up aicli system files after claude session 5b19c863", "files_count": 26, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-03-18T12:42:07Z"}
-+{"ts": "2026-03-18T12:42:04Z", "action": "commit_push", "source": "claude_cli", "session_id": "5b19c863-f99a-439c-b595-b415d0d342ed", "hash": "6596579f", "message": "chore: clean up aicli system files after claude session 5b19c863", "pushed": true, "push_error": ""}
+diff --git a/workspace/aicli/_system/claude/CLAUDE.md b/workspace/aicli/_system/claude/CLAUDE.md
+index 77974b7..f9ff69c 100644
+--- a/workspace/aicli/_system/claude/CLAUDE.md
++++ b/workspace/aicli/_system/claude/CLAUDE.md
+@@ -30,17 +30,17 @@ You are a senior Python software architect with deep expertise in:
+ - Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) replace per-project fragmentation
+ - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vite dev server for local development
+ - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients → Users with login_as_first_level_hierarchy pattern
+-- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract; Claude Haiku for dual-layer memory synthesis generating 5 output files
++- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract; Claude Haiku for dual-layer memory synthesis
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with 2-pane approval panel for chat negotiation
+ - _ensure_shared_schema pattern for initialization; retry logic handles empty project list on first load preventing startup race conditions
+-- Data persistence: load_once_on_access, update_on_save pattern; tags stored in mem_ai_tags_relations with row ID linking; per-feature CLAUDE.md auto-loaded when entering features/{tag}/ directory
++- Data persistence: load_once_on_access, update_on_save pattern; tags stored in mem_ai_tags_relations with row ID linking
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+-- Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; organized as routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for data access, agents/tools/ (tool_ prefix) and agents/mcp/ for agent implementations
++- Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; organized as routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for data access
+ - MCP server (stdio) with 12+ tools for embedding and data retrieval; environment-configured via BACKEND_URL and ACTIVE_PROJECT
+-- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local via bash start_backend.sh + ui/npm run dev
+-- Memory file generation reads snapshot data from inline planner_tags fields (summary, action_items, design, code_summary); SQL cursor tuple unpacking standardized across memory modules
+-- Config management: config.py for externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support; billing storage in data/provider_storage/
+-- Memory synthesis generates CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md from mem_ai_project_facts and mem_ai_work_items with timestamp tracking
++- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop; local via bash start_backend.sh + ui/npm run dev
++- Memory file generation reads snapshot data from inline planner_tags fields (summary, action_items, design, code_summary); SQL cursor tuple unpacking standardized
++- Config management: config.py for externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
++- Cost tracking via provider_costs.json with fallback pricing; billing storage in data/provider_storage/ with rich table output
+ 
+ ---
+ 
 
 
 ## AI Synthesis
 
-**2026-03-18** `claude_cli` — Refactored backend core and routers with improved module structure (commit 5d2afe58); standardized SQL cursor tuple unpacking across memory_promotion.py and memory_files.py for robust 4-column result handling. **2026-03-18** `claude_cli` — Integrated planner_tags inline snapshot fields (summary, action_items, design, code_summary) as canonical context source for memory file generation; enhanced render_feature_claude_md() to read complete metadata. **2026-03-18** `claude_cli` — Optimized get_active_feature_tags() to filter active/open tags with snapshots; context dict now populated with id, name, short_desc, requirements, summary, action_items, design, code_summary for feature details loading. **2026-03-18** `claude_cli` — Added timestamp tracking to memory synthesis metadata; improved SQL result column ordering for memory file lifecycle reliability. **2026-03-18** `claude_cli` — Cleaned up aicli system files post-session; dev_runtime_state.json updated to session 129 with latest timestamps and commit logs synchronized (commit bde6bc20).
+**2026-04-05** `session_345` — Memory file generation refactoring complete: planner_tags inline fields (summary, action_items, design, code_summary) now canonical context source with snapshot field integration across all memory modules. **2026-04-05** `backend` — SQL cursor tuple unpacking standardized across memory_promotion.py and memory_files.py with robust 4-column unpacking; _SQL_ACTIVE_TAGS and _SQL_GET_CURRENT_FACTS corrected for reliable data retrieval. **2026-04-05** `features` — Feature details context loading optimized: planner_tags query limited to 30 most recent; render_feature_claude_md() reads complete tag metadata from inline snapshot fields with full context dict (id, name, short_desc, requirements, summary, action_items, design, code_summary). **2026-04-05** `memory_lifecycle` — Memory file lifecycle enhanced via get_active_feature_tags() filtering active/open tags with snapshots; timestamp tracking added to memory synthesis metadata for better audit trail. **2026-04-03** `database_robustness` — Database cursor handling improved with standardized tuple unpacking and better SQL result column ordering; prevents data loss on session switches. **2026-03-14** `deployment` — Full deployment pipeline established: Railway (cloud), Electron-builder (desktop multi-platform), local development via bash + npm; dev_runtime_state.json tracking session history (345 total sessions).

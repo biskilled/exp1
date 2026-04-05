@@ -414,6 +414,7 @@ async def sync_commits(project: str | None = Query(None)):
             if not commit_hash:
                 continue
             rows.append((
+                1,                                        # client_id
                 p,
                 commit_hash,
                 raw.get("message", raw.get("msg", "")),
