@@ -2,7 +2,7 @@
 memory_mirroring.py — Layer 1 of the three-layer memory architecture.
 
 Stores source data as-is into the mem_mrr_* tables.  Each row has an
-inline ``tags TEXT[]`` column (e.g. ``["phase:discovery", "feature:auth"]``)
+inline ``tags JSONB`` column (e.g. ``{"phase": "discovery", "feature": "auth"}``)
 set by: (1) hook at log time, (2) UI History picker, (3) bulk session-tag API.
 
 Public API::
@@ -11,17 +11,19 @@ Public API::
     prompt_id = mirroring.store_prompt(project, session_id, prompt, response, ...)
     count = mirroring.count_session_prompts(project, session_id)
     prompts = mirroring.get_last_n_prompts(project, session_id, n=5)
-    untagged = mirroring.get_untagged_prompts(project, limit=50)
+    untagged = mirroring.get_untagged(project, 'prompt', limit=50)
     mirroring.append_tag('prompt', source_id, 'phase:discovery')
     mirroring.remove_tag('commit', commit_hash, 'phase:development')
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Optional
 from uuid import UUID
 
 from core.database import db
+from core.tags import tags_to_dict, parse_tag
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ _SQL_INSERT_PROMPT = """
     INSERT INTO mem_mrr_prompts
            (client_id, project, session_id, llm_source, source_id,
             prompt, response, tags, created_at)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
        ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
     RETURNING id
 """
@@ -40,7 +42,7 @@ _SQL_INSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
            (client_id, project, commit_hash, commit_msg, summary,
             source, session_id, committed_at, diff_details, tags)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
        ON CONFLICT (commit_hash) DO NOTHING
     RETURNING commit_hash
 """
@@ -49,7 +51,7 @@ _SQL_INSERT_ITEM = """
     INSERT INTO mem_mrr_items
            (client_id, project, item_type, title, meeting_at, attendees,
             raw_text, summary, tags)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
     RETURNING id
 """
 
@@ -57,7 +59,7 @@ _SQL_INSERT_MESSAGE = """
     INSERT INTO mem_mrr_messages
            (client_id, project, platform, channel, thread_ref,
             messages, date_range, tags)
-       VALUES (1, %s, %s, %s, %s, %s::jsonb, %s, %s)
+       VALUES (1, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb)
     RETURNING id
 """
 
@@ -75,11 +77,12 @@ _SQL_GET_LAST_N_PROMPTS = """
     LIMIT %s
 """
 
+# "Untagged" = tags dict is empty ({})
 _SQL_GET_UNTAGGED_PROMPTS = """
     SELECT source_id, 'prompt' AS source_type,
            (prompt || ' ' || response)[:500] AS content_preview, created_at
     FROM mem_mrr_prompts
-    WHERE client_id=1 AND project=%s AND tags = '{}'
+    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """
@@ -88,7 +91,7 @@ _SQL_GET_UNTAGGED_COMMITS = """
     SELECT commit_hash, 'commit' AS source_type,
            (commit_hash || ' ' || commit_msg)[:500] AS content_preview, created_at
     FROM mem_mrr_commits
-    WHERE client_id=1 AND project=%s AND tags = '{}'
+    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """
@@ -96,32 +99,22 @@ _SQL_GET_UNTAGGED_COMMITS = """
 _SQL_GET_UNTAGGED_ITEMS = """
     SELECT id::text, 'item' AS source_type, raw_text[:500] AS content_preview, created_at
     FROM mem_mrr_items
-    WHERE client_id=1 AND project=%s AND tags = '{}'
+    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """
 
-_SQL_APPEND_TAG_PROMPT = (
-    "UPDATE mem_mrr_prompts SET tags = array_append(tags, %s) "
-    "WHERE client_id=1 AND source_id=%s AND NOT (tags @> ARRAY[%s])"
-)
-_SQL_APPEND_TAG_COMMIT = (
-    "UPDATE mem_mrr_commits SET tags = array_append(tags, %s) "
-    "WHERE client_id=1 AND commit_hash=%s AND NOT (tags @> ARRAY[%s])"
-)
-_SQL_APPEND_TAG_ITEM = (
-    "UPDATE mem_mrr_items SET tags = array_append(tags, %s) "
-    "WHERE client_id=1 AND id=%s::uuid AND NOT (tags @> ARRAY[%s])"
-)
-_SQL_APPEND_TAG_MESSAGE = (
-    "UPDATE mem_mrr_messages SET tags = array_append(tags, %s) "
-    "WHERE client_id=1 AND id=%s::uuid AND NOT (tags @> ARRAY[%s])"
-)
+# JSONB merge (||) is idempotent for same key — new value overwrites old
+_SQL_APPEND_TAG_PROMPT   = "UPDATE mem_mrr_prompts  SET tags = tags || %s::jsonb WHERE client_id=1 AND source_id=%s"
+_SQL_APPEND_TAG_COMMIT   = "UPDATE mem_mrr_commits  SET tags = tags || %s::jsonb WHERE client_id=1 AND commit_hash=%s"
+_SQL_APPEND_TAG_ITEM     = "UPDATE mem_mrr_items    SET tags = tags || %s::jsonb WHERE client_id=1 AND id=%s::uuid"
+_SQL_APPEND_TAG_MESSAGE  = "UPDATE mem_mrr_messages SET tags = tags || %s::jsonb WHERE client_id=1 AND id=%s::uuid"
 
-_SQL_REMOVE_TAG_PROMPT  = "UPDATE mem_mrr_prompts  SET tags = array_remove(tags, %s) WHERE client_id=1 AND source_id=%s"
-_SQL_REMOVE_TAG_COMMIT  = "UPDATE mem_mrr_commits  SET tags = array_remove(tags, %s) WHERE client_id=1 AND commit_hash=%s"
-_SQL_REMOVE_TAG_ITEM    = "UPDATE mem_mrr_items    SET tags = array_remove(tags, %s) WHERE client_id=1 AND id=%s::uuid"
-_SQL_REMOVE_TAG_MESSAGE = "UPDATE mem_mrr_messages SET tags = array_remove(tags, %s) WHERE client_id=1 AND id=%s::uuid"
+# JSONB key removal: tags - 'phase'  removes the "phase" key
+_SQL_REMOVE_TAG_PROMPT   = "UPDATE mem_mrr_prompts  SET tags = tags - %s WHERE client_id=1 AND source_id=%s"
+_SQL_REMOVE_TAG_COMMIT   = "UPDATE mem_mrr_commits  SET tags = tags - %s WHERE client_id=1 AND commit_hash=%s"
+_SQL_REMOVE_TAG_ITEM     = "UPDATE mem_mrr_items    SET tags = tags - %s WHERE client_id=1 AND id=%s::uuid"
+_SQL_REMOVE_TAG_MESSAGE  = "UPDATE mem_mrr_messages SET tags = tags - %s WHERE client_id=1 AND id=%s::uuid"
 
 
 class MemoryMirroring:
@@ -136,7 +129,7 @@ class MemoryMirroring:
         *,
         source_id: Optional[str] = None,
         llm_source: str = "claude_cli",
-        tags: Optional[list[str]] = None,
+        tags: Optional[list[str] | dict] = None,
         ts: Optional[str] = None,
     ) -> Optional[str]:
         """Insert a prompt/response into mem_mrr_prompts. Returns the UUID string or None."""
@@ -152,7 +145,7 @@ class MemoryMirroring:
                         _SQL_INSERT_PROMPT,
                         (project, session_id, llm_source, source_id,
                          (prompt or "")[:4000], (response or "")[:8000],
-                         tags or [], ts),
+                         json.dumps(tags_to_dict(tags)), ts),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None
@@ -171,7 +164,7 @@ class MemoryMirroring:
         session_id: Optional[str] = None,
         committed_at: Optional[str] = None,
         diff_details: str = "{}",
-        tags: Optional[list[str]] = None,
+        tags: Optional[list[str] | dict] = None,
     ) -> Optional[str]:
         """Insert a commit into mem_mrr_commits. Returns commit_hash or None."""
         if not db.is_available():
@@ -183,7 +176,7 @@ class MemoryMirroring:
                         _SQL_INSERT_COMMIT,
                         (project, commit_hash, commit_msg, summary,
                          source, session_id, committed_at, diff_details,
-                         tags or []),
+                         json.dumps(tags_to_dict(tags))),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None
@@ -201,7 +194,7 @@ class MemoryMirroring:
         meeting_at: Optional[str] = None,
         attendees: Optional[list] = None,
         summary: Optional[str] = None,
-        tags: Optional[list[str]] = None,
+        tags: Optional[list[str] | dict] = None,
     ) -> Optional[str]:
         """Insert a document item into mem_mrr_items. Returns UUID string or None."""
         if not db.is_available():
@@ -212,7 +205,7 @@ class MemoryMirroring:
                     cur.execute(
                         _SQL_INSERT_ITEM,
                         (project, item_type, title, meeting_at, attendees,
-                         raw_text, summary, tags or []),
+                         raw_text, summary, json.dumps(tags_to_dict(tags))),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None
@@ -229,7 +222,7 @@ class MemoryMirroring:
         channel: Optional[str] = None,
         thread_ref: Optional[str] = None,
         date_range: Optional[str] = None,
-        tags: Optional[list[str]] = None,
+        tags: Optional[list[str] | dict] = None,
     ) -> Optional[str]:
         """Insert a message chunk into mem_mrr_messages. Returns UUID string or None."""
         if not db.is_available():
@@ -240,7 +233,7 @@ class MemoryMirroring:
                     cur.execute(
                         _SQL_INSERT_MESSAGE,
                         (project, platform, channel, thread_ref,
-                         messages_json, date_range, tags or []),
+                         messages_json, date_range, json.dumps(tags_to_dict(tags))),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None
@@ -286,7 +279,7 @@ class MemoryMirroring:
     def get_untagged(
         self, project: str, source_type: str, limit: int = 50
     ) -> list[dict]:
-        """Return rows with tags = '{}' for the given source_type."""
+        """Return rows with empty tags ({}) for the given source_type."""
         if not db.is_available():
             return []
         sql_map = {
@@ -316,7 +309,7 @@ class MemoryMirroring:
             return []
 
     def append_tag(self, source_type: str, row_id: str, tag: str) -> None:
-        """Append a tag string to the tags[] array of a mirroring row (idempotent)."""
+        """Merge a tag string into the tags JSONB dict of a mirroring row (idempotent)."""
         if not db.is_available():
             return
         sql_map = {
@@ -328,15 +321,16 @@ class MemoryMirroring:
         sql = sql_map.get(source_type)
         if not sql:
             return
+        k, v = parse_tag(tag)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(sql, (tag, row_id, tag))
+                    cur.execute(sql, (json.dumps({k: v}), row_id))
         except Exception as e:
             log.debug(f"MemoryMirroring.append_tag error: {e}")
 
     def remove_tag(self, source_type: str, row_id: str, tag: str) -> None:
-        """Remove a tag string from the tags[] array of a mirroring row."""
+        """Remove a tag key from the tags JSONB dict of a mirroring row."""
         if not db.is_available():
             return
         sql_map = {
@@ -348,10 +342,11 @@ class MemoryMirroring:
         sql = sql_map.get(source_type)
         if not sql:
             return
+        k, _ = parse_tag(tag)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(sql, (tag, row_id))
+                    cur.execute(sql, (k, row_id))
         except Exception as e:
             log.debug(f"MemoryMirroring.remove_tag error: {e}")
 

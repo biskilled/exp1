@@ -22,6 +22,7 @@ from psycopg2.extras import execute_values
 from core.config import settings
 from core.auth import get_optional_user
 from core.database import db
+from core.tags import tags_to_list, parse_tag
 
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
@@ -258,7 +259,7 @@ async def chat_history(
                     "provider":   r[2] or "unknown",
                     "user_input": r[3],
                     "output":     r[4] or "",
-                    "tags":       r[5] or [],
+                    "tags":       tags_to_list(r[5] or {}),
                 }
                 for r in rows
             ]
@@ -364,11 +365,13 @@ async def patch_commit(commit_hash: str, body: CommitPatch, project: str | None 
     params: list = []
 
     if body.add_tag is not None:
-        updates.append("tags = array_append(array_remove(tags, %s), %s)")
-        params.extend([body.add_tag, body.add_tag])
+        _k, _v = parse_tag(body.add_tag)
+        updates.append("tags = tags || %s::jsonb")
+        params.append(json.dumps({_k: _v}))
     if body.remove_tag is not None:
-        updates.append("tags = array_remove(tags, %s)")
-        params.append(body.remove_tag)
+        _k, _ = parse_tag(body.remove_tag)
+        updates.append("tags = tags - %s")
+        params.append(_k)
     if body.summary is not None:
         updates.append("summary = %s")
         params.append(body.summary)

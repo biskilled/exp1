@@ -33,7 +33,7 @@ _SQL_INSERT_INTERACTION = """
     INSERT INTO mem_mrr_prompts
            (client_id, project, session_id, llm_source, source_id,
             prompt, response, tags, created_at)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz)
+       VALUES (1, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
        ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
 """
 
@@ -77,8 +77,10 @@ _SQL_INSERT_GRAPH_RUN = """
 
 _SQL_UPDATE_COMMIT_PHASE = """
     UPDATE mem_mrr_commits
-    SET tags = ARRAY(SELECT t FROM unnest(tags) t WHERE t NOT LIKE 'phase:%%')
-              || CASE WHEN %s IS NOT NULL THEN ARRAY['phase:' || %s] ELSE ARRAY[]::TEXT[] END
+    SET tags = CASE
+        WHEN %s IS NOT NULL THEN (tags - 'phase') || jsonb_build_object('phase', %s)
+        ELSE tags - 'phase'
+    END
     WHERE client_id=1 AND project=%s AND session_id=%s
 """
 
@@ -120,12 +122,14 @@ def _append_history(
     if not db.is_available():
         return ts
 
-    # Convert legacy dict tags to new tags[] string format
-    tags_list: list[str] = []
+    import json as _json
+    from core.tags import tags_to_dict as _tags_to_dict
+    # Convert tags dict → JSONB-ready dict (handles bug_ref → bug prefix)
+    tags_dict: dict = {}
     for k, v in (tags or {}).items():
         if v:
             prefix = "bug" if k == "bug_ref" else k
-            tags_list.append(f"{prefix}:{v}")
+            tags_dict[prefix] = v
 
     try:
         with db.conn() as conn:
@@ -133,10 +137,9 @@ def _append_history(
                 # mem_mrr_prompts — feeds memory distillation pipeline
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
-                    (project, session_id, None, "ui",
-                     provider, ts,
+                    (project, session_id, provider, ts,
                      (user_msg or "")[:4000], (response or "")[:8000],
-                     tags_list, ts),
+                     _json.dumps(tags_dict), ts),
                 )
     except Exception:
         pass  # never break chat because of logging
@@ -612,13 +615,15 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
                     prefix = "bug" if k == "bug_ref" else k
                     tags_list.append(f"{prefix}:{v}")
 
+        import json as _json
+        from core.tags import tags_to_dict as _tags_to_dict
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
                     (project, body.session_id, body.source, ts,
                      (body.prompt or "")[:4000], "",
-                     tags_list, ts),
+                     _json.dumps(_tags_to_dict(tags_list)), ts),
                 )
 
         # Fire memory batch digest every N prompts (fire-and-forget)

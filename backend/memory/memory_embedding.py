@@ -61,16 +61,16 @@ _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
            (client_id, project, event_type, source_id, session_id,
             llm_source, chunk, chunk_type, content, embedding, summary,
-            doc_type, language, file_path, metadata, importance)
+            doc_type, language, file_path, tags, importance)
        VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s,
                %s, %s, %s, %s::jsonb, %s)
        ON CONFLICT (client_id, project, event_type, source_id, chunk)
        DO UPDATE SET
-           content      = EXCLUDED.content,
-           embedding    = EXCLUDED.embedding,
-           summary      = EXCLUDED.summary,
-           llm_source   = EXCLUDED.llm_source,
-           metadata     = EXCLUDED.metadata
+           content    = EXCLUDED.content,
+           embedding  = EXCLUDED.embedding,
+           summary    = EXCLUDED.summary,
+           llm_source = EXCLUDED.llm_source,
+           tags       = EXCLUDED.tags
     RETURNING id
 """
 
@@ -94,7 +94,7 @@ _SQL_LOAD_PROMPT = """
 
 _SQL_SEARCH_TPL = """
     SELECT event_type, source_id, chunk, chunk_type, content,
-           language, file_path, doc_type, metadata, session_id,
+           language, file_path, doc_type, tags, session_id,
            1 - (embedding <=> %s::vector) AS score
     FROM mem_ai_events
     WHERE {where}
@@ -187,15 +187,22 @@ def _upsert_event(
     doc_type: Optional[str] = None,
     language: Optional[str] = None,
     file_path: Optional[str] = None,
+    tags: dict | None = None,
+    # backward-compat aliases
     metadata: dict | None = None,
     importance: int = 1,
-    # backward-compat: silently accept & ignore removed params
     session_desc: Optional[str] = None,
     cnt_prompts: Optional[int] = None,
 ) -> Optional[str]:
-    """Insert or update a row in mem_ai_events. Returns UUID string."""
+    """Insert or update a row in mem_ai_events. Returns UUID string.
+
+    tags: unified dict merging MRR classification tags + source-specific metadata,
+          e.g. {"phase": "discovery", "commit_hash": "abc123", "platform": "slack"}.
+    """
     if not db.is_available():
         return None
+    # Accept legacy `metadata` kwarg — merge into tags
+    merged = {**(metadata or {}), **(tags or {})}
     vec_str = f"[{','.join(str(x) for x in embedding)}]" if embedding else None
     try:
         with db.conn() as conn:
@@ -205,7 +212,7 @@ def _upsert_event(
                     (project, source_type, source_id, session_id,
                      llm_source, chunk, chunk_type, content, vec_str, summary,
                      doc_type, language, file_path,
-                     json.dumps(metadata or {}), importance),
+                     json.dumps(merged), importance),
                 )
                 row = cur.fetchone()
         return str(row[0]) if row else None
@@ -286,7 +293,9 @@ class MemoryEmbedding:
             if not row:
                 return None
 
-            commit_hash_val, commit_msg, summary, tags, session_id = row
+            commit_hash_val, commit_msg, summary, mrr_tags, session_id = row
+            # mrr_tags is already a dict from JSONB column
+            mrr_tags = mrr_tags or {}
         except Exception as e:
             log.debug(f"process_commit DB error: {e}")
             return None
@@ -305,11 +314,12 @@ class MemoryEmbedding:
 
         embedding = await _embed(digest)
 
+        # Merge MRR classification tags + commit-specific metadata
+        event_tags = {**mrr_tags, "commit_hash": commit_hash_val}
         event_id = _upsert_event(
             project, "commit", commit_hash_val, 0, "full", digest, embedding,
             session_id=session_id, llm_source=settings.haiku_model,
-            summary=digest,
-            metadata={"commit_hash": commit_hash_val, "tags": tags or []},
+            summary=digest, tags=event_tags,
         )
         return event_id
 
@@ -338,6 +348,21 @@ class MemoryEmbedding:
             log.debug(f"process_item DB error: {e}")
             return None
 
+        # Fetch MRR tags for this item to merge into events
+        item_mrr_tags: dict = {}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT tags FROM mem_mrr_items WHERE client_id=1 AND project=%s AND id=%s::uuid",
+                        (project, item_id),
+                    )
+                    tr = cur.fetchone()
+                    if tr:
+                        item_mrr_tags = tr[0] or {}
+        except Exception:
+            pass
+
         word_count = len(raw_text.split())
 
         if item_type == "meeting" or word_count > 200:
@@ -359,7 +384,7 @@ class MemoryEmbedding:
                 event_id = _upsert_event(
                     project, "item", item_id, i, "section", content[:6000], emb,
                     doc_type=item_type,
-                    metadata={"title": sec.get("title", ""), "section_index": i},
+                    tags={**item_mrr_tags, "title": sec.get("title", ""), "section_index": str(i)},
                 )
                 if i == 0:
                     first_id = event_id
@@ -374,7 +399,7 @@ class MemoryEmbedding:
             emb = await _embed(digest)
             result_id = _upsert_event(
                 project, "item", item_id, 0, "full", digest, emb,
-                doc_type=item_type, summary=digest,
+                doc_type=item_type, summary=digest, tags=item_mrr_tags,
             )
 
         if not result_id:
@@ -445,11 +470,26 @@ class MemoryEmbedding:
         if not digest:
             digest = text[:300]
 
+        # Fetch MRR tags for this message to merge into event
+        mrr_tags: dict = {}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT tags FROM mem_mrr_messages WHERE client_id=1 AND project=%s AND id=%s::uuid",
+                        (project, message_id),
+                    )
+                    tr = cur.fetchone()
+                    if tr:
+                        mrr_tags = tr[0] or {}
+        except Exception:
+            pass
+
         emb = await _embed(digest)
         event_id = _upsert_event(
             project, "message", message_id, 0, "full", digest, emb,
             summary=digest,
-            metadata={"platform": platform, "channel": channel},
+            tags={**mrr_tags, "platform": platform, "channel": channel or ""},
         )
         return event_id
 
@@ -497,7 +537,7 @@ class MemoryEmbedding:
                     "language":    r[5],
                     "file_path":   r[6],
                     "doc_type":    r[7],
-                    "metadata":    r[8] or {},
+                    "tags":        r[8] or {},
                     "session_id":  r[9],
                     "score":       float(r[10]),
                 }

@@ -503,14 +503,19 @@ async def get_tag_sources(tag_id: str, project: str = Query(...)):
     if not tag_str:
         return []
 
+    from core.tags import parse_tag as _parse_tag
+    import json as _json
+    _k, _v = _parse_tag(tag_str)
+    tag_jsonb = _json.dumps({_k: _v})
+
     results = []
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT source_id, LEFT(prompt,300), session_id, created_at "
-                "FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND %s = ANY(tags) "
+                "FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND tags @> %s::jsonb "
                 "ORDER BY created_at DESC LIMIT 100",
-                (project, tag_str),
+                (project, tag_jsonb),
             )
             for row in cur.fetchall():
                 results.append({
@@ -523,9 +528,9 @@ async def get_tag_sources(tag_id: str, project: str = Query(...)):
                 })
             cur.execute(
                 "SELECT commit_hash, LEFT(commit_msg,300), session_id, committed_at "
-                "FROM mem_mrr_commits WHERE client_id=1 AND project=%s AND %s = ANY(tags) "
+                "FROM mem_mrr_commits WHERE client_id=1 AND project=%s AND tags @> %s::jsonb "
                 "ORDER BY committed_at DESC LIMIT 100",
-                (project, tag_str),
+                (project, tag_jsonb),
             )
             for row in cur.fetchall():
                 results.append({
@@ -785,13 +790,17 @@ async def get_tag_context(
                 for r in cur.fetchall()
             ]
 
-            # ── Recent sources (prompts + commits via tags[]) ─────────────
+            # ── Recent sources (prompts + commits via tags JSONB) ─────────────
+            from core.tags import parse_tag as _parse_tag
+            import json as _json
             tag_str_full = tag_info.get("category", "") + ":" + tag_info.get("name", "")
+            _tk, _tv = _parse_tag(tag_str_full)
+            tag_ctx_jsonb = _json.dumps({_tk: _tv})
             cur.execute(
                 """SELECT source_id, 'prompt', created_at FROM mem_mrr_prompts
-                   WHERE client_id=1 AND project=%s AND %s = ANY(tags)
+                   WHERE client_id=1 AND project=%s AND tags @> %s::jsonb
                    ORDER BY created_at DESC LIMIT %s""",
-                (project, tag_str_full, limit),
+                (project, tag_ctx_jsonb, limit),
             )
             sources = [
                 {
@@ -804,9 +813,9 @@ async def get_tag_context(
             ]
             cur.execute(
                 """SELECT commit_hash, 'commit', committed_at FROM mem_mrr_commits
-                   WHERE client_id=1 AND project=%s AND %s = ANY(tags)
+                   WHERE client_id=1 AND project=%s AND tags @> %s::jsonb
                    ORDER BY committed_at DESC LIMIT %s""",
-                (project, tag_str_full, limit),
+                (project, tag_ctx_jsonb, limit),
             )
             sources += [
                 {

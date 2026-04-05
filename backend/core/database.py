@@ -247,7 +247,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     source_id    TEXT,
     prompt       TEXT          NOT NULL DEFAULT '',
     response     TEXT          NOT NULL DEFAULT '',
-    tags         TEXT[]        NOT NULL DEFAULT '{}',
+    tags         JSONB         NOT NULL DEFAULT '{}',
     created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_cp      ON mem_mrr_prompts(client_id, project);
@@ -268,7 +268,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     session_id   VARCHAR(255),
     prompt_id    UUID           REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
     diff_details JSONB          NOT NULL DEFAULT '{}',
-    tags         TEXT[]         NOT NULL DEFAULT '{}',
+    tags         JSONB          NOT NULL DEFAULT '{}',
     committed_at TIMESTAMPTZ,
     created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
@@ -491,7 +491,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_items (
     attendees   TEXT[],
     raw_text    TEXT         NOT NULL,
     summary     TEXT,
-    tags        TEXT[]       NOT NULL DEFAULT '{}',
+    tags        JSONB        NOT NULL DEFAULT '{}',
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_cp   ON mem_mrr_items(client_id, project);
@@ -508,7 +508,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_messages (
     thread_ref TEXT,
     messages   JSONB        NOT NULL,
     date_range TSTZRANGE,
-    tags       TEXT[]       NOT NULL DEFAULT '{}',
+    tags       JSONB        NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_messages_cp   ON mem_mrr_messages(client_id, project);
@@ -519,10 +519,10 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project         VARCHAR(255) NOT NULL,
+    llm_source      VARCHAR(100) DEFAULT NULL, -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
     event_type      TEXT         NOT NULL,  -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
     source_id       TEXT         NOT NULL,  -- UUID, commit hash, or session_id
     session_id      TEXT,
-    llm_source      VARCHAR(100) DEFAULT NULL, -- model that produced this event e.g. 'claude-haiku-4-5-20251001'
     chunk           INT          NOT NULL DEFAULT 0,
     chunk_type      TEXT         NOT NULL DEFAULT 'full',  -- 'full'|'section'|'function'|'diff_file'
     content         TEXT         NOT NULL,
@@ -533,7 +533,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     doc_type        TEXT,                   -- item: 'requirement'|'decision'|'meeting'
     language        TEXT,                   -- code chunk: 'python'|'javascript'|…
     file_path       TEXT,                   -- code/commit chunk: source file path
-    metadata        JSONB        NOT NULL DEFAULT '{}',
+    tags            JSONB        NOT NULL DEFAULT '{}',  -- unified classification+metadata dict
     importance      SMALLINT     NOT NULL DEFAULT 1,
     processed_at    TIMESTAMPTZ,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -722,26 +722,26 @@ DROP TABLE IF EXISTS mng_ai_tags_relations  CASCADE;
 DROP TABLE IF EXISTS mem_mrr_tags           CASCADE;
 -- Drop stale tag_id FK from mem_ai_work_items (links now via mem_tags_relations)
 ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS tag_id;
--- ── 002_mrr_tags_simplification: inline tags[] replaces mem_tags_relations ──
-ALTER TABLE mem_mrr_prompts   ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
-ALTER TABLE mem_mrr_commits   ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
-ALTER TABLE mem_mrr_items     ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
-ALTER TABLE mem_mrr_messages  ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+-- ── 002_mrr_tags_simplification: inline tags replaces mem_tags_relations ──
+ALTER TABLE mem_mrr_prompts   ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE mem_mrr_commits   ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE mem_mrr_items     ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE mem_mrr_messages  ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '{}';
 CREATE INDEX IF NOT EXISTS idx_mmrr_p_tags     ON mem_mrr_prompts   USING gin(tags);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags     ON mem_mrr_commits   USING gin(tags);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt   ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags     ON mem_mrr_items     USING gin(tags);
 CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags     ON mem_mrr_messages  USING gin(tags);
-UPDATE mem_mrr_commits SET tags = array_cat(tags, array_remove(ARRAY[
-    CASE WHEN phase   IS NOT NULL THEN 'phase:'   || phase   END,
-    CASE WHEN feature IS NOT NULL THEN 'feature:' || feature END,
-    CASE WHEN bug_ref IS NOT NULL THEN 'bug:'     || bug_ref END
-], NULL))
+-- Migrate phase/feature/bug_ref columns → tags JSONB (idempotent guard: skip if tags already has 'phase' key)
+UPDATE mem_mrr_commits SET tags = tags
+  || jsonb_strip_nulls(jsonb_build_object(
+       'phase',   phase,
+       'feature', feature,
+       'bug',     bug_ref))
 WHERE (phase IS NOT NULL OR feature IS NOT NULL OR bug_ref IS NOT NULL)
-  AND NOT EXISTS (SELECT 1 FROM unnest(tags) t WHERE t LIKE 'phase:%' OR t LIKE 'feature:%' OR t LIKE 'bug:%');
-UPDATE mem_mrr_prompts SET tags = array_append(tags, 'phase:' || phase)
-WHERE phase IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM unnest(tags) t WHERE t LIKE 'phase:%');
+  AND NOT (tags ? 'phase' OR tags ? 'feature' OR tags ? 'bug');
+UPDATE mem_mrr_prompts SET tags = tags || jsonb_build_object('phase', phase)
+WHERE phase IS NOT NULL AND NOT (tags ? 'phase');
 ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS work_item_id;
 ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS metadata;
 ALTER TABLE mem_mrr_prompts  DROP COLUMN IF EXISTS phase;
@@ -753,6 +753,16 @@ ALTER TABLE mem_mrr_commits  DROP COLUMN IF EXISTS ai_tags;
 ALTER TABLE mem_mrr_items    DROP COLUMN IF EXISTS ai_tags;
 ALTER TABLE mem_mrr_messages DROP COLUMN IF EXISTS ai_tags;
 DROP TABLE IF EXISTS mem_tags_relations CASCADE;
+-- ── 003_tags_to_jsonb: TEXT[] → JSONB dict ──────────────────────────────────────────────────
+-- Converts tags TEXT[] → JSONB. Must drop the TEXT[] default first, then retype, then set
+-- JSONB default — all in one ALTER TABLE statement to avoid the "default cannot be cast" error.
+-- If tags is already JSONB the ALTER fails — caught by fallback, logged at DEBUG, skipped.
+ALTER TABLE mem_mrr_prompts   ALTER COLUMN tags DROP DEFAULT, ALTER COLUMN tags TYPE JSONB USING '{}'::jsonb, ALTER COLUMN tags SET DEFAULT '{}';
+ALTER TABLE mem_mrr_commits   ALTER COLUMN tags DROP DEFAULT, ALTER COLUMN tags TYPE JSONB USING '{}'::jsonb, ALTER COLUMN tags SET DEFAULT '{}';
+ALTER TABLE mem_mrr_items     ALTER COLUMN tags DROP DEFAULT, ALTER COLUMN tags TYPE JSONB USING '{}'::jsonb, ALTER COLUMN tags SET DEFAULT '{}';
+ALTER TABLE mem_mrr_messages  ALTER COLUMN tags DROP DEFAULT, ALTER COLUMN tags TYPE JSONB USING '{}'::jsonb, ALTER COLUMN tags SET DEFAULT '{}';
+ALTER TABLE mem_ai_events RENAME COLUMN metadata TO tags;
+ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '{}';
 """
 
 

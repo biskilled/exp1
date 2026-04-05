@@ -136,7 +136,7 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
         return
     try:
         # Read current session tags to auto-tag the commit
-        tags_list: list[str] = []
+        tags_dict: dict = {}
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
@@ -144,9 +144,9 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
                     st_row = cur.fetchone()
                     if st_row:
                         _phase, _feature, _bug_ref = st_row[0], st_row[1], st_row[2]
-                        if _phase:   tags_list.append(f"phase:{_phase}")
-                        if _feature: tags_list.append(f"feature:{_feature}")
-                        if _bug_ref: tags_list.append(f"bug:{_bug_ref}")
+                        if _phase:   tags_dict["phase"]   = _phase
+                        if _feature: tags_dict["feature"] = _feature
+                        if _bug_ref: tags_dict["bug"]     = _bug_ref
         except Exception:
             pass
 
@@ -156,7 +156,8 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
                 cur.execute(
                     _SQL_UPSERT_COMMIT,
                     (project, commit_hash, session_id, commit_msg, diff_summary or None,
-                     committed_at or datetime.now(timezone.utc), "commit_push", tags_list),
+                     committed_at or datetime.now(timezone.utc), "commit_push",
+                     json.dumps(tags_dict)),
                 )
 
                 # 2. Link commit → last prompt in the session (via prompt_id FK)

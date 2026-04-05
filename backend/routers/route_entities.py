@@ -54,6 +54,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.database import db, build_update
+from core.tags import parse_tag, tags_to_list
 from data.dl_seq import next_seq
 
 log = logging.getLogger(__name__)
@@ -144,30 +145,31 @@ _SQL_DELETE_VALUE = """
     DELETE FROM planner_tags WHERE id=%s::uuid RETURNING id
 """
 
-# Sources (prompts + commits) tagged with a given tag via tags[] inline column
-# tag_str is built as "category_name:tag_name" at call site
+# Sources (prompts + commits) tagged with a given tag via tags JSONB column
+# tag_jsonb is a JSONB string like '{"feature":"auth"}' built at call site
 _SQL_GET_EVENTS_FOR_VALUE = """
     SELECT pr.source_id, 'prompt' AS event_type, pr.source_id AS source_id,
            left(pr.prompt, 120) AS title, pr.created_at
     FROM mem_mrr_prompts pr
-    WHERE pr.client_id=1 AND pr.project=%s AND %s = ANY(pr.tags)
+    WHERE pr.client_id=1 AND pr.project=%s AND pr.tags @> %s::jsonb
     UNION ALL
     SELECT c.commit_hash, 'commit', c.commit_hash,
            left(c.commit_msg, 120), c.committed_at
     FROM mem_mrr_commits c
-    WHERE c.client_id=1 AND c.project=%s AND %s = ANY(c.tags)
+    WHERE c.client_id=1 AND c.project=%s AND c.tags @> %s::jsonb
     ORDER BY 5 DESC LIMIT %s
 """
 
 # Session tags: distinct tag strings from prompts + commits in this session
+# Expands JSONB dict {"phase":"discovery","feature":"auth"} → "phase:discovery", "feature:auth"
 _SQL_GET_SESSION_TAGS_FROM_MRR = """
-    SELECT DISTINCT unnest(tags) AS tag_str
-    FROM mem_mrr_prompts
-    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'
+    SELECT DISTINCT (key || ':' || value) AS tag_str
+    FROM mem_mrr_prompts, jsonb_each_text(tags)
+    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'::jsonb
     UNION
-    SELECT DISTINCT unnest(tags)
-    FROM mem_mrr_commits
-    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'
+    SELECT DISTINCT (key || ':' || value)
+    FROM mem_mrr_commits, jsonb_each_text(tags)
+    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'::jsonb
 """
 
 # GitHub sync: upsert tag by name+project including short_desc inline
@@ -613,9 +615,11 @@ async def list_events(
                     pass
                 if not tag_str:
                     return {"events": [], "project": p, "total": 0}
+                _k, _v = parse_tag(tag_str)
+                tag_jsonb = json.dumps({_k: _v})
                 cur.execute(
                     _SQL_GET_EVENTS_FOR_VALUE,
-                    (p, tag_str, p, tag_str, limit),
+                    (p, tag_jsonb, p, tag_jsonb, limit),
                 )
                 rows_raw = cur.fetchall()
                 rows = [
@@ -839,19 +843,21 @@ async def session_bulk_tag(body: SessionTagBody):
                 if lookup:
                     tag_str = lookup[0]
 
+            _sk, _sv = parse_tag(tag_str)
+            _tag_jsonb = json.dumps({_sk: _sv})
             cur.execute(
                 """UPDATE mem_mrr_prompts
-                   SET tags = array_append(array_remove(tags, %s), %s)
+                   SET tags = tags || %s::jsonb
                    WHERE client_id=1 AND project=%s AND session_id=%s""",
-                (tag_str, tag_str, p, body.session_id),
+                (_tag_jsonb, p, body.session_id),
             )
             prompt_tagged = cur.rowcount
 
             cur.execute(
                 """UPDATE mem_mrr_commits
-                   SET tags = array_append(array_remove(tags, %s), %s)
+                   SET tags = tags || %s::jsonb
                    WHERE client_id=1 AND project=%s AND session_id=%s""",
-                (tag_str, tag_str, p, body.session_id),
+                (_tag_jsonb, p, body.session_id),
             )
             commit_tagged = cur.rowcount
 
@@ -894,6 +900,11 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
     if not tag:
         raise HTTPException(400, "tag must be a non-empty string like 'phase:discovery'")
 
+    from core.tags import parse_tag
+    import json as _json
+    k, v = parse_tag(tag)
+    tag_jsonb = _json.dumps({k: v})
+
     is_commit = bool(re.match(r'^[0-9a-f]{7,40}$', body.source_id.lower()))
 
     propagated_to: str | None = None
@@ -901,44 +912,40 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
         with conn.cursor() as cur:
             if is_commit:
                 cur.execute(
-                    """UPDATE mem_mrr_commits
-                       SET tags = array_append(array_remove(tags, %s), %s)
-                       WHERE client_id=1 AND project=%s AND commit_hash=%s""",
-                    (tag, tag, p, body.source_id),
+                    "UPDATE mem_mrr_commits SET tags = tags || %s::jsonb "
+                    "WHERE client_id=1 AND project=%s AND commit_hash=%s",
+                    (tag_jsonb, p, body.source_id),
                 )
                 if cur.rowcount == 0:
                     raise HTTPException(404, f"Commit {body.source_id!r} not found")
-                # Propagate to linked prompt (via prompt_id FK)
                 cur.execute(
                     """UPDATE mem_mrr_prompts pr
-                       SET tags = array_append(array_remove(pr.tags, %s), %s)
+                       SET tags = pr.tags || %s::jsonb
                        FROM mem_mrr_commits c
                        WHERE c.client_id=1 AND c.project=%s AND c.commit_hash=%s
                          AND pr.id = c.prompt_id
                        RETURNING pr.source_id""",
-                    (tag, tag, p, body.source_id),
+                    (tag_jsonb, p, body.source_id),
                 )
                 row = cur.fetchone()
                 if row:
                     propagated_to = row[0]
             else:
                 cur.execute(
-                    """UPDATE mem_mrr_prompts
-                       SET tags = array_append(array_remove(tags, %s), %s)
-                       WHERE client_id=1 AND project=%s AND source_id=%s""",
-                    (tag, tag, p, body.source_id),
+                    "UPDATE mem_mrr_prompts SET tags = tags || %s::jsonb "
+                    "WHERE client_id=1 AND project=%s AND source_id=%s",
+                    (tag_jsonb, p, body.source_id),
                 )
                 if cur.rowcount == 0:
                     raise HTTPException(404, f"Prompt with source_id={body.source_id!r} not found")
-                # Propagate to linked commit (via prompt_id FK)
                 cur.execute(
                     """UPDATE mem_mrr_commits c
-                       SET tags = array_append(array_remove(c.tags, %s), %s)
+                       SET tags = c.tags || %s::jsonb
                        FROM mem_mrr_prompts p
                        WHERE p.client_id=1 AND p.project=%s AND p.source_id=%s
                          AND c.prompt_id = p.id
                        RETURNING c.commit_hash""",
-                    (tag, tag, p, body.source_id),
+                    (tag_jsonb, p, body.source_id),
                 )
                 row = cur.fetchone()
                 if row:
@@ -958,44 +965,44 @@ async def untag_event_by_source_id(
     """Remove a tag from a prompt or commit identified by its source_id / commit hash."""
     _require_db()
     p = _project(project)
+    from core.tags import parse_tag
+    key, _ = parse_tag(tag)
     is_commit = bool(re.match(r'^[0-9a-f]{7,40}$', source_id.lower()))
     propagated_to: str | None = None
     with db.conn() as conn:
         with conn.cursor() as cur:
             if is_commit:
                 cur.execute(
-                    "UPDATE mem_mrr_commits SET tags = array_remove(tags, %s) "
+                    "UPDATE mem_mrr_commits SET tags = tags - %s "
                     "WHERE client_id=1 AND project=%s AND commit_hash=%s",
-                    (tag, p, source_id),
+                    (key, p, source_id),
                 )
-                # Propagate to linked prompt
                 cur.execute(
                     """UPDATE mem_mrr_prompts pr
-                       SET tags = array_remove(pr.tags, %s)
+                       SET tags = pr.tags - %s
                        FROM mem_mrr_commits c
                        WHERE c.client_id=1 AND c.project=%s AND c.commit_hash=%s
                          AND pr.id = c.prompt_id
                        RETURNING pr.source_id""",
-                    (tag, p, source_id),
+                    (key, p, source_id),
                 )
                 row = cur.fetchone()
                 if row:
                     propagated_to = row[0]
             else:
                 cur.execute(
-                    "UPDATE mem_mrr_prompts SET tags = array_remove(tags, %s) "
+                    "UPDATE mem_mrr_prompts SET tags = tags - %s "
                     "WHERE client_id=1 AND project=%s AND source_id=%s",
-                    (tag, p, source_id),
+                    (key, p, source_id),
                 )
-                # Propagate to linked commit
                 cur.execute(
                     """UPDATE mem_mrr_commits c
-                       SET tags = array_remove(c.tags, %s)
+                       SET tags = c.tags - %s
                        FROM mem_mrr_prompts p
                        WHERE p.client_id=1 AND p.project=%s AND p.source_id=%s
                          AND c.prompt_id = p.id
                        RETURNING c.commit_hash""",
-                    (tag, p, source_id),
+                    (key, p, source_id),
                 )
                 row = cur.fetchone()
                 if row:
@@ -1013,18 +1020,19 @@ async def remove_session_tag(
     """Remove a tag from all prompts and commits in a session."""
     _require_db()
     p = _project(project)
+    _rk, _ = parse_tag(tag)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE mem_mrr_prompts SET tags = array_remove(tags, %s) "
+                "UPDATE mem_mrr_prompts SET tags = tags - %s "
                 "WHERE client_id=1 AND project=%s AND session_id=%s",
-                (tag, p, session_id),
+                (_rk, p, session_id),
             )
             deleted_p = cur.rowcount
             cur.execute(
-                "UPDATE mem_mrr_commits SET tags = array_remove(tags, %s) "
+                "UPDATE mem_mrr_commits SET tags = tags - %s "
                 "WHERE client_id=1 AND project=%s AND session_id=%s",
-                (tag, p, session_id),
+                (_rk, p, session_id),
             )
             deleted_c = cur.rowcount
     return {"ok": True, "session_id": session_id, "tag": tag,
@@ -1049,21 +1057,21 @@ async def get_events_source_tags(project: str | None = Query(None)):
             # Prompts
             cur.execute(
                 "SELECT source_id, tags FROM mem_mrr_prompts "
-                "WHERE client_id=1 AND project=%s AND tags != '{}'",
+                "WHERE client_id=1 AND project=%s AND tags != '{}'::jsonb",
                 (p,),
             )
             for source_id, tags in cur.fetchall():
                 if source_id and tags:
-                    result[source_id] = list(tags)
+                    result[source_id] = tags_to_list(tags)
             # Commits
             cur.execute(
                 "SELECT commit_hash, tags FROM mem_mrr_commits "
-                "WHERE client_id=1 AND project=%s AND tags != '{}'",
+                "WHERE client_id=1 AND project=%s AND tags != '{}'::jsonb",
                 (p,),
             )
             for commit_hash, tags in cur.fetchall():
                 if commit_hash and tags:
-                    result[commit_hash] = list(tags)
+                    result[commit_hash] = tags_to_list(tags)
     return result
 
 

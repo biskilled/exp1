@@ -46,7 +46,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.seq_num,
               tc.color, tc.icon,
               (SELECT COUNT(*) FROM mem_mrr_prompts p
-               WHERE p.client_id=1 AND 'work-item:' || w.id::text = ANY(p.tags)) AS interaction_count
+               WHERE p.client_id=1 AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count
        FROM mem_ai_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.category_name
        WHERE {where}
@@ -97,7 +97,7 @@ _SQL_GET_INTERACTIONS = (
     """SELECT i.id, i.session_id, i.source_id,
               i.prompt, i.response, i.created_at
        FROM mem_mrr_prompts i
-       WHERE 'work-item:' || %s = ANY(i.tags) AND i.client_id=1 AND i.project=%s
+       WHERE i.tags @> jsonb_build_object('work-item', %s::text) AND i.client_id=1 AND i.project=%s
        ORDER BY i.created_at DESC LIMIT %s"""
 )
 
@@ -167,13 +167,13 @@ _SQL_INSERT_PIPELINE_FACT = (
 _SQL_INSERT_PIPELINE_INTERACTION = (
     """INSERT INTO mem_mrr_prompts
        (id, client_id, project, llm_source, response, session_id, tags, created_at)
-       VALUES (%s, 1, %s, 'pipeline', %s, %s, ARRAY[CONCAT('work-item:', %s)], NOW())"""
+       VALUES (%s, 1, %s, 'pipeline', %s, %s, jsonb_build_object('work-item', %s::text), NOW())"""
 )
 
 _SQL_PIPELINE_TAGGED_INTERACTIONS = (
     """SELECT i.response, i.created_at
        FROM mem_mrr_prompts i
-       WHERE 'work-item:' || %s = ANY(i.tags)
+       WHERE i.tags @> jsonb_build_object('work-item', %s::text)
        ORDER BY i.created_at DESC LIMIT 30"""
 )
 
@@ -183,7 +183,7 @@ _SQL_PIPELINE_TAGGED_COMMITS = (
        WHERE c.client_id=1
          AND c.session_id IN (
              SELECT DISTINCT session_id FROM mem_mrr_prompts
-             WHERE 'work-item:' || %s = ANY(tags) AND session_id IS NOT NULL
+             WHERE tags @> jsonb_build_object('work-item', %s::text) AND session_id IS NOT NULL
          )
        ORDER BY c.committed_at DESC LIMIT 10"""
 )
