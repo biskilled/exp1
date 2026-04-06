@@ -28,7 +28,7 @@
     "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables",
     "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
     "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
-    "database": "PostgreSQL 15+",
+    "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries",
     "node_modules_build": "npm 8+ with Electron-builder; Vite dev server",
     "database_version": "PostgreSQL 15+",
     "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "History display fix: resolved dual-hook architecture ensuring both prompt and LLM response display in history panel via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks",
-    "Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) are properly defined and triggering correct memory synthesis workflows",
-    "UI history panel enhancement: expanded prompt/LLM response visibility to show full text instead of truncated summaries in history display",
-    "Memory items and project_facts population: prepare update logic to enable proper memory functionality as designed with event-based triggering",
-    "Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface for better usability",
-    "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each processing step"
+    "PostgreSQL batch upsert JSONB type casting fix: resolved execute_values error on line 466 where tags || EXCLUDED.tags required explicit ::jsonb cast; UNION query consolidation for commit deduplication across multiple sources",
+    "History display fix: dual-hook architecture ensuring both prompt and LLM response display via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks",
+    "Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) properly defined and triggering correct memory synthesis workflows",
+    "Memory items and project_facts population: enable event-based triggering for core memory functionality with proper differentiated process_item/messages handling",
+    "Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability",
+    "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and processing prompts at each step"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-06T02:25:46Z",
+  "last_memory_run": "2026-04-06T09:51:22Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -140,12 +140,12 @@
       "Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures"
     ],
     "in_progress": [
-      "History display fix: resolved dual-hook architecture ensuring both prompt and LLM response display in history panel via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks",
-      "Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) are properly defined and triggering correct memory synthesis workflows",
-      "UI history panel enhancement: expanded prompt/LLM response visibility to show full text instead of truncated summaries in history display",
-      "Memory items and project_facts population: prepare update logic to enable proper memory functionality as designed with event-based triggering",
-      "Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface for better usability",
-      "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each processing step"
+      "PostgreSQL batch upsert JSONB type casting fix: resolved execute_values error on line 466 where tags || EXCLUDED.tags required explicit ::jsonb cast; UNION query consolidation for commit deduplication across multiple sources",
+      "History display fix: dual-hook architecture ensuring both prompt and LLM response display via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks",
+      "Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) properly defined and triggering correct memory synthesis workflows",
+      "Memory items and project_facts population: enable event-based triggering for core memory functionality with proper differentiated process_item/messages handling",
+      "Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability",
+      "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and processing prompts at each step"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -153,11 +153,11 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "db_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
+      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions",
+      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment_cloud": "Railway (Dockerfile + railway.toml)",
@@ -165,10 +165,9 @@
       "deployment_local": "bash start_backend.sh + npm run dev",
       "config_management": "config.py + YAML pipelines + pyproject.toml",
       "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
-      "database_version": "PostgreSQL 15+",
-      "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server"
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with a PostgreSQL backend featuring dual-layer memory synthesis via Claude Haiku, semantic search using pgvector embeddings, and an Electron desktop UI with workflow visualization via Cytoscape.js. The project recently resolved history display issues by verifying dual-hook architecture (hook-response for LLM responses, session-summary for synthesis), with current focus on comprehensive memory architecture documentation and enabling memory_items/project_facts table population to activate core memory functionality.",
-    "memory_digest": "**[2026-04-06]** `claude_cli` \u2014 Debugged history display issue: confirmed dual-hook architecture with hook-response saving LLM response to mem_mrr_prompts.response in DB and session-summary triggering Haiku synthesis to mem_ai_events; verified BACKEND_URL definition at line 46 before usage and all four background hooks properly present. **[2026-04-06]** `claude_cli` \u2014 Deployed memory synthesis consolidation with event-based triggering for all new items through /memory pathway with differentiated process_item/messages handling. **[2026-04-05]** `development-session` \u2014 Completed feature snapshot consolidation decision: rename plannet_tags to feature_snapshot with unified linkage to work_items and memory structures. **[2026-04-05]** `development-session` \u2014 Established comprehensive memory architecture scope: document all synthesis layers, mirroring mechanism, event triggers, and specific LLM prompts used at each processing step for aicli_memory.md. **[2026-03-XX]** `development` \u2014 Implemented phase persistence with red \u26a0 badge for missing phase and auto-tag suggestions via _acceptSuggestedTag with distinct visual marking. **[2026-03-XX]** `development` \u2014 Established commit-per-prompt inline display showing commits at bottom of each prompt entry with accent left-border and hash \u21a9 link formatting."
+    "project_summary": "aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with PostgreSQL + pgvector for semantic search, dual-layer memory synthesis, and an Electron desktop UI featuring async DAG workflow visualization. Currently in active development focused on fixing PostgreSQL batch upsert JSONB type casting, completing memory layer implementation (mem_ai_* table population), and comprehensive memory architecture documentation to enable core memory functionality.",
+    "memory_digest": "**[2026-04-06]** `claude_cli` \u2014 Fixed critical PostgreSQL batch upsert bug: JSONB type casting required explicit `::jsonb` cast in `tags || EXCLUDED.tags` operator to resolve execute_values error on line 466 in route_history. **[2026-04-05]** `development-session` \u2014 History display verified to capture both LLM responses and prompts via hook-response background hook saving to mem_mrr_prompts.response; all four session-stop hooks (response logging, session summary, memory regeneration, bug detection) now synchronized. **[2026-04-05]** `development-session` \u2014 Comprehensive memory architecture documentation (aicli_memory.md) requested covering all synthesis layers, event-trigger mirroring mechanism, and specific LLM prompts at each processing step. **[2026-04-05]** `development-session` \u2014 Feature snapshot consolidation: merge plannet_tags into feature_snapshot with unified linkage to work_items and memory structures to enable core memory functionality. **[2026-04-05]** `development-session` \u2014 Copy-to-clipboard functionality requested for history UI to allow text selection and copying of prompts/responses for improved user experience. **[2026-04-04]** `development-session` \u2014 Memory items and project_facts table population marked as pending implementation; event-based triggering with differentiated process_item/messages handling required to complete memory layer."
   }
 }

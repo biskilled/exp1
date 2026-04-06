@@ -453,6 +453,15 @@ async def sync_commits(project: str | None = Query(None)):
     if not rows:
         return {"imported": 0, "project": p}
 
+    # Deduplicate by commit_hash (index 1) — commit_log.jsonl may have the same hash
+    # multiple times (e.g. retry pushes). Keep the last occurrence per hash so the
+    # most-recent session_id / source wins. PostgreSQL ON CONFLICT DO UPDATE cannot
+    # process the same conflict-target row twice in a single batch.
+    seen: dict[str, tuple] = {}
+    for row in rows:
+        seen[row[1]] = row
+    rows = list(seen.values())
+
     _SQL_BATCH_UPSERT = """
         INSERT INTO mem_mrr_commits
             (project_id, commit_hash, commit_msg, session_id, committed_at, tags)

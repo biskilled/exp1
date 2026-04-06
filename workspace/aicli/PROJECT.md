@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- History display fix: resolved dual-hook architecture ensuring both prompt and LLM response display in history panel via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks
-- Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) are properly defined and triggering correct memory synthesis workflows
-- UI history panel enhancement: expanded prompt/LLM response visibility to show full text instead of truncated summaries in history display
-- Memory items and project_facts population: prepare update logic to enable proper memory functionality as designed with event-based triggering
-- Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface for better usability
-- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each processing step
+- PostgreSQL batch upsert JSONB type casting fix: resolved execute_values error on line 466 where tags || EXCLUDED.tags required explicit ::jsonb cast; UNION query consolidation for commit deduplication across multiple sources
+- History display fix: dual-hook architecture ensuring both prompt and LLM response display via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks
+- Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) properly defined and triggering correct memory synthesis workflows
+- Memory items and project_facts population: enable event-based triggering for core memory functionality with proper differentiated process_item/messages handling
+- Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability
+- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and processing prompts at each step

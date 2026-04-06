@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:25 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 09:50 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+
+- **database**: PostgreSQL 15+ with JSONB UNION batch upsert queries
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
 - [2026-04-06] verify prompt after client_id fix
 - [2026-04-06] final verify prompt
 - [2026-04-06] Now I started to see prompts, but I do see in history just small text instead of all prompt and llm response . also can 
 - [2026-04-06] Histroy used to show promp and llm response . I currently see only prompt
+- [2026-04-06] I have  got the following error -  cur.execute(b''.join(parts)) started  route_history line 470 - execute_values(cur, _S
