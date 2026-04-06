@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 17:36 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 17:52 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-06] I have  got the following error -  cur.execute(b''.join(parts)) started  route_history line 470 - execute_values(cur, _S
 - [2026-04-06] I still dont see the same issue in route_history line 470. cur.execute(b''.join(parts)) saying  ON CONFLICT DO UPDATE co
 - [2026-04-06] I am checking the aiCli_memory - and it is looks likje it is not updated at all. table are not as the current one and th
 - [2026-04-06] I would like to make sure columns are aligned in work_items. What is source_session_id usaed from in work_items? Also th
 - [2026-04-06] I do see an issue - Uncaught ReferenceError: _plannerSelectAiSubtype is not defined in ERROR    | routers.route_logs    
+- [2026-04-06] is it possilbe to actual move the work_item (drag) and drop that under the item (so work_item is removed from the lower 

@@ -6,7 +6,7 @@ When working on a specific feature, ask for its snapshot before making decisions
 
 - dropbox [bug]: Users cannot copy text from the history UI, limiting usability of viewing histor
 - mcp [bug]: History table contains numerous events that don't make sense and appear to be er
-- aiCli_memory table schema out of sync [bug]: aiCli_memory tables are not updated and don't match current schema. Some tables 
+- History display incomplete - missing LLM responses [bug]: History view only shows prompts, not LLM responses. After fixes, only small text
 
 ## Last Session
 • Reviewed the main mem_ai_work_items table structure to understand column usage and alignment • Identified that source_session_id references parent session context but usage needs clarification • Found 3 content columns (content, summary, requirements) with unclear differentiation — need to define purpose for each • Identified tags column should merge tags from mem_ai_events table • Flagged that column alignment and data flow between tables needs documentation before proceeding with changes.

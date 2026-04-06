@@ -1,5 +1,5 @@
 # Project Context: aicli
-# Generated: 2026-04-06 17:42 UTC
+# Generated: 2026-04-06 17:54 UTC
 
 ## Project Facts
 
@@ -53,17 +53,17 @@ Users cannot copy text from the history UI, limiting usability of viewing histor
 Category: bug
 History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
 
-### #20065 aiCli_memory table schema out of sync
-Category: bug
-aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
-
-### #20067 Nonsensical history events in table
-Category: bug
-Multiple events from history table don't make sense and appear to be erroneous data that should be removed
-
 ### #20066 History display incomplete - missing LLM responses
 Category: bug
 History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
+
+### #20065 auth
+Category: bug
+aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
+
+### #20067 auth
+Category: bug
+Multiple events from history table don't make sense and appear to be erroneous data that should be removed
 
 ### #20062 History display truncating LLM responses
 Category: bug

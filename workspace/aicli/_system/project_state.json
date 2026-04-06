@@ -88,7 +88,7 @@
     "Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method",
     "Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching",
     "Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'",
-    "System context cleanup: removed outdated system context and claude session files; consolidated dev_runtime_state.json tracking (session count 396, last session 2026-04-06T17:34:59Z)"
+    "UI drag-and-drop feature request: user inquired about dragging work items between top/bottom screen panes and resizing bottom pane height via separator line interaction"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-06T17:37:36Z",
+  "last_memory_run": "2026-04-06T17:53:11Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -145,7 +145,7 @@
       "Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method",
       "Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching",
       "Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'",
-      "System context cleanup: removed outdated system context and claude session files; consolidated dev_runtime_state.json tracking (session count 396, last session 2026-04-06T17:34:59Z)"
+      "UI drag-and-drop feature request: user inquired about dragging work items between top/bottom screen panes and resizing bottom pane height via separator line interaction"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -153,6 +153,7 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
@@ -160,9 +161,9 @@
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm",
-      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries"
+      "database_version": "PostgreSQL 15+"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend with an Electron desktop frontend, enabling LLM-driven project analysis with semantic search via PostgreSQL+pgvector. Current focus is work item management with dual-status tracking (user vs AI suggestions), semantic embedding of code/requirements, and commit association\u2014implementing intelligent task planning and memory synthesis across multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok).",
-    "memory_digest": "**[2026-04-06]** `claude_cli` \u2014 Work item dual-status UI completed with separate status_user (user dropdown) and status_ai (AI suggestion badge) controls; status_user/status_ai schema migration replaces single status field. **[2026-04-06]** `claude_cli` \u2014 Work item schema extended with code_summary field for semantic embedding and planner_tags cross-matching in unified embedding space. **[2026-04-06]** `claude_cli` \u2014 Added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method for commit association. **[2026-04-06]** `claude_cli` \u2014 Database query optimizations: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'. **[2026-04-06]** `claude_cli` \u2014 Frontend initialization stabilized: removed undefined _plannerSelectAiSubtype reference and fixed init crash; verified work item drawer renders status controls without errors. **[2026-04-06]** `claude_cli` \u2014 System context cleanup: removed outdated claude session files and consolidated dev_runtime_state.json; maintained 396 sessions with last update at 2026-04-06T17:34:59Z."
+    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL semantic storage (pgvector), and an Electron desktop UI for collaborative development workflows. It integrates multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok) with DAG-based workflow execution, dual-status work item tracking, and unified memory synthesis. Current focus is on enhancing the UI with drag-and-drop work item repositioning and resizable pane layouts while maintaining semantic embedding consistency across project entities.",
+    "memory_digest": "**[2026-04-06]** `claude_cli` \u2014 Completed work item dual-status UI implementation with separate status_user/status_ai tracking and visual indicators; migrated schema to support status_user + status_ai + code_summary fields for semantic embedding. **[2026-04-06]** `claude_cli` \u2014 Added /work-items/{id}/commits endpoint with JSONB tag filtering and integrated api.workItems.commits() client method for work item-commit association. **[2026-04-06]** `claude_cli` \u2014 Unified embedding strategy across work_items and planner_tags using code_summary + requirements + summary for cosine-similarity cross-table matching. **[2026-04-06]** `claude_cli` \u2014 Optimized database queries: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery, refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'. **[2026-04-06]** `claude_cli_direct` \u2014 Auto-committed 16 files post-session with system context and memory consolidation; dev_runtime_state.json shows 396 sessions, latest 2026-04-06T17:34:59Z. **[2026-04-06]** `user_inquiry` \u2014 Feature request: drag-and-drop work items between top/bottom screen panes and resizable bottom pane height via separator line."
   }
 }

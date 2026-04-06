@@ -193,7 +193,12 @@ export function renderEntities(container) {
       await api.workItems.patch(id, proj, { tag_id: '' });
       toast('Unlinked', 'success');
       _loadWiPanel(proj);
-      _renderTagTableFromCache();
+      const { selectedCatName } = _plannerState;
+      if (selectedCatName && _isWorkItemCat(selectedCatName)) {
+        _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
+      } else {
+        _renderTagTableFromCache();
+      }
     } catch(err) { toast('Unlink failed: ' + err.message, 'error'); }
   };
   window._wiPanelNewItem = () => {
@@ -401,6 +406,12 @@ function _renderWiPanel(items, project) {
   list.innerHTML = items.map(wi => {
     const icon = CAT_ICON[wi.ai_category] || '📋';
     const sc = STATUS_UC[wi.status_user] || '#888';
+    const mergeBadge = wi.merge_count > 0
+      ? `<span title="${wi.merge_count} item(s) merged into this"
+               style="font-size:0.5rem;color:var(--accent);background:var(--accent)20;
+                      padding:0.02rem 0.3rem;border-radius:8px;white-space:nowrap;flex-shrink:0
+                      ">⊕ ${wi.merge_count}</span>`
+      : '';
     const linkedBadge = wi.tag_id
       ? `<span title="Linked" style="font-size:0.52rem;color:var(--accent);margin-left:2px">✓</span>
          <button title="Unlink from tag" onclick="event.stopPropagation();window._wiUnlink('${_esc(wi.id)}','${_esc(project)}')"
@@ -430,6 +441,7 @@ function _renderWiPanel(items, project) {
                      white-space:nowrap" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
         <span style="font-size:0.52rem;color:${sc};background:${sc}22;padding:0.02rem 0.25rem;
                      border-radius:8px;white-space:nowrap;flex-shrink:0">${wi.status_user || 'active'}</span>
+        ${mergeBadge}
         ${linkedBadge}
       </div>
       <div style="font-size:0.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
@@ -491,6 +503,10 @@ async function _loadTagLinkedWorkItems(project, catName) {
           </td>`;
         tr.addEventListener('mouseenter', () => tr.style.background = 'var(--accent)12');
         tr.addEventListener('mouseleave', () => tr.style.background = '');
+        tr.addEventListener('click', (e) => {
+          if (e.target.closest('button')) return;
+          window._plannerOpenWorkItemDrawer(wi.id, wi.ai_category, project);
+        });
         tr.addEventListener('dragstart', (e) => {
           _dragWiData = { id: wi.id, ai_name: wi.ai_name, ai_category: wi.ai_category };
           e.dataTransfer.effectAllowed = 'move';
@@ -620,10 +636,11 @@ function _isWorkItemCat(name) {
 // Which parent rows are collapsed (set of value IDs whose children are hidden)
 const _collapsed = new Set();
 
-let _dragTag     = null;   // { id, name, category_id, category_name } of dragged tag
-let _dragWi      = null;   // { id, name, catName } of dragged work item
-let _dragOverRow = null;   // currently highlighted <tr> DOM element
-let _dragZone    = null;   // 'top' | 'mid' | 'bot'
+let _dragTag        = null;   // { id, name, category_id, category_name } of dragged tag
+let _dragWi         = null;   // { id, name, catName } of dragged work item
+let _dragOverRow    = null;   // currently highlighted <tr> DOM element
+let _dragZone       = null;   // 'top' | 'mid' | 'bot'
+let _dragOverTagRow = null;   // single tag row highlighted during work-item drag
 
 function _renderTagTableFromCache() {
   const { selectedCat, selectedCatName, selectedCatColor, selectedCatIcon } = _plannerState;
@@ -909,8 +926,15 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <div id="wi-commits-${id}" style="font-size:0.65rem;color:var(--muted)">Loading…</div>
         </div>
 
-        <!-- Delete -->
-        <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <!-- Delete / Dismerge -->
+        <div style="border-top:1px solid var(--border);padding-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+          ${wi.merge_count > 0 ? `
+          <button onclick="window._wiDismerge('${id}','${project}')"
+            title="Restore the ${wi.merge_count} original item(s) and remove this merged result"
+            style="background:none;border:1px solid var(--accent);color:var(--accent);
+                   font-size:0.62rem;padding:0.22rem 0.6rem;border-radius:var(--radius);
+                   cursor:pointer;font-family:var(--font);outline:none">⊕ Dismerge (restore ${wi.merge_count})</button>
+          ` : ''}
           <button onclick="window._wiDelete('${id}','${project}')"
             style="background:none;border:1px solid var(--red,#e74c3c);color:var(--red,#e74c3c);
                    font-size:0.62rem;padding:0.22rem 0.6rem;border-radius:var(--radius);
@@ -927,6 +951,16 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
         _plannerCloseDrawer();
         _loadWiPanel(proj);
       } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
+    };
+
+    window._wiDismerge = async (wid, proj) => {
+      if (!confirm('Restore the original items and remove this merged result?')) return;
+      try {
+        const r = await api.workItems.dismerge(wid, proj);
+        toast(`Dismerged — ${r.restored.length} item(s) restored`, 'success');
+        _plannerCloseDrawer();
+        _loadWiPanel(proj);
+      } catch (e) { toast('Dismerge failed: ' + e.message, 'error'); }
     };
 
     // Load commits async
@@ -1918,8 +1952,14 @@ function _attachTagTableDnd(pane, catName) {
       // Work item → tag: link work item to this tag
       e.preventDefault();
       e.dataTransfer.dropEffect = 'link';
+      // Clear previous highlighted row before highlighting new one
+      if (_dragOverTagRow && _dragOverTagRow !== row) {
+        _dragOverTagRow.style.background = '';
+        _dragOverTagRow.style.outline = '';
+      }
+      _dragOverTagRow = row;
       row.style.background = 'var(--accent)22';
-      row.style.outline = '1px solid var(--accent)';
+      row.style.outline = '2px solid var(--accent)';
       _ensureDndHint();
       const h = document.getElementById('planner-dnd-hint');
       if (h) { h.style.display = 'block';
@@ -1941,10 +1981,9 @@ function _attachTagTableDnd(pane, catName) {
   tbody.addEventListener('dragleave', function(e) {
     if (!this.contains(e.relatedTarget)) {
       _dndClearHighlight();
-      // Clear work item hover styles
-      this.querySelectorAll('tr[data-tag-id]').forEach(r => { r.style.background = ''; r.style.outline = ''; });
+      if (_dragOverTagRow) { _dragOverTagRow.style.background = ''; _dragOverTagRow.style.outline = ''; _dragOverTagRow = null; }
       const h = document.getElementById('planner-dnd-hint');
-      if (h && _dragWiData) h.style.display = 'none';
+      if (h) h.style.display = 'none';
     }
   });
 
@@ -1958,16 +1997,21 @@ function _attachTagTableDnd(pane, catName) {
     if (h) h.style.display = 'none';
     if (_dragWiData) {
       // Link work item to this tag
-      const tagId  = row.dataset.tagId;
+      const tagId   = row.dataset.tagId;
       const tagName = row.dataset.tagName;
+      const catName = row.dataset.catName;
       const wi = { ..._dragWiData };
       _dragWiData = null;
+      if (_dragOverTagRow) { _dragOverTagRow.style.background = ''; _dragOverTagRow.style.outline = ''; _dragOverTagRow = null; }
+      const h = document.getElementById('planner-dnd-hint');
+      if (h) h.style.display = 'none';
       const proj = _plannerState.project;
       api.workItems.patch(wi.id, proj, { tag_id: tagId })
         .then(() => {
           toast(`Linked "${wi.ai_name}" → "${tagName}"`, 'success');
           _loadWiPanel(proj);
-          _renderTagTableFromCache();  // re-render tag table → sub-rows injected async
+          // Inject sub-rows directly (no full re-render needed)
+          if (catName) _loadTagLinkedWorkItems(proj, catName).catch(() => {});
         })
         .catch(err => toast(err.message, 'error'));
       return;

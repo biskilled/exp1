@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-06 17:38 UTC — do not edit manually.
+> Auto-generated 2026-04-06 17:53 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 398
-- **Last active**: 2026-04-06T17:36:00Z
+- **Sessions**: 399
+- **Last active**: 2026-04-06T17:52:45Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -56,7 +56,7 @@
 - Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method
 - Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching
 - Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'
-- System context cleanup: removed outdated system context and claude session files; consolidated dev_runtime_state.json tracking (session count 396, last session 2026-04-06T17:34:59Z)
+- UI drag-and-drop feature request: user inquired about dragging work items between top/bottom screen panes and resizing bottom pane height via separator line interaction
 
 ## Key Decisions
 

@@ -40,7 +40,8 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               (SELECT COUNT(*) FROM mem_mrr_prompts p
                WHERE p.client_id=1 AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count,
               (SELECT COUNT(*) FROM mem_mrr_commits c
-               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS commit_count
+               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS commit_count,
+              (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count
        FROM mem_ai_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
        WHERE {where}
@@ -52,7 +53,8 @@ _SQL_UNLINKED_WORK_ITEMS = """
     SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
            w.status_user, w.status_ai, w.requirements, w.summary, w.tags,
            w.created_at, w.seq_num,
-           pt.name AS ai_tag_name
+           pt.name AS ai_tag_name,
+           (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count
     FROM mem_ai_work_items w
     LEFT JOIN planner_tags pt ON pt.id = w.ai_tag_id
     WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
@@ -549,6 +551,35 @@ async def merge_work_item_into(
 
     return {"id": new_id, "ai_name": new_name, "ai_category": new_category,
             "merged_from": [item_id, body.merge_with], "project": p}
+
+
+@router.post("/{item_id}/dismerge", status_code=200)
+async def dismerge_work_item(item_id: str, project: str | None = Query(None)):
+    """Roll back a merge: restore original work items, delete the merged result.
+    Sets merged_into=NULL, status_user='active' on all originals; deletes the merged item.
+    """
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            # Restore originals
+            cur.execute(
+                "UPDATE mem_ai_work_items "
+                "SET merged_into=NULL, status_user='active', updated_at=NOW() "
+                "WHERE merged_into=%s::uuid AND project_id=%s RETURNING id",
+                (item_id, p_id),
+            )
+            restored = [str(r[0]) for r in cur.fetchall()]
+            if not restored:
+                raise HTTPException(404, "No merged source items found for this work item")
+            # Delete the merged result
+            cur.execute(
+                "DELETE FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
+                (item_id, p_id),
+            )
+    asyncio.create_task(_trigger_memory_regen(p))
+    return {"ok": True, "restored": restored, "deleted": item_id, "project": p}
 
 
 # ── Commits linked to a work item ────────────────────────────────────────────

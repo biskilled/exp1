@@ -380,6 +380,10 @@ api.workItems = {
     _base() + `/work-items/${enc(id)}/merge?project=${enc(project)}`,
     { method: 'POST', headers: _headers(), body: JSON.stringify({ merge_with: mergeWith }) }
   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  dismerge:     (id, project) => fetch(
+    _base() + `/work-items/${enc(id)}/dismerge?project=${enc(project)}`,
+    { method: 'POST', headers: _headers() }
+  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
   facts:        (project)     => _get(`/work-items/facts?project=${enc(project)}`),
   memoryItems:  (project, scope) => {
     const q = new URLSearchParams({ project: project || '' });

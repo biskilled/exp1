@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-06 17:36 UTC by aicli /memory_
+_Generated: 2026-04-06 17:52 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI backend with an Electron desktop frontend, enabling LLM-driven project analysis with semantic search via PostgreSQL+pgvector. Current focus is work item management with dual-status tracking (user vs AI suggestions), semantic embedding of code/requirements, and commit association—implementing intelligent task planning and memory synthesis across multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok).
+aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL semantic storage (pgvector), and an Electron desktop UI for collaborative development workflows. It integrates multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok) with DAG-based workflow execution, dual-status work item tracking, and unified memory synthesis. Current focus is on enhancing the UI with drag-and-drop work item repositioning and resizable pane layouts while maintaining semantic embedding consistency across project entities.
 
 ## Project Facts
 
@@ -109,7 +109,7 @@ Reviewer: ```json
 - Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method
 - Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching
 - Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'
-- System context cleanup: removed outdated system context and claude session files; consolidated dev_runtime_state.json tracking (session count 396, last session 2026-04-06T17:34:59Z)
+- UI drag-and-drop feature request: user inquired about dragging work items between top/bottom screen panes and resizing bottom pane height via separator line interaction
 
 ## Active Features / Bugs / Tasks
 
@@ -160,290 +160,115 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `prompt_batch: 04974a99-4e27-44d8-ba75-c7b9e54ba9c7` — 2026-04-06
+
+The `source_session_id` tracks which session created/last modified each work item; `content` stores raw event data, `summary` holds the AI-generated overview, and `requirements` captures extracted needs—all three accumulate across merged sessions while `tags` consolidates tags from `mem_ai_events`. The undefined function errors were caused by a stray initialization call that was removed, allowing `window._plannerSync` to be properly assigned.
+
 ### `commit` — 2026-04-06
 
-diff --git a/workspace/aicli/_system/dev_runtime_state.json b/workspace/aicli/_system/dev_runtime_state.json
-index 97dfb0b..223f762 100644
---- a/workspace/aicli/_system/dev_runtime_state.json
-+++ b/workspace/aicli/_system/dev_runtime_state.json
-@@ -1,8 +1,8 @@
- {
--  "last_updated": "2026-04-06T17:34:35Z",
-+  "last_updated": "2026-04-06T17:34:59Z",
-   "last_session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7",
--  "last_session_ts": "2026-04-06T17:34:35Z",
--  "session_count": 395,
-+  "last_session_ts": "2026-04-06T17:34:59Z",
-+  "session_count": 396,
-   "last_provider": "claude",
-   "last_prompt_preview": "hellow, how are you ?",
-   "source": "claude_cli"
-
+Commit: docs: update system context and memory after claude session 04974a99
+Hash: a85bbac6
+Files changed (23):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - CLAUDE.md
+  - MEMORY.md
+  - backend/core/database.py
+  - backend/routers/route_work_items.py
+  - ui/frontend/utils/api.js
+  - ui/frontend/views/entities.js
+  - workspace/aicli/PROJECT.md
+  - workspace/aicli/_system/CLAUDE.md
+  - workspace/aicli/_system/CONTEXT.md
+  - workspace/aicli/_system/aicli/context.md
+  - workspace/aicli/_system/aicli/copilot.md
+  - workspace/aicli/_system/claude/CLAUDE.md
+  - workspace/aicli/_system/claude/MEMORY.md
+  - workspace/aicli/_system/commit_log.jsonl
+  - workspace/aicli/_system/cursor/rules.md
+  - workspace/aicli/_system/dev_runtime_state.json
+  - workspace/aicli/_system/llm_prompts/compact.md
 
 ### `commit` — 2026-04-06
 
 diff --git a/workspace/aicli/_system/commit_log.jsonl b/workspace/aicli/_system/commit_log.jsonl
-index 14cfa36..3030f4e 100644
+index 0d06817..080baf8 100644
 --- a/workspace/aicli/_system/commit_log.jsonl
 +++ b/workspace/aicli/_system/commit_log.jsonl
-@@ -708,3 +708,5 @@
- {"ts": "2026-04-06T14:17:59Z", "action": "commit_push", "source": "claude_cli", "session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7", "hash": "6714241e", "message": "docs: update system context files after claude cli session", "pushed": true, "push_error": ""}
- {"action": "commit_push", "source": "claude_cli", "session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7", "hash": "a85bbac6", "message": "docs: update system context and memory after claude session 04974a99", "files_count": 65, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-04-06T17:30:00Z"}
- {"ts": "2026-04-06T17:29:50Z", "action": "commit_push", "source": "claude_cli", "session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7", "hash": "a85bbac6", "message": "docs: update system context and memory after claude session 04974a99", "pushed": true, "push_error": ""}
-+{"action": "commit_push", "source": "claude_cli", "session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7", "hash": "e7b9e994", "message": "chore: remove outdated system context and claude session files", "files_count": 55, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-04-06T17:34:45Z"}
-+{"ts": "2026-04-06T17:34:34Z", "action": "commit_push", "source": "claude_cli", "session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7", "hash": "e7b9e994", "message": "chore: remove outdated system context and claude session files", "pushed": true, "push_error": ""}
+@@ -715,3 +715,4 @@
+ {"action": "commit_push", "source": "claude_cli", "session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7", "hash": "ceec428e", "message": "docs: update system context and memory files post-session", "files_count": 61, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-04-06T17:35:51Z"}
+ {"ts": "2026-04-06T17:35:21Z", "action": "commit_push", "source": "claude_cli", "session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7", "hash": "ceec428e", "message": "docs: update system context and memory files post-session", "pushed": true, "push_error": ""}
+ {"ts": "2026-04-06T17:35:57Z", "action": "api_error", "source": "claude_cli", "session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7", "error": "curl failed (rc=28), backend may be unhealthy"}
++{"ts": "2026-04-06T17:35:57Z", "action": "commit_push", "source": "claude_cli_direct", "session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7", "hash": "dd6202f", "message": "chore(cli): auto-commit after AI session \u2014 16 file(s) \u2014 2026-04-06 17:37 UTC", "pushed": true, "push_error": ""}
 
 
 ### `commit` — 2026-04-06
 
-Commit: chore: remove aicli system context files after claude session
-Hash: 4addfaa5
-Files changed (2):
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index d47c5dd..6cb0cab 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-06 14:18 UTC
++> Generated by aicli 2026-04-06 17:34 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -54,10 +54,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Claude Haiku dual-layer memory synthesis generating 5 files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+-- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+-- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
++- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
+ - Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+ - Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
++- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+ - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+\ No newline at end of file
+
+
+### `commit` — 2026-04-06
+
+Commit: chore: clean up claude cli session system files
+Hash: aa720f1b
+Files changed (1):
   - workspace/aicli/_system/commit_log.jsonl
-  - workspace/aicli/_system/dev_runtime_state.json
 
 ### `commit` — 2026-04-06
 
-diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index 288674e..cb2d4e0 100644
---- a/ui/frontend/views/entities.js
-+++ b/ui/frontend/views/entities.js
-@@ -453,8 +453,13 @@ function _wiSetTableBody(tableBody, byId, catName, catColor, catIcon, project) {
- function _wiRenderRows(byId, catName, catColor, catIcon, project) {
-   const rows = Object.values(byId);
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index e59d880..9344630 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 14:18 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 17:34 UTC
  
-+  const STATUS_UC = {active:'#27ae60', in_progress:'#e67e22', done:'#4a90e2', paused:'#888'};
-+
-   function rowFor(wi) {
--    const sc     = wi.status === 'active' ? '#27ae60' : wi.status === 'done' ? '#4a90e2' : '#888';
-+    const su = wi.status_user || 'active';
-+    const sa = wi.status_ai  || 'active';
-+    const scU = STATUS_UC[su] || '#888';
-+    const scA = STATUS_UC[sa] || '#888';
-     const seqBadge = wi.seq_num
-       ? `<span style="font-size:0.52rem;color:var(--muted);background:var(--surface2);
-                       border:1px solid var(--border);padding:0.05rem 0.28rem;
-@@ -483,8 +488,11 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
-           </div>
-         </td>
-         <td style="padding:0.5rem 0.4rem;white-space:nowrap">
--          <span style="font-size:0.6rem;color:${sc};background:${sc}22;
--                       padding:0.12rem 0.4rem;border-radius:10px">${_esc(wi.status)}</span>
-+          <span style="font-size:0.57rem;color:${scU};background:${scU}22;
-+                       padding:0.1rem 0.38rem;border-radius:10px" title="User status">${_esc(su)}</span>
-+          ${sa !== su ? `<span style="font-size:0.52rem;color:${scA};background:${scA}18;
-+                                     padding:0.08rem 0.3rem;border-radius:10px;margin-left:2px;
-+                                     opacity:.8" title="AI suggests: ${_esc(sa)}">AI:${_esc(sa)}</span>` : ''}
-         </td>
-         <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem;
-                    max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-@@ -498,7 +506,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
-       <thead>
-         <tr style="border-bottom:2px solid var(--border)">
-           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
--          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:65px">Status</th>
-+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:90px">Status</th>
-           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;max-width:110px">Criteria</th>
-           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:70px">Tag</th>
-         </tr>
-@@ -546,6 +554,32 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
+ # aicli — Shared AI Memory Platform
  
-       <div style="padding:0.85rem 1rem;display:flex;flex-direction:column;gap:0.85rem">
+@@ -54,12 +54,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Claude Haiku dual-layer memory synthesis generating 5 files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+-- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+-- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
++- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
+ - Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+ - Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
++- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+ - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
  
-+        <!-- Status row: user dropdown + AI badge -->
-+        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
-+          <div style="display:flex;flex-direction:column;gap:0.2rem">
-+            <div style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);
-+                        letter-spacing:.06em">Your Status</div>
-+            <select
-+              style="background:var(--surface2);border:1px solid var(--border);
-+                     color:var(--text);font-size:0.65rem;padding:0.2rem 0.4rem;
-+                     border-radius:var(--radius);font-family:var(--font);cursor:pointer"
-+              onchange="api.workItems.patch('${id}','${project}',{status_user:this.value}).catch(e=>toast(e.message,'error'))">
-+              ${['active','in_progress','paused','done'].map(s =>
-+                `<option value="${s}"${wi.status_user===s?' selected':''}>${s}</option>`).join('')}
-+            </select>
-+          </div>
-+          <div style="display:flex;flex-direction:column;gap:0.2rem">
-+            <div style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);
-+                        letter-spacing:.06em">AI Status</div>
-+            <span style="font-size:0.62rem;padding:0.18rem 0.5rem;border-radius:10px;
-+                         color:${{active:'#27ae60',in_progress:'#e67e22',done:'#4a90e2',paused:'#888'}[wi.status_ai]||'#888'};
-+                         background:${{active:'#27ae60',in_progress:'#e67e22',done:'#4a90e2',paused:'#888'}[wi.status_ai]||'#888'}22;
-+                         border:1px solid currentColor;opacity:.8" title="AI-suggested status based on progress">
-+              ${_esc(wi.status_ai || 'active')}
-+            </span>
-+          </div>
-+        </div>
-+
-         <!-- Description -->
-         <div>
-           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-@@ -605,12 +639,29 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
-         <!-- AI Summary (read-only) -->
-         <div>
-           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
--                      letter-spacing:.06em;margin-bottom:0.3rem">AI Summary</div>
-+                      letter-spacing:.06em;margin-bottom:0.3rem">AI Progress Summary</div>
-           <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;
-                       background:var(--surface2);padding:0.35rem 0.45rem;
-                       border-radius:var(--radius)">${_esc(wi.summary)}</div>
-         </div>` : ''}
- 
-+        ${wi.code_summary ? `
-+        <!-- Code Summary (read-only) -->
-+        <div>
-+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-+                      letter-spacing:.06em;margin-bottom:0.3rem">Code Summary</div>
-+          <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;font-family:monospace;
-+                      background:var(--surface2);padding:0.35rem 0.45rem;
-+                      border
+ ## Recent Context (last 5 changes)
 
-### `commit` — 2026-04-06
-
-diff --git a/ui/frontend/utils/api.js b/ui/frontend/utils/api.js
-index e641363..b478745 100644
---- a/ui/frontend/utils/api.js
-+++ b/ui/frontend/utils/api.js
-@@ -375,6 +375,7 @@ api.workItems = {
-     { method: 'DELETE', headers: _headers() }
-   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-   interactions: (id, project, limit = 20) => _get(`/work-items/${enc(id)}/interactions?project=${enc(project)}&limit=${limit}`),
-+  commits:      (id, project, limit = 20) => _get(`/work-items/${enc(id)}/commits?project=${enc(project)}&limit=${limit}`),
-   facts:        (project)     => _get(`/work-items/facts?project=${enc(project)}`),
-   memoryItems:  (project, scope) => {
-     const q = new URLSearchParams({ project: project || '' });
-
-
-### `commit` — 2026-04-06
-
-diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
-index eeed890..4d16eb9 100644
---- a/backend/routers/route_work_items.py
-+++ b/backend/routers/route_work_items.py
-@@ -31,13 +31,15 @@ from data.dl_seq import next_seq
- 
- _SQL_LIST_WORK_ITEMS_BASE = (
-     """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
--              w.status, w.acceptance_criteria, w.action_items,
--              w.requirements, w.content, w.summary,
--              w.tags, w.tag_id, w.ai_tag_id,
-+              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
-+              w.requirements, w.code_summary, w.summary,
-+              w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
-               w.created_at, w.updated_at, w.seq_num,
-               tc.color, tc.icon,
-               (SELECT COUNT(*) FROM mem_mrr_prompts p
--               WHERE p.client_id=1 AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count
-+               WHERE p.client_id=1 AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count,
-+              (SELECT COUNT(*) FROM mem_mrr_commits c
-+               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS commit_count
-        FROM mem_ai_work_items w
-        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
-        WHERE {where}
-@@ -47,12 +49,12 @@ _SQL_LIST_WORK_ITEMS_BASE = (
- 
- _SQL_UNLINKED_WORK_ITEMS = """
-     SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
--           w.status, w.requirements, w.summary, w.tags,
-+           w.status_user, w.status_ai, w.requirements, w.summary, w.tags,
-            w.created_at, w.seq_num,
-            pt.name AS ai_tag_name
-     FROM mem_ai_work_items w
-     LEFT JOIN planner_tags pt ON pt.id = w.ai_tag_id
--    WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status='active'
-+    WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
-     ORDER BY w.created_at DESC
- """
- 
-@@ -60,30 +62,38 @@ _SQL_INSERT_WORK_ITEM = (
-     """INSERT INTO mem_ai_work_items
-            (project_id, ai_category, ai_name, ai_desc,
-             requirements, acceptance_criteria, action_items,
--            content, summary, tags, status, seq_num)
--       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-+            code_summary, summary, tags, status_user, status_ai, seq_num)
-+       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
-        RETURNING id, ai_name, ai_category, created_at, seq_num"""
- )
- 
- _SQL_GET_WORK_ITEM = (
-     """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
--              w.status, w.acceptance_criteria, w.action_items,
--              w.requirements, w.content, w.summary,
--              w.tags, w.tag_id, w.ai_tag_id,
-+              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
-+              w.requirements, w.code_summary, w.summary,
-+              w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
-               w.created_at, w.updated_at, w.seq_num
-        FROM mem_ai_work_items w
-        WHERE w.project_id=%s AND w.id=%s::uuid"""
- )
- 
-+_SQL_GET_COMMITS = (
-+    """SELECT c.commit_hash, c.commit_msg, c.summary, c.committed_at
-+       FROM mem_mrr_commits c
-+       WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s::text)
-+       ORDER BY c.committed_at DESC LIMIT %s"""
-+)
-+
- _SQL_DELETE_WORK_ITEM = (
-     "DELETE FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s RETURNING id"
- )
- 
- _SQL_GET_WORK_ITEM_BY_SEQ = (
-     """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
--              w.status, w.acceptance_criteria, w.action_items,
--              w.requirements, w.summary, w.tags, w.tag_id, w.ai_tag_id,
-+              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
-+              w.requirements, w.code_summary, w.summary,
-+              w.tags, w.tag_id, w.ai_tag_id,
-               w.created_at, w.updated_at, w.seq_num
-        FROM mem_ai_work_items w
-        WHERE w.project_id=%s AND w.seq_num=%s
-@@ -142,11 +152,16 @@ async def _trigger_memory_regen(project: str) -> None:
- async def _embed_work_item(
-     project_id: int, item_id: str,
-     ai_name: str, ai_desc: str, requirements: str, summary: str,
-+    code_summary: str = "",
- ) -> None:
--    """Embed work item content and store the vector on the row."""
-+    """Embed work item content and store the vector on the row.
-+    Embedding = ai_name + ai_desc + requirements + summary + code_summary.
-+    Used for: (1) semantic search, (2) cosine-similarity matching to planner_tags.
-+    planner_tags.embedding = summary + action_items → same space, enabling cross-table match.
-+    """
-     try:
-         from memory.memory_embedding import _embed
--        text = f"{ai_name} {ai_desc} {requirements} {summary}".strip()
-+        text = f"{ai_name} {ai_desc} {requirements} {summary} {code_summary}".strip()
-         vec = await _embed(text)
-         if vec and db.is_available():
-             vec_str = f"[{','.join(str(x) for x in vec)}]"
-@@ -185,11 +200,12 @@ class WorkItemCreate(BaseModel):
-     ai_name:             str
-     ai_desc:             str = ""
-     project:             Optional[str] = None
--    status:              str = "active"
-+    status_user:         str = "active"
-+    status_ai:           str = "active"
-     requirements:        str = ""
-     acceptance_criteria: str = ""
-     action_items:        str = ""
--    content:             str = ""
-+    code_summary:        str = ""
-     summary:             str = ""
-     tags:                dict = {}
- 
-@@ -197,11 +213,12 @@ class WorkItemCreate(BaseModel):
- class WorkItemPatch(BaseModel):
-     ai_name:             Optional[str] = None
-     ai_desc:             Optional[str] = None
--    status:              Optional[str] = None
-+    status_user:         Optional[str] = None   # set by user: active / paused / done
-+    status_ai:           Optio
 
 ## AI Synthesis
 
-**[2026-04-06]** `claude_cli` — Work item dual-status UI completed with separate status_user (user dropdown) and status_ai (AI suggestion badge) controls; status_user/status_ai schema migration replaces single status field. **[2026-04-06]** `claude_cli` — Work item schema extended with code_summary field for semantic embedding and planner_tags cross-matching in unified embedding space. **[2026-04-06]** `claude_cli` — Added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method for commit association. **[2026-04-06]** `claude_cli` — Database query optimizations: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'. **[2026-04-06]** `claude_cli` — Frontend initialization stabilized: removed undefined _plannerSelectAiSubtype reference and fixed init crash; verified work item drawer renders status controls without errors. **[2026-04-06]** `claude_cli` — System context cleanup: removed outdated claude session files and consolidated dev_runtime_state.json; maintained 396 sessions with last update at 2026-04-06T17:34:59Z.
+**[2026-04-06]** `claude_cli` — Completed work item dual-status UI implementation with separate status_user/status_ai tracking and visual indicators; migrated schema to support status_user + status_ai + code_summary fields for semantic embedding. **[2026-04-06]** `claude_cli` — Added /work-items/{id}/commits endpoint with JSONB tag filtering and integrated api.workItems.commits() client method for work item-commit association. **[2026-04-06]** `claude_cli` — Unified embedding strategy across work_items and planner_tags using code_summary + requirements + summary for cosine-similarity cross-table matching. **[2026-04-06]** `claude_cli` — Optimized database queries: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery, refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'. **[2026-04-06]** `claude_cli_direct` — Auto-committed 16 files post-session with system context and memory consolidation; dev_runtime_state.json shows 396 sessions, latest 2026-04-06T17:34:59Z. **[2026-04-06]** `user_inquiry` — Feature request: drag-and-drop work items between top/bottom screen panes and resizable bottom pane height via separator line.
