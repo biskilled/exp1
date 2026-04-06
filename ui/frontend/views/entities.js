@@ -93,7 +93,7 @@ export function renderEntities(container) {
 
   // Wire window globals
   window._plannerSelectCat        = _plannerSelectCat;
-  window._plannerSelectAiSubtype  = _plannerSelectAiSubtype;
+
   window._plannerMigrateAiTags    = _plannerMigrateAiTags;
   window._plannerDeleteVal        = _plannerDeleteVal;
   window._plannerSaveNewTag       = _plannerSaveNewTag;
