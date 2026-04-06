@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-06 01:33 UTC by aicli /memory_
+_Generated: 2026-04-06 01:34 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to synthesize, store, and navigate project development history using semantic search (pgvector) and LLM-driven memory consolidation. The system uses Claude Haiku dual-layer synthesis, multi-LLM provider support (Claude/OpenAI/DeepSeek/Gemini/Grok), async DAG workflows with visual approval panels, and unified PostgreSQL schema (mem_ai_* tables) to enable persistent, queryable memory across development sessions. Current work focuses on completing memory layer implementation (project_facts population, architecture documentation), exposing LLM model identifiers in the UI, unifying feature snapshots with work items, and verifying endpoint variable scoping stability.
+aicli is a shared AI memory platform combining a Python 3.12 backend (FastAPI + PostgreSQL + pgvector) with a desktop UI (Electron + Vanilla JS) and CLI, enabling semantic search across project memories via Claude-powered synthesis and multi-LLM provider support. The platform implements a sophisticated dual-layer memory system with async DAG workflows, unified event tracking, and hierarchical authentication. Current focus is completing memory population logic, documenting the full memory architecture, and unifying feature/snapshot structures for production readiness.
 
 ## Tech Stack
 
@@ -28,7 +28,7 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
-- **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+- **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
 - **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
@@ -57,7 +57,7 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ⤴ link) showing only that prompt's commits
+- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 - Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
 - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
@@ -73,4 +73,4 @@ aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, an
 
 ## AI Synthesis
 
-**2026-03-14** `architecture` — Established unified mem_ai_* table schema (events, tags_relations, project_facts, work_items, features) consolidating per-project memory structures with pgvector semantic search (1536-dim text-embedding-3-small). **2026-03-14** `backend` — Fixed startup race condition via retry_logic_handles_empty_project_list_on_first_load and standardized shared schema initialization with _ensure_shared_schema pattern replacing per-project convention. **2026-03-14** `memory` — Designed Claude Haiku dual-layer synthesis generating 5 output files (thoughts, summary, tags, entities, relations) with timestamp tracking, LLM response summarization, and auto-tag deduplication. **2026-03-14** `persistence` — Implemented load_once_on_access pattern with session ordering by created_at (not updated_at) to prevent reordering side effects from tag/phase updates. **2026-03-14** `ui` — Built Cytoscape.js + cytoscape-dagre workflow visualization with 2-pane approval panel for async DAG execution loop-back and commit-per-prompt inline display (accent left-border with hash link). **2026-03-14** `features` — Initiated feature snapshot unification, renaming plannet_tags to feature_snapshot and establishing linkage to work_items and memory layers; pending complete work_item relationship mapping and memory endpoint variable scoping verification.
+**2026-03-14** `architecture` — Finalized engine/workspace separation pattern with _system/ directory for project state and memory files; dual PostgreSQL + pgvector storage for unified semantic search. **2026-03-14** `authentication` — Established JWT + bcrypt auth with DEV_MODE toggle and Clients → Users hierarchical pattern. **2026-03-14** `llm-integration` — Standardized LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) with send(prompt, system) → str contract enabling swappable backends. **2026-03-14** `ui-framework` — Committed to Vanilla JS + Electron + Cytoscape.js stack; no frameworks/bundlers to minimize dependency bloat; Vite for dev server. **2026-03-14** `memory-synthesis` — Implemented Claude Haiku dual-layer memory generation with 5 output files, auto-tag suggestions, and timestamp deduplication for persistent knowledge capture. **2026-03-14** `workflow-execution` — Built async DAG executor using asyncio.gather with loop-back support, max_iterations cap, and Cytoscape visualization with 2-pane approval panel. **2026-03-14** `data-persistence` — Established load_once_on_access pattern with session ordering by created_at (not updated_at) to prevent unintended reordering. **2026-03-14** `chunking-strategy` — Defined smart chunking per-class/function (code), per-section (Markdown), per-file (diffs) with manual relation support via CLI/admin. **2026-03-14** `deployment-multi-platform` — Railway cloud (Dockerfile + railway.toml), Electron-builder for desktop (dmg/nsis/AppImage), local bash + npm for development. **2026-03-14** `infrastructure-fixes` — Fixed backend startup race condition via retry_logic_handles_empty_project_list_on_first_load; standardized _ensure_shared_schema pattern.
