@@ -48,12 +48,12 @@
     "Claude Haiku dual-layer memory synthesis generating 5 files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication",
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
-    "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
+    "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
+    "Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
     "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table",
     "Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis",
     "Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation",
-    "Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
     "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev"
   ],
   "implemented_features": [
@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Work item dual-status UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators; updated table headers and drawer UI",
-    "Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching",
-    "Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method",
-    "Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching",
-    "Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'",
-    "Frontend initialization stabilization: removed undefined _plannerSelectAiSubtype reference; fixed init crash; verified work item drawer renders status controls without errors"
+    "Work item status dual-column UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators (#27ae60 active, #e67e22 in_progress, #4a90e2 done, #888 paused) in entities.js drawer",
+    "Work item commits association: added /work-items/{id}/commits endpoint returning commit_hash, commit_msg, summary, committed_at linked via JSONB tags; integrated api.workItems.commits() client method",
+    "Work item schema migration: replaced single status field with status_user + status_ai columns; added code_summary field for semantic embedding and planner_tags cross-table cosine-similarity matching",
+    "Work item embedding strategy: unified embedding space for work_items + planner_tags using ai_name + ai_desc + requirements + summary + code_summary; same vector space enables cross-table semantic matching",
+    "Frontend initialization fix: removed undefined _plannerSelectAiSubtype reference that caused window._plannerSync assignment failure; fixed init crash on drawer open",
+    "Unlinked work items query: updated WHERE clause to filter status_user != 'done' (was status='active'); includes interaction_count and commit_count aggregate columns in list responses"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-06T17:35:07Z",
+  "last_memory_run": "2026-04-06T17:36:37Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -131,21 +131,21 @@
       "Claude Haiku dual-layer memory synthesis generating 5 files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication",
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
-      "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
+      "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
+      "Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
       "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table",
       "Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis",
       "Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation",
-      "Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
       "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev"
     ],
     "in_progress": [
-      "Work item dual-status UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators; updated table headers and drawer UI",
-      "Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching",
-      "Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method",
-      "Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching",
-      "Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'",
-      "Frontend initialization stabilization: removed undefined _plannerSelectAiSubtype reference; fixed init crash; verified work item drawer renders status controls without errors"
+      "Work item status dual-column UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators (#27ae60 active, #e67e22 in_progress, #4a90e2 done, #888 paused) in entities.js drawer",
+      "Work item commits association: added /work-items/{id}/commits endpoint returning commit_hash, commit_msg, summary, committed_at linked via JSONB tags; integrated api.workItems.commits() client method",
+      "Work item schema migration: replaced single status field with status_user + status_ai columns; added code_summary field for semantic embedding and planner_tags cross-table cosine-similarity matching",
+      "Work item embedding strategy: unified embedding space for work_items + planner_tags using ai_name + ai_desc + requirements + summary + code_summary; same vector space enables cross-table semantic matching",
+      "Frontend initialization fix: removed undefined _plannerSelectAiSubtype reference that caused window._plannerSync assignment failure; fixed init crash on drawer open",
+      "Unlinked work items query: updated WHERE clause to filter status_user != 'done' (was status='active'); includes interaction_count and commit_count aggregate columns in list responses"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -153,17 +153,18 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm",
-      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment_local": "bash start_backend.sh + npm run dev",
+      "db_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles"
     },
-    "project_summary": "aicli is a shared AI memory platform for development teams, combining a FastAPI backend with PostgreSQL (pgvector) storage and an Electron desktop UI. It manages work items, project facts, commits, and interactions with LLM providers (Claude/OpenAI/DeepSeek) via dual-layer memory synthesis, async workflow execution, and semantic search. Current focus: implementing dual-status work item tracking (user + AI suggestions), commit association, and unified embedding space for cross-table semantic matching.",
-    "memory_digest": "**[2026-03-14]** `route_work_items.py` \u2014 Implemented dual-status work item tracking: status_user (user-controlled dropdown: active/in_progress/paused/done) and status_ai (AI-suggested badge) with separate color indicators; extended query to track commit_count via mem_mrr_commits JSONB tags.\n**[2026-03-14]** `entities.js` \u2014 Updated work item drawer UI with user status dropdown + read-only AI status badge; adjusted table column width to 90px to accommodate dual status display; added title tooltips for status disambiguation.\n**[2026-03-14]** `route_work_items.py` \u2014 Added /work-items/{id}/commits endpoint and _SQL_GET_COMMITS query to retrieve commits linked to work items via JSONB tags filtering; refactored WorkItemCreate/Patch models from single status to status_user + status_ai.\n**[2026-03-14]** `api.js` \u2014 Exposed api.workItems.commits(id, project, limit) client method to fetch work item-linked commits from backend; integrated with work item drawer for displaying associated commit history.\n**[2026-03-14]** `route_work_items.py` \u2014 Unified work item embedding space by combining ai_name + ai_desc + requirements + summary + code_summary fields; enabled cross-table cosine-similarity matching with planner_tags for semantic discovery.\n**[2026-03-14]** `route_work_items.py` \u2014 Refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done' instead of status = 'active'; updated insertion logic to omit deprecated content field; stabilized frontend initialization by removing undefined variable references."
+    "project_summary": "aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI, enabling teams to store project events, work items, commits, and semantic embeddings while leveraging Claude/OpenAI/DeepSeek for memory synthesis and workflow automation. The current development focus is finalizing work item management with dual-status UI (user vs. AI-suggested), commits association, and unified semantic embedding spaces to enable cross-table cosine-similarity matching between work items and planner tags.",
+    "memory_digest": "**2026-03-14** `entities.js + route_work_items.py` \u2014 Dual status tracking completed: status_user (user-controlled dropdown) and status_ai (AI-suggested badge) now display separately in work item drawer with distinct color-coding. **2026-03-14** `api.js + route_work_items.py` \u2014 Work item commits association implemented via /work-items/{id}/commits endpoint; commits linked through JSONB tags matching; commit_count aggregate added to list queries. **2026-03-14** `route_work_items.py` \u2014 Schema migration finalized: replaced single status with status_user + status_ai; introduced code_summary field for unified semantic embedding space shared with planner_tags via ai_name + ai_desc + requirements + summary + code_summary. **2026-03-14** `entities.js` \u2014 Frontend status UI fixed: status_user dropdown with onchange patch; AI status badge shows only when differs from user status; widened Status column to 90px to accommodate dual indicators. **2026-03-14** `route_work_items.py` \u2014 Unlinked work items query updated: status_user != 'done' filter replaces legacy status='active'; includes interaction_count and commit_count aggregates; enables cross-table cosine-similarity matching to planner_tags. **Earlier** `Project Facts` \u2014 Confirmed memory_items and project_facts table population awaiting event-based triggering logic; differentiated process_item/messages handling identified as core memory activation pattern."
   }
 }
