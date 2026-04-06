@@ -1,5 +1,5 @@
 # Project Context: aicli
-# Generated: 2026-04-06 17:54 UTC
+# Generated: 2026-04-06 22:50 UTC
 
 ## Project Facts
 
@@ -53,7 +53,7 @@ Users cannot copy text from the history UI, limiting usability of viewing histor
 Category: bug
 History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
 
-### #20066 History display incomplete - missing LLM responses
+### #20066 billing
 Category: bug
 History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
 
@@ -65,21 +65,21 @@ aiCli_memory tables are not updated and don't match current schema. Some tables 
 Category: bug
 Multiple events from history table don't make sense and appear to be erroneous data that should be removed
 
-### #20062 History display truncating LLM responses
-Category: bug
-History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
-
-### #20064 Nonsensical events in history table
-Category: bug
-History table contains numerous events that don't make logical sense, possibly from corrupted or orphaned historical dat
-
-### #20063 Text copy functionality missing from history UI
+### #20063 UI
 Category: bug
 Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
 
-### #20061 ON CONFLICT DO UPDATE duplicate row error
+### #20064 embeddings
+Category: bug
+History table contains numerous events that don't make logical sense, possibly from corrupted or orphaned historical dat
+
+### #20061 billing
 Category: bug
 In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
+
+### #20062 mcp
+Category: bug
+History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
 
 ### #20057 History display truncation
 Category: bug

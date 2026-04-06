@@ -456,7 +456,9 @@ function _renderWiPanel(items, project) {
 /** Load work items linked to tags in the current category, inject as sub-rows. */
 async function _loadTagLinkedWorkItems(project, catName) {
   try {
-    const data = await api.workItems.list({ project, category: catName });
+    // Fetch all linked work items (no ai_category filter — a 'task' work item can be linked
+    // to a 'feature' tag; we rely on the DOM tr[data-tag-id] selector to scope to current view)
+    const data = await api.workItems.list({ project });
     const linked = (data.work_items || []).filter(w => w.tag_id && !w.merged_into);
     if (!linked.length) return;
     const CAT_ICON = { feature: '✨', bug: '🐛', task: '📋' };
