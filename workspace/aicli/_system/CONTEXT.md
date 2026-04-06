@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-06 00:59 UTC — do not edit manually.
+> Auto-generated 2026-04-06 01:33 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 365
-- **Last active**: 2026-04-06T00:04:23Z
+- **Sessions**: 367
+- **Last active**: 2026-04-06T01:33:14Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -47,16 +47,16 @@
 - **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
 - **deployment_cloud**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **deployment_local**: bash start_backend.sh + ui/npm run dev
+- **deployment_local**: bash start_backend.sh + npm run dev
 
 ## In Progress
 
+- Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed
 - Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step
 - LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions
 - Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping
 - Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
 - Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern
-- Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed
 
 ## Key Decisions
 

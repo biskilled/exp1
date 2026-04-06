@@ -37,7 +37,7 @@
     "unified_tables": "mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features",
     "deployment_cloud": "Railway (Dockerfile + railway.toml)",
     "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-    "deployment_local": "bash start_backend.sh + ui/npm run dev"
+    "deployment_local": "bash start_backend.sh + npm run dev"
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
+    "Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed",
     "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step",
     "LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions",
     "Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping",
     "Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API",
-    "Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern",
-    "Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed"
+    "Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-06T00:59:04Z",
+  "last_memory_run": "2026-04-06T01:33:20Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -140,12 +140,12 @@
       "Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures"
     ],
     "in_progress": [
+      "Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed",
       "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step",
       "LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions",
       "Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping",
       "Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API",
-      "Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern",
-      "Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed"
+      "Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -158,9 +158,13 @@
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm"
+      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment_local": "bash start_backend.sh + npm run dev",
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
+      "config_management": "config.py + YAML pipelines + pyproject.toml"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 CLI, FastAPI backend, and Electron desktop UI to enable multi-LLM collaboration with semantic memory synthesis. It uses PostgreSQL 15+ with pgvector for unified event/tag/fact storage, Claude Haiku dual-layer synthesis for intelligent summarization, and async DAG workflows with visual approval panels. Currently stabilizing memory table population, implementing LLM model visibility in the UI, and unifying feature snapshots with work items across the architecture.",
-    "memory_digest": "**2026-03-14** `architecture` \u2014 Established unified mem_ai_* table schema (events, tags_relations, project_facts, work_items, features) consolidating all memory data into PostgreSQL with pgvector semantic search at 1536 dimensions. **2026-03-14** `memory_synthesis` \u2014 Implemented Claude Haiku dual-layer memory synthesis pipeline generating 5 timestamped output files with auto-tag suggestions and LLM response summarization; tag deduplication prevents duplicates across layers. **2026-03-14** `workflow_ui` \u2014 Built Cytoscape.js-based async DAG executor visualization with 2-pane approval panel for chat negotiation; supports loop-back logic with max_iterations cap via asyncio.gather parallelization. **2026-03-14** `authentication` \u2014 Finalized JWT (python-jose + bcrypt) authentication with DEV_MODE toggle and hierarchical Clients \u2192 Users pattern using login_as_first_level_hierarchy convention. **2026-03-14** `deployment` \u2014 Consolidated deployment strategy: Railway cloud (Dockerfile + railway.toml), Electron-builder for desktop (Mac/Windows/Linux), local development via bash start_backend.sh + npm run dev. **2026-03-14** `ui_improvements` \u2014 Designed commit-per-prompt inline display with accent left-border and hash links; implemented phase persistence with red \u26a0 badge for missing phase and tag suggestion auto-save via _acceptSuggestedTag. **2026-03-14** `data_persistence` \u2014 Standardized load_once_on_access, update_on_save pattern; ordered sessions by created_at (not updated_at) to prevent reordering on tag/phase updates. **2026-03-14** `backend_fixes` \u2014 Resolved backend startup race condition via retry_logic_handles_empty_project_list_on_first_load; replaced ensure_project_schema with _ensure_shared_schema convention for reliability. **2026-03-14** `feature_consolidation` \u2014 Initiated feature snapshot unification renaming plannet_tags to feature_snapshot with complete work_item relationship mapping across memory structures. **2026-03-14** `documentation` \u2014 Scoped memory architecture documentation (aicli_memory.md) covering all layers, mirroring mechanism, event triggers, and specific prompts at each synthesis step."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI + FastAPI backend with a desktop Electron UI to manage project context, memory synthesis, and workflow automation. It uses PostgreSQL with pgvector for semantic search, multiple LLM providers (Claude/OpenAI/DeepSeek), and an async DAG workflow engine. Current focus is on completing memory layer implementation (database population for memory_items/project_facts), documenting the full memory architecture, and unifying feature snapshot structures with proper work_item linkage.",
+    "memory_digest": "**[2026-04-05]** `session` \u2014 Identified critical gap: memory_items and project_facts tables are not being updated; memory synthesis generates 5 files but database integration incomplete.\n**[2026-04-05]** `session` \u2014 Requested comprehensive aicli_memory.md documentation covering all memory layers, mirroring mechanism, event triggers, and specific prompts used at each processing step.\n**[2026-04-05]** `session` \u2014 Prioritized LLM model identifier visibility as UI tag for transparency; users need to see which model processed each interaction.\n**[2026-04-05]** `session` \u2014 Feature snapshot consolidation task: plannet_tags should be renamed to feature_snapshot with proper work_item relationship mapping throughout database schema.\n**[2026-04-05]** `session` \u2014 Work item linking requires clarification: incomplete relationship mapping between work_item entities and memory/snapshot layers in both DB and API.\n**[2026-03-18]** `session` \u2014 Removed stale db.ensure_project_schema() call from main.py; fixed undefined code_dir variable in CLAUDE.md memory endpoint (line 1120).\n**[2026-03-18]** `session` \u2014 Improved backend startup resilience by adding retry logic in _continueToApp() to handle race conditions when projects list returns empty on initialization.\n**[2026-03-18]** `session` \u2014 Fixed project visibility: AiCli project now displays correctly in project list (not just Recent), addressing missing current project indicator.\n**[2026-03-18]** `session` \u2014 Clarified data model hierarchy: users are nested under clients (one client \u2192 multiple users) per login_as_first_level_hierarchy pattern.\n**[2026-03-14]** `config` \u2014 Established unified database schema with mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features tables for consolidated event tracking and memory management."
   }
 }
