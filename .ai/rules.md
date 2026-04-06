@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 00:58 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 01:32 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -42,7 +42,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
 - **deployment_cloud**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **deployment_local**: bash start_backend.sh + ui/npm run dev
+- **deployment_local**: bash start_backend.sh + npm run dev
 
 ## Key Decisions
 
@@ -61,3 +61,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↪ link) showing only that prompt's commits
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
+
+## Recent Context (last 5 changes)
+
+- [2026-04-05] Yes please. about Sho llm in the ui - make it visible tag
+- [2026-04-05] I would like to build the aicli_memory.md for scratch in order to get a final view of the memory layer. please describe 
+- [2026-04-05] About orocess_item / messeges - trigger in /memroy (for all new items at the moment). feature snapshot - imprtoant. curr
+- [2026-04-06] test prompt after fix
+- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
