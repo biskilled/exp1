@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-05 23:59 UTC — do not edit manually.
+> Auto-generated 2026-04-06 00:03 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 363
-- **Last active**: 2026-04-05T23:36:56Z
+- **Sessions**: 364
+- **Last active**: 2026-04-06T00:02:33Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -73,7 +73,7 @@
 - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
+- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ⤴ link) showing only that prompt's commits
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 
 ---

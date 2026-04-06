@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-05 23:57 UTC by aicli /memory_
+_Generated: 2026-04-06 00:02 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop frontend for managing AI-assisted development workflows. Current state: core infrastructure stable with unified memory tables (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features), JWT authentication, multi-LLM provider support, and DAG-based workflow execution; actively consolidating memory layer architecture, unifying feature snapshots, and establishing complete work_item relationship mapping to enable full memory functionality.
+aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL with pgvector) with an Electron desktop UI and CLI interface. It enables users to synthesize AI-generated project memory from code, commits, and conversations using multi-provider LLM adapters (Claude, OpenAI, DeepSeek, Gemini, Grok), with async DAG workflows for memory processing and semantic search via embeddings. Current focus is implementing the memory layer architecture (event triggers, layer consolidation, work_item linking) and exposing model identifiers in the UI for transparency.
 
 ## Project Facts
 
@@ -99,7 +99,7 @@ Reviewer: ```json
 - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
+- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ⤴ link) showing only that prompt's commits
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 
 ## In Progress
@@ -114,6 +114,22 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `memory_item` — 2026-04-05
+
+# Development Session Summary (2026-03-18)
+
+• **Fixed `_Database` attribute error** — removed stale `db.ensure_project_schema()` call from `main.py`
+
+• **Fixed CLAUDE.md memory endpoint error** — resolved undefined `code_dir` variable in line 1120
+
+• **Improved backend startup resilience** — added retry logic in `_continueToApp()` to handle race conditions when projects load returns empty
+
+• **Fixed project visibility issue** — AiCli project now displays correctly in project list (not just Recent), addressing missing current project indicator
+
+• **Clarified data model structure** — confirmed users are nested under clients (one client → multiple users)
+
+• **Identified memory mechanism gap** — `memory_items` and `project_facts` tables are **not being updated** as designed; needs implementation to enable proper memory functionality
 
 ### `prompt_batch: 8f29a8d3-13a3-42ed-9219-de7bfe53e3d2` — 2026-04-05
 
@@ -209,16 +225,6 @@ Requested comprehensive `aicli_memory.md` documentation including:
 
 • **Planned mem_ai_events refactor**: Restructure column order (move `llm_source` after `project`), audit data population sources, and reconcile `tags` (MRR) vs `metadata` (events) columns for consistency across system
 
-### `memory_item` — 2026-04-05
-
-# Session Summary: Memory Architecture & Workflow Foundation
-
-- **Memory system audited & validated**: Tag system working end-to-end; `/memory` synthesis process now correctly aggregates JSONL entries with proper UUID array handling via PostgreSQL `ARRAY_AGG()`
-- **MCP integration confirmed but not yet active in session**: `.mcp.json` configured with Anthropic/OpenAI keys loaded from `.env` (ANTHROPIC_API_KEY, OPENAI_API_KEY); direct HTTP calls used instead of MCP client this session
-- **Performance improvements delivered**: Moved from 40 raw JSONL entries per call → synthesized summaries, reducing token overhead and improving retrieval accuracy for work item context
-- **Workflow system design initiated**: Analyzed specrails.dev and external references as templates; goal is to build DAG-based workflows with parent-child task dependencies (e.g., UI → Dropbox) similar to specrails pipeline model
-- **Default pipeline & hierarchical task support lost**: Discovered previous parent-child relationship feature (UI → dropbox example) removed; user wants to restore task linking and connect default pipeline execution to new workflow engine
-
 ## AI Synthesis
 
-**[2026-04-05]** `project_facts` — Identified critical gap: memory_items and project_facts tables are not being populated as designed; memory layer architecture requires comprehensive documentation covering all layer descriptions, mirroring mechanism, event triggers, and specific LLM prompts at each processing step. **[2026-04-05]** `architecture` — Consolidated feature snapshot strategy: plannet_tags currently serves as feature snapshot holder but lacks proper semantic naming; plan to merge into feature_snapshot structure with complete work_item relationship mapping. **[2026-04-05]** `memory_triggers` — Established need for unified event-based triggering in /memory pathway to consistently handle all new items, with differentiated logic for process_item versus messages handling. **[2026-04-06]** `backend_fixes` — Fixed _Database attribute error by removing stale db.ensure_project_schema() call from main.py; added retry logic to handle race conditions when project list loads empty on startup. **[2026-04-06]** `memory_endpoints` — Resolved CLAUDE.md memory endpoint variable scoping issue (undefined code_dir at line 1120). **[2026-04-06]** `ui_enhancements` — LLM model identifier now required as visible tag in UI interface for transparency. **[2026-04-05]** `project_visibility` — Fixed AiCli project display in project list; ensured current project indicator works correctly. **[2026-04-05]** `data_model` — Clarified users are nested under clients (hierarchical structure: one client → multiple users). **[2026-04-06]** `testing` — Post-fix validation phase: verifying backend startup resilience and memory endpoint fixes remain stable across sessions.
+**[2026-03-18]** `main.py` — Removed stale `db.ensure_project_schema()` call that caused AttributeError; confirmed _ensure_shared_schema convention replaces old pattern. **[2026-03-18]** `CLAUDE.md` — Fixed undefined `code_dir` variable at line 1120 in memory endpoint template. **[2026-03-18]** `_continueToApp()` — Added retry logic to handle backend startup race condition when initial projects load returns empty list. **[2026-03-18]** `project_visibility` — AiCli project now displays correctly in full project list (not just Recent), fixing missing current project indicator. **[2026-03-18]** `data_model` — Confirmed users are nested under clients (one client → multiple users); clarified hierarchical structure for authentication. **[2026-03-18]** `memory_implementation_gap` — Identified that `memory_items` and `project_facts` tables are not being populated as designed; blocks full memory functionality. **[2026-04-05]** `ui_enhancement` — Requested LLM model identifier visibility as UI tag for transparency. **[2026-04-05]** `feature_snapshot_unification` — Plan to merge `plannet_tags` into properly named `feature_snapshot` with complete work_item linkage. **[2026-04-05]** `memory_layer_consolidation` — Consolidate /memory pathway triggers to uniformly handle all new items with event-based triggering and differentiated process_item/messages logic. **[2026-04-05]** `aicli_memory_documentation` — Comprehensive memory architecture doc needed covering all layers, mirroring mechanism, event triggers, and specific prompts.

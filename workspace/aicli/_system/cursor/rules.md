@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 23:57 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 00:02 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -59,7 +59,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
+- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ⤴ link) showing only that prompt's commits
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 
 ## Recent Context (last 5 changes)

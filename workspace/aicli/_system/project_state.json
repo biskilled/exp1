@@ -53,7 +53,7 @@
     "Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures",
     "Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling",
     "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking",
-    "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u2197 link) showing only that prompt's commits",
+    "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u2934 link) showing only that prompt's commits",
     "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev"
   ],
   "implemented_features": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-05T23:59:08Z",
+  "last_memory_run": "2026-04-06T00:03:49Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -136,7 +136,7 @@
       "Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures",
       "Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling",
       "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking",
-      "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u2197 link) showing only that prompt's commits",
+      "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u2934 link) showing only that prompt's commits",
       "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev"
     ],
     "in_progress": [
@@ -154,21 +154,18 @@
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "db_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev",
+      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment_local": "bash start_backend.sh + ui/npm run dev",
       "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
-      "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
-      "database_version": "PostgreSQL 15+",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "node_modules_build": "npm 8+ with Electron-builder; Vite dev server",
+      "database_version": "PostgreSQL 15+"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop frontend for managing AI-assisted development workflows. Current state: core infrastructure stable with unified memory tables (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features), JWT authentication, multi-LLM provider support, and DAG-based workflow execution; actively consolidating memory layer architecture, unifying feature snapshots, and establishing complete work_item relationship mapping to enable full memory functionality.",
-    "memory_digest": "**[2026-04-05]** `project_facts` \u2014 Identified critical gap: memory_items and project_facts tables are not being populated as designed; memory layer architecture requires comprehensive documentation covering all layer descriptions, mirroring mechanism, event triggers, and specific LLM prompts at each processing step. **[2026-04-05]** `architecture` \u2014 Consolidated feature snapshot strategy: plannet_tags currently serves as feature snapshot holder but lacks proper semantic naming; plan to merge into feature_snapshot structure with complete work_item relationship mapping. **[2026-04-05]** `memory_triggers` \u2014 Established need for unified event-based triggering in /memory pathway to consistently handle all new items, with differentiated logic for process_item versus messages handling. **[2026-04-06]** `backend_fixes` \u2014 Fixed _Database attribute error by removing stale db.ensure_project_schema() call from main.py; added retry logic to handle race conditions when project list loads empty on startup. **[2026-04-06]** `memory_endpoints` \u2014 Resolved CLAUDE.md memory endpoint variable scoping issue (undefined code_dir at line 1120). **[2026-04-06]** `ui_enhancements` \u2014 LLM model identifier now required as visible tag in UI interface for transparency. **[2026-04-05]** `project_visibility` \u2014 Fixed AiCli project display in project list; ensured current project indicator works correctly. **[2026-04-05]** `data_model` \u2014 Clarified users are nested under clients (hierarchical structure: one client \u2192 multiple users). **[2026-04-06]** `testing` \u2014 Post-fix validation phase: verifying backend startup resilience and memory endpoint fixes remain stable across sessions."
+    "project_summary": "aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL with pgvector) with an Electron desktop UI and CLI interface. It enables users to synthesize AI-generated project memory from code, commits, and conversations using multi-provider LLM adapters (Claude, OpenAI, DeepSeek, Gemini, Grok), with async DAG workflows for memory processing and semantic search via embeddings. Current focus is implementing the memory layer architecture (event triggers, layer consolidation, work_item linking) and exposing model identifiers in the UI for transparency.",
+    "memory_digest": "**[2026-03-18]** `main.py` \u2014 Removed stale `db.ensure_project_schema()` call that caused AttributeError; confirmed _ensure_shared_schema convention replaces old pattern. **[2026-03-18]** `CLAUDE.md` \u2014 Fixed undefined `code_dir` variable at line 1120 in memory endpoint template. **[2026-03-18]** `_continueToApp()` \u2014 Added retry logic to handle backend startup race condition when initial projects load returns empty list. **[2026-03-18]** `project_visibility` \u2014 AiCli project now displays correctly in full project list (not just Recent), fixing missing current project indicator. **[2026-03-18]** `data_model` \u2014 Confirmed users are nested under clients (one client \u2192 multiple users); clarified hierarchical structure for authentication. **[2026-03-18]** `memory_implementation_gap` \u2014 Identified that `memory_items` and `project_facts` tables are not being populated as designed; blocks full memory functionality. **[2026-04-05]** `ui_enhancement` \u2014 Requested LLM model identifier visibility as UI tag for transparency. **[2026-04-05]** `feature_snapshot_unification` \u2014 Plan to merge `plannet_tags` into properly named `feature_snapshot` with complete work_item linkage. **[2026-04-05]** `memory_layer_consolidation` \u2014 Consolidate /memory pathway triggers to uniformly handle all new items with event-based triggering and differentiated process_item/messages logic. **[2026-04-05]** `aicli_memory_documentation` \u2014 Comprehensive memory architecture doc needed covering all layers, mirroring mechanism, event triggers, and specific prompts."
   }
 }
