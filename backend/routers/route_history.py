@@ -239,7 +239,7 @@ async def chat_history(
                             WHERE project_id=%s
                               AND prompt IS NOT NULL AND prompt != ''
                               {noise_filter}{provider_filter}""",
-                        (p,) + noise_args + provider_arg,
+                        (project_id,) + noise_args + provider_arg,
                     )
                     total = cur.fetchone()[0]
 
@@ -252,7 +252,7 @@ async def chat_history(
                               {noise_filter}{provider_filter}
                             ORDER BY created_at DESC
                             LIMIT %s OFFSET %s""",
-                        (p,) + noise_args + provider_arg + (limit if limit > 0 else 10000, offset),
+                        (project_id,) + noise_args + provider_arg + (limit if limit > 0 else 10000, offset),
                     )
                     rows = cur.fetchall()
 
