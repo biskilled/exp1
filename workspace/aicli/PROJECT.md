@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error on route_history line 470 with explicit ::jsonb casting for tags field
-- Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes from multiple sources with proper prompt linkage
-- Commits tab full loading: fixed commit message truncation and ensured database population supports complete commit metadata display in UI
-- History display dual-hook architecture: verified hook-response and session-summary hooks properly save both prompts and LLM responses to mem_mrr_prompts
+- PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error with explicit ::jsonb casting for tags field
+- Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes with proper prompt linkage
+- Commits tab full loading: fixed commit message truncation ensuring database population supports complete metadata display in UI
+- History display dual-hook architecture: verified hook-response and session-summary hooks properly save prompts and LLM responses to mem_mrr_prompts
 - Memory items and project_facts population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality
 - Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability

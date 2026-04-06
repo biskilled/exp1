@@ -49,12 +49,12 @@
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-    "Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
     "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev",
     "Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling",
     "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking",
     "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u21a9 link) showing only that prompt's commits",
-    "Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures"
+    "PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE",
+    "Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -83,10 +83,10 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error on route_history line 470 with explicit ::jsonb casting for tags field",
-    "Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes from multiple sources with proper prompt linkage",
-    "Commits tab full loading: fixed commit message truncation and ensured database population supports complete commit metadata display in UI",
-    "History display dual-hook architecture: verified hook-response and session-summary hooks properly save both prompts and LLM responses to mem_mrr_prompts",
+    "PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error with explicit ::jsonb casting for tags field",
+    "Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes with proper prompt linkage",
+    "Commits tab full loading: fixed commit message truncation ensuring database population supports complete metadata display in UI",
+    "History display dual-hook architecture: verified hook-response and session-summary hooks properly save prompts and LLM responses to mem_mrr_prompts",
     "Memory items and project_facts population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality",
     "Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability"
   ],
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-06T09:58:20Z",
+  "last_memory_run": "2026-04-06T10:22:23Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -132,18 +132,18 @@
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-      "Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
       "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev",
       "Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling",
       "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking",
       "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u21a9 link) showing only that prompt's commits",
-      "Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures"
+      "PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE",
+      "Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention"
     ],
     "in_progress": [
-      "PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error on route_history line 470 with explicit ::jsonb casting for tags field",
-      "Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes from multiple sources with proper prompt linkage",
-      "Commits tab full loading: fixed commit message truncation and ensured database population supports complete commit metadata display in UI",
-      "History display dual-hook architecture: verified hook-response and session-summary hooks properly save both prompts and LLM responses to mem_mrr_prompts",
+      "PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error with explicit ::jsonb casting for tags field",
+      "Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes with proper prompt linkage",
+      "Commits tab full loading: fixed commit message truncation ensuring database population supports complete metadata display in UI",
+      "History display dual-hook architecture: verified hook-response and session-summary hooks properly save prompts and LLM responses to mem_mrr_prompts",
       "Memory items and project_facts population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality",
       "Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability"
     ],
@@ -153,7 +153,8 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
@@ -161,14 +162,16 @@
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
+      "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables",
+      "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
+      "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
       "deployment_cloud": "Railway (Dockerfile + railway.toml)",
       "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "deployment_local": "bash start_backend.sh + npm run dev",
-      "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "deployment_local": "bash start_backend.sh + npm run dev"
     },
-    "project_summary": "aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with a PostgreSQL + pgvector backend, dual-layer memory synthesis engine, and Electron desktop UI featuring async DAG workflow visualization and semantic search. Current focus is resolving PostgreSQL batch upsert conflicts, completing commit sync and history display functionality, and enabling core memory_items and project_facts population via event-based triggering.",
-    "memory_digest": "**[2026-04-06]** `claude_cli` \u2014 Fixed PostgreSQL ON CONFLICT DO UPDATE duplicate row insertion error in route_history line 470 by adding explicit ::jsonb cast to tags field in batch upsert query. **[2026-04-06]** `claude_cli` \u2014 Implemented /history/commits/sync endpoint successfully importing 364 unique commit hashes with proper deduplication and database persistence across multiple import sources. **[2026-04-05]** `development-session` \u2014 Verified history display dual-hook architecture with hook-response and session-summary background hooks properly configured to persist both prompts and LLM responses to mem_mrr_prompts table. **[2026-04-05]** `development-session` \u2014 All four session-stop background hooks (hook-response, session-summary, memory, auto-detect-bugs) confirmed synchronized and functional; history regression fixed to display complete prompt + response pairs. **[2026-04-05]** `development-session` \u2014 Feature snapshot consolidation identified: rename plannet_tags to feature_snapshot to establish unified linkage to work_items and memory structures. **[2026-04-05]** `development-session` \u2014 User requested comprehensive aicli_memory.md architecture documentation covering all memory layers, mirroring mechanism, event triggers, and specific processing prompts at each synthesis step."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop frontend (Vanilla JS + Cytoscape), enabling teams to manage AI-assisted workflows through semantic memory synthesis, multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), and async DAG-based pipeline execution. The platform is currently in v2.2.0 with recent focus on fixing data persistence layers (JSONB upserts), completing commit history synchronization from git, and enabling memory layer event triggering for project facts and work item consolidation.",
+    "memory_digest": "**[2026-03-14]** `db-fix` \u2014 Resolved PostgreSQL batch upsert JSONB duplicate row insertion error by adding explicit ::jsonb casting to tags field in ON CONFLICT DO UPDATE clause. **[2026-03-14]** `commit-sync` \u2014 Implemented /history/commits/sync endpoint successfully importing 364+ unique commit hashes from multiple sources with proper prompt-to-commit linkage and deduplication logic. **[2026-03-14]** `ui-display` \u2014 Fixed commit message truncation in commits tab; verified database schema supports complete commit metadata storage and frontend display. **[2026-03-14]** `memory-hooks` \u2014 Validated dual-hook architecture where hook-response and session-summary hooks correctly persist both user prompts and LLM responses to mem_mrr_prompts table. **[2026-03-14]** `memory-population` \u2014 Enabled event-based triggering for memory items and project_facts with differentiated process_item vs. messages handling for core memory synthesis functionality. **[2026-03-14]** `ux-enhancement` \u2014 Identified copy-to-clipboard functionality gap in history UI; prioritized implementation of text selection and copy capability for improved user workflow."
   }
 }

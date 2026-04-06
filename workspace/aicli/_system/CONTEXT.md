@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-06 09:58 UTC — do not edit manually.
+> Auto-generated 2026-04-06 10:22 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 382
-- **Last active**: 2026-04-06T09:57:56Z
+- **Sessions**: 383
+- **Last active**: 2026-04-06T10:22:07Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,10 +51,10 @@
 
 ## In Progress
 
-- PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error on route_history line 470 with explicit ::jsonb casting for tags field
-- Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes from multiple sources with proper prompt linkage
-- Commits tab full loading: fixed commit message truncation and ensured database population supports complete commit metadata display in UI
-- History display dual-hook architecture: verified hook-response and session-summary hooks properly save both prompts and LLM responses to mem_mrr_prompts
+- PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error with explicit ::jsonb casting for tags field
+- Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes with proper prompt linkage
+- Commits tab full loading: fixed commit message truncation ensuring database population supports complete metadata display in UI
+- History display dual-hook architecture: verified hook-response and session-summary hooks properly save prompts and LLM responses to mem_mrr_prompts
 - Memory items and project_facts population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality
 - Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability
 
@@ -69,12 +69,12 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
-- Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
 - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
-- Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
+- PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
+- Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
 
 ---
 
