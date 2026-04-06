@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-06 01:35 UTC by aicli /memory_
+_Generated: 2026-04-06 01:37 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates Claude, OpenAI, and other LLM providers with a PostgreSQL backend, dual-layer memory synthesis, and an Electron desktop UI featuring workflow visualization and semantic search via pgvector embeddings. Currently in active development with focus on memory layer implementation (populate memory_items and project_facts tables), comprehensive memory architecture documentation, and feature snapshot unification to enable core memory functionality.
+aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to enable multi-user project collaboration with semantic memory synthesis, workflow automation, and LLM-powered decision support. The system consolidates project events, code analysis, and work items into unified PostgreSQL tables with pgvector embeddings, while an async DAG workflow engine orchestrates complex multi-step processes. Current development focuses on completing memory layer table population, documenting memory architecture, and unifying feature snapshots with work item relationships.
 
 ## Project Facts
 
@@ -95,11 +95,11 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+- Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
 - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
-- Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
 - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
 
 ## In Progress
@@ -272,4 +272,4 @@ Requested comprehensive `aicli_memory.md` documentation including:
 
 ## AI Synthesis
 
-**[2026-04-05]** `development-session` — Requested comprehensive memory architecture documentation (aicli_memory.md) covering all layers, mirroring mechanism, event triggers, and specific prompts used at each processing step. **[2026-04-05]** `development-session` — Feature snapshot consolidation: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping and unified linkage. **[2026-04-05]** `development-session` — LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions. **[2026-03-18]** `memory-summary` — Identified critical memory mechanism gap: memory_items and project_facts tables are not being updated as designed; needs implementation to enable proper memory functionality. **[2026-03-18]** `bug-fix` — Fixed backend startup race condition via retry_logic_handles_empty_project_list_on_first_load in _continueToApp(). **[2026-03-18]** `bug-fix` — Fixed CLAUDE.md memory endpoint error by resolving undefined code_dir variable at line 1120. **[2026-03-18]** `bug-fix` — Fixed _Database attribute error by removing stale db.ensure_project_schema() call from main.py. **[2026-03-18]** `architecture` — Clarified data model structure: confirmed users are nested under clients (one client → multiple users) with login_as_first_level_hierarchy pattern. **[2026-03-18]** `ui-fix` — Fixed project visibility issue: AiCli project now displays correctly in project list (not just Recent), addressing missing current project indicator. **[2026-02-xx]** `architecture-decision` — _ensure_shared_schema replaces ensure_project_schema convention for database initialization consistency.
+**[2026-04-05]** `session_request` — Comprehensive memory architecture documentation requested for aicli_memory.md covering all memory layers, mirroring mechanisms, event triggers, and specific prompts at each processing step to clarify data flow and work_item linkage relationships. **[2026-04-05]** `feature_request` — LLM model identifier visibility enhancement to expose model identifier as visible tag in UI interface for transparency and cross-session tracking. **[2026-04-05]** `consolidation` — Feature snapshot unification approved: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping across database and API layers. **[2026-03-18]** `bug_fix` — Backend startup resilience improved by adding retry logic in _continueToApp() to handle race condition when projects list returns empty on first load. **[2026-03-18]** `bug_fix` — Fixed _Database attribute error by removing stale db.ensure_project_schema() call from main.py and clarified _ensure_shared_schema convention. **[2026-03-18]** `critical_gap` — Identified that memory_items and project_facts tables are not being updated as designed; implementation needed to enable proper dual-layer memory synthesis and semantic search functionality.

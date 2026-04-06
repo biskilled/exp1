@@ -345,7 +345,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- Mirroring: prompts (raw prompt/response log)
 CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id    INT           NOT NULL REFERENCES mng_clients(id),
+    client_id    INT           NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id   INT           NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     session_id   TEXT,
     source_id    TEXT,
@@ -363,7 +363,7 @@ CREATE INDEX IF NOT EXISTS        idx_mmrr_p_tags    ON mem_mrr_prompts USING gi
 -- Mirroring: commits — commit_hash is the natural primary key (git hash)
 CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     commit_hash  VARCHAR(64)    PRIMARY KEY,
-    client_id    INT            NOT NULL REFERENCES mng_clients(id),
+    client_id    INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id   INT            NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     commit_msg   TEXT           NOT NULL DEFAULT '',
     summary      TEXT           NOT NULL DEFAULT '',
@@ -383,7 +383,7 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags     ON mem_mrr_commits USING gin(tags
 -- Work items (feature/bug/task pipeline tracking)
 CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id           INT           NOT NULL REFERENCES mng_clients(id),
+    client_id           INT           NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id          INT           NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     category_name       TEXT          NOT NULL,
     name                TEXT          NOT NULL,
@@ -410,7 +410,7 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_status ON mem_ai_work_items(status);
 -- Project facts (durable extracted facts; valid_until NULL = current)
 CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id        INT           NOT NULL REFERENCES mng_clients(id),
+    client_id        INT           NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id       INT           NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     fact_key         TEXT          NOT NULL,
     fact_value       TEXT          NOT NULL,
@@ -427,7 +427,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_ai_pf_current ON mem_ai_project_facts(
 -- Graph workflow definitions
 CREATE TABLE IF NOT EXISTS pr_graph_workflows (
     id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id      INT            NOT NULL REFERENCES mng_clients(id),
+    client_id      INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id     INT            NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     name           VARCHAR(255)   NOT NULL,
     description    TEXT           NOT NULL DEFAULT '',
@@ -494,7 +494,7 @@ CREATE INDEX IF NOT EXISTS idx_pr_ge_workflow ON pr_graph_edges(workflow_id);
 -- Workflow run instances
 CREATE TABLE IF NOT EXISTS pr_graph_runs (
     id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id      INT            NOT NULL REFERENCES mng_clients(id),
+    client_id      INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id     INT            NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     workflow_id    UUID           NOT NULL REFERENCES pr_graph_workflows(id) ON DELETE CASCADE,
     status         VARCHAR(50)    NOT NULL DEFAULT 'running',
@@ -560,7 +560,7 @@ CREATE TABLE IF NOT EXISTS mng_tags_categories (
 -- ── Planner tag hierarchy ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS planner_tags (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id           INT         NOT NULL REFERENCES mng_clients(id),
+    client_id           INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id          INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     name                TEXT        NOT NULL,
     category_id         INT         REFERENCES mng_tags_categories(id),

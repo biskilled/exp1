@@ -26,8 +26,8 @@ log = logging.getLogger(__name__)
 
 _SQL_UPSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
-            (project_id, commit_hash, session_id, commit_msg, diff_summary, committed_at, source, tags)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (project_id, commit_hash, session_id, commit_msg, diff_summary, committed_at, tags)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
                 commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
@@ -53,7 +53,7 @@ _SQL_LINK_COMMIT_TO_PROMPT = """
 
 _SQL_LIST_COMMITS = """
     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
-           c.source, c.session_id, c.committed_at,
+           c.tags->>'source' AS source, c.session_id, c.committed_at,
            p.source_id AS prompt_source_id
     FROM mem_mrr_commits c
     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
@@ -63,7 +63,7 @@ _SQL_LIST_COMMITS = """
 """
 
 _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
-    SELECT commit_hash, commit_msg, tags, source, committed_at
+    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
           FROM mem_mrr_commits
          WHERE project_id=%s
            AND (session_id = %s
@@ -72,7 +72,7 @@ _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
 """
 
 _SQL_GET_SESSION_COMMITS_BY_ID = """
-    SELECT commit_hash, commit_msg, tags, source, committed_at
+    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
           FROM mem_mrr_commits
          WHERE project_id=%s AND session_id = %s
          ORDER BY committed_at
@@ -154,10 +154,11 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # 1. Upsert the commit (includes diff_summary + tags)
+                tags_dict.setdefault("source", "commit_push")
                 cur.execute(
                     _SQL_UPSERT_COMMIT,
                     (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
-                     committed_at or datetime.now(timezone.utc), "commit_push",
+                     committed_at or datetime.now(timezone.utc),
                      json.dumps(tags_dict)),
                 )
 
