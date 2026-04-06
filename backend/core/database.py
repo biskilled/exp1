@@ -380,31 +380,33 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_c_session  ON mem_mrr_commits(session_id) WH
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt   ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags     ON mem_mrr_commits USING gin(tags);
 
--- Work items (feature/bug/task pipeline tracking)
+-- Work items (AI-detected tasks linked to planner tags)
 CREATE TABLE IF NOT EXISTS mem_ai_work_items (
-    id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id           INT           NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project_id          INT           NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-    category_name       TEXT          NOT NULL,
-    name                TEXT          NOT NULL,
-    description         TEXT          NOT NULL DEFAULT '',
-    status              VARCHAR(20)   NOT NULL DEFAULT 'active',
-    lifecycle_status    VARCHAR(20)   NOT NULL DEFAULT 'idea',
-    due_date            DATE,
-    parent_id           UUID          REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
-    acceptance_criteria TEXT          NOT NULL DEFAULT '',
-    implementation_plan TEXT          NOT NULL DEFAULT '',
-    agent_run_id        UUID,
-    agent_status        VARCHAR(20),
-    tags                TEXT[]        NOT NULL DEFAULT '{}',
+    id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id           INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project_id          INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    ai_category         TEXT         NOT NULL,
+    ai_name             TEXT         NOT NULL,
+    ai_desc             TEXT         NOT NULL DEFAULT '',
+    requirements        TEXT         NOT NULL DEFAULT '',
+    acceptance_criteria TEXT         NOT NULL DEFAULT '',
+    action_items        TEXT         NOT NULL DEFAULT '',
+    content             TEXT         NOT NULL DEFAULT '',
+    summary             TEXT         NOT NULL DEFAULT '',
+    tags                JSONB        NOT NULL DEFAULT '{}',
+    ai_tag_id           UUID         REFERENCES planner_tags(id),
+    tag_id              UUID         REFERENCES planner_tags(id),
+    status              VARCHAR(20)  NOT NULL DEFAULT 'active',
     seq_num             INT,
-    created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    source_event_id     UUID,
+    source_session_id   TEXT,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     embedding           VECTOR(1536),
-    UNIQUE(project_id, category_name, name)
+    UNIQUE(project_id, ai_category, ai_name)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid    ON mem_ai_work_items(project_id);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat    ON mem_ai_work_items(category_name);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat    ON mem_ai_work_items(ai_category);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_status ON mem_ai_work_items(status);
 
 -- Project facts (durable extracted facts; valid_until NULL = current)
@@ -670,8 +672,7 @@ ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS session_src_id;
 ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS session_src_desc;
 -- mem_mrr_commits: drop legacy columns
 ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS prompt_source_id;
--- mem_ai_work_items: add tag_id + embedding (not in original schema)
-ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
+-- mem_ai_work_items: add embedding (not in original schema; tag_id added by migration 011)
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
 -- mem_ai_project_facts: add embedding, drop unused columns
 ALTER TABLE mem_ai_project_facts ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
@@ -1111,6 +1112,53 @@ DO $$ BEGIN
     EXCEPTION WHEN duplicate_object THEN NULL; END;
   END IF;
 END $$;
+-- ── 011_work_items_refactor ───────────────────────────────────────────────────
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='mem_ai_work_items' AND column_name='category_name') THEN
+    ALTER TABLE mem_ai_work_items RENAME COLUMN category_name TO ai_category;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='mem_ai_work_items' AND column_name='name') THEN
+    ALTER TABLE mem_ai_work_items RENAME COLUMN name TO ai_name;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='mem_ai_work_items' AND column_name='description') THEN
+    ALTER TABLE mem_ai_work_items RENAME COLUMN description TO ai_desc;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='mem_ai_work_items' AND column_name='implementation_plan') THEN
+    ALTER TABLE mem_ai_work_items RENAME COLUMN implementation_plan TO action_items;
+  END IF;
+END $$;
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS requirements TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS ai_tag_id UUID REFERENCES planner_tags(id);
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
+-- Convert tags TEXT[] → JSONB
+DO $$ BEGIN
+  IF (SELECT data_type FROM information_schema.columns
+      WHERE table_name='mem_ai_work_items' AND column_name='tags') = 'ARRAY' THEN
+    ALTER TABLE mem_ai_work_items ALTER COLUMN tags DROP DEFAULT;
+    ALTER TABLE mem_ai_work_items ALTER COLUMN tags TYPE JSONB USING '{}'::jsonb;
+    ALTER TABLE mem_ai_work_items ALTER COLUMN tags SET DEFAULT '{}';
+  END IF;
+END $$;
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS lifecycle_status;
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS parent_id;
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS due_date;
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS agent_run_id;
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS agent_status;
+-- Update UNIQUE constraint (drop old variants, add new canonical one)
+ALTER TABLE mem_ai_work_items DROP CONSTRAINT IF EXISTS mem_ai_work_items_project_id_category_name_name_key;
+ALTER TABLE mem_ai_work_items DROP CONSTRAINT IF EXISTS mem_ai_wi_pid_cat_name_key;
+DO $$ BEGIN
+  ALTER TABLE mem_ai_work_items ADD CONSTRAINT mem_ai_work_items_proj_cat_name
+    UNIQUE (project_id, ai_category, ai_name);
+EXCEPTION WHEN duplicate_table THEN NULL; END $$;
 """
 
 

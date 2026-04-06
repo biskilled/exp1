@@ -41,3 +41,25 @@ Reviewer: ```json
 - **ui_library**: 3_dot_menu_pattern
 - **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
 - **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
+
+## Active Features
+
+- `shared-memory` [task]: memory
+- `hooks` [bug]: hooks
+- `pagination` [feature]: pagination
+- `dropbox` [feature]: dropbox
+- `UI` [feature]: UI
+- `implement-projects-tab` [task]: Build the UI for managing features/tasks/bugs
+- `test-picker-feature` [feature]: test-picker-feature
+- `workflow-runner` [feature]: workflow-runner
+- `mcp` [feature]: mcp
+- `tagging` [feature]: tagging
+- `embeddings` [feature]: embeddings
+- `auth` [feature]: auth
+- `billing` [feature]: billing
+- `graph-workflow` [feature]: graph-workflow
+- `shared-memory` [feature]: shared-memory
+
+## Last Session (2026-04-06 02:25)
+
+- • History view was showing only prompt text instead of full prompt + LLM response • User needs expanded view in history to see complete prompt and response text • User requested ability to copy text from history UI for easier access • History previously displayed both prompt and full LLM response but regressed to showing only prompt

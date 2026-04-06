@@ -1,31 +1,24 @@
 """
-work_items.py — Work item management with 4-agent pipeline support.
-
-Replaces entity_values for feature/bug/task categories. Adds:
-  - acceptance_criteria / implementation_plan fields
-  - agent pipeline (PM → Architect → Developer → Reviewer) via graph DAG
-  - project_facts (durable extracted facts)
-  - memory_items (Trycycle-reviewed session/feature summaries)
+work_items.py — AI-detected work item management linked to planner tags.
 
 Endpoints:
     GET    /work-items                    ?project=&category=&status=
-    POST   /work-items                    {category_name, name, description, ...}
-    PATCH  /work-items/{id}               {name?, description?, lifecycle_status?, ...}
+    GET    /work-items/unlinked           ?project=
+    POST   /work-items                    {ai_category, ai_name, ai_desc, ...}
+    PATCH  /work-items/{id}               {ai_name?, ai_desc?, tag_id?, ...}
     DELETE /work-items/{id}
     GET    /work-items/{id}/interactions  ?limit=20
-    POST   /work-items/migrate-from-tags  ?project=
-    POST   /work-items/{id}/run-pipeline  ?project=
+    GET    /work-items/number/{seq_num}
+    GET    /work-items/search             ?query=&project=&category=&limit=
     GET    /work-items/facts              ?project=
+    GET    /work-items/facts/search       ?query=&project=&limit=
     GET    /work-items/memory-items       ?project=&scope=session|feature
-f"""
+"""
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import uuid
-from typing import Any, Optional
-from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
@@ -36,39 +29,48 @@ from data.dl_seq import next_seq
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
-# Base template — dynamic WHERE clauses are appended in list_work_items
 _SQL_LIST_WORK_ITEMS_BASE = (
-    """SELECT w.id, w.category_name, w.name, w.description,
-              w.status, w.lifecycle_status, w.due_date,
-              w.parent_id, w.acceptance_criteria, w.implementation_plan,
-              w.agent_run_id, w.agent_status, w.tags,
-              w.created_at, w.updated_at,
-              w.seq_num,
+    """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+              w.status, w.acceptance_criteria, w.action_items,
+              w.requirements, w.content, w.summary,
+              w.tags, w.tag_id, w.ai_tag_id,
+              w.created_at, w.updated_at, w.seq_num,
               tc.color, tc.icon,
               (SELECT COUNT(*) FROM mem_mrr_prompts p
                WHERE p.client_id=1 AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count
        FROM mem_ai_work_items w
-       LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.category_name
+       LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
        WHERE {where}
        ORDER BY w.created_at DESC
        LIMIT %s"""
 )
 
+_SQL_UNLINKED_WORK_ITEMS = """
+    SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+           w.status, w.requirements, w.summary, w.tags,
+           w.created_at, w.seq_num,
+           pt.name AS ai_tag_name
+    FROM mem_ai_work_items w
+    LEFT JOIN planner_tags pt ON pt.id = w.ai_tag_id
+    WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status='active'
+    ORDER BY w.created_at DESC
+"""
+
 _SQL_INSERT_WORK_ITEM = (
     """INSERT INTO mem_ai_work_items
-           (project_id, category_name, name, description,
-            status, lifecycle_status, due_date, parent_id,
-            acceptance_criteria, implementation_plan, tags, seq_num)
+           (project_id, ai_category, ai_name, ai_desc,
+            requirements, acceptance_criteria, action_items,
+            content, summary, tags, status, seq_num)
        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-       ON CONFLICT (project_id, category_name, name) DO NOTHING
-       RETURNING id, name, category_name, created_at, seq_num"""
+       ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
+       RETURNING id, ai_name, ai_category, created_at, seq_num"""
 )
 
 _SQL_GET_WORK_ITEM = (
-    """SELECT w.id, w.category_name, w.name, w.description,
-              w.status, w.lifecycle_status, w.due_date,
-              w.acceptance_criteria, w.implementation_plan,
-              w.agent_run_id, w.agent_status, w.tags,
+    """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+              w.status, w.acceptance_criteria, w.action_items,
+              w.requirements, w.content, w.summary,
+              w.tags, w.tag_id, w.ai_tag_id,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
        WHERE w.project_id=%s AND w.id=%s::uuid"""
@@ -79,18 +81,13 @@ _SQL_DELETE_WORK_ITEM = (
 )
 
 _SQL_GET_WORK_ITEM_BY_SEQ = (
-    """SELECT w.id, w.category_name, w.name, w.description,
-              w.status, w.lifecycle_status, w.due_date,
-              w.acceptance_criteria, w.implementation_plan,
-              w.agent_run_id, w.agent_status, w.tags,
+    """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+              w.status, w.acceptance_criteria, w.action_items,
+              w.requirements, w.summary, w.tags, w.tag_id, w.ai_tag_id,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
        WHERE w.project_id=%s AND w.seq_num=%s
        LIMIT 1"""
-)
-
-_SQL_GET_CATEGORY_ID = (
-    "SELECT id FROM mng_tags_categories WHERE client_id=1 AND name=%s"
 )
 
 _SQL_GET_INTERACTIONS = (
@@ -109,131 +106,10 @@ _SQL_GET_FACTS = (
 )
 
 _SQL_GET_MEMORY_ITEMS = (
-    """SELECT id, source_type, source_id::text, content, importance, created_at
+    """SELECT id, event_type, source_id::text, content, importance, created_at
        FROM mem_ai_events
        WHERE {where}
        ORDER BY created_at DESC LIMIT %s"""
-)
-
-_SQL_GET_WORK_ITEM_FOR_PIPELINE = (
-    "SELECT name, description, acceptance_criteria FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s"
-)
-
-_SQL_INSERT_PIPELINE_RUN = (
-    """INSERT INTO pr_graph_runs (id, client_id, project_id, workflow_id, status, user_input)
-       VALUES (%s, 1, %s, %s, 'running', %s)"""
-)
-
-_SQL_UPDATE_WORK_ITEM_RUNNING = (
-    "UPDATE mem_ai_work_items SET agent_status='running', agent_run_id=%s::uuid, updated_at=NOW() WHERE id=%s::uuid"
-)
-
-_SQL_UPDATE_WORK_ITEM_ERROR = (
-    "UPDATE mem_ai_work_items SET agent_status='error', updated_at=NOW() WHERE id=%s::uuid"
-)
-
-_SQL_UPDATE_WORK_ITEM_AGENT_RUNNING = (
-    "UPDATE mem_ai_work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid"
-)
-
-_SQL_UPDATE_WORK_ITEM_DONE = (
-    """UPDATE mem_ai_work_items
-       SET agent_status='done',
-           acceptance_criteria=COALESCE(NULLIF(%s,''), acceptance_criteria),
-           implementation_plan=COALESCE(NULLIF(%s,''), implementation_plan),
-           updated_at=NOW()
-       WHERE id=%s::uuid"""
-)
-
-_SQL_UPDATE_WORK_ITEM_LIFECYCLE_DONE = (
-    """UPDATE mem_ai_work_items
-       SET lifecycle_status='done', updated_at=NOW()
-       WHERE id=%s::uuid AND lifecycle_status != 'done'"""
-)
-
-_SQL_UPDATE_WORK_ITEM_LIFECYCLE = (
-    "UPDATE mem_ai_work_items SET lifecycle_status=%s, updated_at=NOW() WHERE id=%s::uuid"
-)
-
-_SQL_EXPIRE_PIPELINE_FACT = (
-    """UPDATE mem_ai_project_facts SET valid_until=NOW()
-       WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL"""
-)
-
-_SQL_INSERT_PIPELINE_FACT = (
-    "INSERT INTO mem_ai_project_facts (project_id, fact_key, fact_value) VALUES (%s, %s, %s)"
-)
-
-_SQL_INSERT_PIPELINE_INTERACTION = (
-    """INSERT INTO mem_mrr_prompts
-       (id, project_id, llm_source, response, session_id, tags, created_at)
-       VALUES (%s, %s, 'pipeline', %s, %s, jsonb_build_object('work-item', %s::text), NOW())"""
-)
-
-_SQL_PIPELINE_TAGGED_INTERACTIONS = (
-    """SELECT i.response, i.created_at
-       FROM mem_mrr_prompts i
-       WHERE i.tags @> jsonb_build_object('work-item', %s::text)
-       ORDER BY i.created_at DESC LIMIT 30"""
-)
-
-_SQL_PIPELINE_TAGGED_COMMITS = (
-    """SELECT c.commit_hash, c.commit_msg, c.committed_at
-       FROM mem_mrr_commits c
-       WHERE c.client_id=1
-         AND c.session_id IN (
-             SELECT DISTINCT session_id FROM mem_mrr_prompts
-             WHERE tags @> jsonb_build_object('work-item', %s::text) AND session_id IS NOT NULL
-         )
-       ORDER BY c.committed_at DESC LIMIT 10"""
-)
-
-_SQL_PIPELINE_MEMORY_ITEMS = (
-    """SELECT content FROM mem_ai_events
-       WHERE project_id=%s
-       ORDER BY created_at DESC LIMIT 3"""
-)
-
-_SQL_UPSERT_PIPELINE_WORKFLOW = (
-    """INSERT INTO pr_graph_workflows
-           (client_id, project_id, name, description, max_iterations,
-            created_at, updated_at)
-       VALUES (1, %s, %s, %s, 3, NOW(), NOW())
-       ON CONFLICT (client_id, project_id, name) DO UPDATE
-           SET updated_at=NOW()"""
-)
-
-_SQL_GET_PIPELINE_WORKFLOW_ID = (
-    "SELECT id FROM pr_graph_workflows WHERE client_id=1 AND project_id=%s AND name=%s"
-)
-
-_SQL_DELETE_PIPELINE_EDGES = "DELETE FROM pr_graph_edges WHERE workflow_id=%s"
-_SQL_DELETE_PIPELINE_NODES = "DELETE FROM pr_graph_nodes WHERE workflow_id=%s"
-
-_SQL_INSERT_PIPELINE_NODE = (
-    """INSERT INTO pr_graph_nodes
-           (workflow_id, name, provider, model, role_id, role_prompt,
-            inject_context, require_approval, approval_msg, stateless,
-            position_x, position_y, created_at, updated_at)
-       VALUES (%s,%s,%s,%s,%s,%s, TRUE, %s, %s, %s, %s, 100, NOW(), NOW())
-       RETURNING id"""
-)
-
-_SQL_INSERT_PIPELINE_EDGE = (
-    """INSERT INTO pr_graph_edges
-           (workflow_id, source_node_id, target_node_id, condition, label,
-            created_at, updated_at)
-       VALUES (%s,%s,%s, NULL, '', NOW(), NOW())"""
-)
-
-_SQL_GET_ALL_AGENT_ROLES = (
-    "SELECT id, name FROM mng_agent_roles WHERE client_id=1 AND is_active=TRUE"
-)
-
-_SQL_LIST_ENTITY_VALUES_ACTIVE = (
-    """SELECT id::text, name FROM planner_tags
-       WHERE project_id=%s AND status='active'
-       ORDER BY name LIMIT 50"""
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -263,11 +139,14 @@ async def _trigger_memory_regen(project: str) -> None:
         log.debug(f"_trigger_memory_regen error: {e}")
 
 
-async def _embed_work_item(project_id: int, item_id: str, name: str, description: str, criteria: str) -> None:
+async def _embed_work_item(
+    project_id: int, item_id: str,
+    ai_name: str, ai_desc: str, requirements: str, summary: str,
+) -> None:
     """Embed work item content and store the vector on the row."""
     try:
         from memory.memory_embedding import _embed
-        text = f"{name}\n{description}\n{criteria}".strip()
+        text = f"{ai_name} {ai_desc} {requirements} {summary}".strip()
         vec = await _embed(text)
         if vec and db.is_available():
             vec_str = f"[{','.join(str(x) for x in vec)}]"
@@ -282,10 +161,19 @@ async def _embed_work_item(project_id: int, item_id: str, name: str, description
 
 
 async def _run_matching(project: str, work_item_id: str) -> None:
-    """Background task: match a work item to existing planner tags via MemoryTagging."""
+    """Background task: match a work item to planner tags; persist best match as ai_tag_id."""
     try:
         from memory.memory_tagging import MemoryTagging
-        await MemoryTagging().match_work_item_to_tags(project, work_item_id)
+        matches = await MemoryTagging().match_work_item_to_tags(project, work_item_id)
+        if matches:
+            best = matches[0]
+            if best.get("confidence", 0) > 0.70 and best.get("tag_id"):
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid WHERE id=%s::uuid",
+                            (best["tag_id"], work_item_id),
+                        )
     except Exception:
         pass  # non-critical background task
 
@@ -293,32 +181,56 @@ async def _run_matching(project: str, work_item_id: str) -> None:
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class WorkItemCreate(BaseModel):
-    category_name:       str
-    name:                str
-    description:         str = ""
+    ai_category:         str
+    ai_name:             str
+    ai_desc:             str = ""
     project:             Optional[str] = None
-    status:              str = "prereq"   # starts prereq; auto-advances to active when description is set
-    lifecycle_status:    str = "idea"
-    due_date:            Optional[str] = None
-    parent_id:           Optional[str] = None
+    status:              str = "active"
+    requirements:        str = ""
     acceptance_criteria: str = ""
-    implementation_plan: str = ""
-    tags:                list[str] = []
+    action_items:        str = ""
+    content:             str = ""
+    summary:             str = ""
+    tags:                dict = {}
 
 
 class WorkItemPatch(BaseModel):
-    name:                Optional[str] = None
-    description:         Optional[str] = None
+    ai_name:             Optional[str] = None
+    ai_desc:             Optional[str] = None
     status:              Optional[str] = None
-    lifecycle_status:    Optional[str] = None
-    due_date:            Optional[str] = None
+    requirements:        Optional[str] = None
     acceptance_criteria: Optional[str] = None
-    implementation_plan: Optional[str] = None
-    agent_status:        Optional[str] = None
-    tags:                Optional[list[str]] = None
+    action_items:        Optional[str] = None
+    content:             Optional[str] = None
+    summary:             Optional[str] = None
+    tags:                Optional[dict] = None
+    tag_id:              Optional[str] = None
+    ai_tag_id:           Optional[str] = None
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
+
+@router.get("/unlinked")
+async def get_unlinked_work_items(project: str | None = Query(None)):
+    """Work items not yet linked to a planner tag (tag_id IS NULL).
+    Returns ai_tag_name via JOIN on ai_tag_id for hint badge display."""
+    if not db.is_available():
+        return {"items": [], "project": _project(project), "fallback": True}
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id,))
+            cols = [d[0] for d in cur.description]
+            rows = []
+            for r in cur.fetchall():
+                row = dict(zip(cols, r))
+                row["id"] = str(row["id"])
+                if row.get("created_at"):
+                    row["created_at"] = row["created_at"].isoformat()
+                rows.append(row)
+    return {"items": rows, "project": p, "total": len(rows)}
+
 
 @router.get("")
 async def list_work_items(
@@ -337,11 +249,11 @@ async def list_work_items(
     where = ["w.project_id=%s"]
     params: list = [p_id]
     if category:
-        where.append("w.category_name=%s"); params.append(category)
+        where.append("w.ai_category=%s"); params.append(category)
     if status:
         where.append("w.status=%s"); params.append(status)
     if name:
-        where.append("w.name=%s"); params.append(name)
+        where.append("w.ai_name=%s"); params.append(name)
 
     sql = _SQL_LIST_WORK_ITEMS_BASE.format(where=" AND ".join(where))
     with db.conn() as conn:
@@ -354,15 +266,13 @@ async def list_work_items(
                 for dt_field in ("created_at", "updated_at"):
                     if row.get(dt_field):
                         row[dt_field] = row[dt_field].isoformat()
-                if row.get("due_date"):
-                    row["due_date"] = row["due_date"].isoformat()
                 row["id"] = str(row["id"])
-                if row.get("parent_id"):
-                    row["parent_id"] = str(row["parent_id"])
-                if row.get("agent_run_id"):
-                    row["agent_run_id"] = str(row["agent_run_id"])
+                if row.get("tag_id"):
+                    row["tag_id"] = str(row["tag_id"])
+                if row.get("ai_tag_id"):
+                    row["ai_tag_id"] = str(row["ai_tag_id"])
                 if row.get("tags") is None:
-                    row["tags"] = []
+                    row["tags"] = {}
                 rows.append(row)
     return {"work_items": rows, "project": p, "total": len(rows)}
 
@@ -373,34 +283,32 @@ async def create_work_item(
     background_tasks: BackgroundTasks,
     project: str | None = Query(None),
 ):
-    f"""Create a new work item."""
+    """Create a new work item."""
     _require_db()
     p = _project(project or body.project)
     p_id = db.get_or_create_project_id(p)
 
+    import json as _json
     with db.conn() as conn:
         with conn.cursor() as cur:
-            seq = next_seq(cur, p_id, body.category_name)
+            seq = next_seq(cur, p_id, body.ai_category)
             cur.execute(
                 _SQL_INSERT_WORK_ITEM,
-                (p_id, body.category_name, body.name, body.description,
-                 body.status, body.lifecycle_status, body.due_date or None,
-                 body.parent_id or None,
-                 body.acceptance_criteria, body.implementation_plan,
-                 body.tags, seq),
+                (p_id, body.ai_category, body.ai_name, body.ai_desc,
+                 body.requirements, body.acceptance_criteria, body.action_items,
+                 body.content, body.summary,
+                 _json.dumps(body.tags), body.status, seq),
             )
             r = cur.fetchone()
+    if not r:
+        raise HTTPException(409, f"Work item '{body.ai_name}' already exists in category '{body.ai_category}'")
     item_id = str(r[0])
-    # Embed work item content + regenerate memory files in background
-    asyncio.create_task(_embed_work_item(p_id, item_id, body.name, body.description, body.acceptance_criteria))
+    asyncio.create_task(_embed_work_item(p_id, item_id, body.ai_name, body.ai_desc, body.requirements, body.summary))
     asyncio.create_task(_trigger_memory_regen(p))
-    # Match new work item to existing tags in background
     background_tasks.add_task(_run_matching, p, item_id)
-
     return {
-        "id": item_id, "name": r[1], "category_name": r[2],
-        "created_at": r[3].isoformat(), "project": p,
-        "seq_num": r[4],
+        "id": item_id, "ai_name": r[1], "ai_category": r[2],
+        "created_at": r[3].isoformat(), "project": p, "seq_num": r[4],
     }
 
 
@@ -411,36 +319,31 @@ async def patch_work_item(
     project: str | None = Query(None),
     background: BackgroundTasks = BackgroundTasks(),
 ):
-    f"""Update work item fields. Triggers feature memory synthesis when lifecycle → done.f"""
+    """Update work item fields."""
     _require_db()
     p = _project(project)
     p_id = db.get_or_create_project_id(p)
     fields, params = [], []
-    if body.name                is not None: fields.append("name=%s");                params.append(body.name)
-    if body.description         is not None: fields.append("description=%s");         params.append(body.description)
+    if body.ai_name             is not None: fields.append("ai_name=%s");             params.append(body.ai_name)
+    if body.ai_desc             is not None: fields.append("ai_desc=%s");             params.append(body.ai_desc)
     if body.status              is not None: fields.append("status=%s");              params.append(body.status)
-    if body.lifecycle_status    is not None: fields.append("lifecycle_status=%s");    params.append(body.lifecycle_status)
-    if body.due_date            is not None: fields.append("due_date=%s");            params.append(body.due_date or None)
+    if body.requirements        is not None: fields.append("requirements=%s");        params.append(body.requirements)
     if body.acceptance_criteria is not None: fields.append("acceptance_criteria=%s"); params.append(body.acceptance_criteria)
-    if body.implementation_plan is not None: fields.append("implementation_plan=%s"); params.append(body.implementation_plan)
-    if body.agent_status        is not None: fields.append("agent_status=%s");        params.append(body.agent_status)
-    if body.tags                is not None: fields.append("tags=%s");                params.append(body.tags)
+    if body.action_items        is not None: fields.append("action_items=%s");        params.append(body.action_items)
+    if body.content             is not None: fields.append("content=%s");             params.append(body.content)
+    if body.summary             is not None: fields.append("summary=%s");             params.append(body.summary)
+    if body.tags                is not None:
+        import json as _json
+        fields.append("tags=%s"); params.append(_json.dumps(body.tags))
+    if body.tag_id              is not None:
+        fields.append("tag_id=%s")
+        params.append(body.tag_id if body.tag_id else None)
+    if body.ai_tag_id           is not None:
+        fields.append("ai_tag_id=%s")
+        params.append(body.ai_tag_id if body.ai_tag_id else None)
 
     if not fields:
         raise HTTPException(400, "Nothing to update")
-
-    # Auto-advance: if description is being set to non-empty and status is still 'prereq', activate
-    if body.description and body.description.strip() and body.status is None:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT status FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
-                    (item_id, p_id),
-                )
-                row = cur.fetchone()
-                if row and row[0] == "prereq":
-                    fields.append("status=%s")
-                    params.append("active")
 
     fields.append("updated_at=NOW()")
     params.append(item_id)
@@ -455,35 +358,28 @@ async def patch_work_item(
             result = cur.fetchone()
             if not result:
                 raise HTTPException(404, "Work item not found")
-            new_status = result[1]
 
-    # Re-embed if content-bearing fields changed
-    content_fields = {"name", "description", "acceptance_criteria", "implementation_plan"}
     body_dict = body.model_dump(exclude_none=True)
-    if any(getattr(body, f) is not None for f in ("name", "description", "acceptance_criteria", "implementation_plan")):
+    content_fields = {"ai_name", "ai_desc", "requirements", "summary"}
+    if any(f in body_dict for f in content_fields):
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT name, description, acceptance_criteria FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
+                    "SELECT ai_name, ai_desc, requirements, summary FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
                     (item_id, p_id),
                 )
                 row = cur.fetchone()
         if row:
-            asyncio.create_task(_embed_work_item(p_id, item_id, row[0], row[1], row[2]))
-
-    # Re-run tag matching if name, description, or summary fields changed
-    if any(f in body_dict for f in content_fields):
+            asyncio.create_task(_embed_work_item(p_id, item_id, row[0], row[1] or "", row[2] or "", row[3] or ""))
         background.add_task(_run_matching, p, item_id)
 
-    # Regenerate root memory files in background after any patch
     asyncio.create_task(_trigger_memory_regen(p))
-
-    return {"ok": True, "id": item_id, "status": new_status}
+    return {"ok": True, "id": item_id, "status": result[1]}
 
 
 @router.delete("/{item_id}")
 async def delete_work_item(item_id: str, project: str | None = Query(None)):
-    """Delete a work item and all its interaction_tags.f"""
+    """Delete a work item."""
     _require_db()
     p = _project(project)
     p_id = db.get_or_create_project_id(p)
@@ -515,12 +411,10 @@ async def get_work_item_by_number(seq_num: int, project: str | None = Query(None
             for dt_field in ("created_at", "updated_at"):
                 if row.get(dt_field):
                     row[dt_field] = row[dt_field].isoformat()
-            if row.get("due_date"):
-                row["due_date"] = row["due_date"].isoformat()
-            if row.get("agent_run_id"):
-                row["agent_run_id"] = str(row["agent_run_id"])
-            if row.get("tags") is None:
-                row["tags"] = []
+            if row.get("tag_id"):
+                row["tag_id"] = str(row["tag_id"])
+            if row.get("ai_tag_id"):
+                row["ai_tag_id"] = str(row["ai_tag_id"])
             return row
 
 
@@ -532,7 +426,7 @@ async def get_work_item_interactions(
     project: str | None = Query(None),
     limit:   int        = Query(20),
 ):
-    """Return recent interactions tagged to this work item.f"""
+    """Return recent interactions tagged to this work item."""
     _require_db()
     p = _project(project)
     p_id = db.get_or_create_project_id(p)
@@ -548,502 +442,6 @@ async def get_work_item_interactions(
                     row["created_at"] = row["created_at"].isoformat()
                 rows.append(row)
     return {"interactions": rows, "work_item_id": item_id, "project": p}
-
-
-# ── Migrate work items ────────────────────────────────────────────────────────────
-
-@router.post("/migrate-from-tags")
-async def migrate_from_tags(project: str | None = Query(None)):
-    f"""Copy feature/bug/task entity_values → work_items. Idempotent."""
-    _require_db()
-    p = _project(project)
-    from core.migrations.migrate_to_memory_layers import run_migration
-    asyncio.create_task(run_migration(p))
-    return {"status": "migration started", "project": p}
-
-
-# ── Agent pipeline ────────────────────────────────────────────────────────────
-
-@router.post("/{item_id}/run-pipeline")
-async def run_pipeline(item_id: str, project: str | None = Query(None)):
-    """Start the ReAct PM→Architect→Developer→Reviewer pipeline for a work item.
-
-    Requires a non-empty description. Runs AgentWorkflow in background and writes
-    structured outputs (AC, implementation_plan, lifecycle_status) back to the item.
-    """
-    _require_db()
-    p = _project(project)
-    p_id = db.get_or_create_project_id(p)
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_SQL_GET_WORK_ITEM_FOR_PIPELINE, (item_id, p_id))
-            row = cur.fetchone()
-    if not row:
-        raise HTTPException(404, "Work item not found")
-
-    name, desc, existing_ac = row
-    if not desc or not desc.strip():
-        raise HTTPException(400, "Add a description before running the pipeline")
-
-    # Build rich task context (tagged interactions + commits + memory items)
-    task = _build_pipeline_context(p, item_id, name, desc, existing_ac)
-
-    # Create a run record so "View last run" link in UI works
-    workflow_id = await _ensure_pipeline_workflow(p)
-    run_id = str(uuid.uuid4())
-    try:
-        if workflow_id:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_INSERT_PIPELINE_RUN, (run_id, p_id, workflow_id, task[:2000]))
-    except Exception as e:
-        log.debug(f"Could not create pipeline run record: {e}")
-
-    # Mark work item as running + advance lifecycle to development
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_SQL_UPDATE_WORK_ITEM_RUNNING, (run_id, item_id))
-            cur.execute(_SQL_UPDATE_WORK_ITEM_LIFECYCLE, ("development", item_id))
-
-    asyncio.create_task(_run_react_pipeline(item_id, p, task, name, run_id))
-    return {"status": "pipeline started", "work_item_id": item_id, "run_id": run_id, "project": p}
-
-
-def _build_pipeline_context(
-    project: str, item_id: str, name: str, desc: str, existing_ac: str
-) -> str:
-    """Build rich user_input for the pipeline: work item + all tagged history.
-
-    Fetches tagged interactions and commits so the PM agent has full context.
-    """
-    lines = [
-        f"# Work Item: {name}",
-        f"**Description:** {desc or 'No description provided.'}",
-    ]
-    if existing_ac:
-        lines += ["", "**Existing Acceptance Criteria:**", existing_ac]
-
-    if not db.is_available():
-        return "\n".join(lines)
-
-    # Tagged interactions (chat prompts/responses linked to this work item)
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL_PIPELINE_TAGGED_INTERACTIONS, (item_id,))
-                rows = cur.fetchall()
-        if rows:
-            lines += ["", "## Tagged Interactions (most recent first)"]
-            for content, ts in reversed(rows):
-                short = (content or "")[:400]
-                lines.append(short)
-    except Exception as _e:
-        log.debug(f"Could not fetch tagged interactions: {_e}")
-
-    # Tagged commits
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL_PIPELINE_TAGGED_COMMITS, (item_id,))
-                commits = cur.fetchall()
-        if commits:
-            lines += ["", "## Related Commits"]
-            for h, msg, ts in commits:
-                lines.append(f"- {str(h)[:8]} {msg or ''}")
-    except Exception as _e:
-        log.debug(f"Could not fetch tagged commits: {_e}")
-
-    # Memory items for this work item
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                p_id_ctx = db.get_or_create_project_id(project)
-                cur.execute(_SQL_PIPELINE_MEMORY_ITEMS, (p_id_ctx,))
-                mems = cur.fetchall()
-        if mems:
-            lines += ["", "## Previous Memory Summaries"]
-            for (s,) in mems:
-                lines.append((s or "")[:500])
-    except Exception as _e:
-        log.debug(f"Could not fetch memory items: {_e}")
-
-    return "\n".join(lines)
-
-
-def _save_pipeline_interaction(
-    project: str, item_id: str, run_id: str, item_name: str, ac: str, reviewer_out: str
-) -> None:
-    """Save the pipeline run as a prompt in mem_mrr_prompts + tag it to the work item."""
-    if not db.is_available():
-        return
-    summary = f"Pipeline run for: {item_name}"
-    content = ""
-    if ac:
-        content += f"**Acceptance Criteria:**\n{ac[:600]}\n\n"
-    if reviewer_out:
-        content += f"**Reviewer Output:**\n{reviewer_out[:400]}"
-    if not content:
-        content = "Pipeline completed."
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                iid = str(uuid.uuid4())
-                cur.execute(
-                    _SQL_INSERT_PIPELINE_INTERACTION,
-                    (iid, project, content, run_id[:36], item_id),
-                )
-                # work_item_id is set directly on the prompt row — no separate tag table needed
-    except Exception as _e:
-        log.debug(f"Could not save pipeline interaction: {_e}")
-
-
-def _maybe_close_feature(project: str, item_id: str, reviewer_output: str) -> None:
-    """If reviewer output indicates approval, mark work item lifecycle_status='done'."""
-    if not db.is_available():
-        return
-    rev_lower = reviewer_output.lower() if isinstance(reviewer_output, str) else ""
-    # Check for explicit approval signals in reviewer JSON or text
-    approved = False
-    import re as _re, json as _json
-    try:
-        m = _re.search(r'"passed"\s*:\s*(true|false)', rev_lower)
-        if m:
-            approved = m.group(1) == "true"
-        else:
-            score_m = _re.search(r'"score"\s*:\s*(\d+)', rev_lower)
-            if score_m:
-                approved = int(score_m.group(1)) >= 7
-            else:
-                approved = any(w in rev_lower for w in ["approved", "lgtm", "looks good", "passes"])
-    except Exception:
-        pass
-    if approved:
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_UPDATE_WORK_ITEM_LIFECYCLE_DONE, (item_id,))
-            log.info(f"Work item {item_id} marked as done by reviewer")
-        except Exception as _e:
-            log.debug(f"Could not close feature: {_e}")
-
-
-def _upsert_pipeline_fact(project: str, item_name: str, ac: str, reviewer_output: str) -> None:
-    """Save a durable project fact after a pipeline run completes.
-
-    This ensures MCP / /memory synthesis picks up the result without waiting
-    for a full memory run.  Fact key: pipeline/{item_name}
-    """
-    if not db.is_available():
-        return
-    try:
-        summary = f"Acceptance criteria:\n{str(ac)[:400]}"
-        if reviewer_output:
-            summary += f"\n\nReviewer: {str(reviewer_output)[:200]}"
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                # Expire any existing current fact for this item
-                cur.execute(_SQL_EXPIRE_PIPELINE_FACT, (project, f"pipeline/{item_name}"))
-                # Insert fresh fact
-                cur.execute(_SQL_INSERT_PIPELINE_FACT, (project, f"pipeline/{item_name}", summary))
-    except Exception as _fe:
-        log.debug(f"Could not upsert pipeline fact: {_fe}")
-
-
-def _finalize_work_item_pipeline(
-    project: str, item_id: str, run_id: str, item_name: str, ctx: dict
-) -> None:
-    """Finalize a completed work item pipeline run.
-
-    Called after all approval gates pass and the pipeline is fully done.
-    Updates the work item, saves a project fact, writes to interaction history,
-    and closes the feature if the reviewer approved.
-    """
-    ac   = ctx.get("PM")       or ctx.get("pm")       or ""
-    impl = ctx.get("Architect") or ctx.get("architect") or ""
-    dev  = ctx.get("Developer") or ctx.get("developer") or ""
-    rev  = ctx.get("Reviewer")  or ctx.get("reviewer")  or ""
-    if isinstance(ac,   dict): ac   = ac.get("output",   str(ac))
-    if isinstance(impl, dict): impl = impl.get("output", str(impl))
-    if isinstance(dev,  dict): dev  = dev.get("output",  str(dev))
-    if isinstance(rev,  dict): rev  = rev.get("output",  str(rev))
-    if dev and impl:
-        impl = f"{impl}\n\n## Implementation Output\n{dev}"
-
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    _SQL_UPDATE_WORK_ITEM_DONE,
-                    (str(ac), str(impl) if impl else "", item_id),
-                )
-    except Exception as e:
-        log.error(f"Could not update work item {item_id} after pipeline: {e}")
-
-    if ac:
-        _upsert_pipeline_fact(project, item_name, ac, rev)
-
-    # Run fact extraction in background
-    try:
-        from routers.route_projects import _extract_project_facts
-        asyncio.create_task(_extract_project_facts(project))
-    except Exception as _fe:
-        log.debug(f"Fact extraction skipped: {_fe}")
-
-    _save_pipeline_interaction(project, item_id, run_id, item_name, ac, rev)
-
-    if rev:
-        _maybe_close_feature(project, item_id, rev)
-
-
-# ── ReAct pipeline helpers ────────────────────────────────────────────────────
-
-async def _run_react_pipeline(
-    item_id: str, project: str, task: str, item_name: str, run_id: str
-) -> None:
-    """Background: run the ReAct orchestrator pipeline for a work item."""
-    from agents.orchestrator import AgentWorkflow
-    try:
-        wf = await AgentWorkflow(pipeline="standard", project=project).run(task=task)
-        _finalize_react_pipeline(project, item_id, run_id, item_name, wf)
-    except Exception as exc:
-        log.error(f"ReAct pipeline failed for item {item_id}: {exc}", exc_info=True)
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_UPDATE_WORK_ITEM_ERROR, (item_id,))
-        except Exception:
-            pass
-
-
-def _finalize_react_pipeline(
-    project: str, item_id: str, run_id: str, item_name: str, wf: Any
-) -> None:
-    """Write ReAct pipeline structured outputs back to the work item."""
-    # AC from PM structured output
-    ac = ""
-    pm = wf.results.get("project_manager")
-    if pm and pm.structured_output:
-        raw = pm.structured_output.get("acceptance_criteria", "")
-        ac = "\n".join(f"- {x}" for x in raw) if isinstance(raw, list) else str(raw)
-
-    # Implementation plan from Architect + Developer
-    impl_parts: list[str] = []
-    arch = wf.results.get("architect")
-    if arch and arch.structured_output:
-        so = arch.structured_output
-        if so.get("approach"):
-            impl_parts.append(f"## Architecture Approach\n{so['approach']}")
-        files = so.get("files_to_touch", [])
-        if files:
-            files_str = "\n".join(f"- {f}" for f in files) if isinstance(files, list) else str(files)
-            impl_parts.append(f"## Files to Touch\n{files_str}")
-
-    dev = wf.results.get("developer")
-    if dev and dev.structured_output:
-        so = dev.structured_output
-        changes = so.get("changes_made", [])
-        issues = so.get("issues_encountered", [])
-        if changes:
-            impl_parts.append("## Changes Made\n" + (
-                "\n".join(f"- {c}" for c in changes) if isinstance(changes, list) else str(changes)))
-        if issues:
-            impl_parts.append("## Issues\n" + (
-                "\n".join(f"- {i}" for i in issues) if isinstance(issues, list) else str(issues)))
-
-    impl = "\n\n".join(impl_parts)
-
-    # Lifecycle from reviewer verdict
-    verdict = ""
-    rev = wf.results.get("reviewer")
-    if rev and rev.structured_output:
-        verdict = rev.structured_output.get("verdict", "")
-    new_lifecycle = "review" if wf.final_verdict == "approved" else "development"
-
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL_UPDATE_WORK_ITEM_DONE, (ac, impl, item_id))
-                cur.execute(_SQL_UPDATE_WORK_ITEM_LIFECYCLE, (new_lifecycle, item_id))
-    except Exception as e:
-        log.error(f"Could not update work item {item_id} after ReAct pipeline: {e}")
-
-    if ac:
-        _upsert_pipeline_fact(project, item_name, ac, verdict or wf.final_verdict)
-
-    _save_pipeline_interaction(project, item_id, run_id, item_name, ac, verdict or wf.final_verdict)
-
-    try:
-        from routers.route_projects import _extract_project_facts
-        asyncio.create_task(_extract_project_facts(project))
-    except Exception as _fe:
-        log.debug(f"Fact extraction skipped: {_fe}")
-
-
-async def _ensure_pipeline_workflow(project: str) -> int | None:
-    """Find or create the '_work_item_pipeline' workflow with approval gates.
-
-    Stages:  PM (approval) → Architect (approval) → Developer → Reviewer (approval)
-    All stages use pre-defined agent roles from the DB (matched via ILIKE).
-    Nodes are always deleted and recreated on each trigger so any role/approval
-    changes are applied immediately.
-    """
-    WF_NAME = "_work_item_pipeline"
-    if not db.is_available():
-        return None
-    try:
-        # ── 1. Look up agent roles via ILIKE pattern matching ─────────────────
-        role_map: dict[str, int | None] = {
-            "pm": None, "architect": None, "developer": None, "reviewer": None
-        }
-        ROLE_PATTERNS: dict[str, list[str]] = {
-            "pm":        ["%product manager%", "%pm%"],
-            "architect": ["%architect%"],
-            "developer": ["%backend developer%", "%backend dev%", "%web developer%", "%developer%"],
-            "reviewer":  ["%stateless reviewer%", "%reviewer%"],
-        }
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_ALL_AGENT_ROLES)
-                    all_roles = cur.fetchall()
-            # Match each stage using patterns in order of specificity (most specific first).
-            # For each pattern, scan all roles — first matching role wins.
-            for key, patterns in ROLE_PATTERNS.items():
-                for pat in patterns:
-                    substr = pat.strip("%")
-                    for rid, rname in all_roles:
-                        if substr in (rname or "").lower():
-                            role_map[key] = rid
-                            break
-                    if role_map[key] is not None:
-                        break
-        except Exception as _re:
-            log.warning(f"Role lookup failed: {_re}")
-
-        log.info(f"_work_item_pipeline role_map for {project}: {role_map}")
-        claude_model = getattr(settings, "claude_model", settings.haiku_model)
-
-        # ── 2. Stage definitions: role + approval + task instructions ─────────
-        stages = [
-            {
-                "name": "PM", "provider": "claude", "model": settings.haiku_model,
-                "role_key": "pm", "require_approval": True, "stateless": False,
-                "approval_msg": (
-                    "Review the PM analysis and acceptance criteria. "
-                    "Approve to proceed to Architect, or Retry to regenerate."
-                ),
-                "task_instructions": (
-                    "## Pipeline Task: Product Manager Analysis\n\n"
-                    "You have received tagged context for this work item "
-                    "(chat history, commits, prior summaries).\n\n"
-                    "Your deliverable:\n"
-                    "1. **Context Summary** — Briefly describe what you found "
-                    "in the tagged history and commits.\n"
-                    "2. **Feature Understanding** — What is this feature? "
-                    "What problem does it solve?\n"
-                    "3. **Acceptance Criteria** — Write 3-8 clear, testable criteria "
-                    "(format: `- [ ] criterion`).\n"
-                    "4. **Open Questions** — List anything unclear or missing.\n\n"
-                    "> 📋 PM analysis complete. Awaiting approval before Architect phase."
-                ),
-            },
-            {
-                "name": "Architect", "provider": "claude", "model": settings.haiku_model,
-                "role_key": "architect", "require_approval": True, "stateless": False,
-                "approval_msg": (
-                    "Review the technical implementation plan. "
-                    "Approve to start development, or Retry to regenerate."
-                ),
-                "task_instructions": (
-                    "## Pipeline Task: Technical Architecture\n\n"
-                    "Based on the PM's acceptance criteria and the original work item "
-                    "context, produce:\n\n"
-                    "1. **Implementation Plan** — Numbered steps in execution order.\n"
-                    "2. **Files to Change** — Specific paths and what changes are needed.\n"
-                    "3. **New Components** — Functions, classes, endpoints, or DB changes.\n"
-                    "4. **Risks & Dependencies** — Non-obvious decisions or risks.\n\n"
-                    "Be precise. The Developer will follow this plan exactly.\n\n"
-                    "> 🏗 Architecture plan complete. Awaiting approval before Developer phase."
-                ),
-            },
-            {
-                "name": "Developer", "provider": "claude", "model": claude_model,
-                "role_key": "developer", "require_approval": False, "stateless": False,
-                "approval_msg": "",
-                "task_instructions": (
-                    "## Pipeline Task: Implementation\n\n"
-                    "Implement the work item based on:\n"
-                    "- PM's acceptance criteria\n"
-                    "- Architect's implementation plan\n"
-                    "- Original work item context\n\n"
-                    "Provide complete, runnable code with:\n"
-                    "- File paths for each change\n"
-                    "- Full function/class implementations (not pseudocode)\n"
-                    "- Explanations for non-obvious decisions\n"
-                    "- Coverage of all layers (backend, frontend, DB) as needed"
-                ),
-            },
-            {
-                "name": "Reviewer", "provider": "claude", "model": settings.haiku_model,
-                "role_key": "reviewer", "require_approval": True, "stateless": False,
-                "approval_msg": (
-                    "Review the code assessment. "
-                    "Approve to mark this feature as Done, or Retry for another review cycle."
-                ),
-                "task_instructions": (
-                    "## Pipeline Task: Code Review (Stateless)\n\n"
-                    "You are reviewing the Developer's implementation. "
-                    "You have no prior conversation history.\n\n"
-                    "Review the implementation against the PM's acceptance criteria:\n"
-                    "1. Check each criterion — addressed? Yes/No.\n"
-                    "2. List specific issues, gaps, or improvements needed.\n"
-                    "3. Assign an overall quality score 1–10.\n\n"
-                    "Respond with valid JSON only:\n"
-                    '{"passed": true/false, "score": 1-10, '
-                    '"issues": ["...", "..."], "summary": "One sentence verdict"}\n\n'
-                    "Score ≥ 7 = passed. If the user approves this review, "
-                    "the work item will be marked Done."
-                ),
-            },
-        ]
-
-        # ── 3. Upsert workflow; delete + recreate nodes so all changes apply ──
-        p_id = db.get_or_create_project_id(project)
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    _SQL_UPSERT_PIPELINE_WORKFLOW,
-                    (p_id, WF_NAME,
-                     "4-agent PM → Architect → Developer → Reviewer pipeline (approval gates)"),
-                )
-                cur.execute(_SQL_GET_PIPELINE_WORKFLOW_ID, (p_id, WF_NAME))
-                wf_id = cur.fetchone()[0]
-
-                # Always delete and recreate so role assignments + approval flags apply
-                cur.execute(_SQL_DELETE_PIPELINE_EDGES, (wf_id,))
-                cur.execute(_SQL_DELETE_PIPELINE_NODES, (wf_id,))
-
-                node_ids = []
-                for i, stage in enumerate(stages):
-                    role_id = role_map.get(stage["role_key"])
-                    cur.execute(
-                        _SQL_INSERT_PIPELINE_NODE,
-                        (wf_id, stage["name"], stage["provider"], stage["model"],
-                         role_id, stage["task_instructions"],
-                         stage["require_approval"], stage["approval_msg"],
-                         stage["stateless"], i * 220),
-                    )
-                    node_ids.append(cur.fetchone()[0])
-
-                # Linear edges: PM→Arch→Dev→Rev (no automatic loop-back; user controls retry)
-                for src, tgt in zip(node_ids, node_ids[1:]):
-                    cur.execute(_SQL_INSERT_PIPELINE_EDGE, (wf_id, src, tgt))
-
-        log.info(f"_work_item_pipeline {wf_id} refreshed for {project} — role_map={role_map}")
-        return wf_id
-    except Exception as exc:
-        log.warning(f"_ensure_pipeline_workflow failed: {exc}", exc_info=True)
-        return None
 
 
 # ── Semantic search ───────────────────────────────────────────────────────────
@@ -1063,33 +461,33 @@ async def search_work_items(
     if not vec:
         raise HTTPException(503, "Embedding unavailable — check OpenAI API key")
     vec_str = f"[{','.join(str(x) for x in vec)}]"
+    p_id = db.get_or_create_project_id(p)
     where = "project_id=%s AND embedding IS NOT NULL"
-    params: list = [vec_str, p]
+    where_params: list = [p_id]
     if category:
-        where += " AND category_name=%s"
-        params.append(category)
-    params.extend([vec_str, limit])
+        where += " AND ai_category=%s"
+        where_params.append(category)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""SELECT id, name, category_name, description, lifecycle_status, status,
+                f"""SELECT id, ai_name, ai_category, ai_desc, status,
                            acceptance_criteria, seq_num,
                            1 - (embedding <=> %s::vector) AS score
                     FROM mem_ai_work_items
                     WHERE {where}
                     ORDER BY embedding <=> %s::vector
                     LIMIT %s""",
-                params,
+                [vec_str] + where_params + [vec_str, limit],
             )
             rows = cur.fetchall()
     return {
         "results": [
             {
-                "id": str(r[0]), "name": r[1], "category": r[2],
-                "description": (r[3] or "")[:300],
-                "lifecycle": r[4], "status": r[5],
-                "criteria_preview": (r[6] or "")[:200],
-                "seq_num": r[7], "score": round(float(r[8]), 4),
+                "id": str(r[0]), "ai_name": r[1], "category": r[2],
+                "ai_desc": (r[3] or "")[:300],
+                "status": r[4],
+                "criteria_preview": (r[5] or "")[:200],
+                "seq_num": r[6], "score": round(float(r[7]), 4),
             }
             for r in rows
         ],
@@ -1111,16 +509,17 @@ async def search_project_facts(
     if not vec:
         raise HTTPException(503, "Embedding unavailable — check OpenAI API key")
     vec_str = f"[{','.join(str(x) for x in vec)}]"
+    p_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT id, fact_key, fact_value, category, valid_from, source_memory_id,
+                """SELECT id, fact_key, fact_value, category, valid_from,
                           1 - (embedding <=> %s::vector) AS score
                    FROM mem_ai_project_facts
                    WHERE project_id=%s AND valid_until IS NULL AND embedding IS NOT NULL
                    ORDER BY embedding <=> %s::vector
                    LIMIT %s""",
-                (vec_str, p, vec_str, limit),
+                (vec_str, p_id, vec_str, limit),
             )
             rows = cur.fetchall()
     return {
@@ -1129,7 +528,7 @@ async def search_project_facts(
                 "id": str(r[0]), "fact_key": r[1], "fact_value": r[2],
                 "category": r[3],
                 "valid_from": r[4].isoformat() if r[4] else None,
-                "score": round(float(r[6]), 4),
+                "score": round(float(r[5]), 4),
             }
             for r in rows
         ],
@@ -1169,14 +568,14 @@ async def get_memory_items(
     scope:   str | None = Query(None),   # "session" | "feature"
     limit:   int        = Query(20),
 ):
-    f"""Return recent memory_items (distilled session/feature summaries)."""
+    """Return recent memory events (distilled session/feature summaries)."""
     _require_db()
     p = _project(project)
     p_id = db.get_or_create_project_id(p)
     where_parts = ["project_id=%s"]
     params: list = [p_id]
     if scope:
-        where_parts.append("scope=%s"); params.append(scope)
+        where_parts.append("event_type=%s"); params.append(scope)
 
     sql = _SQL_GET_MEMORY_ITEMS.format(where=" AND ".join(where_parts))
     with db.conn() as conn:

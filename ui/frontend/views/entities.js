@@ -157,11 +157,11 @@ function _renderCategoryList() {
     return;
   }
 
-  const aiSugCat  = cats.find(c => c.name === 'ai_suggestion');
   const pipeline  = cats.filter(c => _isWorkItemCat(c.name));
   const tags      = cats.filter(c => !_isWorkItemCat(c.name) && c.name !== 'ai_suggestion');
 
-  const isSel = (id) => _plannerState.selectedCat === id && !_plannerState.aiSubtypeFilter;
+  const isSelWI   = _plannerState.selectedCatName === '__work_items__';
+  const isSel = (id) => _plannerState.selectedCat === id;
   const catRow = c => `
     <div class="planner-cat-row" data-id="${c.id}" data-cat-name="${_esc(c.name)}"
          onclick="window._plannerSelectCat(${c.id},'${_esc(c.name)}')"
@@ -177,52 +177,52 @@ function _renderCategoryList() {
       <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${getCacheValues(c.id).length}</span>
     </div>`;
 
-  // AI Suggestions section — sub-grouped by [suggested: X] prefix in description
-  let aiHtml = '';
-  if (aiSugCat) {
-    const aiTags = getCacheValues(aiSugCat.id);
-    const byType = {};
-    aiTags.forEach(t => {
-      const m = (t.description || '').match(/^\[suggested:\s*(\w+)\]/i);
-      const type = m ? m[1].toLowerCase() : 'other';
-      byType[type] = (byType[type] || 0) + 1;
-    });
-    const TYPE_ORDER = ['bug', 'feature', 'task'];
-    const sortedTypes = [
-      ...TYPE_ORDER.filter(t => byType[t]),
-      ...Object.keys(byType).filter(t => !TYPE_ORDER.includes(t)),
-    ];
-    aiHtml = `
-      <div style="font-size:0.5rem;text-transform:uppercase;letter-spacing:.1em;
-                  color:var(--muted);padding:8px 8px 3px;margin-top:4px;
-                  border-top:1px solid var(--border)">AI Suggestions</div>
-      ${sortedTypes.length ? sortedTypes.map(type => {
-        const isActive = _plannerState.selectedCat === aiSugCat.id && _plannerState.aiSubtypeFilter === type;
-        return `<div class="planner-cat-row planner-ai-subrow" data-id="${aiSugCat.id}"
-                     data-cat-name="ai_suggestion" data-ai-type="${type}"
-                     onclick="window._plannerSelectAiSubtype(${aiSugCat.id},'${_esc(type)}')"
-                     style="display:flex;align-items:center;gap:6px;padding:4px 8px 4px 20px;
-                            border-radius:5px;cursor:pointer;margin-bottom:2px;transition:background 0.1s;
-                            background:${isActive ? 'var(--accent)22' : 'transparent'};
-                            border-left:2px solid ${isActive ? 'var(--accent)' : 'transparent'}">
-                  <span style="font-size:0.6rem;color:var(--muted)">→</span>
-                  <span style="font-size:0.63rem;flex:1">${_esc(type)}</span>
-                  <span style="font-size:0.55rem;color:var(--muted)">${byType[type]}</span>
-                </div>`;
-      }).join('') : `<div style="padding:4px 20px;font-size:0.6rem;color:var(--muted)">No suggestions yet</div>`}
-    `;
-  }
+  // Work Items sentinel row (always shown at top)
+  const wiSentinel = `
+    <div class="planner-cat-row" data-cat-name="__work_items__"
+         onclick="window._plannerSelectCat('__work_items__','__work_items__')"
+         style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;
+                cursor:pointer;margin-bottom:2px;transition:background 0.1s;
+                background:${isSelWI ? 'var(--accent)22' : 'transparent'};
+                border-left:2px solid ${isSelWI ? 'var(--accent)' : 'transparent'}">
+      <span style="font-size:0.85rem">⬡</span>
+      <span style="font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Work Items</span>
+      <span id="wi-unlinked-count" style="font-size:0.55rem;color:var(--muted);flex-shrink:0"></span>
+    </div>`;
+
+  // Load unlinked count async
+  api.workItems.unlinked(_plannerState.project).then(d => {
+    const el = document.getElementById('wi-unlinked-count');
+    if (el && d && d.total > 0) el.textContent = d.total;
+  }).catch(() => {});
 
   const divider = tags.length ? `
     <div style="font-size:0.5rem;text-transform:uppercase;letter-spacing:.1em;
                 color:var(--muted);padding:8px 8px 3px;margin-top:4px;
                 border-top:1px solid var(--border)">Tags</div>` : '';
 
-  list.innerHTML = pipeline.map(catRow).join('') + divider + tags.map(catRow).join('') + aiHtml;
+  list.innerHTML = wiSentinel + pipeline.map(catRow).join('') + divider + tags.map(catRow).join('');
 }
 
 async function _plannerSelectCat(catId, catName) {
   _plannerState.aiSubtypeFilter = null;
+
+  // Work Items sentinel — special panel
+  if (catId === '__work_items__' || catName === '__work_items__') {
+    _plannerState.selectedCat = '__work_items__';
+    _plannerState.selectedCatName = '__work_items__';
+    _plannerState.selectedCatColor = 'var(--accent)';
+    _plannerState.selectedCatIcon = '⬡';
+    document.querySelectorAll('.planner-cat-row').forEach(r => {
+      const sel = r.dataset.catName === '__work_items__';
+      r.style.background = sel ? 'var(--accent)22' : 'transparent';
+      r.style.borderLeft = sel ? '2px solid var(--accent)' : '2px solid transparent';
+    });
+    const pane = document.getElementById('planner-tags-pane');
+    if (pane) _renderWorkItemsPane(pane, _plannerState.project);
+    return;
+  }
+
   // Fallback categories have null IDs — reload cache and resolve real ID by name
   if (catId === null || catId === undefined) {
     const pane = document.getElementById('planner-tags-pane');
@@ -246,7 +246,7 @@ async function _plannerSelectCat(catId, catName) {
     r.style.borderLeft = sel ? '2px solid var(--accent)' : '2px solid transparent';
   });
 
-  // Work item categories (feature/bug/task) use the pr_work_items table
+  // Work item categories (feature/bug/task) use the work_items table
   if (_isWorkItemCat(catName)) {
     const pane = document.getElementById('planner-tags-pane');
     if (pane) {
@@ -258,24 +258,106 @@ async function _plannerSelectCat(catId, catName) {
   }
 }
 
-// Select a specific AI suggestion sub-type (bug / feature / task / other)
-function _plannerSelectAiSubtype(catId, type) {
-  catId = Number(catId);
-  _plannerState.selectedCat      = catId;
-  _plannerState.selectedCatName  = 'ai_suggestion';
-  _plannerState.aiSubtypeFilter  = type;
-  const cat = getCacheCategories().find(c => c.id === catId) || {};
-  _plannerState.selectedCatColor = cat.color || 'var(--muted)';
-  _plannerState.selectedCatIcon  = cat.icon  || '✨';
+// ── Work Items panel (AI-detected, unlinked) ──────────────────────────────────
 
-  // Update active style — only the matching sub-row is highlighted
-  document.querySelectorAll('.planner-cat-row').forEach(r => {
-    const isMatch = r.classList.contains('planner-ai-subrow') && r.dataset.aiType === type;
-    r.style.background = isMatch ? 'var(--accent)22' : 'transparent';
-    r.style.borderLeft = isMatch ? '2px solid var(--accent)' : '2px solid transparent';
-  });
+let _dragWiData = null;  // { id, ai_name, ai_category } while dragging
 
-  _renderTagTableFromCache();
+async function _renderWorkItemsPane(pane, project) {
+  pane.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:1rem">Loading…</div>';
+  try {
+    const [unlinkedRes, tagsTree] = await Promise.all([
+      api.workItems.unlinked(project),
+      api.tags.list(project),
+    ]);
+    const items = unlinkedRes.items || [];
+    const allTags = (tagsTree.tags || []).filter(t => ['feature','bug','task'].includes((t.category_name||'').toLowerCase()));
+
+    const CAT_ICON = { feature: '✨', bug: '🐛', task: '📋' };
+    const statusColor = (s) => s === 'active' ? '#27ae60' : '#888';
+
+    const itemRows = items.length
+      ? items.map(wi => {
+          const hintBadge = wi.ai_tag_name
+            ? `<span style="font-size:10px;color:var(--muted);border:1px solid var(--border);
+                            padding:1px 5px;border-radius:3px;opacity:.7;margin-left:4px">✦ ${_esc(wi.ai_tag_name)}</span>`
+            : '';
+          return `<div draggable="true"
+                       data-wi-id="${_esc(wi.id)}"
+                       data-wi-name="${_esc(wi.ai_name)}"
+                       data-wi-cat="${_esc(wi.ai_category)}"
+                       ondragstart="window._wiItemDragStart(event,'${_esc(wi.id)}','${_esc(wi.ai_name)}','${_esc(wi.ai_category)}')"
+                       style="display:flex;align-items:center;gap:6px;padding:5px 8px;
+                              border-bottom:1px solid var(--border);cursor:grab;user-select:none">
+                    <span style="font-size:0.75rem">${CAT_ICON[wi.ai_category] || '📋'}</span>
+                    <span style="font-size:0.68rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                          title="${_esc(wi.ai_desc || '')}">${_esc(wi.ai_name)}</span>
+                    ${hintBadge}
+                    <span style="font-size:0.6rem;color:var(--muted);flex-shrink:0">[drag to link ↓]</span>
+                  </div>`;
+        }).join('')
+      : '<div style="padding:8px 10px;font-size:0.65rem;color:var(--muted)">No unlinked work items</div>';
+
+    const byCategory = {};
+    allTags.forEach(t => {
+      const c = (t.category_name || 'other').toLowerCase();
+      (byCategory[c] = byCategory[c] || []).push(t);
+    });
+
+    const tagDropZones = Object.entries(byCategory).map(([cat, tagList]) => `
+      <div style="margin-top:4px">
+        <div style="font-size:0.55rem;text-transform:uppercase;letter-spacing:.08em;
+                    color:var(--muted);padding:6px 8px 3px">${CAT_ICON[cat]||'⬡'} ${_esc(cat)}s</div>
+        ${tagList.map(t => `
+          <div data-tag-id="${_esc(t.id)}" data-tag-name="${_esc(t.name)}"
+               ondragover="event.preventDefault();this.style.background='var(--accent)22'"
+               ondragleave="this.style.background=''"
+               ondrop="window._wiItemDrop(event,'${_esc(t.id)}','${_esc(project)}')"
+               style="padding:5px 8px 5px 20px;border-bottom:1px solid var(--border);
+                      font-size:0.66rem;color:var(--text2);transition:background 0.1s;cursor:default">
+            ${_esc(t.name)}
+          </div>`).join('')}
+      </div>`).join('');
+
+    pane.innerHTML = `
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="font-size:0.55rem;text-transform:uppercase;letter-spacing:.08em;
+                    color:var(--muted);padding:8px 10px 4px;border-bottom:1px solid var(--border);
+                    display:flex;align-items:center;gap:6px">
+          ⬡ UNLINKED WORK ITEMS
+          <span style="font-size:0.65rem;font-weight:600;color:var(--text);margin-left:2px">${items.length}</span>
+        </div>
+        <div style="flex:0 0 auto;max-height:240px;overflow-y:auto;border-bottom:2px solid var(--border)">
+          ${itemRows}
+        </div>
+        <div style="font-size:0.55rem;text-transform:uppercase;letter-spacing:.08em;
+                    color:var(--muted);padding:8px 10px 4px">
+          ─── LINK TO TAG ───
+        </div>
+        <div style="flex:1;overflow-y:auto">
+          ${tagDropZones || '<div style="padding:8px 10px;font-size:0.65rem;color:var(--muted)">No feature/bug/task tags yet</div>'}
+        </div>
+      </div>`;
+
+    window._wiItemDragStart = (event, id, ai_name, ai_category) => {
+      _dragWiData = { id, ai_name, ai_category };
+      event.dataTransfer.effectAllowed = 'link';
+    };
+    window._wiItemDrop = async (event, tagId, proj) => {
+      event.preventDefault();
+      event.currentTarget.style.background = '';
+      if (!_dragWiData) return;
+      try {
+        await api.workItems.patch(_dragWiData.id, proj, { tag_id: tagId });
+        _dragWiData = null;
+        // Refresh panel and unlinked count
+        _renderWorkItemsPane(pane, proj);
+        const el = document.getElementById('wi-unlinked-count');
+        api.workItems.unlinked(proj).then(d => { if (el) el.textContent = d.total > 0 ? d.total : ''; }).catch(()=>{});
+      } catch(e) { toast('Link failed: ' + e.message, 'error'); }
+    };
+  } catch(e) {
+    pane.innerHTML = `<div style="padding:1rem;color:#e74c3c;font-size:0.72rem">Error: ${_esc(e.message)}</div>`;
+  }
 }
 
 // ── Work item categories ──────────────────────────────────────────────────────
@@ -315,7 +397,7 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
     <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
       <span style="font-size:0.8rem;color:${catColor}">${catIcon}</span>
       <span style="font-size:0.78rem;font-weight:600;color:var(--text)">${_esc(catName)}</span>
-      <button onclick="window._plannerShowNewWorkItem('${_esc(catName)}', null)"
+      <button onclick="window._plannerShowNewWorkItem('${_esc(catName)}')"
         style="background:var(--accent);border:none;color:#fff;font-size:0.62rem;
                padding:0.2rem 0.55rem;border-radius:var(--radius);cursor:pointer;
                font-family:var(--font);outline:none;margin-left:auto">+ New</button>
@@ -326,50 +408,13 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
   `;
 
   // Wire globals up front so they're always available
-  window._plannerShowNewWorkItem = async (cn, parentId) => {
-    const label = parentId ? `New child ${cn} name:` : `New ${cn} name:`;
-    const name = prompt(label);
+  window._plannerShowNewWorkItem = async (cn) => {
+    const name = prompt(`New ${cn} name:`);
     if (!name) return;
     try {
-      await api.workItems.create(project, { category_name: cn, name, parent_id: parentId || null });
+      await api.workItems.create(project, { ai_category: cn, ai_name: name });
       _renderWorkItemTable(pane, catName, catColor, catIcon, project);
     } catch (e) { toast('Create failed: ' + e.message, 'error'); }
-  };
-  window._wiToggleCollapse = (id) => {
-    if (_wiCollapsed.has(id)) _wiCollapsed.delete(id); else _wiCollapsed.add(id);
-    const tb = document.getElementById('wi-table-body');
-    _wiSetTableBody(tb, _wiItemsCache, catName, catColor, catIcon, project);
-  };
-  window._wiRunPipeline = async (id, proj) => {
-    const btn = document.querySelector(`[data-wi-run-btn="${id}"]`);
-    if (btn) { btn.disabled = true; btn.textContent = '…'; }
-    try {
-      const res = await api.workItems.runPipeline(id, proj);
-      const runId = res.run_id ? String(res.run_id) : null;
-      if (runId) {
-        // Navigate to Pipelines tab and open the run progress panel
-        window._pendingRunOpen = runId;
-        window._nav('workflow');
-        // Poll until graph_workflow.js has registered _gwOpenRun (max 4s)
-        let t = 0;
-        const iv = setInterval(() => {
-          t += 200;
-          if (window._gwOpenRun) {
-            clearInterval(iv);
-            window._gwOpenRun(runId);
-            window._pendingRunOpen = null;
-          } else if (t >= 4000) {
-            clearInterval(iv);
-          }
-        }, 200);
-      } else {
-        toast('Pipeline started — check Pipelines tab for progress', 'success', 5000);
-      }
-      setTimeout(() => _renderWorkItemTable(pane, catName, catColor, catIcon, project), 5000);
-    } catch (e) {
-      toast('Pipeline error: ' + e.message, 'error');
-      if (btn) { btn.disabled = false; btn.textContent = '▶'; }
-    }
   };
   window._plannerOpenWorkItemDrawer = (id, cn, proj) => _openWorkItemDrawer(id, cn, proj, pane, catColor, catIcon);
 
@@ -377,23 +422,8 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
     const data = await api.workItems.list(project, catName);
     const items = data.work_items || [];
 
-    // Build lookup + tree
     _wiItemsCache = {};
     items.forEach(wi => { _wiItemsCache[wi.id] = wi; });
-
-    // Load linked tag counts for all items (skip if >30 to avoid excessive requests)
-    if (items.length > 0 && items.length <= 30) {
-      await Promise.all(items.map(async wi => {
-        try {
-          const rels = await api.tags.relations.listForWorkItem(project, wi.id);
-          _wiItemsCache[wi.id]._linked_tags_count = Array.isArray(rels) ? rels.length : 0;
-        } catch {
-          _wiItemsCache[wi.id]._linked_tags_count = 0;
-        }
-      }));
-    } else {
-      items.forEach(wi => { _wiItemsCache[wi.id]._linked_tags_count = 0; });
-    }
 
     const tableBody = document.getElementById('wi-table-body');
     if (!tableBody) return;
@@ -421,102 +451,46 @@ function _wiSetTableBody(tableBody, byId, catName, catColor, catIcon, project) {
 }
 
 function _wiRenderRows(byId, catName, catColor, catIcon, project) {
-  // Build roots + children map
-  const children = {};  // parent_id → [wi]
-  const roots = [];
-  Object.values(byId).forEach(wi => {
-    if (wi.parent_id && byId[wi.parent_id]) {
-      (children[wi.parent_id] = children[wi.parent_id] || []).push(wi);
-    } else {
-      roots.push(wi);
-    }
-  });
+  const rows = Object.values(byId);
 
-  const agentBadge = (s) => {
-    if (!s) return '';
-    const col = s === 'done' ? '#27ae60' : s === 'failed' ? '#e74c3c' : s.startsWith('running') ? '#e67e22' : '#888';
-    return `<span style="font-size:0.55rem;color:#fff;background:${col};
-                         padding:0.1rem 0.35rem;border-radius:8px;white-space:nowrap">${_esc(s)}</span>`;
-  };
-
-  function rowsForNode(wi, depth) {
-    const effectiveStatus = (wi.status !== 'done' && wi.status !== 'archived' && (!wi.description || !wi.description.trim())) ? 'prereq' : wi.status;
-    const sc     = effectiveStatus === 'prereq' ? '#e74c3c' : effectiveStatus === 'active' ? '#27ae60' : effectiveStatus === 'done' ? '#4a90e2' : '#888';
-    const kids   = children[wi.id] || [];
-    const hasKids   = kids.length > 0;
-    const expanded  = !_wiCollapsed.has(wi.id);
-    const indent    = depth * 18;
-    const acPreview = wi.acceptance_criteria
-      ? wi.acceptance_criteria.replace(/\n/g, ' ').slice(0, 55) + (wi.acceptance_criteria.length > 55 ? '…' : '')
-      : '—';
-    const isRunning = (wi.agent_status || '').startsWith('running');
-
-    const toggleBtn = hasKids
-      ? `<span onclick="event.stopPropagation();window._wiToggleCollapse('${wi.id}')"
-               style="cursor:pointer;color:var(--muted);margin-right:3px;display:inline-block;
-                      width:14px;text-align:center;font-size:0.72rem;user-select:none;flex-shrink:0"
-               title="${expanded ? 'Collapse' : 'Expand'}">${expanded ? '▾' : '▸'}</span>`
-      : `<span style="display:inline-block;width:14px;margin-right:3px;flex-shrink:0"></span>`;
-
+  function rowFor(wi) {
+    const sc     = wi.status === 'active' ? '#27ae60' : wi.status === 'done' ? '#4a90e2' : '#888';
     const seqBadge = wi.seq_num
       ? `<span style="font-size:0.52rem;color:var(--muted);background:var(--surface2);
                       border:1px solid var(--border);padding:0.05rem 0.28rem;
                       border-radius:6px;white-space:nowrap;margin-right:4px;flex-shrink:0"
                title="Seq #${wi.seq_num}">#${wi.seq_num}</span>`
       : '';
+    const acPreview = wi.acceptance_criteria
+      ? wi.acceptance_criteria.replace(/\n/g, ' ').slice(0, 55) + (wi.acceptance_criteria.length > 55 ? '…' : '')
+      : '—';
+    const tagLink = wi.tag_id
+      ? `<span style="font-size:0.58rem;color:var(--accent);background:var(--accent)18;
+                      padding:0.1rem 0.35rem;border-radius:8px;white-space:nowrap">linked</span>`
+      : `<span style="font-size:0.58rem;color:var(--muted)">—</span>`;
 
-    let html = `
-      <tr style="border-bottom:1px solid var(--border);cursor:grab;transition:background 0.1s;user-select:none"
-          draggable="true"
-          data-wi-id="${wi.id}" data-wi-name="${_esc(wi.name)}" data-cat-name="${_esc(catName)}"
+    return `
+      <tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
+          data-wi-id="${wi.id}"
           onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(catName)}','${_esc(project)}')"
           onmouseenter="this.style.background='var(--surface2)'"
           onmouseleave="this.style.background=''">
-        <td style="padding:0.5rem 0.5rem 0.5rem ${0.5 + indent / 16}rem;
-                   color:var(--text);font-weight:${depth === 0 ? '500' : '400'}">
+        <td style="padding:0.5rem;color:var(--text);font-weight:500">
           <div style="display:flex;align-items:center">
-            ${toggleBtn}
             ${seqBadge}
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${_esc(wi.name)}">${_esc(wi.name)}</span>
+                  title="${_esc(wi.ai_desc || '')}">${_esc(wi.ai_name)}</span>
           </div>
         </td>
         <td style="padding:0.5rem 0.4rem;white-space:nowrap">
           <span style="font-size:0.6rem;color:${sc};background:${sc}22;
-                       padding:0.12rem 0.4rem;border-radius:10px">${_esc(effectiveStatus)}</span>
+                       padding:0.12rem 0.4rem;border-radius:10px">${_esc(wi.status)}</span>
         </td>
         <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem;
                    max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
             title="${_esc(wi.acceptance_criteria || '')}">${_esc(acPreview)}</td>
-        <td style="padding:0.5rem 0.4rem" onclick="event.stopPropagation()">
-          ${agentBadge(wi.agent_status)}
-        </td>
-        <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem">
-          ${wi.due_date ? wi.due_date.slice(0, 10) : '—'}
-        </td>
-        <td style="padding:0.5rem 0.4rem" onclick="event.stopPropagation()">
-          ${wi._linked_tags_count > 0
-            ? `<span style="font-size:0.58rem;color:var(--accent);background:var(--accent)18;
-                            padding:0.1rem 0.35rem;border-radius:8px;cursor:pointer;white-space:nowrap"
-                     title="View linked tags"
-                     onclick="event.stopPropagation();window._wiShowLinkedTags('${wi.id}','${_esc(project)}')"
-                >${wi._linked_tags_count} tag${wi._linked_tags_count > 1 ? 's' : ''}</span>`
-            : `<span style="font-size:0.58rem;color:var(--muted)">—</span>`}
-        </td>
-        <td style="padding:0.5rem 0.4rem;white-space:nowrap;text-align:right"
-            onclick="event.stopPropagation()">
-          <button title="Add child ${catName}"
-            onclick="window._plannerShowNewWorkItem('${_esc(catName)}','${_esc(wi.id)}')"
-            style="font-size:0.6rem;padding:0.13rem 0.35rem;background:var(--surface2);
-                   border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
-                   color:var(--text2);font-family:var(--font);outline:none;margin-right:3px">+▸</button>
-        </td>
+        <td style="padding:0.5rem 0.4rem" onclick="event.stopPropagation()">${tagLink}</td>
       </tr>`;
-
-    if (hasKids && expanded) {
-      html += kids.map(child => rowsForNode(child, depth + 1)).join('');
-    }
-    return html;
   }
 
   return `
@@ -526,15 +500,10 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:65px">Status</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;max-width:110px">Criteria</th>
-          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:70px">Agent</th>
-          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:78px">Due</th>
-          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:90px">Tags</th>
-          <th style="width:80px"></th>
+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:70px">Tag</th>
         </tr>
       </thead>
-      <tbody>
-        ${roots.map(wi => rowsForNode(wi, 0)).join('')}
-      </tbody>
+      <tbody>${rows.map(wi => rowFor(wi)).join('')}</tbody>
     </table>`;
 }
 
@@ -552,18 +521,25 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
     const wi   = (data.work_items || []).find(w => w.id === id);
     if (!wi) { inner.innerHTML = '<div style="padding:1rem;color:var(--muted)">Not found</div>'; return; }
 
-    const isPrereq = wi.status !== 'done' && wi.status !== 'archived' && (!wi.description || !wi.description.trim());
     const drawerSeqBadge = wi.seq_num
       ? `<span style="font-size:0.55rem;color:var(--muted);background:var(--surface2);
                        border:1px solid var(--border);padding:0.1rem 0.35rem;
                        border-radius:6px;white-space:nowrap;cursor:default"
-              title="Reference this item as #${wi.seq_num}">#${wi.seq_num}</span>`
+              title="Reference #${wi.seq_num}">#${wi.seq_num}</span>`
       : '';
+    const linkedTagBadge = wi.tag_id
+      ? `<span style="font-size:0.58rem;color:var(--accent);background:var(--accent)18;
+                      padding:0.1rem 0.35rem;border-radius:8px">linked ✓</span>`
+      : (wi.ai_tag_id
+          ? `<span style="font-size:0.58rem;color:var(--muted);border:1px solid var(--border);
+                          padding:0.1rem 0.35rem;border-radius:8px;opacity:.7">✦ suggested</span>`
+          : '');
     inner.innerHTML = `
       <div style="padding:0.9rem 1rem;border-bottom:1px solid var(--border);
                   display:flex;align-items:center;gap:0.5rem">
         ${drawerSeqBadge}
-        <strong style="font-size:0.75rem;flex:1;overflow:hidden;text-overflow:ellipsis">${_esc(wi.name)}</strong>
+        <strong style="font-size:0.75rem;flex:1;overflow:hidden;text-overflow:ellipsis">${_esc(wi.ai_name)}</strong>
+        ${linkedTagBadge}
         <button onclick="window._plannerCloseDrawer()"
           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem">✕</button>
       </div>
@@ -574,21 +550,34 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
         <div>
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                       letter-spacing:.06em;margin-bottom:0.3rem">Description</div>
-          <textarea id="wi-desc-ta" rows="3"
-            style="width:100%;background:var(--bg);border:1px solid ${isPrereq ? '#e74c3c' : 'var(--border)'};
+          <textarea rows="3"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);
                    color:var(--text);font-family:var(--font);font-size:0.68rem;
                    padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                    resize:vertical;box-sizing:border-box;line-height:1.5"
-            oninput="(()=>{const v=this.value.trim();this.style.borderColor=v?'var(--border)':'#e74c3c';const b=document.getElementById('wi-drawer-run-btn');if(b){b.disabled=!v;b.style.opacity=v?'1':'0.45';b.style.cursor=v?'pointer':'not-allowed';b.title=v?'Run pipeline':'Add a description first';}})()"
-            onblur="(async()=>{const v=this.value;const res=await api.workItems.patch('${id}','${project}',{description:v}).catch(e=>{toast(e.message,'error');return null;});if(res&&res.status==='active'&&_wiItemsCache['${id}']){_wiItemsCache['${id}'].status='active';_wiItemsCache['${id}'].description=v;const b=document.getElementById('wi-drawer-run-btn');if(b){b.disabled=false;b.style.opacity='1';b.style.cursor='pointer';b.title='Run pipeline';}const tb=document.getElementById('wi-table-body');if(tb)tb.innerHTML=_wiRenderRows(_wiItemsCache,'${_esc(catName)}','${_esc(catColor)}','${_esc(catIcon)}','${_esc(project)}');}})()"
-          >${_esc(wi.description || '')}</textarea>
+            onblur="api.workItems.patch('${id}','${project}',{ai_desc:this.value}).catch(e=>toast(e.message,'error'))"
+          >${_esc(wi.ai_desc || '')}</textarea>
+        </div>
+
+        <!-- Requirements -->
+        <div>
+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                      letter-spacing:.06em;margin-bottom:0.3rem">Requirements</div>
+          <textarea rows="3"
+            placeholder="Describe requirements…"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);
+                   color:var(--text);font-family:var(--font);font-size:0.65rem;
+                   padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
+                   resize:vertical;box-sizing:border-box;line-height:1.5"
+            onblur="api.workItems.patch('${id}','${project}',{requirements:this.value}).catch(e=>toast(e.message,'error'))"
+          >${_esc(wi.requirements || '')}</textarea>
         </div>
 
         <!-- Acceptance Criteria -->
         <div>
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                       letter-spacing:.06em;margin-bottom:0.3rem">Acceptance Criteria</div>
-          <textarea id="wi-ac-ta" rows="5"
+          <textarea rows="4"
             placeholder="- [ ] Criteria 1&#10;- [ ] Criteria 2"
             style="width:100%;background:var(--bg);border:1px solid var(--border);
                    color:var(--text);font-family:var(--font);font-size:0.65rem;
@@ -598,68 +587,29 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           >${_esc(wi.acceptance_criteria || '')}</textarea>
         </div>
 
-        <!-- Implementation Plan -->
+        <!-- Action Items -->
         <div>
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                      letter-spacing:.06em;margin-bottom:0.3rem">Implementation Plan</div>
-          <textarea id="wi-impl-ta" rows="5"
+                      letter-spacing:.06em;margin-bottom:0.3rem">Action Items</div>
+          <textarea rows="4"
             placeholder="1. Step one&#10;2. Step two"
             style="width:100%;background:var(--bg);border:1px solid var(--border);
                    color:var(--text);font-family:var(--font);font-size:0.65rem;
                    padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                    resize:vertical;box-sizing:border-box;line-height:1.5"
-            onblur="api.workItems.patch('${id}','${project}',{implementation_plan:this.value}).catch(e=>toast(e.message,'error'))"
-          >${_esc(wi.implementation_plan || '')}</textarea>
+            onblur="api.workItems.patch('${id}','${project}',{action_items:this.value}).catch(e=>toast(e.message,'error'))"
+          >${_esc(wi.action_items || '')}</textarea>
         </div>
 
-        <!-- Due date -->
+        ${wi.summary ? `
+        <!-- AI Summary (read-only) -->
         <div>
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                      letter-spacing:.06em;margin-bottom:0.3rem">Due Date</div>
-          <input type="date" value="${_esc(wi.due_date ? wi.due_date.slice(0,10) : '')}"
-            onchange="api.workItems.patch('${id}','${project}',{due_date:this.value||null}).catch(e=>toast(e.message,'error'))"
-            style="background:var(--bg);border:1px solid var(--border);color:var(--text);
-                   font-family:var(--font);font-size:0.68rem;padding:0.25rem 0.4rem;
-                   border-radius:var(--radius);outline:none;width:100%;box-sizing:border-box" />
-        </div>
-
-        <!-- Agent status -->
-        ${wi.agent_status ? `
-        <div>
-          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                      letter-spacing:.06em;margin-bottom:0.3rem">Agent Status</div>
-          <div style="font-size:0.68rem;color:var(--text2)">${_esc(wi.agent_status)}</div>
+                      letter-spacing:.06em;margin-bottom:0.3rem">AI Summary</div>
+          <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;
+                      background:var(--surface2);padding:0.35rem 0.45rem;
+                      border-radius:var(--radius)">${_esc(wi.summary)}</div>
         </div>` : ''}
-
-        <!-- Parent item link -->
-        ${wi.parent_id && _wiItemsCache[wi.parent_id] ? `
-        <div>
-          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                      letter-spacing:.06em;margin-bottom:0.3rem">Parent</div>
-          <span style="font-size:0.68rem;color:var(--accent);cursor:pointer"
-                onclick="window._plannerOpenWorkItemDrawer('${wi.parent_id}','${_esc(catName)}','${_esc(project)}')"
-          >${_esc((_wiItemsCache[wi.parent_id] || {}).name || '')}</span>
-        </div>` : ''}
-
-        <!-- Run Pipeline -->
-        <div style="border-top:1px solid var(--border);padding-top:0.75rem">
-          <button id="wi-drawer-run-btn"
-            onclick="window._wiRunPipeline('${id}','${project}')"
-            title="${isPrereq ? 'Add a description first' : 'Run pipeline'}"
-            ${isPrereq ? 'disabled' : ''}
-            style="background:var(--accent);border:none;color:#fff;font-size:0.68rem;
-                   padding:0.3rem 0.75rem;border-radius:var(--radius);
-                   cursor:${isPrereq ? 'not-allowed' : 'pointer'};
-                   opacity:${isPrereq ? '0.45' : '1'};
-                   font-family:var(--font);outline:none;width:100%">▶ Run Pipeline</button>
-          <div style="font-size:0.58rem;color:var(--muted);margin-top:0.35rem;line-height:1.4">
-            PM → Architect → Developer → Reviewer
-            ${wi.agent_run_id ? `· <a href="#" onclick="
-              window._pendingRunOpen='${wi.agent_run_id}';window._nav('workflow');
-              let _rt=0,_ri=setInterval(()=>{_rt+=200;if(window._gwOpenRun){clearInterval(_ri);window._gwOpenRun('${wi.agent_run_id}');window._pendingRunOpen=null;}else if(_rt>=4000)clearInterval(_ri);},200);return false"
-              style="color:var(--accent);text-decoration:none">View last run →</a>` : ''}
-          </div>
-        </div>
 
         <!-- Delete -->
         <div style="border-top:1px solid var(--border);padding-top:0.75rem">

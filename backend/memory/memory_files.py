@@ -49,17 +49,12 @@ _SQL_FACTS = """
 """
 
 _SQL_ACTIVE_WORK_ITEMS = """
-    SELECT wi.name, wi.description, wi.lifecycle_status, wi.category_name,
+    SELECT wi.ai_name, wi.ai_desc, wi.ai_category,
            wi.seq_num, t.name AS tag_name
     FROM mem_ai_work_items wi
     LEFT JOIN planner_tags t ON t.id = wi.tag_id
-    WHERE wi.project_id=%s AND wi.status != 'done'
-    ORDER BY CASE wi.lifecycle_status
-               WHEN 'development' THEN 1 WHEN 'testing' THEN 2
-               WHEN 'review' THEN 3      WHEN 'design'  THEN 4
-               WHEN 'idea'   THEN 5      ELSE 6
-             END,
-             wi.created_at DESC
+    WHERE wi.project_id=%s AND wi.status='active'
+    ORDER BY wi.created_at DESC
 """
 
 _SQL_LATEST_SESSION = """
@@ -172,11 +167,11 @@ class MemoryFiles:
 
                     # Active work items
                     cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
-                    for name, desc, lifecycle, cat_name, seq_num, tag_name in cur.fetchall():
+                    for ai_name, ai_desc, ai_category, seq_num, tag_name in cur.fetchall():
                         ctx["active_work"].append({
-                            "name": name, "desc": (desc or "")[:120],
-                            "lifecycle": lifecycle, "category": cat_name,
-                            "seq_num": seq_num, "tag_name": tag_name or name,
+                            "name": ai_name, "desc": (ai_desc or "")[:120],
+                            "lifecycle": "active", "category": ai_category,
+                            "seq_num": seq_num, "tag_name": tag_name or ai_name,
                         })
 
                     # Latest session summary
@@ -309,8 +304,7 @@ class MemoryFiles:
                 ref = f"#{wi['seq_num']} " if wi.get("seq_num") else ""
                 tag = wi["tag_name"]
                 summary = wi["desc"] or wi["name"]
-                lifecycle = wi["lifecycle"]
-                lines.append(f"- `{ref}{tag}` [{lifecycle}] — {summary}")
+                lines.append(f"- `{ref}{tag}` [{wi['category']}] — {summary}")
             lines.append("")
 
         # Current Blockers
@@ -474,11 +468,10 @@ class MemoryFiles:
                 lines.append(f"{key}: {val}")
             lines.append("")
 
-        # Active features (in_progress only, concise)
-        in_progress = [w for w in ctx["active_work"] if w["lifecycle"] in ("development", "testing", "review")]
-        if in_progress:
+        # Active features (concise)
+        if ctx["active_work"]:
             lines += ["## Active Features (do not break)", ""]
-            for wi in in_progress[:5]:
+            for wi in ctx["active_work"][:5]:
                 lines.append(f"{wi['tag_name']}: {(wi['desc'] or wi['name'])[:80]}")
             lines.append("")
 
@@ -517,7 +510,7 @@ class MemoryFiles:
         if active:
             lines += ["## Active Features", ""]
             for wi in active:
-                lines.append(f"- {wi['tag_name']} [{wi['lifecycle']}]: {(wi['desc'] or wi['name'])[:80]}")
+                lines.append(f"- {wi['tag_name']} [{wi['category']}]: {(wi['desc'] or wi['name'])[:80]}")
             lines.append("")
 
         # Last session (2 sentences)
@@ -562,7 +555,7 @@ class MemoryFiles:
             for wi in ctx["active_work"]:
                 ref = f"#{wi['seq_num']} " if wi.get("seq_num") else ""
                 lines.append(
-                    f"- `{ref}{wi['tag_name']}` [{wi['lifecycle']}]: "
+                    f"- `{ref}{wi['tag_name']}` [{wi['category']}]: "
                     f"{(wi['desc'] or wi['name'])[:120]}"
                 )
             lines.append("")
@@ -615,7 +608,7 @@ class MemoryFiles:
                 ref = f"#{wi['seq_num']} " if wi.get("seq_num") else ""
                 lines += [
                     f"### {ref}{wi['tag_name']}",
-                    f"Status: {wi['lifecycle']} | Category: {wi['category']}",
+                    f"Category: {wi['category']}",
                     wi["desc"] or wi["name"],
                     "",
                 ]

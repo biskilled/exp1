@@ -355,8 +355,7 @@ api.tags = {
 // ── Work Items API ────────────────────────────────────────────────────────────
 
 api.workItems = {
-  list:            (projectOrOpts, category, status) => {
-    // Accept either (project, category, status) or ({project, category, status, name})
+  list:         (projectOrOpts, category, status) => {
     const opts = (projectOrOpts && typeof projectOrOpts === 'object')
       ? projectOrOpts : { project: projectOrOpts, category, status };
     const q = new URLSearchParams({ project: opts.project || '' });
@@ -365,20 +364,19 @@ api.workItems = {
     if (opts.name)     q.set('name',     opts.name);
     return _get(`/work-items?${q}`);
   },
-  create:          (project, body) => _post(`/work-items?project=${enc(project)}`, body),
-  patch:           (id, project, body) => fetch(
+  unlinked:     (project) => _get(`/work-items/unlinked?project=${enc(project || '')}`),
+  create:       (project, body) => _post(`/work-items?project=${enc(project)}`, body),
+  patch:        (id, project, body) => fetch(
     _base() + `/work-items/${enc(id)}?project=${enc(project)}`,
     { method: 'PATCH', headers: _headers(), body: JSON.stringify(body) }
   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  delete:          (id, project) => fetch(
+  delete:       (id, project) => fetch(
     _base() + `/work-items/${enc(id)}?project=${enc(project)}`,
     { method: 'DELETE', headers: _headers() }
   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  runPipeline:     (id, project) => _post(`/work-items/${enc(id)}/run-pipeline?project=${enc(project)}`, {}),
-  interactions:    (id, project, limit = 20) => _get(`/work-items/${enc(id)}/interactions?project=${enc(project)}&limit=${limit}`),
-  migrateFromTags: (project)     => _post(`/work-items/migrate-from-tags?project=${enc(project)}`, {}),
-  facts:           (project)     => _get(`/work-items/facts?project=${enc(project)}`),
-  memoryItems:     (project, scope) => {
+  interactions: (id, project, limit = 20) => _get(`/work-items/${enc(id)}/interactions?project=${enc(project)}&limit=${limit}`),
+  facts:        (project)     => _get(`/work-items/facts?project=${enc(project)}`),
+  memoryItems:  (project, scope) => {
     const q = new URLSearchParams({ project: project || '' });
     if (scope) q.set('scope', scope);
     return _get(`/work-items/memory-items?${q}`);

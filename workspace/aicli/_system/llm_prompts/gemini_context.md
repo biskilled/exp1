@@ -1,5 +1,5 @@
 # Project Context: aicli
-# Generated: 2026-04-06 02:25 UTC
+# Generated: 2026-04-06 12:58 UTC
 
 ## Project Facts
 
@@ -42,3 +42,69 @@ Reviewer: ```json
 - ui_library: 3_dot_menu_pattern
 - unimplemented_features: memory_items_and_project_facts_tables_not_updating
 - unresolved_issues: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
+
+## Active Work Items
+
+### shared-memory
+Category: task
+memory
+
+### hooks
+Category: bug
+hooks
+
+### pagination
+Category: feature
+pagination
+
+### dropbox
+Category: feature
+dropbox
+
+### UI
+Category: feature
+UI
+
+### implement-projects-tab
+Category: task
+Build the UI for managing features/tasks/bugs
+
+### test-picker-feature
+Category: feature
+test-picker-feature
+
+### workflow-runner
+Category: feature
+workflow-runner
+
+### mcp
+Category: feature
+mcp
+
+### tagging
+Category: feature
+tagging
+
+### embeddings
+Category: feature
+embeddings
+
+### auth
+Category: feature
+auth
+
+### billing
+Category: feature
+billing
+
+### graph-workflow
+Category: feature
+graph-workflow
+
+### shared-memory
+Category: feature
+shared-memory
+
+## Recent Session (2026-04-06 02:25)
+
+• History view was showing only prompt text instead of full prompt + LLM response • User needs expanded view in history to see complete prompt and response text • User requested ability to copy text from history UI for easier access • History previously displayed both prompt and full LLM response but regressed to showing only prompt

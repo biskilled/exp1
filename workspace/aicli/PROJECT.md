@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- MEMORY.md and aicli_memory.md documentation gap: tables in MEMORY.md are outdated and do not reflect current schema (mem_ai_* tables, missing mem_session.py layer); comprehensive memory architecture documentation needed covering all layers, mirroring mechanisms, event triggers, and processing prompts
 - PostgreSQL batch upsert JSONB type casting: resolved execute_values error via explicit ::jsonb casting for tags field; commit deduplication via seen dict to prevent ON CONFLICT DO UPDATE processing same hash twice
 - Commit sync and deduplication: /history/commits/sync endpoint imports unique commit hashes with proper prompt linkage; commit message truncation fixed to support full metadata display
+- History display dual-hook architecture verification: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis activation
 - Memory items and project_facts table population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality activation
-- History display dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
-- Copy-to-clipboard functionality: text selection and copying capability in history UI for improved usability
+- MEMORY.md and aicli_memory.md documentation gap: tables in MEMORY.md updated to reflect current schema (mem_ai_* tables); comprehensive memory architecture documentation covering all layers, mirroring mechanisms, event triggers, and processing prompts
+- Copy-to-clipboard functionality: text selection and copying capability in history UI for improved usability and better content accessibility

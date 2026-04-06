@@ -263,7 +263,7 @@ class MemoryTagging:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT id, name, description, summary, category_name
+                    SELECT id, ai_name, ai_desc, summary, ai_category
                     FROM mem_ai_work_items WHERE id = %s
                 """, (work_item_id,))
                 row = cur.fetchone()

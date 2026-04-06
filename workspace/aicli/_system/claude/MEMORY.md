@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-06 10:52 UTC by aicli /memory_
+_Generated: 2026-04-06 12:22 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with PostgreSQL + pgvector for semantic search, dual-layer memory synthesis via Claude Haiku, and an Electron desktop UI featuring async DAG workflow visualization. Currently addressing critical documentation gaps in MEMORY.md/aicli_memory.md that do not reflect current schema (mem_ai_* unified tables, missing mem_session.py layer), while completing PostgreSQL batch upsert fixes and activating core memory item/project facts population via event-based triggering.
+aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with PostgreSQL + pgvector for semantic search, dual-layer memory synthesis via Claude Haiku, and an Electron desktop UI featuring async DAG workflow visualization. Currently in active development focused on fixing PostgreSQL batch upsert operations, completing memory layer implementation via event-based table population, and comprehensive memory architecture documentation to enable core memory functionality.
 
 ## Project Facts
 
@@ -96,20 +96,20 @@ Reviewer: ```json
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
-- Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
 - PostgreSQL batch upsert with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
 - Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
 - Commit deduplication by hash with UNION consolidation across multiple sources; commits linked per-prompt with inline display (accent left-border)
-- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
+- Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+- Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
 
 ## In Progress
 
-- MEMORY.md and aicli_memory.md documentation gap: tables in MEMORY.md are outdated and do not reflect current schema (mem_ai_* tables, missing mem_session.py layer); comprehensive memory architecture documentation needed covering all layers, mirroring mechanisms, event triggers, and processing prompts
 - PostgreSQL batch upsert JSONB type casting: resolved execute_values error via explicit ::jsonb casting for tags field; commit deduplication via seen dict to prevent ON CONFLICT DO UPDATE processing same hash twice
 - Commit sync and deduplication: /history/commits/sync endpoint imports unique commit hashes with proper prompt linkage; commit message truncation fixed to support full metadata display
+- History display dual-hook architecture verification: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis activation
 - Memory items and project_facts table population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality activation
-- History display dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
-- Copy-to-clipboard functionality: text selection and copying capability in history UI for improved usability
+- MEMORY.md and aicli_memory.md documentation gap: tables in MEMORY.md updated to reflect current schema (mem_ai_* tables); comprehensive memory architecture documentation covering all layers, mirroring mechanisms, event triggers, and processing prompts
+- Copy-to-clipboard functionality: text selection and copying capability in history UI for improved usability and better content accessibility
 
 ## Active Features / Bugs / Tasks
 
@@ -372,4 +372,9 @@ Files changed (14):
 
 ## AI Synthesis
 
-**[2026-04-06]** `documentation_gap` — MEMORY.md and aicli_memory.md contain outdated table definitions and missing mem_session.py memory layer; comprehensive schema documentation required covering unified mem_ai_* tables, per-project tables, event triggers, and memory synthesis flow. **[2026-04-06]** `postgresql_fix` — Resolved batch upsert JSONB type casting error via explicit ::jsonb casting for tags field in ON CONFLICT DO UPDATE clauses; implemented commit deduplication by hash to prevent duplicate row processing. **[2026-04-06]** `commit_sync` — /history/commits/sync endpoint successfully imports 364+ unique commit hashes with proper session linkage; full commit message metadata now populated in database. **[2026-04-06]** `history_display` — Dual-hook architecture verified (hook-response saves LLM responses, session-summary consolidates prompts); commits now display inline per-prompt with accent left-border and hash links. **[2026-04-06]** `memory_activation` — event-based triggering for mem_ai_* table population requires differentiated process_item/messages handling to activate core memory functionality. **[2026-04-06]** `ui_enhancement` — Copy-to-clipboard capability requested for history UI; phase persistence with ⚠ badge implemented for missing phase detection.
+**[2026-04-06]** `commit` — Commit deduplication logic implemented in /history/commits/sync endpoint using seen dict by commit_hash to prevent PostgreSQL ON CONFLICT DO UPDATE from processing the same row twice in batch upsert; resolves duplicate insertion issues.
+**[2026-04-06]** `fix` — PostgreSQL batch upsert JSONB type casting resolved by adding explicit ::jsonb cast to tags || EXCLUDED.tags operation on line 466; enables proper UNION consolidation of commits across multiple sources.
+**[2026-04-06]** `memory_synthesis` — History display dual-hook architecture verified: hook-response background hook saves LLM responses to mem_mrr_prompts.response table; session-summary hook consolidates prompt/response pairs for downstream synthesis.
+**[2026-04-06]** `documentation` — MEMORY.md updated to reflect current unified table schema (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features) and comprehensive memory architecture documentation in progress for aicli_memory.md.
+**[2026-04-05]** `feature_request` — Memory items and project_facts table population requires event-based triggering with differentiated process_item/messages handling to activate core memory functionality as designed.
+**[2026-04-05]** `feature_request` — Copy-to-clipboard functionality needed in history UI to enable text selection and content export for improved user accessibility and session reference capabilities.
