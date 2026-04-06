@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 01:32 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 01:33 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -55,17 +55,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
-- Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↪ link) showing only that prompt's commits
+- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ⤴ link) showing only that prompt's commits
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+- Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
 - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
-
-## Recent Context (last 5 changes)
-
-- [2026-04-05] Yes please. about Sho llm in the ui - make it visible tag
-- [2026-04-05] I would like to build the aicli_memory.md for scratch in order to get a final view of the memory layer. please describe 
-- [2026-04-05] About orocess_item / messeges - trigger in /memroy (for all new items at the moment). feature snapshot - imprtoant. curr
-- [2026-04-06] test prompt after fix
-- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
