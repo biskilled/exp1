@@ -5,7 +5,47 @@ _Generated: 2026-04-06 01:35 UTC by aicli /memory_
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL semantic storage with pgvector, and an Electron desktop UI to capture, synthesize, and navigate project context through Claude-powered dual-layer memory synthesis. The system orchestrates multi-LLM workflows via DAG execution, maintains hierarchical authentication, and deploys across cloud (Railway), desktop (Electron-builder), and local environments.
+aicli is a shared AI memory platform that integrates Claude, OpenAI, and other LLM providers with a PostgreSQL backend, dual-layer memory synthesis, and an Electron desktop UI featuring workflow visualization and semantic search via pgvector embeddings. Currently in active development with focus on memory layer implementation (populate memory_items and project_facts tables), comprehensive memory architecture documentation, and feature snapshot unification to enable core memory functionality.
+
+## Project Facts
+
+- **auth_pattern**: login_as_first_level_hierarchy
+- **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
+- **data_model_hierarchy**: clients_contain_multiple_users
+- **data_persistence_issue**: tags_disappear_on_session_switch
+- **db_engine**: SQL
+- **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
+- **deployment_target**: Claude_CLI_and_LLM_platforms
+- **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
+- **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
+- **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
+- **memory_management_pattern**: load_once_on_access_update_on_save
+- **pending_implementation**: memory_items_and_project_facts_table_population
+- **pending_issues**: project_visibility_bug_active_project_not_displaying
+- **performance_optimization**: redundant_SQL_calls_eliminated
+- **pipeline/auth**: Acceptance criteria:
+# PM Analysis: Email Verification Feature
+
+---
+
+## Context Summary
+
+The tagged context reveals this work item is an **incremental enhancement** to an existing authentication system. Sign In and Create Account forms are already live and functional. The prior PM analysis identified email verification as the missing layer—the system currently accepts any email without confirming ownership. The analys
+
+Reviewer: ```json
+{
+  "passed": false,
+  "score": 4,
+  "issues": [
+    "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
+- **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
+- **stale_code_removed**: git_supervisor_module_deleted_automated_git_workflow_no_longer_used
+- **tagging_system**: nested_hierarchy_beyond_2_levels
+- **tagging_system_hierarchy**: nested_hierarchy_beyond_2_levels_approved
+- **ui_action_menu_pattern**: 3_dot_menu_for_action_visibility
+- **ui_library**: 3_dot_menu_pattern
+- **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
+- **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
 
 ## Tech Stack
 
@@ -71,11 +111,165 @@ aicli is a shared AI memory platform combining a Python FastAPI backend, Postgre
 - Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
 - Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern
 
+## Active Features / Bugs / Tasks
+
+### Ai_suggestion
+
+- **test123** `[open]`
+
+### Bug
+
+- **hooks** `[open]`
+
+### Doc_type
+
+- **architecture-decision** `[open]`
+- **customer-meeting** `[open]`
+- **Test** `[open]`
+- **low-level-design** `[open]`
+- **high-level-design** `[open]`
+- **retrospective** `[open]`
+
+### Feature
+
+- **UI** `[open]`
+- **pagination** `[open]`
+- **test-picker-feature** `[open]`
+- **graph-workflow** `[open]`
+- **billing** `[open]`
+- **embeddings** `[open]`
+- **tagging** `[open]`
+- **mcp** `[open]`
+- **workflow-runner** `[open]`
+- **shared-memory** `[open]`
+- **auth** `[open]`
+- **dropbox** `[open]`
+
+### Phase
+
+- **prod** `[open]`
+- **development** `[open]`
+- **discovery** `[open]`
+
+### Task
+
+- **implement-projects-tab** `[open]`
+- **memory** `[open]`
+
+## Recent Memory
+
+> Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `memory_item` — 2026-04-05
+
+# Development Session Summary (2026-03-18)
+
+• **Fixed `_Database` attribute error** — removed stale `db.ensure_project_schema()` call from `main.py`
+
+• **Fixed CLAUDE.md memory endpoint error** — resolved undefined `code_dir` variable in line 1120
+
+• **Improved backend startup resilience** — added retry logic in `_continueToApp()` to handle race conditions when projects load returns empty
+
+• **Fixed project visibility issue** — AiCli project now displays correctly in project list (not just Recent), addressing missing current project indicator
+
+• **Clarified data model structure** — confirmed users are nested under clients (one client → multiple users)
+
+• **Identified memory mechanism gap** — `memory_items` and `project_facts` tables are **not being updated** as designed; needs implementation to enable proper memory functionality
+
+### `prompt_batch: 8f29a8d3-13a3-42ed-9219-de7bfe53e3d2` — 2026-04-05
+
+# Development Session Summary (2026-03-18)
+
+• **Fixed `_Database` attribute error** — removed stale `db.ensure_project_schema()` call from `main.py`
+
+• **Fixed CLAUDE.md memory endpoint error** — resolved undefined `code_dir` variable in line 1120
+
+• **Improved backend startup resilience** — added retry logic in `_continueToApp()` to handle race conditions when projects load returns empty
+
+• **Fixed project visibility issue** — AiCli project now displays correctly in project list (not just Recent), addressing missing current project indicator
+
+• **Clarified data model structure** — confirmed users are nested under clients (one client → multiple users)
+
+• **Identified memory mechanism gap** — `memory_items` and `project_facts` tables are **not being updated** as designed; needs implementation to enable proper memory functionality
+
+### `memory_item` — 2026-04-05
+
+# Development Session Summary (2026-04-05)
+
+## UI Enhancement
+• Make the LLM model identifier visible as a tag in the UI interface
+
+## Memory Architecture Documentation
+Requested comprehensive `aicli_memory.md` documentation including:
+- All memory layer descriptions and their responsibilities
+- Mirroring layer mechanism and how it propagates state
+- Event triggering logic and trigger points for each layer
+- Specific prompts used at each processing step
+- Integration considerations for work_item and project_fa structures
+
+## Data Structure Consolidation
+• **Feature Snapshot Unification**: Merge `plannet_tags` (currently serving as feature snapshot holder) into a properly named `feature_snapshot` structure for semantic clarity
+• **Process Item/Messages Trigger**: Consolidate trigger logic in `/memory` pathway to uniformly handle all new items with event-based triggering
+• **Work Item Linking**: Establish and clarify proper linkage between work_item entities and memory/snapshot layers (relationship definition incomplete)
+
+## Outstanding Questions
+- Exact trigger conditions and data flow for each memory layer step
+- How process_item and messages differentiate in the memory layer
+- Complete work_item relationship mapping to memory structures
+
+### `prompt_batch: 8b91f9d9-7632-4c3d-a386-d1bf3d48c864` — 2026-04-05
+
+# Development Session Summary (2026-04-05)
+
+## UI Enhancement
+• Make the LLM model identifier visible as a tag in the UI interface
+
+## Memory Architecture Documentation
+Requested comprehensive `aicli_memory.md` documentation including:
+- All memory layer descriptions and their responsibilities
+- Mirroring layer mechanism and how it propagates state
+- Event triggering logic and trigger points for each layer
+- Specific prompts used at each processing step
+- Integration considerations for work_item and project_fa structures
+
+## Data Structure Consolidation
+• **Feature Snapshot Unification**: Merge `plannet_tags` (currently serving as feature snapshot holder) into a properly named `feature_snapshot` structure for semantic clarity
+• **Process Item/Messages Trigger**: Consolidate trigger logic in `/memory` pathway to uniformly handle all new items with event-based triggering
+• **Work Item Linking**: Establish and clarify proper linkage between work_item entities and memory/snapshot layers (relationship definition incomplete)
+
+## Outstanding Questions
+- Exact trigger conditions and data flow for each memory layer step
+- How process_item and messages differentiate in the memory layer
+- Complete work_item relationship mapping to memory structures
+
+### `memory_item` — 2026-04-05
+
+# Development Session Summary (Apr 3-5, 2026)
+
+• **Fixed database schema errors**: Removed non-existent `lifecycle` column from `route_entities` (line 359) and `work_item_id` column reference from `route_work_items` (line 351); removed unused `PHASE` column from commits table
+
+• **Tag UI/API issues**: Fixed 422 Unprocessable Entity errors causing "[object object]" display; database schema misalignment prevented tag-prompt/commit associations from persisting
+
+• **Broke tag loading functionality**: After schema fixes, existing tags stopped loading in tag picker and previously attached tags to prompts/commits became inaccessible—requires tag relationship query debugging
+
+• **Commit sync API error**: `/history/commits/sync` endpoint failing at `execute_values()` (route_history line 441) during batch upsert operation—SQL generation issue needs investigation
+
+• **Planned mem_ai_events refactor**: Restructure column order (move `llm_source` after `project`), audit data population sources, and reconcile `tags` (MRR) vs `metadata` (events) columns for consistency across system
+
+### `prompt_batch: 6ffb562b-40dd-4aea-80a1-408ce5204f03` — 2026-04-05
+
+# Development Session Summary (Apr 3-5, 2026)
+
+• **Fixed database schema errors**: Removed non-existent `lifecycle` column from `route_entities` (line 359) and `work_item_id` column reference from `route_work_items` (line 351); removed unused `PHASE` column from commits table
+
+• **Tag UI/API issues**: Fixed 422 Unprocessable Entity errors causing "[object object]" display; database schema misalignment prevented tag-prompt/commit associations from persisting
+
+• **Broke tag loading functionality**: After schema fixes, existing tags stopped loading in tag picker and previously attached tags to prompts/commits became inaccessible—requires tag relationship query debugging
+
+• **Commit sync API error**: `/history/commits/sync` endpoint failing at `execute_values()` (route_history line 441) during batch upsert operation—SQL generation issue needs investigation
+
+• **Planned mem_ai_events refactor**: Restructure column order (move `llm_source` after `project`), audit data population sources, and reconcile `tags` (MRR) vs `metadata` (events) columns for consistency across system
+
 ## AI Synthesis
 
-**2026-03-14** `architecture` — Established unified mem_ai_* table structure (events, tags_relations, project_facts, work_items, features) consolidating per-project schemas; JWT + DEV_MODE authentication pattern stabilized with hierarchical Client→User access.
-**2026-03-14** `memory_synthesis` — Implemented Claude Haiku dual-layer synthesis pipeline generating 5 files with timestamp tracking, LLM response summarization, and auto-tag suggestions; event-based triggering for all new memory items via /memory pathway.
-**2026-03-14** `workflow_ui` — Built Cytoscape.js DAG visualization with cytoscape-dagre layout; 2-pane approval panel for async workflow negotiation and loop-back execution with max_iterations cap via asyncio.gather.
-**2026-03-14** `deployment` — Configured Railway cloud deployment (Dockerfile + railway.toml), Electron-builder desktop packaging (Mac/Windows/Linux), and local development via bash start_backend.sh + npm run dev.
-**2026-03-14** `data_persistence` — Established load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on metadata updates; phase badges and tag suggestions auto-saved with visual marking.
-**2026-03-14** `in_progress_focus` — Memory items/project_facts population logic incomplete; model identifier visibility in UI needed; feature_snapshot unification (rename plannet_tags) pending; work_item linkage across memory layers requires clarification.
+**[2026-04-05]** `development-session` — Requested comprehensive memory architecture documentation (aicli_memory.md) covering all layers, mirroring mechanism, event triggers, and specific prompts used at each processing step. **[2026-04-05]** `development-session` — Feature snapshot consolidation: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping and unified linkage. **[2026-04-05]** `development-session` — LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions. **[2026-03-18]** `memory-summary` — Identified critical memory mechanism gap: memory_items and project_facts tables are not being updated as designed; needs implementation to enable proper memory functionality. **[2026-03-18]** `bug-fix` — Fixed backend startup race condition via retry_logic_handles_empty_project_list_on_first_load in _continueToApp(). **[2026-03-18]** `bug-fix` — Fixed CLAUDE.md memory endpoint error by resolving undefined code_dir variable at line 1120. **[2026-03-18]** `bug-fix` — Fixed _Database attribute error by removing stale db.ensure_project_schema() call from main.py. **[2026-03-18]** `architecture` — Clarified data model structure: confirmed users are nested under clients (one client → multiple users) with login_as_first_level_hierarchy pattern. **[2026-03-18]** `ui-fix` — Fixed project visibility issue: AiCli project now displays correctly in project list (not just Recent), addressing missing current project indicator. **[2026-02-xx]** `architecture-decision` — _ensure_shared_schema replaces ensure_project_schema convention for database initialization consistency.
