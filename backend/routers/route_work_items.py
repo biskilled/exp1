@@ -31,13 +31,15 @@ from data.dl_seq import next_seq
 
 _SQL_LIST_WORK_ITEMS_BASE = (
     """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-              w.status, w.acceptance_criteria, w.action_items,
-              w.requirements, w.content, w.summary,
-              w.tags, w.tag_id, w.ai_tag_id,
+              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
+              w.requirements, w.code_summary, w.summary,
+              w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
               w.created_at, w.updated_at, w.seq_num,
               tc.color, tc.icon,
               (SELECT COUNT(*) FROM mem_mrr_prompts p
-               WHERE p.client_id=1 AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count
+               WHERE p.client_id=1 AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count,
+              (SELECT COUNT(*) FROM mem_mrr_commits c
+               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS commit_count
        FROM mem_ai_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
        WHERE {where}
@@ -47,12 +49,12 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 
 _SQL_UNLINKED_WORK_ITEMS = """
     SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-           w.status, w.requirements, w.summary, w.tags,
+           w.status_user, w.status_ai, w.requirements, w.summary, w.tags,
            w.created_at, w.seq_num,
            pt.name AS ai_tag_name
     FROM mem_ai_work_items w
     LEFT JOIN planner_tags pt ON pt.id = w.ai_tag_id
-    WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status='active'
+    WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
     ORDER BY w.created_at DESC
 """
 
@@ -60,20 +62,27 @@ _SQL_INSERT_WORK_ITEM = (
     """INSERT INTO mem_ai_work_items
            (project_id, ai_category, ai_name, ai_desc,
             requirements, acceptance_criteria, action_items,
-            content, summary, tags, status, seq_num)
-       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            code_summary, summary, tags, status_user, status_ai, seq_num)
+       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
        ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
        RETURNING id, ai_name, ai_category, created_at, seq_num"""
 )
 
 _SQL_GET_WORK_ITEM = (
     """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-              w.status, w.acceptance_criteria, w.action_items,
-              w.requirements, w.content, w.summary,
-              w.tags, w.tag_id, w.ai_tag_id,
+              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
+              w.requirements, w.code_summary, w.summary,
+              w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
        WHERE w.project_id=%s AND w.id=%s::uuid"""
+)
+
+_SQL_GET_COMMITS = (
+    """SELECT c.commit_hash, c.commit_msg, c.summary, c.committed_at
+       FROM mem_mrr_commits c
+       WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s::text)
+       ORDER BY c.committed_at DESC LIMIT %s"""
 )
 
 _SQL_DELETE_WORK_ITEM = (
@@ -82,8 +91,9 @@ _SQL_DELETE_WORK_ITEM = (
 
 _SQL_GET_WORK_ITEM_BY_SEQ = (
     """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-              w.status, w.acceptance_criteria, w.action_items,
-              w.requirements, w.summary, w.tags, w.tag_id, w.ai_tag_id,
+              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
+              w.requirements, w.code_summary, w.summary,
+              w.tags, w.tag_id, w.ai_tag_id,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
        WHERE w.project_id=%s AND w.seq_num=%s
@@ -142,11 +152,16 @@ async def _trigger_memory_regen(project: str) -> None:
 async def _embed_work_item(
     project_id: int, item_id: str,
     ai_name: str, ai_desc: str, requirements: str, summary: str,
+    code_summary: str = "",
 ) -> None:
-    """Embed work item content and store the vector on the row."""
+    """Embed work item content and store the vector on the row.
+    Embedding = ai_name + ai_desc + requirements + summary + code_summary.
+    Used for: (1) semantic search, (2) cosine-similarity matching to planner_tags.
+    planner_tags.embedding = summary + action_items → same space, enabling cross-table match.
+    """
     try:
         from memory.memory_embedding import _embed
-        text = f"{ai_name} {ai_desc} {requirements} {summary}".strip()
+        text = f"{ai_name} {ai_desc} {requirements} {summary} {code_summary}".strip()
         vec = await _embed(text)
         if vec and db.is_available():
             vec_str = f"[{','.join(str(x) for x in vec)}]"
@@ -185,11 +200,12 @@ class WorkItemCreate(BaseModel):
     ai_name:             str
     ai_desc:             str = ""
     project:             Optional[str] = None
-    status:              str = "active"
+    status_user:         str = "active"
+    status_ai:           str = "active"
     requirements:        str = ""
     acceptance_criteria: str = ""
     action_items:        str = ""
-    content:             str = ""
+    code_summary:        str = ""
     summary:             str = ""
     tags:                dict = {}
 
@@ -197,11 +213,12 @@ class WorkItemCreate(BaseModel):
 class WorkItemPatch(BaseModel):
     ai_name:             Optional[str] = None
     ai_desc:             Optional[str] = None
-    status:              Optional[str] = None
+    status_user:         Optional[str] = None   # set by user: active / paused / done
+    status_ai:           Optional[str] = None   # set by AI: active / in_progress / done
     requirements:        Optional[str] = None
     acceptance_criteria: Optional[str] = None
     action_items:        Optional[str] = None
-    content:             Optional[str] = None
+    code_summary:        Optional[str] = None
     summary:             Optional[str] = None
     tags:                Optional[dict] = None
     tag_id:              Optional[str] = None
@@ -251,7 +268,7 @@ async def list_work_items(
     if category:
         where.append("w.ai_category=%s"); params.append(category)
     if status:
-        where.append("w.status=%s"); params.append(status)
+        where.append("w.status_user=%s"); params.append(status)
     if name:
         where.append("w.ai_name=%s"); params.append(name)
 
@@ -296,8 +313,8 @@ async def create_work_item(
                 _SQL_INSERT_WORK_ITEM,
                 (p_id, body.ai_category, body.ai_name, body.ai_desc,
                  body.requirements, body.acceptance_criteria, body.action_items,
-                 body.content, body.summary,
-                 _json.dumps(body.tags), body.status, seq),
+                 body.code_summary, body.summary,
+                 _json.dumps(body.tags), body.status_user, body.status_ai, seq),
             )
             r = cur.fetchone()
     if not r:
@@ -326,11 +343,12 @@ async def patch_work_item(
     fields, params = [], []
     if body.ai_name             is not None: fields.append("ai_name=%s");             params.append(body.ai_name)
     if body.ai_desc             is not None: fields.append("ai_desc=%s");             params.append(body.ai_desc)
-    if body.status              is not None: fields.append("status=%s");              params.append(body.status)
+    if body.status_user         is not None: fields.append("status_user=%s");         params.append(body.status_user)
+    if body.status_ai           is not None: fields.append("status_ai=%s");           params.append(body.status_ai)
     if body.requirements        is not None: fields.append("requirements=%s");        params.append(body.requirements)
     if body.acceptance_criteria is not None: fields.append("acceptance_criteria=%s"); params.append(body.acceptance_criteria)
     if body.action_items        is not None: fields.append("action_items=%s");        params.append(body.action_items)
-    if body.content             is not None: fields.append("content=%s");             params.append(body.content)
+    if body.code_summary        is not None: fields.append("code_summary=%s");        params.append(body.code_summary)
     if body.summary             is not None: fields.append("summary=%s");             params.append(body.summary)
     if body.tags                is not None:
         import json as _json
@@ -352,7 +370,7 @@ async def patch_work_item(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE mem_ai_work_items SET {','.join(fields)} WHERE id=%s::uuid AND project_id=%s RETURNING id, status",
+                f"UPDATE mem_ai_work_items SET {','.join(fields)} WHERE id=%s::uuid AND project_id=%s RETURNING id, status_user",
                 params,
             )
             result = cur.fetchone()
@@ -360,7 +378,7 @@ async def patch_work_item(
                 raise HTTPException(404, "Work item not found")
 
     body_dict = body.model_dump(exclude_none=True)
-    content_fields = {"ai_name", "ai_desc", "requirements", "summary"}
+    content_fields = {"ai_name", "ai_desc", "requirements", "summary", "code_summary"}
     if any(f in body_dict for f in content_fields):
         with db.conn() as conn:
             with conn.cursor() as cur:
@@ -374,7 +392,7 @@ async def patch_work_item(
         background.add_task(_run_matching, p, item_id)
 
     asyncio.create_task(_trigger_memory_regen(p))
-    return {"ok": True, "id": item_id, "status": result[1]}
+    return {"ok": True, "id": item_id, "status_user": result[1]}
 
 
 @router.delete("/{item_id}")
@@ -442,6 +460,31 @@ async def get_work_item_interactions(
                     row["created_at"] = row["created_at"].isoformat()
                 rows.append(row)
     return {"interactions": rows, "work_item_id": item_id, "project": p}
+
+
+# ── Commits linked to a work item ────────────────────────────────────────────
+
+@router.get("/{item_id}/commits")
+async def get_work_item_commits(
+    item_id: str,
+    project: str | None = Query(None),
+    limit:   int        = Query(20),
+):
+    """Return commits tagged to this work item (via mem_mrr_commits.tags['work-item']=id)."""
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_GET_COMMITS, (p_id, item_id, limit))
+            cols = [d[0] for d in cur.description]
+            rows = []
+            for r in cur.fetchall():
+                row = dict(zip(cols, r))
+                if row.get("committed_at"):
+                    row["committed_at"] = row["committed_at"].isoformat()
+                rows.append(row)
+    return {"commits": rows, "work_item_id": item_id, "project": p}
 
 
 # ── Semantic search ───────────────────────────────────────────────────────────

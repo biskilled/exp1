@@ -381,6 +381,7 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt   ON mem_mrr_commits(prompt_id) WHE
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags     ON mem_mrr_commits USING gin(tags);
 
 -- Work items (AI-detected tasks linked to planner tags)
+-- status_user = user-managed lifecycle; status_ai = AI-suggested based on action_item progress
 CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id           INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -391,23 +392,24 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     requirements        TEXT         NOT NULL DEFAULT '',
     acceptance_criteria TEXT         NOT NULL DEFAULT '',
     action_items        TEXT         NOT NULL DEFAULT '',
-    content             TEXT         NOT NULL DEFAULT '',
+    code_summary        TEXT         NOT NULL DEFAULT '',
     summary             TEXT         NOT NULL DEFAULT '',
     tags                JSONB        NOT NULL DEFAULT '{}',
     ai_tag_id           UUID         REFERENCES planner_tags(id),
     tag_id              UUID         REFERENCES planner_tags(id),
-    status              VARCHAR(20)  NOT NULL DEFAULT 'active',
+    status_user         VARCHAR(20)  NOT NULL DEFAULT 'active',
+    status_ai           VARCHAR(20)  NOT NULL DEFAULT 'active',
     seq_num             INT,
     source_event_id     UUID,
-    source_session_id   TEXT,
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     embedding           VECTOR(1536),
     UNIQUE(project_id, ai_category, ai_name)
 );
-CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid    ON mem_ai_work_items(project_id);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat    ON mem_ai_work_items(ai_category);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_status ON mem_ai_work_items(status);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid   ON mem_ai_work_items(project_id);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat   ON mem_ai_work_items(ai_category);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_suser ON mem_ai_work_items(status_user);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_sai   ON mem_ai_work_items(status_ai);
 
 -- Project facts (durable extracted facts; valid_until NULL = current)
 CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
@@ -1159,6 +1161,25 @@ DO $$ BEGIN
   ALTER TABLE mem_ai_work_items ADD CONSTRAINT mem_ai_work_items_proj_cat_name
     UNIQUE (project_id, ai_category, ai_name);
 EXCEPTION WHEN duplicate_table THEN NULL; END $$;
+-- ── 012_work_items_v2 ─────────────────────────────────────────────────────────
+-- Split status → status_user (user-managed) + status_ai (AI-suggested).
+-- Drop content (raw blob) and source_session_id (redundant).
+-- Add code_summary (from linked commits) and source_event_id.
+-- Move embedding to end of table (drop + re-add; data is regenerable).
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS status_user VARCHAR(20) NOT NULL DEFAULT 'active';
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS status_ai   VARCHAR(20) NOT NULL DEFAULT 'active';
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS content;
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS source_session_id;
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS source_event_id UUID;
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS code_summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS embedding;
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
+DROP INDEX IF EXISTS idx_mem_ai_wi_status;
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_suser ON mem_ai_work_items(status_user);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_sai   ON mem_ai_work_items(status_ai);
+-- Migrate status → status_user (plain statement, no DO block needed since ADD sets DEFAULT)
+UPDATE mem_ai_work_items SET status_user = status WHERE status IS NOT NULL AND status_user = 'active';
+ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS status;
 """
 
 

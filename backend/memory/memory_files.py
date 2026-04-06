@@ -53,7 +53,7 @@ _SQL_ACTIVE_WORK_ITEMS = """
            wi.seq_num, t.name AS tag_name
     FROM mem_ai_work_items wi
     LEFT JOIN planner_tags t ON t.id = wi.tag_id
-    WHERE wi.project_id=%s AND wi.status='active'
+    WHERE wi.project_id=%s AND wi.status_user != 'done'
     ORDER BY wi.created_at DESC
 """
 
@@ -74,7 +74,7 @@ _SQL_ALL_RELATIONS = """
 """
 
 _SQL_FEATURE_SNAPSHOTS = """
-    SELECT t.id, t.name, t.project, t.summary, t.action_items, t.design, t.code_summary
+    SELECT t.id, t.name, t.summary, t.action_items, t.design, t.code_summary
     FROM planner_tags t
     WHERE t.project_id = %s AND (t.summary IS NOT NULL OR t.action_items IS NOT NULL)
     ORDER BY t.updated_at DESC LIMIT 20
@@ -103,7 +103,7 @@ _SQL_ACTIVE_TAGS = """
 """
 
 _SQL_FEATURE_SNAPSHOT_BY_TAG = """
-    SELECT t.id, t.name, t.project, t.requirements, t.summary, t.action_items, t.design, t.code_summary
+    SELECT t.id, t.name, t.requirements, t.summary, t.action_items, t.design, t.code_summary
     FROM planner_tags t
     WHERE t.id = %s AND t.project_id = %s
 """

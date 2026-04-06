@@ -31,18 +31,23 @@ _SQL_GET_TAG_ID = """
 """
 
 _SQL_GET_WORK_ITEM = """
-    SELECT wi.id, wi.name, wi.description, wi.lifecycle_status, wi.acceptance_criteria
+    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria
     FROM mem_ai_work_items wi
     WHERE wi.project_id=%s
     ORDER BY wi.created_at DESC LIMIT 10
 """
 
 _SQL_GET_WORK_ITEM_BY_NAME = """
-    SELECT wi.id, wi.name, wi.description, wi.lifecycle_status, wi.acceptance_criteria,
-           wi.implementation_plan, wi.agent_status, wi.tag_id
+    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria,
+           wi.action_items, wi.status_ai, wi.tag_id
     FROM mem_ai_work_items wi
-    WHERE wi.project_id=%s AND wi.name=%s
+    WHERE wi.project_id=%s AND wi.ai_name=%s
     LIMIT 1
+"""
+
+_SQL_UPDATE_WORK_ITEM_STATUS_AI = """
+    UPDATE mem_ai_work_items SET status_ai=%s, updated_at=NOW()
+    WHERE id=%s AND project_id=%s
 """
 
 _SQL_GET_MEMORY_EVENTS = """
@@ -240,21 +245,20 @@ class MemoryPromotion:
             log.debug(f"promote_work_item: no work item found for '{tag_name}'")
             return None
 
-        wi_id, wi_name, desc, lifecycle, ac, impl, agent_status, tag_id = row
+        wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id = row
 
         system_prompt = await _load_system_role("work_item_promotion") or (
             "Given a work item, produce a 2-4 sentence summary capturing what it is, "
             "current status, and any notable progress. "
-            "Return JSON only: {\"summary\": \"...\", \"status\": \"<lifecycle_status>\"}"
+            "Return JSON only: {\"summary\": \"...\", \"status_ai\": \"active|in_progress|done\"}"
         )
 
         user_msg = (
             f"Work Item: {wi_name}\n"
-            f"Lifecycle: {lifecycle}\n"
+            f"User Status: {status_user}\n"
             f"Description: {desc or '(none)'}\n"
             f"Acceptance Criteria:\n{ac or '(none)'}\n"
-            f"Implementation Plan:\n{impl or '(none)'}\n"
-            f"Agent Status: {agent_status or 'not started'}"
+            f"Action Items:\n{action_items or '(none)'}"
         )
 
         raw = await _call_llm(system_prompt, user_msg, max_tokens=300)
@@ -263,11 +267,23 @@ class MemoryPromotion:
             log.debug(f"promote_work_item: LLM returned no JSON for '{tag_name}'")
             return None
 
+        new_status_ai = parsed.get("status_ai", status_ai)
+        # Persist AI status suggestion back to DB
+        if new_status_ai != status_ai:
+            project_id = db.get_or_create_project_id(tag_name)  # re-resolve not needed below
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(_SQL_UPDATE_WORK_ITEM_STATUS_AI,
+                                    (new_status_ai, str(wi_id), project_id))
+            except Exception as e:
+                log.debug(f"promote_work_item: status_ai update failed: {e}")
+
         return {
             "work_item_id": str(wi_id),
             "tag_name": tag_name,
             "summary": parsed.get("summary", ""),
-            "status": parsed.get("status", lifecycle),
+            "status_ai": new_status_ai,
         }
 
     async def promote_feature_snapshot(

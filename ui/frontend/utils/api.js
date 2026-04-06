@@ -375,6 +375,7 @@ api.workItems = {
     { method: 'DELETE', headers: _headers() }
   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
   interactions: (id, project, limit = 20) => _get(`/work-items/${enc(id)}/interactions?project=${enc(project)}&limit=${limit}`),
+  commits:      (id, project, limit = 20) => _get(`/work-items/${enc(id)}/commits?project=${enc(project)}&limit=${limit}`),
   facts:        (project)     => _get(`/work-items/facts?project=${enc(project)}`),
   memoryItems:  (project, scope) => {
     const q = new URLSearchParams({ project: project || '' });

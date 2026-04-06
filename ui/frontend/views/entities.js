@@ -453,8 +453,13 @@ function _wiSetTableBody(tableBody, byId, catName, catColor, catIcon, project) {
 function _wiRenderRows(byId, catName, catColor, catIcon, project) {
   const rows = Object.values(byId);
 
+  const STATUS_UC = {active:'#27ae60', in_progress:'#e67e22', done:'#4a90e2', paused:'#888'};
+
   function rowFor(wi) {
-    const sc     = wi.status === 'active' ? '#27ae60' : wi.status === 'done' ? '#4a90e2' : '#888';
+    const su = wi.status_user || 'active';
+    const sa = wi.status_ai  || 'active';
+    const scU = STATUS_UC[su] || '#888';
+    const scA = STATUS_UC[sa] || '#888';
     const seqBadge = wi.seq_num
       ? `<span style="font-size:0.52rem;color:var(--muted);background:var(--surface2);
                       border:1px solid var(--border);padding:0.05rem 0.28rem;
@@ -483,8 +488,11 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
           </div>
         </td>
         <td style="padding:0.5rem 0.4rem;white-space:nowrap">
-          <span style="font-size:0.6rem;color:${sc};background:${sc}22;
-                       padding:0.12rem 0.4rem;border-radius:10px">${_esc(wi.status)}</span>
+          <span style="font-size:0.57rem;color:${scU};background:${scU}22;
+                       padding:0.1rem 0.38rem;border-radius:10px" title="User status">${_esc(su)}</span>
+          ${sa !== su ? `<span style="font-size:0.52rem;color:${scA};background:${scA}18;
+                                     padding:0.08rem 0.3rem;border-radius:10px;margin-left:2px;
+                                     opacity:.8" title="AI suggests: ${_esc(sa)}">AI:${_esc(sa)}</span>` : ''}
         </td>
         <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem;
                    max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
@@ -498,7 +506,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
       <thead>
         <tr style="border-bottom:2px solid var(--border)">
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
-          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:65px">Status</th>
+          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:90px">Status</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;max-width:110px">Criteria</th>
           <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:70px">Tag</th>
         </tr>
@@ -545,6 +553,32 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
       </div>
 
       <div style="padding:0.85rem 1rem;display:flex;flex-direction:column;gap:0.85rem">
+
+        <!-- Status row: user dropdown + AI badge -->
+        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:0.2rem">
+            <div style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);
+                        letter-spacing:.06em">Your Status</div>
+            <select
+              style="background:var(--surface2);border:1px solid var(--border);
+                     color:var(--text);font-size:0.65rem;padding:0.2rem 0.4rem;
+                     border-radius:var(--radius);font-family:var(--font);cursor:pointer"
+              onchange="api.workItems.patch('${id}','${project}',{status_user:this.value}).catch(e=>toast(e.message,'error'))">
+              ${['active','in_progress','paused','done'].map(s =>
+                `<option value="${s}"${wi.status_user===s?' selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:0.2rem">
+            <div style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);
+                        letter-spacing:.06em">AI Status</div>
+            <span style="font-size:0.62rem;padding:0.18rem 0.5rem;border-radius:10px;
+                         color:${{active:'#27ae60',in_progress:'#e67e22',done:'#4a90e2',paused:'#888'}[wi.status_ai]||'#888'};
+                         background:${{active:'#27ae60',in_progress:'#e67e22',done:'#4a90e2',paused:'#888'}[wi.status_ai]||'#888'}22;
+                         border:1px solid currentColor;opacity:.8" title="AI-suggested status based on progress">
+              ${_esc(wi.status_ai || 'active')}
+            </span>
+          </div>
+        </div>
 
         <!-- Description -->
         <div>
@@ -605,11 +639,28 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
         <!-- AI Summary (read-only) -->
         <div>
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                      letter-spacing:.06em;margin-bottom:0.3rem">AI Summary</div>
+                      letter-spacing:.06em;margin-bottom:0.3rem">AI Progress Summary</div>
           <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;
                       background:var(--surface2);padding:0.35rem 0.45rem;
                       border-radius:var(--radius)">${_esc(wi.summary)}</div>
         </div>` : ''}
+
+        ${wi.code_summary ? `
+        <!-- Code Summary (read-only) -->
+        <div>
+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                      letter-spacing:.06em;margin-bottom:0.3rem">Code Summary</div>
+          <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;font-family:monospace;
+                      background:var(--surface2);padding:0.35rem 0.45rem;
+                      border-radius:var(--radius);white-space:pre-wrap">${_esc(wi.code_summary)}</div>
+        </div>` : ''}
+
+        <!-- Linked Commits (loaded async) -->
+        <div>
+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                      letter-spacing:.06em;margin-bottom:0.3rem">Commits</div>
+          <div id="wi-commits-${id}" style="font-size:0.65rem;color:var(--muted)">Loading…</div>
+        </div>
 
         <!-- Delete -->
         <div style="border-top:1px solid var(--border);padding-top:0.75rem">
@@ -630,6 +681,24 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
         _renderWorkItemTable(pane, catName, catColor, catIcon, project);
       } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
     };
+
+    // Load commits async
+    api.workItems.commits(id, project).then(d => {
+      const el = document.getElementById(`wi-commits-${id}`);
+      if (!el) return;
+      const commits = (d && d.commits) || [];
+      if (!commits.length) { el.textContent = 'No linked commits'; return; }
+      el.innerHTML = commits.map(c => `
+        <div style="padding:0.25rem 0;border-bottom:1px solid var(--border)">
+          <div style="color:var(--text);font-weight:500">${_esc((c.commit_msg||'').slice(0,60))}${(c.commit_msg||'').length>60?'…':''}</div>
+          ${c.summary ? `<div style="color:var(--muted);font-size:0.58rem;margin-top:0.15rem">${_esc(c.summary.slice(0,80))}</div>` : ''}
+          <div style="color:var(--muted);font-size:0.55rem;margin-top:0.1rem">${c.commit_hash ? c.commit_hash.slice(0,8) : ''} · ${c.committed_at ? c.committed_at.slice(0,10) : ''}</div>
+        </div>`).join('');
+    }).catch(() => {
+      const el = document.getElementById(`wi-commits-${id}`);
+      if (el) el.textContent = 'No linked commits';
+    });
+
   } catch (e) {
     inner.innerHTML = `<div style="padding:1rem;color:#e74c3c;font-size:0.72rem">Error: ${_esc(e.message)}</div>`;
   }

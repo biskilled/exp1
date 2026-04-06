@@ -45,7 +45,7 @@ _SQL_INSERT_TAG = """
 
 _SQL_LIST_TAGS = """
     SELECT t.id, t.name, t.category_id, t.parent_id, t.merged_into,
-           t.status, t.lifecycle, t.seq_num, t.created_at,
+           t.status, t.seq_num, t.created_at,
            tc.name AS category_name, tc.color, tc.icon,
            t.short_desc, t.due_date, t.priority, 0 AS source_count
     FROM planner_tags t
@@ -120,16 +120,15 @@ class MemoryTagging:
                 "parent_id":     str(r[3]) if r[3] else None,
                 "merged_into":   str(r[4]) if r[4] else None,
                 "status":        r[5],
-                "lifecycle":     r[6],
-                "seq_num":       r[7],
-                "created_at":    r[8].isoformat() if r[8] else None,
-                "category_name": r[9],
-                "color":         r[10] or "#4a90e2",
-                "icon":          r[11] or "⬡",
-                "description":   r[12] or "",
-                "due_date":      r[13].isoformat() if r[13] else None,
-                "priority":      r[14] or 3,
-                "source_count":  r[15] if len(r) > 15 else 0,
+                "seq_num":       r[6],
+                "created_at":    r[7].isoformat() if r[7] else None,
+                "category_name": r[8],
+                "color":         r[9] or "#4a90e2",
+                "icon":          r[10] or "⬡",
+                "description":   r[11] or "",
+                "due_date":      r[12].isoformat() if r[12] else None,
+                "priority":      r[13] or 3,
+                "source_count":  r[14] if len(r) > 14 else 0,
                 "children":      [],
             }
             for r in rows
