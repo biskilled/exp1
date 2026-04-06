@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-06 10:22 UTC — do not edit manually.
+> Auto-generated 2026-04-06 11:33 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 384
-- **Last active**: 2026-04-06T10:22:32Z
+- **Sessions**: 385
+- **Last active**: 2026-04-06T10:52:44Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -18,7 +18,7 @@
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) + JSONB UNION batch upsert
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
@@ -51,17 +51,17 @@
 
 ## In Progress
 
-- PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error with explicit ::jsonb casting for tags field
-- Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes with proper prompt linkage
-- Commits tab full loading: fixed commit message truncation ensuring database population supports complete metadata display in UI
-- History display dual-hook architecture: verified hook-response and session-summary hooks properly save prompts and LLM responses to mem_mrr_prompts
-- Memory items and project_facts population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality
-- Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability
+- MEMORY.md and aicli_memory.md documentation gap: tables in MEMORY.md are outdated and do not reflect current schema (mem_ai_* tables, missing mem_session.py layer); comprehensive memory architecture documentation needed covering all layers, mirroring mechanisms, event triggers, and processing prompts
+- PostgreSQL batch upsert JSONB type casting: resolved execute_values error via explicit ::jsonb casting for tags field; commit deduplication via seen dict to prevent ON CONFLICT DO UPDATE processing same hash twice
+- Commit sync and deduplication: /history/commits/sync endpoint imports unique commit hashes with proper prompt linkage; commit message truncation fixed to support full metadata display
+- Memory items and project_facts table population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality activation
+- History display dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+- Copy-to-clipboard functionality: text selection and copying capability in history UI for improved usability
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) with JSONB UNION batch upsert queries
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
@@ -71,9 +71,9 @@
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
-- PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
-- Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
+- PostgreSQL batch upsert with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
+- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Commit deduplication by hash with UNION consolidation across multiple sources; commits linked per-prompt with inline display (accent left-border)
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
 
 ---
