@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- PostgreSQL batch upsert JSONB type casting: resolved execute_values error via explicit ::jsonb casting for tags field; commit deduplication via seen dict to prevent ON CONFLICT DO UPDATE processing same hash twice
-- Commit sync and deduplication: /history/commits/sync endpoint imports unique commit hashes with proper prompt linkage; commit message truncation fixed to support full metadata display
-- History display dual-hook architecture verification: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis activation
-- Memory items and project_facts table population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality activation
-- MEMORY.md and aicli_memory.md documentation gap: tables in MEMORY.md updated to reflect current schema (mem_ai_* tables); comprehensive memory architecture documentation covering all layers, mirroring mechanisms, event triggers, and processing prompts
-- Copy-to-clipboard functionality: text selection and copying capability in history UI for improved usability and better content accessibility
+- Memory items and project_facts table population: implement missing update logic to enable event-based triggering with differentiated process_item/messages handling
+- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanisms, event triggers, and processing prompts for each synthesis stage
+- MEMORY.md schema alignment: tables updated to reflect current schema (mem_ai_* tables); verification that all documentation mirrors implementation
+- Copy-to-clipboard functionality: text selection and copying capability in history UI for improved usability and content accessibility
+- LLM model identifier visibility: expose model identifier as visible tag/indicator in UI for transparency and tracking across sessions
+- Feature snapshot consolidation: unify plannet_tags structure with work_items and memory linkage; verify prompt-response hook integration
