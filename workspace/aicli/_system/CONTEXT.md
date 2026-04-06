@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-06 22:54 UTC — do not edit manually.
+> Auto-generated 2026-04-06 22:57 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 400
-- **Last active**: 2026-04-06T18:14:10Z
+- **Sessions**: 401
+- **Last active**: 2026-04-06T22:55:18Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- Work item dual-status UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators; updated table headers and drawer UI
-- Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching
-- Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method
-- Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching
-- Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'
-- UI drag-and-drop feature request: user inquired about dragging work items between top/bottom screen panes and resizing bottom pane height via separator line interaction
+- Work item tag-linking persistence and display: fixed _loadTagLinkedWorkItems filter logic where ai_category was incorrectly matching work item's category instead of tag's category; work items now persist and display correctly after drag-drop linkage and page reload
+- Work item dual-status UI implementation: status_user dropdown for user control + status_ai badge for AI suggestions with separate color indicators; integrated into table headers and item drawer
+- Work item embedding strategy: unified embedding space via code_summary + requirements + summary fields for cross-table cosine-similarity matching with planner_tags
+- Work item commits association: /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; commit-per-prompt inline display with accent left-border
+- Tag deduplication across views: 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
+- UI drag-and-drop work item feature: user can drag work items between panes with visual feedback; investigating pane resizing via separator line interaction
 
 ## Key Decisions
 
@@ -70,11 +70,11 @@
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
 - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
-- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
-- Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
-- Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
-- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
+- Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)
+- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
+- Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created
+- Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display
 
 ---
 

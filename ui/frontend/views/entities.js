@@ -267,7 +267,7 @@ export function renderEntities(container) {
       await api.workItems.patch(wi.id, proj, { tag_id: '' });
       toast(`Unlinked "${wi.ai_name}"`, 'success');
       _loadWiPanel(proj);
-      _renderTagTableFromCache();
+      _loadTagLinkedWorkItems(proj).catch(() => {});
     } catch(err) { toast('Unlink failed: ' + err.message, 'error'); }
   };
 
@@ -426,9 +426,6 @@ function _renderWiPanel(items, project) {
          data-wi-name="${_esc(wi.ai_name)}"
          ondragstart="window._wiBotDragStart(event,'${_esc(wi.id)}','${_esc(wi.ai_name)}','${_esc(wi.ai_category)}')"
          ondragend="window._wiBotDragEnd(event)"
-         ondragover="window._wiBotItemDragOver(event,this)"
-         ondragleave="window._wiBotItemDragLeave(event,this)"
-         ondrop="window._wiBotItemDrop(event,'${_esc(wi.id)}','${_esc(project)}')"
          onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(wi.ai_category)}','${_esc(project)}')"
          style="display:grid;grid-template-columns:1fr 1fr;padding:3px 8px;
                 border-bottom:1px solid var(--border);cursor:grab;user-select:none;
@@ -460,6 +457,9 @@ async function _loadTagLinkedWorkItems(project, catName) {
     // to a 'feature' tag; we rely on the DOM tr[data-tag-id] selector to scope to current view)
     const data = await api.workItems.list({ project });
     const linked = (data.work_items || []).filter(w => w.tag_id && !w.merged_into);
+    // Always clear existing sub-rows first — tags that lost all linked items would otherwise
+    // keep stale sub-rows (the per-tag cleanup below only runs for tags that still have items)
+    document.querySelectorAll('.wi-sub-row').forEach(r => r.remove());
     if (!linked.length) return;
     const CAT_ICON = { feature: '✨', bug: '🐛', task: '📋' };
     const STATUS_UC = { active: '#27ae60', in_progress: '#e67e22', done: '#4a90e2', paused: '#888' };
@@ -469,13 +469,6 @@ async function _loadTagLinkedWorkItems(project, catName) {
     Object.entries(byTag).forEach(([tagId, wis]) => {
       const tagRow = document.querySelector(`tr[data-tag-id="${CSS.escape(tagId)}"]`);
       if (!tagRow) return;
-      // Remove any previously injected sub-rows for this tag
-      let next = tagRow.nextSibling;
-      while (next && next.classList && next.classList.contains('wi-sub-row')) {
-        const toRemove = next;
-        next = next.nextSibling;
-        toRemove.remove();
-      }
       // Insert sub-rows (in reverse so first item ends up first)
       [...wis].reverse().forEach(wi => {
         const sc = STATUS_UC[wi.status_user] || '#888';
@@ -791,9 +784,16 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
   inner.innerHTML = `<div style="padding:1rem;color:var(--muted);font-size:0.72rem">Loading…</div>`;
 
   try {
-    const data = await api.workItems.list(project, catName);
+    // Fetch all work items (no category filter) so we can find the item regardless of ai_category
+    // and compute sibling list for merge
+    const data = await api.workItems.list({ project });
     const wi   = (data.work_items || []).find(w => w.id === id);
     if (!wi) { inner.innerHTML = '<div style="padding:1rem;color:var(--muted)">Not found</div>'; return; }
+    // Siblings = other non-done work items in the same context (same tag, or both unlinked)
+    const siblings = (data.work_items || []).filter(w =>
+      w.id !== id && w.status_user !== 'done' &&
+      (wi.tag_id ? w.tag_id === wi.tag_id : !w.tag_id)
+    );
 
     const drawerSeqBadge = wi.seq_num
       ? `<span style="font-size:0.55rem;color:var(--muted);background:var(--surface2);
@@ -928,6 +928,27 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <div id="wi-commits-${id}" style="font-size:0.65rem;color:var(--muted)">Loading…</div>
         </div>
 
+        <!-- Merge into (only if siblings exist and this item is not itself a merged result) -->
+        ${siblings.length && !wi.merge_count ? `
+        <div>
+          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                      letter-spacing:.06em;margin-bottom:0.3rem">Merge Into…</div>
+          <div style="display:flex;gap:5px">
+            <select id="wi-merge-sel-${id}"
+              style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+                     font-family:var(--font);font-size:0.65rem;padding:0.22rem 0.45rem;
+                     border-radius:var(--radius);outline:none;min-width:0">
+              <option value="">— select work item —</option>
+              ${siblings.map(s => `<option value="${_esc(s.id)}">${_esc(s.ai_name)}</option>`).join('')}
+            </select>
+            <button onclick="window._wiMergeInto('${id}','${project}')"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);
+                     font-size:0.6rem;padding:0.22rem 0.55rem;border-radius:var(--radius);
+                     cursor:pointer;font-family:var(--font);outline:none;white-space:nowrap">⊕ Merge</button>
+          </div>
+          <div id="wi-merge-msg-${id}" style="font-size:0.6rem;color:var(--muted);margin-top:0.2rem;min-height:0.8rem"></div>
+        </div>` : ''}
+
         <!-- Delete / Dismerge -->
         <div style="border-top:1px solid var(--border);padding-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap">
           ${wi.merge_count > 0 ? `
@@ -962,7 +983,27 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
         toast(`Dismerged — ${r.restored.length} item(s) restored`, 'success');
         _plannerCloseDrawer();
         _loadWiPanel(proj);
+        _loadTagLinkedWorkItems(proj).catch(() => {});
       } catch (e) { toast('Dismerge failed: ' + e.message, 'error'); }
+    };
+
+    window._wiMergeInto = async (fromId, proj) => {
+      const sel = document.getElementById(`wi-merge-sel-${fromId}`);
+      const msg = document.getElementById(`wi-merge-msg-${fromId}`);
+      const targetId = sel?.value;
+      if (!targetId) { if (msg) msg.textContent = 'Select a work item first.'; return; }
+      if (!confirm('Merge these two work items into a new combined item?')) return;
+      try {
+        if (msg) msg.textContent = 'Merging…';
+        await api.workItems.merge(fromId, targetId, proj);
+        toast('⊕ Merged — new combined item created', 'success');
+        _plannerCloseDrawer();
+        _loadWiPanel(proj);
+        _loadTagLinkedWorkItems(proj).catch(() => {});
+      } catch (e) {
+        if (msg) msg.textContent = 'Error: ' + e.message;
+        toast('Merge failed: ' + e.message, 'error');
+      }
     };
 
     // Load commits async
@@ -1378,28 +1419,6 @@ function _renderDrawer() {
           </button>
           <span id="drawer-snapshot-msg" style="font-size:0.58rem;color:var(--muted)"></span>
         </div>
-      </div>
-
-      <!-- Merge -->
-      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
-        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                    letter-spacing:.06em;margin-bottom:0.35rem">Merge Into…</div>
-        <div style="display:flex;gap:5px">
-          <input id="drawer-merge-inp" type="text" placeholder="Target tag name…"
-            list="drawer-merge-datalist"
-            style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
-                   font-family:var(--font);font-size:0.65rem;padding:0.22rem 0.45rem;
-                   border-radius:var(--radius);outline:none" />
-          <datalist id="drawer-merge-datalist">
-            ${getCacheValues(catId).filter(vv => vv.id !== v.id).map(vv => `<option value="${_esc(vv.name)}"></option>`).join('')}
-          </datalist>
-          <button onclick="window._plannerDrawerMerge('${_esc(v.name)}','${_esc(_plannerState.project)}')"
-            style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);
-                   font-size:0.6rem;padding:0.22rem 0.55rem;border-radius:var(--radius);
-                   cursor:pointer;font-family:var(--font);outline:none;white-space:nowrap">
-            → Merge</button>
-        </div>
-        <div id="drawer-merge-msg" style="font-size:0.6rem;color:var(--muted);margin-top:0.2rem;min-height:0.8rem"></div>
       </div>
 
       <!-- Add sub-tag -->

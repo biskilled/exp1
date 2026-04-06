@@ -1,5 +1,5 @@
 # Project Context: aicli
-# Generated: 2026-04-06 22:50 UTC
+# Generated: 2026-04-06 22:59 UTC
 
 ## Project Facts
 
@@ -45,53 +45,43 @@ Reviewer: ```json
 
 ## Active Work Items
 
-### #20068 dropbox
+### #20076 embeddings
 Category: bug
-Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
+Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
+History 
+
+### #20075 auth
+Category: bug
+llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
+Multip
 
 ### #20069 mcp
 Category: bug
 History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
 
-### #20066 billing
+### #20068 dropbox
 Category: bug
-History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
+Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
 
 ### #20065 auth
 Category: bug
 aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
 
-### #20067 auth
+### #20066 billing
 Category: bug
-Multiple events from history table don't make sense and appear to be erroneous data that should be removed
-
-### #20063 UI
-Category: bug
-Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
-
-### #20064 embeddings
-Category: bug
-History table contains numerous events that don't make logical sense, possibly from corrupted or orphaned historical dat
+History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
 
 ### #20061 billing
 Category: bug
 In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
 
+### #20063 UI
+Category: bug
+Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
+
 ### #20062 mcp
 Category: bug
 History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
-
-### #20057 History display truncation
-Category: bug
-History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
-
-### #20060 Invalid llm_source column data
-Category: bug
-llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
-
-### #20058 Missing copy functionality in history UI
-Category: bug
-Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
 
 ### #20059 Spurious history events in database
 Category: bug
@@ -105,13 +95,13 @@ Error in route_history line 470 with cur.execute(b''.join(parts)) call to execut
 Category: bug
 Users cannot copy text from the history section of the UI, which limits usability for reviewing and sharing past interac
 
-### #20055 Spurious event records in history table
-Category: bug
-The event history table contains many events that don't make sense and appear to be leftover data from previous history 
-
 ### #20054 Column order not applied in mem_ai_events table
 Category: bug
 After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
+
+### #20055 Spurious event records in history table
+Category: bug
+The event history table contains many events that don't make sense and appear to be leftover data from previous history 
 
 ### #20052 History UI only shows prompts, not LLM responses
 Category: bug
@@ -137,13 +127,13 @@ The developer observed numerous events from history in the table that don't make
 Category: bug
 Prompts and LLM responses in history are displaying as small text instead of showing the full content. Users cannot see 
 
-### #20045 Inconsistent data in mem_ai_events from history
-Category: bug
-Developer observed many events from history in the table that don't make logical sense and questioned if they should be 
-
 ### #20046 database.py contains outdated table definitions
 Category: bug
 database.py is noted as being very long and containing old table definitions that are no longer in use, causing maintena
+
+### #20045 Inconsistent data in mem_ai_events from history
+Category: bug
+Developer observed many events from history in the table that don't make logical sense and questioned if they should be 
 
 ### #20044 Column ordering not applied to mem_ai_events table
 Category: bug
@@ -157,9 +147,9 @@ Tags attached to prompts and commits are not visible after being saved. Addition
 Category: bug
 psycopg2.errors.UndefinedColumn error in route_work_i: column p.work_item_id does not exist. The query references 'p.wor
 
-### #20039 Undefined column p.work_item_id in route_work_i
+### #20038 SQL execution error in /history/commits/sync endpoint
 Category: bug
-psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
+Error occurred in route_history line 441 during execute_values() call with _SQL_BATCH_UPSERT. The cur.execute(b''.join(p
 
 ### #20041 Tagging system not persisting data
 Category: bug
@@ -169,9 +159,9 @@ Tags attached to prompts and commits are not visible after being saved. No conne
 Category: bug
 llm_source column was not placed after project column as requested, and embedding column was not moved to the last posit
 
-### #20038 SQL execution error in /history/commits/sync endpoint
+### #20039 Undefined column p.work_item_id in route_work_i
 Category: bug
-Error occurred in route_history line 441 during execute_values() call with _SQL_BATCH_UPSERT. The cur.execute(b''.join(p
+psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
 
 ### #20032 Missing llm_source column in mem_ai_events
 Category: bug

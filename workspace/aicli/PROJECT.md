@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item dual-status UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators; updated table headers and drawer UI
-- Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching
-- Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method
-- Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching
-- Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'
-- UI drag-and-drop feature request: user inquired about dragging work items between top/bottom screen panes and resizing bottom pane height via separator line interaction
+- Work item tag-linking persistence and display: fixed _loadTagLinkedWorkItems filter logic where ai_category was incorrectly matching work item's category instead of tag's category; work items now persist and display correctly after drag-drop linkage and page reload
+- Work item dual-status UI implementation: status_user dropdown for user control + status_ai badge for AI suggestions with separate color indicators; integrated into table headers and item drawer
+- Work item embedding strategy: unified embedding space via code_summary + requirements + summary fields for cross-table cosine-similarity matching with planner_tags
+- Work item commits association: /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; commit-per-prompt inline display with accent left-border
+- Tag deduplication across views: 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
+- UI drag-and-drop work item feature: user can drag work items between panes with visual feedback; investigating pane resizing via separator line interaction

@@ -50,11 +50,11 @@
     "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
     "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-    "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table",
-    "Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis",
-    "Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation",
-    "Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
-    "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev"
+    "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
+    "Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)",
+    "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev",
+    "Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created",
+    "Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Work item dual-status UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators; updated table headers and drawer UI",
-    "Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching",
-    "Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method",
-    "Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching",
-    "Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'",
-    "UI drag-and-drop feature request: user inquired about dragging work items between top/bottom screen panes and resizing bottom pane height via separator line interaction"
+    "Work item tag-linking persistence and display: fixed _loadTagLinkedWorkItems filter logic where ai_category was incorrectly matching work item's category instead of tag's category; work items now persist and display correctly after drag-drop linkage and page reload",
+    "Work item dual-status UI implementation: status_user dropdown for user control + status_ai badge for AI suggestions with separate color indicators; integrated into table headers and item drawer",
+    "Work item embedding strategy: unified embedding space via code_summary + requirements + summary fields for cross-table cosine-similarity matching with planner_tags",
+    "Work item commits association: /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; commit-per-prompt inline display with accent left-border",
+    "Tag deduplication across views: 149 tags total (0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits simultaneously",
+    "UI drag-and-drop work item feature: user can drag work items between panes with visual feedback; investigating pane resizing via separator line interaction"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-06T18:14:23Z",
+  "last_memory_run": "2026-04-06T22:55:48Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -133,19 +133,19 @@
       "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
       "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-      "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table",
-      "Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis",
-      "Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation",
-      "Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
-      "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev"
+      "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
+      "Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)",
+      "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev",
+      "Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created",
+      "Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display"
     ],
     "in_progress": [
-      "Work item dual-status UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators; updated table headers and drawer UI",
-      "Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching",
-      "Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method",
-      "Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching",
-      "Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'",
-      "UI drag-and-drop feature request: user inquired about dragging work items between top/bottom screen panes and resizing bottom pane height via separator line interaction"
+      "Work item tag-linking persistence and display: fixed _loadTagLinkedWorkItems filter logic where ai_category was incorrectly matching work item's category instead of tag's category; work items now persist and display correctly after drag-drop linkage and page reload",
+      "Work item dual-status UI implementation: status_user dropdown for user control + status_ai badge for AI suggestions with separate color indicators; integrated into table headers and item drawer",
+      "Work item embedding strategy: unified embedding space via code_summary + requirements + summary fields for cross-table cosine-similarity matching with planner_tags",
+      "Work item commits association: /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; commit-per-prompt inline display with accent left-border",
+      "Tag deduplication across views: 149 tags total (0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits simultaneously",
+      "UI drag-and-drop work item feature: user can drag work items between panes with visual feedback; investigating pane resizing via separator line interaction"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -154,19 +154,14 @@
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "deployment_local": "bash start_backend.sh + npm run dev",
-      "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm",
+      "database_version": "PostgreSQL 15+",
       "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL pgvector storage, a Python 3.12 CLI, and an Electron desktop UI with vanilla JS. It implements multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), async DAG workflow execution, dual-layer memory synthesis, and intelligent code chunking to track project knowledge and work items. Current focus is enhancing work item management with dual-status tracking, semantic embeddings, and improved UI interactions for better task coordination.",
-    "memory_digest": "**2026-03-14** `schema` \u2014 Work items schema migrated from single status to dual-status model: status_user (user-controlled) and status_ai (AI suggestions) with separate color indicators in UI; added code_summary field for semantic embedding and cross-matching with planner_tags. **2026-03-14** `api` \u2014 Implemented /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering and integrated api.workItems.commits() client method for work item-commit association. **2026-03-14** `database` \u2014 Extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done' for improved query optimization. **2026-03-14** `embedding` \u2014 Unified embedding space strategy for work_items + planner_tags via code_summary + requirements + summary fields enabling cross-table cosine-similarity matching. **2026-03-14** `ui` \u2014 Work item drawer and table UI updated to display dual status with separate badges; user requested drag-and-drop support between top/bottom screen panes with resizable separator line."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with a desktop Electron UI and CLI, using PostgreSQL+pgvector for semantic search and multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok). It provides unified project memory management, work item tracking with dual-status (user/AI), async DAG workflow execution, and session-based tagging/phase management. Current focus is on resolving work item persistence bugs in tag-linking and improving UI for drag-drop interactions between panes.",
+    "memory_digest": "**[2026-04-06]** `claude_cli` \u2014 Fixed work item tag-linking persistence: ai_category filter in _loadTagLinkedWorkItems was incorrectly matching work item's own category instead of the tag's category, preventing linked items from appearing in list after drag-drop. Root cause identified and corrected to check tag's category; linked work items now persist across page reloads.\n\n**[2026-04-05]** `claude_cli` \u2014 Completed work item dual-status UI: implemented status_user dropdown + status_ai suggestion badge with distinct color indicators in table headers and drawer; unified embedding strategy via code_summary + requirements + summary for cross-table semantic matching with planner_tags.\n\n**[2026-04-05]** `claude_cli` \u2014 Work item commits association endpoint: added /work-items/{id}/commits returning linked commits via JSONB tags filtering; replaced session-level commit strip with per-prompt inline display (accent left-border, hash link showing only that prompt's commits).\n\n**[2026-04-05]** `claude_cli` \u2014 Tag deduplication and cross-view sync: verified 149 total tags with 0 duplicates; tag removal via \u2715 buttons now propagates across Chat/History/Commits views simultaneously without duplication.\n\n**[2026-04-05]** `claude_cli` \u2014 AI suggestion auto-save with tag management: suggestions now create tags in proper category via _acceptSuggestedTag; suggested tags marked with distinct color/mark; tags appear immediately in Planner tab.\n\n**[2026-04-05]** `claude_cli` \u2014 Planner tab redesign: consolidated tag management into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tasks split view; session ordering fixed to use created_at instead of updated_at to prevent tag/phase updates from reordering list."
   }
 }
