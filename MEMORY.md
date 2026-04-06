@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-06 01:34 UTC by aicli /memory_
+_Generated: 2026-04-06 01:35 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL semantic search (pgvector), a Python CLI interface, and an Electron desktop UI with Monaco editor and terminal integration. It synthesizes development history into multi-layer memory structures, executes async DAG workflows with LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok), and maintains unified event/fact/feature schemas for cross-project memory mirroring and retrieval. Currently in active development to complete memory layer population, documentation, and feature snapshot unification for production readiness.
+aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL semantic storage with pgvector, and an Electron desktop UI to capture, synthesize, and navigate project context through Claude-powered dual-layer memory synthesis. The system orchestrates multi-LLM workflows via DAG execution, maintains hierarchical authentication, and deploys across cloud (Railway), desktop (Electron-builder), and local environments.
 
 ## Tech Stack
 
@@ -73,4 +73,9 @@ aicli is a shared AI memory platform combining a Python FastAPI backend with Pos
 
 ## AI Synthesis
 
-**[2026-03-14]** `architecture` — Unified database schema consolidation completed with mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, and mem_ai_features as core tables; pgvector integration (1536-dim text-embedding-3-small) enables semantic search capabilities. **[2026-03-14]** `backend` — Backend startup race condition fixed via retry_logic for empty project lists on first load; _ensure_shared_schema pattern replaces ensure_project_schema convention to prevent initialization failures. **[2026-03-14]** `memory_synthesis` — Claude Haiku dual-layer memory synthesis generates 5 output files with LLM response summarization, auto-tag suggestions, and timestamp tracking; tag deduplication prevents redundant entries. **[2026-03-14]** `ui_features` — Commit-per-prompt inline display implemented with accent left-border styling and hash ↩ links; sessions ordered by created_at (not updated_at) to prevent reordering on tag updates. **[2026-03-14]** `workflow_engine` — Async DAG executor via asyncio.gather with loop-back support and max_iterations cap; Cytoscape.js visualization paired with 2-pane approval panel for workflow negotiation. **[2026-03-14]** `active_work` — Feature snapshot consolidation underway (plannet_tags → feature_snapshot); memory items and project_facts table population requiring update logic implementation; LLM model identifier visibility enhancement in progress for UI transparency.
+**2026-03-14** `architecture` — Established unified mem_ai_* table structure (events, tags_relations, project_facts, work_items, features) consolidating per-project schemas; JWT + DEV_MODE authentication pattern stabilized with hierarchical Client→User access.
+**2026-03-14** `memory_synthesis` — Implemented Claude Haiku dual-layer synthesis pipeline generating 5 files with timestamp tracking, LLM response summarization, and auto-tag suggestions; event-based triggering for all new memory items via /memory pathway.
+**2026-03-14** `workflow_ui` — Built Cytoscape.js DAG visualization with cytoscape-dagre layout; 2-pane approval panel for async workflow negotiation and loop-back execution with max_iterations cap via asyncio.gather.
+**2026-03-14** `deployment` — Configured Railway cloud deployment (Dockerfile + railway.toml), Electron-builder desktop packaging (Mac/Windows/Linux), and local development via bash start_backend.sh + npm run dev.
+**2026-03-14** `data_persistence` — Established load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on metadata updates; phase badges and tag suggestions auto-saved with visual marking.
+**2026-03-14** `in_progress_focus` — Memory items/project_facts population logic incomplete; model identifier visibility in UI needed; feature_snapshot unification (rename plannet_tags) pending; work_item linkage across memory layers requires clarification.
