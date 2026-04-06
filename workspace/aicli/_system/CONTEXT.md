@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-06 15:30 UTC — do not edit manually.
+> Auto-generated 2026-04-06 17:35 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 393
-- **Last active**: 2026-04-06T14:18:01Z
+- **Sessions**: 396
+- **Last active**: 2026-04-06T17:34:59Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- Work item status dual-column UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators in entities.js drawer
-- Work item commits association: added /work-items/{id}/commits endpoint and api.workItems.commits() to retrieve linked commits via JSONB tags
+- Work item dual-status UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators; updated table headers and drawer UI
 - Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching
-- Memory items and project_facts population: awaiting table update logic to enable event-based triggering with differentiated processing
-- Frontend initialization fix: removed undefined _plannerSelectAiSubtype reference that caused window._plannerSync assignment failure; fixed init crash
-- Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary for cross-table cosine-similarity matching
+- Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method
+- Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching
+- Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'
+- Frontend initialization stabilization: removed undefined _plannerSelectAiSubtype reference; fixed init crash; verified work item drawer renders status controls without errors
 
 ## Key Decisions
 
@@ -68,12 +68,12 @@
 - Claude Haiku dual-layer memory synthesis generating 5 files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
-- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
-- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
 - Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
 - Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
+- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 
 ---

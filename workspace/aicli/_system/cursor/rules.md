@@ -1,10 +1,71 @@
-## Project: aicli
+# aicli — AI Coding Rules
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 17:34 UTC
 
-## Active Features (do not break)
+# aicli — Shared AI Memory Platform
 
-test-merge-A + test-merge-B: test item A
-test item B
-Invalid history events in database: History table contains numerous events that don't make sense and appear to be er
-History UI lacks text selection/copy functionality: Users cannot copy text from the history UI, limiting usability of viewing histor
-aiCli_memory table schema out of sync: aiCli_memory tables are not updated and don't match current schema. Some tables 
-Nonsensical history events in table: Multiple events from history table don't make sense and appear to be erroneous d
+_Last updated: 2026-03-14 | Version 2.2.0_
+
+---
+
+## Tech Stack
+
+- **cli**: Python 3.12 + prompt_toolkit + rich
+- **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
+- **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
+- **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
+- **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+- **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions
+- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+- **mcp**: Stdio MCP server with 12+ tools
+- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm
+- **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **config_management**: config.py + YAML pipelines + pyproject.toml
+- **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+- **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
+- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+- **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+- **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+- **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+- **database**: PostgreSQL 15+ with JSONB UNION batch upsert queries
+- **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
+- **database_version**: PostgreSQL 15+
+- **build_tooling**: npm 8+ with Electron-builder; Vite dev server
+- **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
+- **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+- **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+- **deployment_cloud**: Railway (Dockerfile + railway.toml)
+- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+- **deployment_local**: bash start_backend.sh + npm run dev
+
+## Key Decisions
+
+- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) with JSONB UNION batch upsert
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
+- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
+- Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
+- Claude Haiku dual-layer memory synthesis generating 5 files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+- Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
+- Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+- Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
+- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+
+## Recent Context (last 5 changes)
+
+- [2026-04-06] I have  got the following error -  cur.execute(b''.join(parts)) started  route_history line 470 - execute_values(cur, _S
+- [2026-04-06] I still dont see the same issue in route_history line 470. cur.execute(b''.join(parts)) saying  ON CONFLICT DO UPDATE co
+- [2026-04-06] I am checking the aiCli_memory - and it is looks likje it is not updated at all. table are not as the current one and th
+- [2026-04-06] I would like to make sure columns are aligned in work_items. What is source_session_id usaed from in work_items? Also th
+- [2026-04-06] I do see an issue - Uncaught ReferenceError: _plannerSelectAiSubtype is not defined in ERROR    | routers.route_logs    

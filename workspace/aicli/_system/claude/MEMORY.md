@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-06 14:18 UTC by aicli /memory_
+_Generated: 2026-04-06 17:34 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL vector database, and Electron desktop UI to enable AI-assisted project management, memory synthesis, and workflow automation. The platform uses Claude/OpenAI/DeepSeek LLMs for semantic understanding, dual-status work item tracking (user + AI suggestions), and async DAG-based workflow execution with approval panels. Currently stabilizing work item embedding strategies, commits association, and frontend initialization to enable seamless memory item population and cross-table semantic matching.
+aicli is a shared AI memory platform for development teams, combining a FastAPI backend with PostgreSQL (pgvector) storage and an Electron desktop UI. It manages work items, project facts, commits, and interactions with LLM providers (Claude/OpenAI/DeepSeek) via dual-layer memory synthesis, async workflow execution, and semantic search. Current focus: implementing dual-status work item tracking (user + AI suggestions), commit association, and unified embedding space for cross-table semantic matching.
 
 ## Project Facts
 
@@ -94,22 +94,22 @@ Reviewer: ```json
 - Claude Haiku dual-layer memory synthesis generating 5 files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
-- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
-- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
 - Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
 - Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
+- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 
 ## In Progress
 
-- Work item status dual-column UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators in entities.js drawer
-- Work item commits association: added /work-items/{id}/commits endpoint and api.workItems.commits() to retrieve linked commits via JSONB tags
+- Work item dual-status UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators; updated table headers and drawer UI
 - Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching
-- Memory items and project_facts population: awaiting table update logic to enable event-based triggering with differentiated processing
-- Frontend initialization fix: removed undefined _plannerSelectAiSubtype reference that caused window._plannerSync assignment failure; fixed init crash
-- Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary for cross-table cosine-similarity matching
+- Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method
+- Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching
+- Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'
+- Frontend initialization stabilization: removed undefined _plannerSelectAiSubtype reference; fixed init crash; verified work item drawer renders status controls without errors
 
 ## Active Features / Bugs / Tasks
 
@@ -571,4 +571,9 @@ index b3cf9a3..d2ba05a 100644
 
 ## AI Synthesis
 
-**[2026-04-06]** `frontend/entities.js` — Implemented dual-status work item UI with status_user (user-controlled dropdown) and status_ai (AI suggestion badge), each with independent color indicators (#27ae60 active, #e67e22 in_progress, #4a90e2 done, #888 paused). **[2026-04-06]** `backend/route_work_items.py` — Added /work-items/{id}/commits endpoint to retrieve commits linked to work items via JSONB tags matching; modified SQL to count both interaction_count and commit_count per work item. **[2026-04-06]** `schema migration` — Replaced single status field with status_user + status_ai columns; added code_summary field for semantic embedding; updated work item creation/patching to support new fields. **[2026-04-06]** `embedding strategy` — Unified embedding space for work_items (name+desc+requirements+summary+code_summary) and planner_tags (summary+action_items) to enable cross-table cosine-similarity matching for AI-suggested status and related planning artifacts. **[2026-04-06]** `frontend init fix` — Removed undefined _plannerSelectAiSubtype function reference that blocked window._plannerSync assignment; fixed TypeError preventing planner synchronization on app load. **[2026-03-14]** `project state` — Consolidated project facts tracking auth_pattern, backend race condition mitigation, data persistence semantics, and memory management (load-once, update-on-save); 27 open work items across features, phases, doc_types, and tasks.
+**[2026-03-14]** `route_work_items.py` — Implemented dual-status work item tracking: status_user (user-controlled dropdown: active/in_progress/paused/done) and status_ai (AI-suggested badge) with separate color indicators; extended query to track commit_count via mem_mrr_commits JSONB tags.
+**[2026-03-14]** `entities.js` — Updated work item drawer UI with user status dropdown + read-only AI status badge; adjusted table column width to 90px to accommodate dual status display; added title tooltips for status disambiguation.
+**[2026-03-14]** `route_work_items.py` — Added /work-items/{id}/commits endpoint and _SQL_GET_COMMITS query to retrieve commits linked to work items via JSONB tags filtering; refactored WorkItemCreate/Patch models from single status to status_user + status_ai.
+**[2026-03-14]** `api.js` — Exposed api.workItems.commits(id, project, limit) client method to fetch work item-linked commits from backend; integrated with work item drawer for displaying associated commit history.
+**[2026-03-14]** `route_work_items.py` — Unified work item embedding space by combining ai_name + ai_desc + requirements + summary + code_summary fields; enabled cross-table cosine-similarity matching with planner_tags for semantic discovery.
+**[2026-03-14]** `route_work_items.py` — Refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done' instead of status = 'active'; updated insertion logic to omit deprecated content field; stabilized frontend initialization by removing undefined variable references.
