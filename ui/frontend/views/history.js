@@ -355,21 +355,29 @@ export class HistoryView {
            </span>`;
         }).join('');
 
+        const _copyBtn = (id, label) =>
+          `<button onclick="navigator.clipboard.writeText(document.getElementById('${id}').innerText).then(()=>{this.textContent='✓ copied';setTimeout(()=>this.textContent='⎘ copy',1200)})"
+             style="font-size:10px;padding:1px 5px;border:1px solid var(--border);border-radius:3px;
+                    cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap;margin-left:4px">⎘ copy</button>`;
+
         const outputHtml = e.output
           ? `<div style="margin-top:6px">
-              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Response</div>
-              <div id="${entryId}-resp"
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+                <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Response</span>
+                ${_copyBtn(`${entryId}-resp`, 'copy response')}
+                <span style="font-size:11px;color:var(--accent);cursor:pointer;user-select:none;margin-left:2px"
+                    onclick="const el=document.getElementById('${entryId}-resp');
+                             const collapsed=el.dataset.collapsed!=='false';
+                             el.style.maxHeight=collapsed?'none':'200px';
+                             el.dataset.collapsed=collapsed?'false':'true';
+                             this.textContent=collapsed?'▲ collapse':'▼ expand'">▼ expand</span>
+              </div>
+              <div id="${entryId}-resp" data-collapsed="true"
                 style="color:var(--muted);font-size:12px;border-left:2px solid var(--border);
                        padding-left:8px;white-space:pre-wrap;word-break:break-word;
-                       max-height:100px;overflow:hidden;transition:max-height 0.2s">
+                       max-height:200px;overflow-y:auto;transition:max-height 0.2s">
                 ${this._escapeHtml(e.output)}
               </div>
-              ${e.output.length > 200
-                ? `<span style="font-size:11px;color:var(--accent);cursor:pointer;user-select:none"
-                    onclick="const el=document.getElementById('${entryId}-resp');
-                             el.style.maxHeight=el.style.maxHeight==='none'?'100px':'none';
-                             this.textContent=el.style.maxHeight==='none'?'▲ collapse':'▼ expand'">▼ expand</span>`
-                : ''}
             </div>`
           : '';
 
@@ -417,8 +425,11 @@ export class HistoryView {
               </button>
             </span>
           </div>
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Prompt</div>
-          <div style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word;font-size:13px">${this._escapeHtml(e.user_input || '')}</div>
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+            <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Prompt</span>
+            ${_copyBtn(`${entryId}-prompt`, 'copy prompt')}
+          </div>
+          <div id="${entryId}-prompt" style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word;font-size:13px">${this._escapeHtml(e.user_input || '')}</div>
           ${outputHtml}
           ${commitRow}
         </div>`;

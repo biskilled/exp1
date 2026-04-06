@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-06T01:37:27Z",
+  "last_memory_run": "2026-04-06T02:08:49Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -157,18 +157,11 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "deployment_local": "bash start_backend.sh + npm run dev",
-      "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm",
       "database_version": "PostgreSQL 15+"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to enable multi-user project collaboration with semantic memory synthesis, workflow automation, and LLM-powered decision support. The system consolidates project events, code analysis, and work items into unified PostgreSQL tables with pgvector embeddings, while an async DAG workflow engine orchestrates complex multi-step processes. Current development focuses on completing memory layer table population, documenting memory architecture, and unifying feature snapshots with work item relationships.",
-    "memory_digest": "**[2026-04-05]** `session_request` \u2014 Comprehensive memory architecture documentation requested for aicli_memory.md covering all memory layers, mirroring mechanisms, event triggers, and specific prompts at each processing step to clarify data flow and work_item linkage relationships. **[2026-04-05]** `feature_request` \u2014 LLM model identifier visibility enhancement to expose model identifier as visible tag in UI interface for transparency and cross-session tracking. **[2026-04-05]** `consolidation` \u2014 Feature snapshot unification approved: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping across database and API layers. **[2026-03-18]** `bug_fix` \u2014 Backend startup resilience improved by adding retry logic in _continueToApp() to handle race condition when projects list returns empty on first load. **[2026-03-18]** `bug_fix` \u2014 Fixed _Database attribute error by removing stale db.ensure_project_schema() call from main.py and clarified _ensure_shared_schema convention. **[2026-03-18]** `critical_gap` \u2014 Identified that memory_items and project_facts tables are not being updated as designed; implementation needed to enable proper dual-layer memory synthesis and semantic search functionality."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector), desktop UI (Electron + Vanilla JS), and async DAG workflow engine that synthesizes project context using Claude Haiku. The system tracks development events, work items, and features across projects while maintaining semantic search via embeddings and enabling multi-LLM provider support (Claude/OpenAI/DeepSeek/Gemini/Grok). Currently stabilizing memory layer implementation and unifying feature snapshot structures across database and UI layers.",
+    "memory_digest": "**2026-03-14** `architecture` \u2014 Established unified mem_ai_* table schema (events, tags_relations, project_facts, work_items, features) replacing per-project tables for centralized memory management. **2026-03-14** `backend` \u2014 Implemented JWT+DEV_MODE authentication with hierarchical Client\u2192User pattern and login_as_first_level_hierarchy; fixed startup race condition via _ensure_shared_schema retry logic. **2026-03-14** `memory_synthesis` \u2014 Designed Claude Haiku dual-layer synthesis generating 5 output files with auto-tag suggestions, LLM response summarization, and timestamp-based deduplication. **2026-03-14** `workflow_ui` \u2014 Built Cytoscape.js DAG visualization with 2-pane approval panel for async workflow execution and chat-based node negotiation. **2026-03-14** `desktop_ui` \u2014 Implemented Electron + Vanilla JS stack with xterm.js terminal, Monaco editor, and Vite dev server; zero-framework architecture for simplicity. **2026-03-14** `feature_snapshot` \u2014 Identified need to consolidate plannet_tags \u2192 feature_snapshot with unified work_item linkage across memory/project_facts layers. **2026-03-14** `memory_endpoints` \u2014 Verified event-based triggering for memory items via /memory pathway with differentiated process_item/messages handling; documented code_dir variable scoping fix. **2026-03-14** `documentation` \u2014 Prioritized comprehensive aicli_memory.md covering all memory layers, mirroring mechanisms, event triggers, and specific LLM prompts at each synthesis step."
   }
 }
