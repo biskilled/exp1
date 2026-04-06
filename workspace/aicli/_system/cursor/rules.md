@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:13 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:25 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -13,12 +13,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: PostgreSQL 15+
+- **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
-- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-06] test prompt after fix
 - [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
 - [2026-04-06] verify prompt after client_id fix
 - [2026-04-06] final verify prompt
 - [2026-04-06] Now I started to see prompts, but I do see in history just small text instead of all prompt and llm response . also can 
+- [2026-04-06] Histroy used to show promp and llm response . I currently see only prompt

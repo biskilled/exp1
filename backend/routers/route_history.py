@@ -447,7 +447,7 @@ async def sync_commits(project: str | None = Query(None)):
                 raw.get("message", raw.get("msg", "")),
                 raw.get("session_id"),
                 raw.get("ts"),
-                json.dumps({"source": source_val}),
+                json.dumps({"source": source_val}),  # passed as text, cast in SQL
             ))
 
     if not rows:
@@ -463,7 +463,7 @@ async def sync_commits(project: str | None = Query(None)):
                 THEN EXCLUDED.session_id
                 ELSE mem_mrr_commits.session_id
             END,
-            tags = mem_mrr_commits.tags || EXCLUDED.tags
+            tags = mem_mrr_commits.tags || EXCLUDED.tags::jsonb
     """
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -471,7 +471,7 @@ async def sync_commits(project: str | None = Query(None)):
             inserted = cur.rowcount
 
     # Fire process_commit() for each new commit (fire-and-forget background tasks)
-    hashes = [r[2] for r in rows]  # commit_hash is index 2 in each tuple
+    hashes = [r[1] for r in rows]  # commit_hash is index 1 in each tuple
     asyncio.create_task(_embed_commits_background(p, hashes))
 
     return {"imported": inserted, "project": p}

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-06 02:14 UTC — do not edit manually.
+> Auto-generated 2026-04-06 09:40 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 379
-- **Last active**: 2026-04-06T02:13:57Z
+- **Sessions**: 380
+- **Last active**: 2026-04-06T02:25:16Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -18,12 +18,12 @@
 - **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
 - **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
-- **storage_primary**: PostgreSQL 15+
+- **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
-- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- UI history display enhancement: expand prompt/LLM response visibility in history panel to show full text instead of truncated summaries
-- Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface
-- Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed
-- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts
-- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking
-- Feature snapshot unification: merge plannet_tags into feature_snapshot structure with complete work_item relationship mapping
+- History display fix: resolved dual-hook architecture ensuring both prompt and LLM response display in history panel via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks
+- Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) are properly defined and triggering correct memory synthesis workflows
+- UI history panel enhancement: expanded prompt/LLM response visibility to show full text instead of truncated summaries in history display
+- Memory items and project_facts population: prepare update logic to enable proper memory functionality as designed with event-based triggering
+- Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface for better usability
+- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each processing step
 
 ## Key Decisions
 
