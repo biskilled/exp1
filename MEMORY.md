@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-06 12:22 UTC by aicli /memory_
+_Generated: 2026-04-06 12:58 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with PostgreSQL + pgvector for semantic search, dual-layer memory synthesis via Claude Haiku, and an Electron desktop UI featuring async DAG workflow visualization. Currently in active development focused on fixing PostgreSQL batch upsert operations, completing memory layer implementation via event-based table population, and comprehensive memory architecture documentation to enable core memory functionality.
 
 ## Project Facts
 
@@ -162,219 +158,182 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-06
 
-diff --git a/backend/routers/route_history.py b/backend/routers/route_history.py
-index 4bd30ac..da8f333 100644
---- a/backend/routers/route_history.py
-+++ b/backend/routers/route_history.py
-@@ -453,6 +453,15 @@ async def sync_commits(project: str | None = Query(None)):
-     if not rows:
-         return {"imported": 0, "project": p}
- 
-+    # Deduplicate by commit_hash (index 1) — commit_log.jsonl may have the same hash
-+    # multiple times (e.g. retry pushes). Keep the last occurrence per hash so the
-+    # most-recent session_id / source wins. PostgreSQL ON CONFLICT DO UPDATE cannot
-+    # process the same conflict-target row twice in a single batch.
-+    seen: dict[str, tuple] = {}
-+    for row in rows:
-+        seen[row[1]] = row
-+    rows = list(seen.values())
-+
-     _SQL_BATCH_UPSERT = """
-         INSERT INTO mem_mrr_commits
-             (project_id, commit_hash, commit_msg, session_id, committed_at, tags)
+diff --git a/workspace/aicli/_system/project_state.json b/workspace/aicli/_system/project_state.json
+index 3395bf1..751567d 100644
+--- a/workspace/aicli/_system/project_state.json
++++ b/workspace/aicli/_system/project_state.json
+@@ -51,10 +51,10 @@
+     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
+     "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev",
+     "Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling",
+-    "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking",
+-    "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u21a9 link) showing only that prompt's commits",
+     "PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE",
+-    "Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention"
++    "Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
++    "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u21a9 link) showing only that prompt's commits",
++    "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking"
+   ],
+   "implemented_features": [
+     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
+@@ -120,7 +120,7 @@
+     "cloud": "Railway (Dockerfile + railway.toml)",
+     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
+   },
+-  "last_memory_run": "2026-04-06T10:22:23Z",
++  "last_memory_run": "2026-04-06T10:22:45Z",
+   "_synthesis_cache": {
+     "key_decisions": [
+       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
+@@ -134,10 +134,10 @@
+       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
+       "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev",
+       "Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling",
+-      "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking",
+-      "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u21a9 link) showing only that prompt's commits",
+       "PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE",
+-      "Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention"
++      "Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
++      "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u21a9 link) showing only that prompt's commits",
++      "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking"
+     ],
+     "in_progress": [
+       "PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error with explicit ::jsonb casting for tags field",
+@@ -153,25 +153,17 @@
+       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
+       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
+       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+-      "database_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
+       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
+       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
+       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
+       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions",
+       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
+       "mcp": "Stdio MCP server with 12+ tools",
+-      "config_management": "config.py + YAML pipelines + pyproject.toml",
+-      "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables",
+-      "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
+-      "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
+-    
+
+### `commit` — 2026-04-06
+
+diff --git a/workspace/aicli/_system/dev_runtime_state.json b/workspace/aicli/_system/dev_runtime_state.json
+index 5b944cd..cc2e17b 100644
+--- a/workspace/aicli/_system/dev_runtime_state.json
++++ b/workspace/aicli/_system/dev_runtime_state.json
+@@ -1,8 +1,8 @@
+ {
+-  "last_updated": "2026-04-06T10:22:32Z",
++  "last_updated": "2026-04-06T10:52:44Z",
+   "last_session_id": "b9e39fae-45bf-482c-a3e9-fa65ed840b6c",
+-  "last_session_ts": "2026-04-06T10:22:32Z",
+-  "session_count": 384,
++  "last_session_ts": "2026-04-06T10:52:44Z",
++  "session_count": 385,
+   "last_provider": "claude",
+   "last_prompt_preview": "hellow, how are you ?",
+   "source": "claude_cli"
 
 
 ### `commit` — 2026-04-06
 
-diff --git a/MEMORY.md b/MEMORY.md
-index 239a71a..2526e88 100644
---- a/MEMORY.md
-+++ b/MEMORY.md
-@@ -1,11 +1,11 @@
- # Project Memory — aicli
--_Generated: 2026-04-06 02:25 UTC by aicli /memory_
-+_Generated: 2026-04-06 09:50 UTC by aicli /memory_
- 
- > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+diff --git a/workspace/aicli/_system/cursor/rules.md b/workspace/aicli/_system/cursor/rules.md
+index 25a8335..ba439f5 100644
+--- a/workspace/aicli/_system/cursor/rules.md
++++ b/workspace/aicli/_system/cursor/rules.md
+@@ -57,7 +57,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+ - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
+-- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
+-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
+ - PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
+ - Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
++- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
++- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
+
+
+### `commit` — 2026-04-06
+
+diff --git a/workspace/aicli/_system/commit_log.jsonl b/workspace/aicli/_system/commit_log.jsonl
+index 227a193..08fc0ef 100644
+--- a/workspace/aicli/_system/commit_log.jsonl
++++ b/workspace/aicli/_system/commit_log.jsonl
+@@ -685,3 +685,5 @@
+ {"ts": "2026-04-06T09:57:55Z", "action": "commit_push", "source": "claude_cli", "session_id": "b9e39fae-45bf-482c-a3e9-fa65ed840b6c", "hash": "39500d7a", "message": "docs: update AI system context and memory files post-session", "pushed": true, "push_error": ""}
+ {"action": "commit_push", "source": "claude_cli", "session_id": "b9e39fae-45bf-482c-a3e9-fa65ed840b6c", "hash": "20807f33", "message": "docs: update system context and memory files after CLI session", "files_count": 64, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-04-06T10:22:10Z"}
+ {"ts": "2026-04-06T10:22:07Z", "action": "commit_push", "source": "claude_cli", "session_id": "b9e39fae-45bf-482c-a3e9-fa65ed840b6c", "hash": "20807f33", "message": "docs: update system context and memory files after CLI session", "pushed": true, "push_error": ""}
++{"action": "commit_push", "source": "claude_cli", "session_id": "b9e39fae-45bf-482c-a3e9-fa65ed840b6c", "hash": "56a57ca3", "message": "docs: clean up system context and memory files after claude session", "files_count": 61, "pushed": true, "push_error": "", "branch": "master", "pull_message": "pulled: Current branch master is up to date.", "ts": "2026-04-06T10:22:36Z"}
++{"ts": "2026-04-06T10:22:32Z", "action": "commit_push", "source": "claude_cli", "session_id": "b9e39fae-45bf-482c-a3e9-fa65ed840b6c", "hash": "56a57ca3", "message": "docs: clean up system context and memory files after claude session", "pushed": true, "push_error": ""}
+
+
+### `commit` — 2026-04-06
+
+diff --git a/workspace/aicli/_system/claude/MEMORY.md b/workspace/aicli/_system/claude/MEMORY.md
+index abdc2ed..969822f 100644
+--- a/workspace/aicli/_system/claude/MEMORY.md
++++ b/workspace/aicli/_system/claude/MEMORY.md
+@@ -5,7 +5,7 @@ _Generated: 2026-04-06 10:22 UTC by aicli /memory_
  
  ## Project Summary
  
--aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with a PostgreSQL backend featuring dual-layer memory synthesis via Claude Haiku, semantic search using pgvector embeddings, and an Electron desktop UI with workflow visualization via Cytoscape.js. The project recently resolved history display issues by verifying dual-hook architecture (hook-response for LLM responses, session-summary for synthesis), with current focus on comprehensive memory architecture documentation and enabling memory_items/project_facts table population to activate core memory functionality.
-+aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with PostgreSQL + pgvector for semantic search, dual-layer memory synthesis, and an Electron desktop UI featuring async DAG workflow visualization. Currently in active development focused on fixing PostgreSQL batch upsert JSONB type casting, completing memory layer implementation (mem_ai_* table population), and comprehensive memory architecture documentation to enable core memory functionality.
+-aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop frontend (Vanilla JS + Cytoscape), enabling teams to manage AI-assisted workflows through semantic memory synthesis, multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), and async DAG-based pipeline execution. The platform is currently in v2.2.0 with recent focus on fixing data persistence layers (JSONB upserts), completing commit history synchronization from git, and enabling memory layer event triggering for project facts and work item consolidation.
++aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL semantic storage (pgvector), and an Electron desktop UI for collaborative AI-driven development workflows. It synthesizes project context into structured memory (events, facts, work items, features) using Claude Haiku dual-layer analysis, supports multi-LLM providers, and executes async DAG workflows with visual approval panels. Currently stabilizing database upsert logic, commit synchronization, and memory synthesis triggers while expanding UI usability (copy-to-clipboard, full commit metadata display).
  
- ## Project Facts
+ ## Tech Stack
  
-@@ -73,7 +73,7 @@ Reviewer: ```json
- - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- **database**: PostgreSQL 15+
-+- **database**: PostgreSQL 15+ with JSONB UNION batch upsert queries
- - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
-@@ -104,12 +104,12 @@ Reviewer: ```json
+@@ -57,10 +57,10 @@ aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + P
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+ - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
+-- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
+-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
+ - PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
+ - Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
++- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
++- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
  
  ## In Progress
  
--- History display fix: resolved dual-hook architecture ensuring both prompt and LLM response display in history panel via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks
--- Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) are properly defined and triggering correct memory synthesis workflows
--- UI history panel enhancement: expanded prompt/LLM response visibility to show full text instead of truncated summaries in history display
--- Memory items and project_facts population: prepare update logic to enable proper memory functionality as designed with event-based triggering
--- Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface for better usability
--- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each processing step
-+- PostgreSQL batch upsert JSONB type casting fix: resolved execute_values error on line 466 where tags || EXCLUDED.tags required explicit ::jsonb cast; UNION query consolidation for commit deduplication across multiple sources
-+- History display fix: dual-hook architecture ensuring both prompt and LLM response display via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks
-+- Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) properly defined and triggering correct memory synthesis workflows
-+- Memory items and project_facts population: enable event-based triggering for core memory functionality with proper differentiated process_item/messages handling
-+- Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability
-+- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and processing prompts at each step
+@@ -73,4 +73,13 @@ aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + P
  
- ## Active Features / Bugs / Tasks
+ ## AI Synthesis
  
-@@ -160,6 +160,15 @@ Reviewer: ```json
- 
- > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
- 
-+### `prompt_batch: b9e39fae-45bf-482c-a3e9-fa65ed840b6c` — 2026-04-06
-+
-+The history display was updated to capture both LLM responses and prompts by ensuring the `hook-response` background hook is properly configured to save responses to the database, and all four session-stop hooks (response logging, session summary, memory regeneration, and bug detection) are now synchronized and functional across both template locations.
-+
-+### `session_summary: b9e39fae-45bf-482c-a3e9-fa65ed840b6c` — 2026-04-06
-+
-+Summary:
-+• History view was showing only prompt text instead of full prompt + LLM response • User needs expanded view in history to see complete prompt and response text • User requested ability to copy text from history UI for easier access • History previously displayed both prompt and full LLM response but regressed to showing only prompt
-+
- ### `commit` — 2026-04-06
- 
- diff --git a/workspace/aicli/_system/project_state.json b/workspace/aicli/_system/project_state.json
-@@ -305,56 +314,6 @@ index 4059973..af290a5 100644
- \ No newline at end of file
- +**[2026-04-05]** `session_request` — Comprehensive memory architecture documentation requested for aicli_memory.md covering all memory layers, mirroring mechanisms, event triggers, and specific prompts at each processing step to clarify data flow and work_item linkage relationships. **[2026-04-05]** `feature_request` — LLM model identifier visibility enhancement to expose model identifier as visible tag in UI interface for transparency and cross-session tracking. **[2026-04-05]
-
-### `commit` — 2026-04-06
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index ed24197..2273fa1 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-06 02:25 UTC
-+> Generated by aicli 2026-04-06 09:50 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - billing_storage: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - backend_modules: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - dev_environment: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- database: PostgreSQL 15+
-+- database: PostgreSQL 15+ with JSONB UNION batch upsert queries
- - node_modules_build: npm 8+ with Electron-builder; Vite dev server
- - database_version: PostgreSQL 15+
- - build_tooling: npm 8+ with Electron-builder; Vite dev server
-
-
-### `commit` — 2026-04-06
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 3cd5033..fcafc8f 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:25 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 09:50 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- **database**: PostgreSQL 15+
-+- **database**: PostgreSQL 15+ with JSONB UNION batch upsert queries
- - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
-@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
- - [2026-04-06] verify prompt after client_id fix
- - [2026-04-06] final verify prompt
- - [2026-04-06] Now I started to see prompts, but I do see in history just small text instead of all prompt and llm response . also can 
--- [2026-04-06] Histroy used to show promp and llm response . I currently see only prompt
+-**[2026-03-14]** `db-fix` — Resolved PostgreSQL batch upsert JSONB duplicate row insertion error by adding explicit ::jsonb casting to tags field in ON CONFLICT DO UPDATE clause. **[2026-03-14]** `commit-sync` — Implemented /history/commits/sync endpoint successfully importing 364+ unique commit hashes from multiple sources with proper prompt-to-commit linkage and deduplication logic. **[2026-03-14]** `ui-display` — Fixed commit message truncation in commits tab; verified database schema supports complete commit metadata storage and frontend display. **[2026-03-14]** `memory-hooks` — Validated dual-hook architecture where hook-response and session-summary hooks correctly persist both user prompts and LLM responses to mem_mrr_prompts table. **[2026-03-14]** `memory-population` — Enabled event-based triggering for memory items and project_facts with differentiated process_item vs. messages handling for core memory synthesis functionality. **[2026-03-14]** `ux-enhancement` — Identified copy-to-clipboard functionality gap in history UI; prioritized implementation of text selection and copy capability for improved user workflow.
 \ No newline at end of file
-+- [2026-04-06] Histroy used to show promp and llm response . I currently see only prompt
-+- [2026-04-06] I have  got the following error -  cur.execute(b''.join(parts)) started  route_history line 470 - execute_values(cur, _S
++**[2026-03-14]** `PostgreSQL` — Fixed ON CONFLICT DO UPDATE duplicate row insertion error by adding explicit ::jsonb casting for tags field in batch upsert queries.
++**[2026-03-14]** `Commit Sync` — Implemented /history/commits/sync endpoint to import 364+ unique commit hashes with proper prompt linkage and deduplication logic.
++**[2026-03-14]** `UI/History` — Fixed commit message truncation in commits tab to ensure complete metadata displays; verified dual-hook architecture saves prompts and responses to mem_mrr_prompts.
++**[2026-03-14]** `Memory Layer` — Enabled event-based triggering for memory items and project_facts population with differentiated process_item/messages handling.
++**[2026-03-14]** `Startup Robustness` — Resolved backend race condition on first load with retry_logic_handles_empty_project_list and _ensure_shared_schema consolidation.
++**[2026-03-14]** `Phase & Tags` — Implemented red ⚠ badge for missing phase; auto-saved tag suggestions via _acceptSuggestedTag with distinct visual marking.
++**[2026-03-14]** `Data Persistence` — Standardized load_once_on_access, update_on_save pattern; session ordering by created_at to prevent reordering on tag/phase updates.
++**[2026-03-14]** `Commit Display` — Added commit-per-prompt inline display with accent left-border and hash ↩ links showing only that prompt's commits.
++**[2026-03-14]** `Chunking Strategy` — Smart chunking per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs) with manual relations via CLI/admin UI.
++**[2026-03-14]** `Deployment & CLI` — Unified deployment across Railway cloud (Dockerfile + railway.toml), Electron-builder desktop, and local bash/npm startup scripts.
 \ No newline at end of file
 
 
 ### `commit` — 2026-04-06
 
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 3cd5033..fcafc8f 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:25 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 09:50 UTC
+diff --git a/workspace/aicli/_system/claude/CLAUDE.md b/workspace/aicli/_system/claude/CLAUDE.md
+index bd2e19f..66a893e 100644
+--- a/workspace/aicli/_system/claude/CLAUDE.md
++++ b/workspace/aicli/_system/claude/CLAUDE.md
+@@ -37,10 +37,10 @@ You are a senior Python software architect with deep expertise in:
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+ - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
+-- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
+-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
+ - PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
+ - Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
++- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
++- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
  
- # aicli — Shared AI Memory Platform
+ ---
  
-@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- **database**: PostgreSQL 15+
-+- **database**: PostgreSQL 15+ with JSONB UNION batch upsert queries
- - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
-@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
- - [2026-04-06] verify prompt after client_id fix
- - [2026-04-06] final verify prompt
- - [2026-04-06] Now I started to see prompts, but I do see in history just small text instead of all prompt and llm response . also can 
--- [2026-04-06] Histroy used to show promp and llm response . I currently see only prompt
-\ No newline at end of file
-+- [2026-04-06] Histroy used to show promp and llm response . I currently see only prompt
-+- [2026-04-06] I have  got the following error -  cur.execute(b''.join(parts)) started  route_history line 470 - execute_values(cur, _S
-\ No newline at end of file
 
-
-### `commit` — 2026-04-06
-
-Commit: docs: update AI system context and memory files post-session
-Hash: 39500d7a
-Files changed (14):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - MEMORY.md
-  - backend/routers/route_history.py
-  - workspace/aicli/PROJECT.md
-  - workspace/aicli/_system/CONTEXT.md
-  - workspace/aicli/_system/aicli/context.md
-  - workspace/aicli/_system/aicli/copilot.md
-  - workspace/aicli/_system/claude/MEMORY.md
-  - workspace/aicli/_system/commit_log.jsonl
-  - workspace/aicli/_system/cursor/rules.md
-  - workspace/aicli/_system/dev_runtime_state.json
-  - workspace/aicli/_system/project_state.json
-
-## AI Synthesis
-
-**[2026-04-06]** `commit` — Commit deduplication logic implemented in /history/commits/sync endpoint using seen dict by commit_hash to prevent PostgreSQL ON CONFLICT DO UPDATE from processing the same row twice in batch upsert; resolves duplicate insertion issues.
-**[2026-04-06]** `fix` — PostgreSQL batch upsert JSONB type casting resolved by adding explicit ::jsonb cast to tags || EXCLUDED.tags operation on line 466; enables proper UNION consolidation of commits across multiple sources.
-**[2026-04-06]** `memory_synthesis` — History display dual-hook architecture verified: hook-response background hook saves LLM responses to mem_mrr_prompts.response table; session-summary hook consolidates prompt/response pairs for downstream synthesis.
-**[2026-04-06]** `documentation` — MEMORY.md updated to reflect current unified table schema (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features) and comprehensive memory architecture documentation in progress for aicli_memory.md.
-**[2026-04-05]** `feature_request` — Memory items and project_facts table population requires event-based triggering with differentiated process_item/messages handling to activate core memory functionality as designed.
-**[2026-04-05]** `feature_request` — Copy-to-clipboard functionality needed in history UI to enable text selection and content export for improved user accessibility and session reference capabilities.
