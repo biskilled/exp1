@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 09:50 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 09:57 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-06] verify prompt after client_id fix
 - [2026-04-06] final verify prompt
 - [2026-04-06] Now I started to see prompts, but I do see in history just small text instead of all prompt and llm response . also can 
 - [2026-04-06] Histroy used to show promp and llm response . I currently see only prompt
 - [2026-04-06] I have  got the following error -  cur.execute(b''.join(parts)) started  route_history line 470 - execute_values(cur, _S
+- [2026-04-06] I still dont see the same issue in route_history line 470. cur.execute(b''.join(parts)) saying  ON CONFLICT DO UPDATE co

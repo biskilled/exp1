@@ -774,8 +774,7 @@ export class HistoryView {
           ${phaseFilter ? `${commits.length} / ${allCommits.length}` : allCommits.length} commit${allCommits.length !== 1 ? 's' : ''}
           ${untagged > 0 ? `· <span style="color:#e74c3c;font-weight:600">${untagged} untagged</span>` : ''}
         </span>
-        ${fromDb ? `<span style="font-size:11px;color:green;background:rgba(39,174,96,.12);padding:2px 6px;border-radius:4px">live DB</span>`
-                 : `<span style="font-size:11px;color:orange;background:rgba(230,126,34,.12);padding:2px 6px;border-radius:4px">file fallback</span>`}
+        ${!fromDb ? `<span style="font-size:11px;color:orange;background:rgba(230,126,34,.12);padding:2px 6px;border-radius:4px" title="PostgreSQL not connected — showing file-based data">file fallback</span>` : ''}
         <div style="flex:1"></div>
         <button id="commits-sync-btn" onclick="window._historyView._syncCommits()"
           style="padding:4px 12px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--surface);font-size:12px">

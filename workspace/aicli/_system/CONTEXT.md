@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-06 09:51 UTC — do not edit manually.
+> Auto-generated 2026-04-06 09:58 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 381
-- **Last active**: 2026-04-06T09:50:57Z
+- **Sessions**: 382
+- **Last active**: 2026-04-06T09:57:56Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- PostgreSQL batch upsert JSONB type casting fix: resolved execute_values error on line 466 where tags || EXCLUDED.tags required explicit ::jsonb cast; UNION query consolidation for commit deduplication across multiple sources
-- History display fix: dual-hook architecture ensuring both prompt and LLM response display via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks
-- Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) properly defined and triggering correct memory synthesis workflows
-- Memory items and project_facts population: enable event-based triggering for core memory functionality with proper differentiated process_item/messages handling
+- PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error on route_history line 470 with explicit ::jsonb casting for tags field
+- Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes from multiple sources with proper prompt linkage
+- Commits tab full loading: fixed commit message truncation and ensured database population supports complete commit metadata display in UI
+- History display dual-hook architecture: verified hook-response and session-summary hooks properly save both prompts and LLM responses to mem_mrr_prompts
+- Memory items and project_facts population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality
 - Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability
-- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and processing prompts at each step
 
 ## Key Decisions
 

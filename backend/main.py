@@ -119,6 +119,7 @@ async def health():
         "require_auth": settings.require_auth,
         "workspace_dir": settings.workspace_dir,
         "active_project": settings.active_project,
+        "db_connected": db.is_available(),
     }
 
 

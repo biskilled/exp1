@@ -95,7 +95,8 @@ async function boot() {
     try {
       const h = await api.health();
       backendOk = true;
-      setState({ backendOnline: true, requireAuth: h.require_auth || false });
+      setState({ backendOnline: true, requireAuth: h.require_auth || false, dbConnected: h.db_connected || false });
+      updateStatusDot();
       break;
     } catch {
       if (attempt < 7) {
@@ -176,6 +177,26 @@ async function _continueToApp(user) {
   if (state.backendOnline && state.user?.email) {
     updateBalanceChip().catch(() => {});
   }
+
+  // Poll health every 5 s to reflect DB connecting after startup
+  _startHealthPoll();
+}
+
+function _startHealthPoll() {
+  // Only start once
+  if (window._healthPollTimer) return;
+  window._healthPollTimer = setInterval(async () => {
+    try {
+      const h = await api.health();
+      const wasConnected = state.dbConnected;
+      setState({ backendOnline: true, dbConnected: h.db_connected || false });
+      // Re-render chip only when status changes (avoids flicker)
+      if (wasConnected !== state.dbConnected || !wasConnected) updateStatusDot();
+    } catch {
+      setState({ backendOnline: false, dbConnected: false });
+      updateStatusDot();
+    }
+  }, 5000);
 }
 
 function _markProjectRestoring(name) {
@@ -221,6 +242,9 @@ function renderShell() {
               style="background:none;border:none;color:var(--muted);cursor:pointer;
                      font-size:0.72rem;padding:2px 3px;line-height:1;transition:opacity 0.2s">↺</button>
           </div>
+          <div id="db-status-chip" title="PostgreSQL status"
+               style="display:none;font-size:0.6rem;padding:2px 7px;border-radius:10px;
+                      font-weight:600;letter-spacing:0.02em"></div>
           <div class="status-pill">
             <div class="status-dot" id="status-dot"></div>
             <span id="status-text" style="font-size:0.62rem">Connecting…</span>
@@ -387,10 +411,28 @@ window._showLoginModal = (initialMode = 'login') => {
 };
 
 function updateStatusDot() {
-  const dot = document.getElementById('status-dot');
-  const txt = document.getElementById('status-text');
+  const dot  = document.getElementById('status-dot');
+  const txt  = document.getElementById('status-text');
+  const chip = document.getElementById('db-status-chip');
   if (dot) dot.className = `status-dot ${state.backendOnline ? 'online' : ''}`;
   if (txt) txt.textContent = state.backendOnline ? 'Online' : 'Offline';
+  if (chip) {
+    if (!state.backendOnline) {
+      chip.style.display = 'none';
+    } else if (state.dbConnected) {
+      chip.style.display = 'inline-block';
+      chip.style.background = 'rgba(39,174,96,.15)';
+      chip.style.color = '#27ae60';
+      chip.style.border = '1px solid rgba(39,174,96,.3)';
+      chip.textContent = 'DB';
+    } else {
+      chip.style.display = 'inline-block';
+      chip.style.background = 'rgba(231,76,60,.15)';
+      chip.style.color = '#e74c3c';
+      chip.style.border = '1px solid rgba(231,76,60,.3)';
+      chip.textContent = 'DB not connected';
+    }
+  }
 }
 
 export async function updateBalanceChip() {

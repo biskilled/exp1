@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-06 09:50 UTC by aicli /memory_
+_Generated: 2026-04-06 09:57 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with PostgreSQL + pgvector for semantic search, dual-layer memory synthesis, and an Electron desktop UI featuring async DAG workflow visualization. Currently in active development focused on fixing PostgreSQL batch upsert JSONB type casting, completing memory layer implementation (mem_ai_* table population), and comprehensive memory architecture documentation to enable core memory functionality.
+aicli is a shared AI memory platform integrating Claude, OpenAI, and other LLM providers with a PostgreSQL + pgvector backend, dual-layer memory synthesis engine, and Electron desktop UI featuring async DAG workflow visualization and semantic search. Current focus is resolving PostgreSQL batch upsert conflicts, completing commit sync and history display functionality, and enabling core memory_items and project_facts population via event-based triggering.
 
 ## Project Facts
 
@@ -104,12 +104,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- PostgreSQL batch upsert JSONB type casting fix: resolved execute_values error on line 466 where tags || EXCLUDED.tags required explicit ::jsonb cast; UNION query consolidation for commit deduplication across multiple sources
-- History display fix: dual-hook architecture ensuring both prompt and LLM response display via hook-response (saves to mem_mrr_prompts.response) and session-summary hooks
-- Hook verification and consolidation: confirmed all four background hooks (hook-response, session-summary, memory, auto-detect-bugs) properly defined and triggering correct memory synthesis workflows
-- Memory items and project_facts population: enable event-based triggering for core memory functionality with proper differentiated process_item/messages handling
+- PostgreSQL batch upsert JSONB fix: resolved ON CONFLICT DO UPDATE duplicate row insertion error on route_history line 470 with explicit ::jsonb casting for tags field
+- Commit sync and deduplication: implemented /history/commits/sync endpoint to import 364+ unique commit hashes from multiple sources with proper prompt linkage
+- Commits tab full loading: fixed commit message truncation and ensured database population supports complete commit metadata display in UI
+- History display dual-hook architecture: verified hook-response and session-summary hooks properly save both prompts and LLM responses to mem_mrr_prompts
+- Memory items and project_facts population: enable event-based triggering with differentiated process_item/messages handling for core memory functionality
 - Copy-to-clipboard functionality: implement text selection and copying capability in history UI for improved usability
-- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and processing prompts at each step
 
 ## Active Features / Bugs / Tasks
 
@@ -316,4 +316,4 @@ index 4059973..af290a5 100644
 
 ## AI Synthesis
 
-**[2026-04-06]** `claude_cli` — Fixed critical PostgreSQL batch upsert bug: JSONB type casting required explicit `::jsonb` cast in `tags || EXCLUDED.tags` operator to resolve execute_values error on line 466 in route_history. **[2026-04-05]** `development-session` — History display verified to capture both LLM responses and prompts via hook-response background hook saving to mem_mrr_prompts.response; all four session-stop hooks (response logging, session summary, memory regeneration, bug detection) now synchronized. **[2026-04-05]** `development-session` — Comprehensive memory architecture documentation (aicli_memory.md) requested covering all synthesis layers, event-trigger mirroring mechanism, and specific LLM prompts at each processing step. **[2026-04-05]** `development-session` — Feature snapshot consolidation: merge plannet_tags into feature_snapshot with unified linkage to work_items and memory structures to enable core memory functionality. **[2026-04-05]** `development-session` — Copy-to-clipboard functionality requested for history UI to allow text selection and copying of prompts/responses for improved user experience. **[2026-04-04]** `development-session` — Memory items and project_facts table population marked as pending implementation; event-based triggering with differentiated process_item/messages handling required to complete memory layer.
+**[2026-04-06]** `claude_cli` — Fixed PostgreSQL ON CONFLICT DO UPDATE duplicate row insertion error in route_history line 470 by adding explicit ::jsonb cast to tags field in batch upsert query. **[2026-04-06]** `claude_cli` — Implemented /history/commits/sync endpoint successfully importing 364 unique commit hashes with proper deduplication and database persistence across multiple import sources. **[2026-04-05]** `development-session` — Verified history display dual-hook architecture with hook-response and session-summary background hooks properly configured to persist both prompts and LLM responses to mem_mrr_prompts table. **[2026-04-05]** `development-session` — All four session-stop background hooks (hook-response, session-summary, memory, auto-detect-bugs) confirmed synchronized and functional; history regression fixed to display complete prompt + response pairs. **[2026-04-05]** `development-session` — Feature snapshot consolidation identified: rename plannet_tags to feature_snapshot to establish unified linkage to work_items and memory structures. **[2026-04-05]** `development-session` — User requested comprehensive aicli_memory.md architecture documentation covering all memory layers, mirroring mechanism, event triggers, and specific processing prompts at each synthesis step.
