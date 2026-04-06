@@ -25,7 +25,7 @@ Tools:
 
 Database naming convention:
     mng_TABLE  — global/shared tables (users, billing, entity categories, agent roles, etc.)
-    pr_TABLE   — flat per-project tables with client_id=1 AND project=<name> filters
+    pr_TABLE   — flat per-project tables with project_id INT FK (replaces project TEXT)
                  (e.g. mem_mrr_commits, mem_ai_events, mem_ai_work_items, mem_ai_features)
 """
 from __future__ import annotations
@@ -760,7 +760,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "mem_mrr_TABLE": "Mirroring layer — raw source data as-is (prompts, commits, items, messages)",
                 "mem_ai_TABLE": "AI/embedding layer — digests, embeddings, facts, work items",
                 "pr_TABLE": "Graph workflow tables (pr_graph_*)",
-                "filter": "All tables use client_id=1 AND project=<name> for isolation",
+                "filter": "Most tables use project_id INT FK for isolation; legacy text project column removed from pr_* tables",
             },
             "global_tables": {
                 "mng_users": {
@@ -799,7 +799,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                         "created_at TIMESTAMPTZ", "updated_at TIMESTAMPTZ",
                         "UNIQUE(client_id, project, name, category_id)",
                     ],
-                    "filter": "WHERE client_id=1 AND project=%s",
+                    "filter": "WHERE project_id=%s",
                 },
                 "mem_tags_relations": {
                     "purpose": "Links planner_tags to raw source rows (mirror layer) or AI-inferred events",
@@ -814,49 +814,49 @@ async def _dispatch(name: str, args: dict) -> Any:
                         "created_at TIMESTAMPTZ",
                         "UNIQUE(tag_id, related_type, related_id)",
                     ],
-                    "filter": "WHERE tag_id IN (SELECT id FROM planner_tags WHERE client_id=1 AND project=%s)",
+                    "filter": "WHERE tag_id IN (SELECT id FROM planner_tags WHERE project_id=%s)",
                 },
             },
             "mirroring_tables": {
                 "mem_mrr_prompts": {
                     "purpose": "Raw prompt/response log from all AI sessions (claude_cli, cursor, aicli UI)",
-                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT", "session_id TEXT",
+                    "key_columns": ["id UUID PK", "client_id INT", "project_id INT FK projects", "session_id TEXT",
                                     "prompt TEXT", "response TEXT", "phase TEXT", "source TEXT",
                                     "ai_tags TEXT (NULL|approved|ignored)", "metadata JSONB"],
-                    "filter": "WHERE client_id=1 AND project=%s",
+                    "filter": "WHERE project_id=%s",
                 },
                 "mem_mrr_commits": {
                     "purpose": "Git commits with diff details and session links",
-                    "key_columns": ["commit_hash VARCHAR(40) PK", "client_id INT", "project TEXT",
+                    "key_columns": ["commit_hash VARCHAR(40) PK", "client_id INT", "project_id INT FK projects",
                                     "commit_msg TEXT", "diff TEXT",
                                     "diff_details JSONB", "session_id TEXT", "phase TEXT", "feature TEXT",
                                     "ai_tags TEXT", "committed_at TIMESTAMPTZ"],
-                    "filter": "WHERE client_id=1 AND project=%s",
+                    "filter": "WHERE project_id=%s",
                 },
             },
             "ai_layer_tables": {
                 "mem_ai_events": {
                     "purpose": "AI-digested embeddings for semantic search — one row per summarised unit (pgvector)",
-                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
+                    "key_columns": ["id UUID PK", "client_id INT", "project_id INT FK projects",
                                     "event_type TEXT (prompt_batch|commit|item|message|session_summary)",
                                     "source_id TEXT", "session_id TEXT", "chunk INT", "chunk_type TEXT",
                                     "content TEXT", "embedding VECTOR(1536)", "summary TEXT",
-                                    "UNIQUE(client_id, project, event_type, source_id, chunk)"],
-                    "filter": "WHERE client_id=1 AND project=%s",
+                                    "UNIQUE(project_id, event_type, source_id, chunk)"],
+                    "filter": "WHERE project_id=%s",
                 },
                 "mem_ai_project_facts": {
                     "purpose": "Durable extracted facts; temporal validity (valid_until NULL = current). Searchable via embedding.",
-                    "key_columns": ["id UUID PK", "client_id INT", "project TEXT",
+                    "key_columns": ["id UUID PK", "client_id INT", "project_id INT FK projects",
                                     "fact_key TEXT", "fact_value TEXT", "category TEXT",
                                     "embedding VECTOR(1536)", "valid_from TIMESTAMPTZ", "valid_until TIMESTAMPTZ",
-                                    "UNIQUE(client_id, project, fact_key) WHERE valid_until IS NULL"],
-                    "filter": "WHERE client_id=1 AND project=%s AND valid_until IS NULL",
+                                    "UNIQUE(project_id, fact_key) WHERE valid_until IS NULL"],
+                    "filter": "WHERE project_id=%s AND valid_until IS NULL",
                     "search_endpoint": "GET /work-items/facts/search?query=...&project=...",
                 },
                 "mem_ai_work_items": {
                     "purpose": "Feature/bug/task items with 4-agent pipeline tracking. Searchable via embedding.",
                     "key_columns": [
-                        "id UUID PK", "client_id INT FK", "project TEXT",
+                        "id UUID PK", "client_id INT FK", "project_id INT FK projects",
                         "name TEXT", "category_name TEXT", "description TEXT",
                         "acceptance_criteria TEXT", "implementation_plan TEXT",
                         "status TEXT  -- open|active|done|archived",
@@ -865,7 +865,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                         "embedding VECTOR(1536)",
                         "created_at TIMESTAMPTZ", "updated_at TIMESTAMPTZ",
                     ],
-                    "filter": "WHERE client_id=1 AND project=%s",
+                    "filter": "WHERE project_id=%s",
                     "search_endpoint": "GET /work-items/search?query=...&project=...",
                 },
             },
@@ -875,6 +875,13 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "pr_graph_edges": {"purpose": "Directed connections between nodes"},
                 "pr_graph_runs": {"purpose": "Workflow execution instances"},
                 "pr_graph_node_results": {"purpose": "Per-node output within a run"},
+                "pr_seq_counters": {
+                    "purpose": "Atomic sequential number counter per (project_id, category)",
+                    "key_columns": ["project_id INT FK projects", "category TEXT",
+                                    "next_val INT NOT NULL DEFAULT 1",
+                                    "PRIMARY KEY (project_id, category)"],
+                    "filter": "WHERE project_id=%s",
+                },
             },
         }
 

@@ -93,8 +93,8 @@ _SQL_LOAD_ROLE = """SELECT ar.system_prompt, ar.provider, ar.model,
                    LIMIT 1"""
 
 _SQL_SAVE_INTERACTION = """INSERT INTO mem_mrr_prompts
-    (client_id, project, source, session_id, content, metadata, created_at)
-    VALUES (1, %s, %s, %s, %s, %s::jsonb, NOW())"""
+    (project_id, source, session_id, content, metadata, created_at)
+    VALUES (%s, %s, %s, %s, %s::jsonb, NOW())"""
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -300,11 +300,12 @@ class Agent:
                 "tags": [self.name.lower().replace(" ", "_"), "handoff", "react-output"],
             })
             session_id = str(uuid.uuid4())
+            project_id = db.get_or_create_project_id(project)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_SAVE_INTERACTION,
-                        (project, f"agent:{self.name}", session_id, content, metadata),
+                        (project_id, f"agent:{self.name}", session_id, content, metadata),
                     )
                 conn.commit()
             log.debug("Agent '%s' saved handoff to mem_mrr_prompts (project=%s)", self.name, project)

@@ -33,11 +33,11 @@ _SQL_SEARCH_PROMPTS_BASE = (
 )
 
 _SQL_COUNT_INTERACTIONS_TOTAL = (
-    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt'"
+    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_type='prompt'"
 )
 
 _SQL_COUNT_INTERACTIONS_SINCE = (
-    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
+    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_type='prompt' AND created_at > %s::timestamptz"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -107,8 +107,9 @@ async def get_tagged_context(
 
     p = project or settings.active_project or "default"
 
-    filters: list[str] = ["p.client_id=1", "p.project=%s"]
-    params: list = [p]
+    project_id = db.get_or_create_project_id(p)
+    filters: list[str] = ["p.project_id=%s"]
+    params: list = [project_id]
 
     # Filter by tags[] array (phase/feature are now inline tags)
     if phase:
@@ -125,7 +126,7 @@ async def get_tagged_context(
                     cur.execute(
                         """SELECT tc.name || ':' || t.name FROM planner_tags t
                            JOIN mng_tags_categories tc ON tc.id = t.category_id
-                           WHERE t.id=%s::uuid AND t.client_id=1 LIMIT 1""",
+                           WHERE t.id=%s::uuid LIMIT 1""",
                         (tag_id,),
                     )
                     row = cur.fetchone()

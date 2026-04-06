@@ -1,0 +1,5 @@
+active_workflows: []
+code_dir: ../../test-verify
+default_provider: claude
+description: verification test
+name: test-verify

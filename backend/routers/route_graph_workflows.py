@@ -48,15 +48,15 @@ log = logging.getLogger(__name__)
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
 _SQL_LIST_WORKFLOWS = (
-    "SELECT id, project, name, description, max_iterations, created_at, log_directory "
-    "FROM pr_graph_workflows WHERE client_id=1 AND project=%s ORDER BY created_at DESC"
+    "SELECT id, project_id, name, description, max_iterations, created_at, log_directory "
+    "FROM pr_graph_workflows WHERE project_id=%s ORDER BY created_at DESC"
 )
 
 _SQL_INSERT_WORKFLOW = (
-    """INSERT INTO pr_graph_workflows (id, client_id, project, name, description, max_iterations, log_directory)
-       VALUES (%s, 1, %s, %s, %s, %s, %s)
-       ON CONFLICT (client_id, project, name) DO NOTHING
-       RETURNING id, project, name, description, max_iterations, created_at, log_directory"""
+    """INSERT INTO pr_graph_workflows (id, project_id, name, description, max_iterations, log_directory)
+       VALUES (%s, %s, %s, %s, %s, %s)
+       ON CONFLICT (project_id, name) DO NOTHING
+       RETURNING id, project_id, name, description, max_iterations, created_at, log_directory"""
 )
 
 _SQL_LIST_RUNS = (
@@ -65,7 +65,7 @@ _SQL_LIST_RUNS = (
               w.name AS workflow_name
        FROM pr_graph_runs r
        LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
-       WHERE r.client_id=1 AND r.project=%s
+       WHERE r.project_id=%s
        ORDER BY r.started_at DESC LIMIT %s"""
 )
 
@@ -75,7 +75,7 @@ _SQL_GET_RUN_BASIC = (
 )
 
 _SQL_GET_RUN_DETAIL = (
-    "SELECT id, workflow_id, project, status, user_input, context, "
+    "SELECT id, workflow_id, project_id, status, user_input, context, "
     "started_at, finished_at, total_cost_usd, error, current_node "
     "FROM pr_graph_runs WHERE id=%s"
 )
@@ -91,7 +91,7 @@ _SQL_CANCEL_RUN = (
 )
 
 _SQL_GET_WORKFLOW_BY_ID = (
-    "SELECT id, project, name, description, max_iterations, created_at, log_directory "
+    "SELECT id, project_id, name, description, max_iterations, created_at, log_directory "
     "FROM pr_graph_workflows WHERE id=%s"
 )
 
@@ -138,12 +138,12 @@ _SQL_INSERT_EDGE = (
 _SQL_DELETE_EDGE = "DELETE FROM pr_graph_edges WHERE id=%s AND workflow_id=%s"
 
 _SQL_INSERT_RUN = (
-    """INSERT INTO pr_graph_runs (id, client_id, project, workflow_id, status, user_input)
-       VALUES (%s, 1, %s, %s, 'running', %s)"""
+    """INSERT INTO pr_graph_runs (id, project_id, workflow_id, status, user_input)
+       VALUES (%s, %s, %s, 'running', %s)"""
 )
 
 _SQL_GET_RUN_FOR_APPROVAL = (
-    "SELECT workflow_id, project, context, total_cost_usd FROM pr_graph_runs WHERE id=%s AND status='waiting_approval'"
+    "SELECT workflow_id, project_id, context, total_cost_usd FROM pr_graph_runs WHERE id=%s AND status='waiting_approval'"
 )
 
 _SQL_GET_WORKFLOW_NAME = "SELECT name FROM pr_graph_workflows WHERE id=%s"
@@ -165,7 +165,7 @@ _SQL_UPDATE_RUN_DONE = (
 )
 
 _SQL_GET_APPROVAL_CONTEXT = (
-    """SELECT workflow_id, project, context
+    """SELECT workflow_id, project_id, context
        FROM pr_graph_runs WHERE id=%s AND status='waiting_approval'"""
 )
 
@@ -177,9 +177,9 @@ _SQL_GET_NODE_ROLE_PROMPT = (
 )
 
 _SQL_LIST_RUNS_FOR_WORKFLOW = (
-    """SELECT id, workflow_id, project, status, user_input,
+    """SELECT id, workflow_id, project_id, status, user_input,
               started_at, finished_at, total_cost_usd, error
-       FROM pr_graph_runs WHERE client_id=1 AND project=%s AND workflow_id=%s
+       FROM pr_graph_runs WHERE project_id=%s AND workflow_id=%s
        ORDER BY started_at DESC LIMIT 50"""
 )
 
@@ -339,9 +339,10 @@ async def list_workflows(
     if not db.is_available():
         return {"workflows": [], "fallback": True}
     p = _active_project(project)
+    project_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_LIST_WORKFLOWS, (p,))
+            cur.execute(_SQL_LIST_WORKFLOWS, (project_id,))
             rows = cur.fetchall()
     return {"workflows": [_row_to_workflow(r) for r in rows]}
 
@@ -350,12 +351,13 @@ async def list_workflows(
 async def create_workflow(body: WorkflowCreate, user=Depends(get_optional_user)):
     _require_db()
     p = _active_project(body.project)
+    project_id = db.get_or_create_project_id(p)
     wf_id = str(uuid.uuid4())
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_INSERT_WORKFLOW,
-                (wf_id, p, body.name, body.description, body.max_iterations, body.log_directory),
+                (wf_id, project_id, body.name, body.description, body.max_iterations, body.log_directory),
             )
             row = cur.fetchone()
     return _row_to_workflow(row)
@@ -372,9 +374,10 @@ async def list_recent_runs(
         return {"runs": [], "fallback": True}
     _require_db()
     p = _active_project(project)
+    project_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_LIST_RUNS, (p, min(limit, 100)))
+            cur.execute(_SQL_LIST_RUNS, (project_id, min(limit, 100)))
             rows = cur.fetchall()
     return {"runs": [
         {
@@ -735,12 +738,13 @@ async def start_run(
     from pipelines.pipeline_graph_runner import run_graph_workflow
 
     p = _active_project(body.project)
+    project_id = db.get_or_create_project_id(p)
     run_id = str(uuid.uuid4())
 
     # Insert initial run record
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_INSERT_RUN, (run_id, p, workflow_id, body.user_input))
+            cur.execute(_SQL_INSERT_RUN, (run_id, project_id, workflow_id, body.user_input))
 
     # Fire-and-forget background execution
     async def _run():
@@ -793,7 +797,7 @@ async def make_run_decision(
             row = cur.fetchone()
             if not row:
                 raise HTTPException(404, "Run not found or not in waiting_approval state")
-            workflow_id, project, ctx, total_cost = row[0], row[1], row[2] or {}, float(row[3])
+            workflow_id, _proj_id_db, ctx, total_cost = row[0], row[1], row[2] or {}, float(row[3])
 
     waiting = ctx.get("_waiting", {})
     waiting_node_id = waiting.get("node_id")
@@ -917,8 +921,8 @@ async def approval_chat(
     if not row:
         raise HTTPException(404, "Run not found or not in waiting_approval state")
 
-    workflow_id, run_project, ctx = row[0], row[1], row[2] or {}
-    p = run_project or p
+    workflow_id, _run_proj_id, ctx = row[0], row[1], row[2] or {}
+    # _run_proj_id is project_id (int) from DB; p already holds project name from query param
 
     waiting   = ctx.get("_waiting", {})
     node_name = waiting.get("node_name", "")
@@ -999,9 +1003,10 @@ async def list_runs(
 ):
     _require_db()
     p = _active_project(project)
+    project_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_LIST_RUNS_FOR_WORKFLOW, (p, workflow_id))
+            cur.execute(_SQL_LIST_RUNS_FOR_WORKFLOW, (project_id, workflow_id))
             rows = cur.fetchall()
     runs = []
     for r in rows:

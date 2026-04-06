@@ -26,14 +26,14 @@ log = logging.getLogger(__name__)
 
 _SQL_GET_TAG_ID = """
     SELECT id FROM planner_tags
-    WHERE client_id=1 AND project=%s AND name=%s
+    WHERE project_id=%s AND name=%s
     LIMIT 1
 """
 
 _SQL_GET_WORK_ITEM = """
     SELECT wi.id, wi.name, wi.description, wi.lifecycle_status, wi.acceptance_criteria
     FROM mem_ai_work_items wi
-    WHERE wi.client_id=1 AND wi.project=%s
+    WHERE wi.project_id=%s
     ORDER BY wi.created_at DESC LIMIT 10
 """
 
@@ -41,14 +41,14 @@ _SQL_GET_WORK_ITEM_BY_NAME = """
     SELECT wi.id, wi.name, wi.description, wi.lifecycle_status, wi.acceptance_criteria,
            wi.implementation_plan, wi.agent_status, wi.tag_id
     FROM mem_ai_work_items wi
-    WHERE wi.client_id=1 AND wi.project=%s AND wi.name=%s
+    WHERE wi.project_id=%s AND wi.name=%s
     LIMIT 1
 """
 
 _SQL_GET_MEMORY_EVENTS = """
     SELECT me.id, me.summary, me.event_type, me.created_at, me.action_items
     FROM mem_ai_events me
-    WHERE me.client_id=1 AND me.project=%s
+    WHERE me.project_id=%s
     ORDER BY me.created_at DESC LIMIT 50
 """
 
@@ -66,20 +66,20 @@ _SQL_UPDATE_TAG_SNAPSHOT = """
         code_summary = %s,
         embedding    = %s,
         updated_at   = NOW()
-    WHERE id = %s AND project = %s
+    WHERE id = %s AND project_id = %s
 """
 
 _SQL_GET_CURRENT_FACTS = """
     SELECT id, fact_key, fact_value, created_at
     FROM mem_ai_project_facts
-    WHERE client_id=1 AND project=%s AND valid_until IS NULL
+    WHERE project_id=%s AND valid_until IS NULL
     ORDER BY fact_key
 """
 
 _SQL_UPSERT_FACT = """
-    INSERT INTO mem_ai_project_facts (client_id, project, fact_key, fact_value, category, valid_from)
-    VALUES (1, %s, %s, %s, %s, NOW())
-    ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL
+    INSERT INTO mem_ai_project_facts (project_id, fact_key, fact_value, category, valid_from)
+    VALUES (%s, %s, %s, %s, NOW())
+    ON CONFLICT (project_id, fact_key) WHERE valid_until IS NULL
     DO UPDATE SET
         fact_value = EXCLUDED.fact_value,
         category   = COALESCE(EXCLUDED.category, mem_ai_project_facts.category)
@@ -88,7 +88,7 @@ _SQL_UPSERT_FACT = """
 _SQL_MARK_FACT_CONFLICT = """
     UPDATE mem_ai_project_facts
     SET conflict_status=%s
-    WHERE client_id=1 AND project=%s AND fact_key=%s AND valid_until IS NULL
+    WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL
 """
 
 _SQL_MARK_EVENTS_PROCESSED = """
@@ -101,12 +101,12 @@ _SQL_GET_UNEXTRACTED_EVENTS = """
     SELECT me.id, me.event_type, me.session_id, me.summary, me.action_items,
            me.created_at, me.tags
     FROM mem_ai_events me
-    WHERE me.client_id=1 AND me.project=%s
+    WHERE me.project_id=%s
       AND me.event_type IN ('prompt_batch', 'session_summary')
       AND me.summary IS NOT NULL AND me.summary != ''
       AND NOT EXISTS (
           SELECT 1 FROM mem_ai_work_items wi
-          WHERE wi.client_id=1 AND wi.project=me.project
+          WHERE wi.project_id=me.project_id
             AND wi.source_event_id = me.id
       )
     ORDER BY me.created_at DESC
@@ -115,10 +115,10 @@ _SQL_GET_UNEXTRACTED_EVENTS = """
 
 _SQL_INSERT_EXTRACTED_WORK_ITEM = """
     INSERT INTO mem_ai_work_items
-        (client_id, project, category_name, name, description,
+        (project_id, category_name, name, description,
          status, lifecycle_status, source_event_id, source_session_id, created_at)
-    VALUES (1, %s, %s, %s, %s, 'active', 'idea', %s::uuid, %s, NOW())
-    ON CONFLICT (client_id, project, category_name, name) DO NOTHING
+    VALUES (%s, %s, %s, %s, 'active', 'idea', %s::uuid, %s, NOW())
+    ON CONFLICT (project_id, category_name, name) DO NOTHING
     RETURNING id
 """
 
@@ -227,9 +227,10 @@ class MemoryPromotion:
         if not db.is_available():
             return None
 
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_WORK_ITEM_BY_NAME, (project, tag_name))
+                cur.execute(_SQL_GET_WORK_ITEM_BY_NAME, (project_id, tag_name))
                 row = cur.fetchone()
 
         if not row:
@@ -279,9 +280,10 @@ class MemoryPromotion:
             return None
 
         # Resolve tag
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_TAG_ID, (project, tag_name))
+                cur.execute(_SQL_GET_TAG_ID, (project_id, tag_name))
                 tag_row = cur.fetchone()
         if not tag_row:
             log.debug(f"promote_feature_snapshot: tag '{tag_name}' not found")
@@ -291,7 +293,7 @@ class MemoryPromotion:
         # Load recent memory events for this project
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_MEMORY_EVENTS, (project,))
+                cur.execute(_SQL_GET_MEMORY_EVENTS, (project_id,))
                 events = cur.fetchall()
 
         if not events:
@@ -302,7 +304,7 @@ class MemoryPromotion:
         work_item_status = None
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_WORK_ITEM, (project,))
+                cur.execute(_SQL_GET_WORK_ITEM, (project_id,))
                 wi_rows = cur.fetchall()
         if wi_rows:
             work_item_status = wi_rows[0][3]  # lifecycle_status from first linked work item
@@ -311,7 +313,7 @@ class MemoryPromotion:
         facts_context: dict = {}
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_CURRENT_FACTS, (project,))
+                cur.execute(_SQL_GET_CURRENT_FACTS, (project_id,))
                 for f_id, f_key, f_val, _ in cur.fetchall():
                     facts_context[f_key] = f_val
 
@@ -399,7 +401,7 @@ class MemoryPromotion:
                         json.dumps(code_summary),
                         embedding,
                         tag_id,
-                        project,
+                        project_id,
                     ),
                 )
 
@@ -453,9 +455,10 @@ class MemoryPromotion:
             return {"action": "ok", "conflict_status": None}
 
         # Load existing facts
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_CURRENT_FACTS, (project,))
+                cur.execute(_SQL_GET_CURRENT_FACTS, (project_id,))
                 existing = cur.fetchall()
 
         if not existing:
@@ -531,10 +534,11 @@ class MemoryPromotion:
         if not db.is_available():
             return 0
 
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_UNEXTRACTED_EVENTS, (project, batch_size))
+                    cur.execute(_SQL_GET_UNEXTRACTED_EVENTS, (project_id, batch_size))
                     events = cur.fetchall()
         except Exception as e:
             log.debug(f"extract_work_items_from_events query error: {e}")
@@ -585,7 +589,7 @@ class MemoryPromotion:
                         with conn.cursor() as cur:
                             cur.execute(
                                 _SQL_INSERT_EXTRACTED_WORK_ITEM,
-                                (project, category, name, description,
+                                (project_id, category, name, description,
                                  str(ev_id), session_id),
                             )
                             if cur.fetchone():

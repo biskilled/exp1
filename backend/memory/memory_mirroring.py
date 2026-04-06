@@ -31,47 +31,47 @@ log = logging.getLogger(__name__)
 
 _SQL_INSERT_PROMPT = """
     INSERT INTO mem_mrr_prompts
-           (client_id, project, session_id, source_id,
+           (project_id, session_id, source_id,
             prompt, response, tags, created_at)
-       VALUES (1, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
-       ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
+       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+       ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL DO NOTHING
     RETURNING id
 """
 
 _SQL_INSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
-           (client_id, project, commit_hash, commit_msg, summary,
+           (project_id, commit_hash, commit_msg, summary,
             session_id, committed_at, tags)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s::jsonb)
+       VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
        ON CONFLICT (commit_hash) DO NOTHING
     RETURNING commit_hash
 """
 
 _SQL_INSERT_ITEM = """
     INSERT INTO mem_mrr_items
-           (client_id, project, item_type, title, meeting_at, attendees,
+           (project_id, item_type, title, meeting_at, attendees,
             raw_text, summary, tags)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
     RETURNING id
 """
 
 _SQL_INSERT_MESSAGE = """
     INSERT INTO mem_mrr_messages
-           (client_id, project, platform, channel, thread_ref,
+           (project_id, platform, channel, thread_ref,
             messages, date_range, tags)
-       VALUES (1, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb)
+       VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s::jsonb)
     RETURNING id
 """
 
 _SQL_COUNT_SESSION_PROMPTS = """
     SELECT COUNT(*) FROM mem_mrr_prompts
-    WHERE client_id=1 AND project=%s AND session_id=%s
+    WHERE project_id=%s AND session_id=%s
 """
 
 _SQL_GET_LAST_N_PROMPTS = """
     SELECT id, prompt, response, session_id, created_at
     FROM mem_mrr_prompts
-    WHERE client_id=1 AND project=%s AND session_id=%s
+    WHERE project_id=%s AND session_id=%s
       AND response != ''
     ORDER BY created_at DESC
     LIMIT %s
@@ -83,7 +83,7 @@ _SQL_GET_UNTAGGED_PROMPTS = """
     SELECT source_id, 'prompt' AS source_type,
            (prompt || ' ' || response)[:500] AS content_preview, created_at
     FROM mem_mrr_prompts
-    WHERE client_id=1 AND project=%s
+    WHERE project_id=%s
       AND (tags - 'source' - 'llm') = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
@@ -93,7 +93,7 @@ _SQL_GET_UNTAGGED_COMMITS = """
     SELECT commit_hash, 'commit' AS source_type,
            (commit_hash || ' ' || commit_msg)[:500] AS content_preview, created_at
     FROM mem_mrr_commits
-    WHERE client_id=1 AND project=%s
+    WHERE project_id=%s
       AND (tags - 'source' - 'llm') = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
@@ -102,23 +102,23 @@ _SQL_GET_UNTAGGED_COMMITS = """
 _SQL_GET_UNTAGGED_ITEMS = """
     SELECT id::text, 'item' AS source_type, raw_text[:500] AS content_preview, created_at
     FROM mem_mrr_items
-    WHERE client_id=1 AND project=%s
+    WHERE project_id=%s
       AND (tags - 'source' - 'llm') = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """
 
 # JSONB merge (||) is idempotent for same key — new value overwrites old
-_SQL_APPEND_TAG_PROMPT   = "UPDATE mem_mrr_prompts  SET tags = tags || %s::jsonb WHERE client_id=1 AND source_id=%s"
-_SQL_APPEND_TAG_COMMIT   = "UPDATE mem_mrr_commits  SET tags = tags || %s::jsonb WHERE client_id=1 AND commit_hash=%s"
-_SQL_APPEND_TAG_ITEM     = "UPDATE mem_mrr_items    SET tags = tags || %s::jsonb WHERE client_id=1 AND id=%s::uuid"
-_SQL_APPEND_TAG_MESSAGE  = "UPDATE mem_mrr_messages SET tags = tags || %s::jsonb WHERE client_id=1 AND id=%s::uuid"
+_SQL_APPEND_TAG_PROMPT   = "UPDATE mem_mrr_prompts  SET tags = tags || %s::jsonb WHERE source_id=%s"
+_SQL_APPEND_TAG_COMMIT   = "UPDATE mem_mrr_commits  SET tags = tags || %s::jsonb WHERE commit_hash=%s"
+_SQL_APPEND_TAG_ITEM     = "UPDATE mem_mrr_items    SET tags = tags || %s::jsonb WHERE id=%s::uuid"
+_SQL_APPEND_TAG_MESSAGE  = "UPDATE mem_mrr_messages SET tags = tags || %s::jsonb WHERE id=%s::uuid"
 
 # JSONB key removal: tags - 'phase'  removes the "phase" key
-_SQL_REMOVE_TAG_PROMPT   = "UPDATE mem_mrr_prompts  SET tags = tags - %s WHERE client_id=1 AND source_id=%s"
-_SQL_REMOVE_TAG_COMMIT   = "UPDATE mem_mrr_commits  SET tags = tags - %s WHERE client_id=1 AND commit_hash=%s"
-_SQL_REMOVE_TAG_ITEM     = "UPDATE mem_mrr_items    SET tags = tags - %s WHERE client_id=1 AND id=%s::uuid"
-_SQL_REMOVE_TAG_MESSAGE  = "UPDATE mem_mrr_messages SET tags = tags - %s WHERE client_id=1 AND id=%s::uuid"
+_SQL_REMOVE_TAG_PROMPT   = "UPDATE mem_mrr_prompts  SET tags = tags - %s WHERE source_id=%s"
+_SQL_REMOVE_TAG_COMMIT   = "UPDATE mem_mrr_commits  SET tags = tags - %s WHERE commit_hash=%s"
+_SQL_REMOVE_TAG_ITEM     = "UPDATE mem_mrr_items    SET tags = tags - %s WHERE id=%s::uuid"
+_SQL_REMOVE_TAG_MESSAGE  = "UPDATE mem_mrr_messages SET tags = tags - %s WHERE id=%s::uuid"
 
 
 class MemoryMirroring:
@@ -147,12 +147,13 @@ class MemoryMirroring:
         effective_source = source or llm_source or "claude_cli"
         tags_dict = tags_to_dict(tags)
         tags_dict["source"] = effective_source
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_PROMPT,
-                        (project, session_id, source_id,
+                        (project_id, session_id, source_id,
                          (prompt or "")[:4000], (response or "")[:8000],
                          json.dumps(tags_dict), ts),
                     )
@@ -181,12 +182,13 @@ class MemoryMirroring:
             return None
         tags_dict = tags_to_dict(tags)
         tags_dict["source"] = source
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_COMMIT,
-                        (project, commit_hash, commit_msg, summary,
+                        (project_id, commit_hash, commit_msg, summary,
                          session_id, committed_at, json.dumps(tags_dict)),
                     )
                     row = cur.fetchone()
@@ -210,12 +212,13 @@ class MemoryMirroring:
         """Insert a document item into mem_mrr_items. Returns UUID string or None."""
         if not db.is_available():
             return None
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_ITEM,
-                        (project, item_type, title, meeting_at, attendees,
+                        (project_id, item_type, title, meeting_at, attendees,
                          raw_text, summary, json.dumps(tags_to_dict(tags))),
                     )
                     row = cur.fetchone()
@@ -238,12 +241,13 @@ class MemoryMirroring:
         """Insert a message chunk into mem_mrr_messages. Returns UUID string or None."""
         if not db.is_available():
             return None
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_MESSAGE,
-                        (project, platform, channel, thread_ref,
+                        (project_id, platform, channel, thread_ref,
                          messages_json, date_range, json.dumps(tags_to_dict(tags))),
                     )
                     row = cur.fetchone()
@@ -256,10 +260,11 @@ class MemoryMirroring:
         """Count prompts in this session (used to decide when to trigger batch digest)."""
         if not db.is_available():
             return 0
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_COUNT_SESSION_PROMPTS, (project, session_id))
+                    cur.execute(_SQL_COUNT_SESSION_PROMPTS, (project_id, session_id))
                     return cur.fetchone()[0]
         except Exception:
             return 0
@@ -268,10 +273,11 @@ class MemoryMirroring:
         """Return the last N prompts for this session, oldest-first."""
         if not db.is_available():
             return []
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_LAST_N_PROMPTS, (project, session_id, n))
+                    cur.execute(_SQL_GET_LAST_N_PROMPTS, (project_id, session_id, n))
                     rows = list(reversed(cur.fetchall()))
             return [
                 {
@@ -301,10 +307,11 @@ class MemoryMirroring:
         sql = sql_map.get(source_type)
         if not sql:
             return []
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(sql, (project, limit))
+                    cur.execute(sql, (project_id, limit))
                     rows = cur.fetchall()
             return [
                 {

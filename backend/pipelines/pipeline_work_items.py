@@ -45,11 +45,11 @@ _SQL_GET_WORK_ITEM = (
 
 _SQL_GET_FACTS = (
     "SELECT fact_key, fact_value FROM mem_ai_project_facts "
-    "WHERE client_id=1 AND project=%s AND valid_until IS NULL ORDER BY fact_key"
+    "WHERE project_id=%s AND valid_until IS NULL ORDER BY fact_key"
 )
 
 _SQL_GET_MEMORY = (
-    "SELECT content FROM pr_memory_items WHERE client_id=1 AND project=%s "
+    "SELECT content FROM pr_memory_items WHERE project_id=%s "
     "ORDER BY created_at DESC LIMIT 3"
 )
 
@@ -199,13 +199,14 @@ async def trigger_work_item_pipeline(
         memory_text = ""
         if db.is_available():
             try:
+                project_id = db.get_or_create_project_id(project)
                 with db.conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute(_SQL_GET_FACTS, (project,))
+                        cur.execute(_SQL_GET_FACTS, (project_id,))
                         facts = cur.fetchall()
                         if facts:
                             project_facts_text = "\n".join(f"  {k}: {v}" for k, v in facts)
-                        cur.execute(_SQL_GET_MEMORY, (project,))
+                        cur.execute(_SQL_GET_MEMORY, (project_id,))
                         mem_rows = [r[0] for r in cur.fetchall()]
                         if mem_rows:
                             memory_text = "\n---\n".join(mem_rows)

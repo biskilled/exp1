@@ -78,7 +78,7 @@ _SQL_LIST_TAGS = """
            0 AS source_count
     FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-    WHERE t.client_id = 1 AND t.project = %s
+    WHERE t.project_id = %s
       AND t.merged_into IS NULL
     ORDER BY t.created_at
 """
@@ -93,18 +93,18 @@ _SQL_GET_TAG = """
            t.embedding IS NOT NULL AS has_embedding
     FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-    WHERE t.client_id = 1 AND t.project = %s AND t.id = %s::uuid
+    WHERE t.project_id = %s AND t.id = %s::uuid
 """
 
 _SQL_INSERT_TAG = """
-    INSERT INTO planner_tags (client_id, project, name, category_id, parent_id, status)
-    VALUES (1, %s, %s, %s, %s, %s)
-    ON CONFLICT (client_id, project, name, category_id) DO NOTHING
+    INSERT INTO planner_tags (project_id, name, category_id, parent_id, status)
+    VALUES (%s, %s, %s, %s, %s)
+    ON CONFLICT (project_id, name, category_id) DO NOTHING
     RETURNING id, name, created_at
 """
 
 _SQL_DELETE_TAG = """
-    DELETE FROM planner_tags WHERE id = %s::uuid AND client_id = 1 AND project = %s
+    DELETE FROM planner_tags WHERE id = %s::uuid AND project_id = %s
     RETURNING id
 """
 
@@ -118,13 +118,13 @@ _SQL_DELETE_TAG = """
 
 _SQL_GET_SESSION_CONTEXT = """
     SELECT extra FROM mng_session_tags
-    WHERE client_id = 1 AND project = %s
+    WHERE project_id = %s
 """
 
 _SQL_UPSERT_SESSION_CONTEXT = """
-    INSERT INTO mng_session_tags (client_id, project, extra, updated_at)
-    VALUES (1, %s, %s::jsonb, NOW())
-    ON CONFLICT (client_id, project) DO UPDATE
+    INSERT INTO mng_session_tags (project_id, extra, updated_at)
+    VALUES (%s, %s::jsonb, NOW())
+    ON CONFLICT (project_id) DO UPDATE
     SET extra = mng_session_tags.extra || EXCLUDED.extra, updated_at = NOW()
 """
 
@@ -354,9 +354,10 @@ def _build_tree(tags: list[dict]) -> list[dict]:
 @router.get("")
 async def list_tags(project: str = Query(...)):
     _require_db()
+    project_id = db.get_or_create_project_id(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_LIST_TAGS, (project,))
+            cur.execute(_SQL_LIST_TAGS, (project_id,))
             rows = cur.fetchall()
     tags = [_row_to_tag(r) for r in rows]
     return _build_tree(tags)
@@ -365,11 +366,12 @@ async def list_tags(project: str = Query(...)):
 @router.post("")
 async def create_tag(body: TagCreate):
     _require_db()
+    project_id = db.get_or_create_project_id(body.project)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_INSERT_TAG,
-                (body.project, body.name, body.category_id,
+                (project_id, body.name, body.category_id,
                  body.parent_id, body.status),
             )
             row = cur.fetchone()
@@ -438,9 +440,10 @@ async def update_tag(tag_id: str, body: TagUpdate):
 @router.delete("/{tag_id}")
 async def delete_tag(tag_id: str, project: str = Query(...), force: bool = Query(False)):
     _require_db()
+    project_id = db.get_or_create_project_id(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_DELETE_TAG, (tag_id, project))
+            cur.execute(_SQL_DELETE_TAG, (tag_id, project_id))
             row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Tag not found")
@@ -451,16 +454,17 @@ async def delete_tag(tag_id: str, project: str = Query(...), force: bool = Query
 async def merge_tags(body: TagMerge):
     """Mark from_name as merged into into_name; re-link all mem_tags_relations rows."""
     _require_db()
+    project_id = db.get_or_create_project_id(body.project)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s",
-                (body.project, body.from_name),
+                "SELECT id FROM planner_tags WHERE project_id=%s AND name=%s",
+                (project_id, body.from_name),
             )
             from_row = cur.fetchone()
             cur.execute(
-                "SELECT id FROM planner_tags WHERE client_id=1 AND project=%s AND name=%s",
-                (body.project, body.into_name),
+                "SELECT id FROM planner_tags WHERE project_id=%s AND name=%s",
+                (project_id, body.into_name),
             )
             into_row = cur.fetchone()
             if not from_row:
@@ -485,6 +489,7 @@ async def get_tag_sources(tag_id: str, project: str = Query(...)):
     then queries mem_mrr_prompts and mem_mrr_commits WHERE tag_str = ANY(tags).
     """
     _require_db()
+    project_id = db.get_or_create_project_id(project)
 
     # Resolve tag string from UUID
     tag_str = None
@@ -513,9 +518,9 @@ async def get_tag_sources(tag_id: str, project: str = Query(...)):
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT source_id, LEFT(prompt,300), session_id, created_at "
-                "FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND tags @> %s::jsonb "
+                "FROM mem_mrr_prompts WHERE project_id=%s AND tags @> %s::jsonb "
                 "ORDER BY created_at DESC LIMIT 100",
-                (project, tag_jsonb),
+                (project_id, tag_jsonb),
             )
             for row in cur.fetchall():
                 results.append({
@@ -528,9 +533,9 @@ async def get_tag_sources(tag_id: str, project: str = Query(...)):
                 })
             cur.execute(
                 "SELECT commit_hash, LEFT(commit_msg,300), session_id, committed_at "
-                "FROM mem_mrr_commits WHERE client_id=1 AND project=%s AND tags @> %s::jsonb "
+                "FROM mem_mrr_commits WHERE project_id=%s AND tags @> %s::jsonb "
                 "ORDER BY committed_at DESC LIMIT 100",
-                (project, tag_jsonb),
+                (project_id, tag_jsonb),
             )
             for row in cur.fetchall():
                 results.append({
@@ -561,9 +566,10 @@ async def remove_source_tag(source_tag_id: str):
 @router.get("/session-context")
 async def get_session_context(project: str = Query(...)):
     _require_db()
+    project_id = db.get_or_create_project_id(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_SESSION_CONTEXT, (project,))
+            cur.execute(_SQL_GET_SESSION_CONTEXT, (project_id,))
             row = cur.fetchone()
     if not row or not row[0]:
         return {"tags": {"stage": "discovery"}}
@@ -574,12 +580,13 @@ async def get_session_context(project: str = Query(...)):
 @router.post("/session-context")
 async def save_session_context(project: str = Query(...), body: dict = {}):
     _require_db()
+    project_id = db.get_or_create_project_id(project)
     tags = body.get("tags", body)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_UPSERT_SESSION_CONTEXT,
-                (project, json.dumps({"tags": tags})),
+                (project_id, json.dumps({"tags": tags})),
             )
     return {"ok": True}
 
@@ -738,6 +745,7 @@ async def get_tag_context(
     Used by the pipeline's first agent (PM) to orient on a feature/bug before planning.
     """
     _require_db()
+    project_id = db.get_or_create_project_id(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
             # ── Tag properties ──────────────────────────────────────────────
@@ -747,9 +755,9 @@ async def get_tag_context(
                           t.short_desc, t.status, t.priority, t.summary
                    FROM planner_tags t
                    LEFT JOIN mng_tags_categories c ON c.id = t.category_id
-                   WHERE t.client_id=1 AND t.project=%s AND t.name=%s
+                   WHERE t.project_id=%s AND t.name=%s
                    LIMIT 1""",
-                (project, tag_name),
+                (project_id, tag_name),
             )
             tag_row = cur.fetchone()
             if not tag_row:
@@ -773,10 +781,10 @@ async def get_tag_context(
                 """SELECT e.id, e.event_type, e.source_id, LEFT(e.content, 400) AS preview,
                           e.summary, e.created_at
                    FROM mem_ai_events e
-                   WHERE e.client_id=1 AND e.project=%s
+                   WHERE e.project_id=%s
                    ORDER BY e.created_at DESC
                    LIMIT %s""",
-                (project, limit),
+                (project_id, limit),
             )
             ai_events = [
                 {
@@ -798,9 +806,9 @@ async def get_tag_context(
             tag_ctx_jsonb = _json.dumps({_tk: _tv})
             cur.execute(
                 """SELECT source_id, 'prompt', created_at FROM mem_mrr_prompts
-                   WHERE client_id=1 AND project=%s AND tags @> %s::jsonb
+                   WHERE project_id=%s AND tags @> %s::jsonb
                    ORDER BY created_at DESC LIMIT %s""",
-                (project, tag_ctx_jsonb, limit),
+                (project_id, tag_ctx_jsonb, limit),
             )
             sources = [
                 {
@@ -813,9 +821,9 @@ async def get_tag_context(
             ]
             cur.execute(
                 """SELECT commit_hash, 'commit', committed_at FROM mem_mrr_commits
-                   WHERE client_id=1 AND project=%s AND tags @> %s::jsonb
+                   WHERE project_id=%s AND tags @> %s::jsonb
                    ORDER BY committed_at DESC LIMIT %s""",
-                (project, tag_ctx_jsonb, limit),
+                (project_id, tag_ctx_jsonb, limit),
             )
             sources += [
                 {
@@ -860,6 +868,7 @@ async def migrate_tags_to_ai_suggestions(project: str = Query(...)):
     """Move planner_tags that were auto-created under bug/feature/task into the ai_suggestion
     category. Safe: only moves tags with zero linked relation rows in mem_tags_relations."""
     _require_db()
+    project_id = db.get_or_create_project_id(project)
     moved = 0
     with db.conn() as conn:
         with conn.cursor() as cur:

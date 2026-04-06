@@ -33,16 +33,16 @@ _SQL_LIST_COMMITS = """
            p.source_id AS prompt_source_id
     FROM mem_mrr_commits c
     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
-    WHERE c.client_id=1 AND c.project=%s
+    WHERE c.project_id=%s
     ORDER BY c.committed_at DESC NULLS LAST, c.created_at DESC
     LIMIT %s
 """
 
 _SQL_UPSERT_COMMIT_FROM_LOG = """
     INSERT INTO mem_mrr_commits
-        (client_id, project, commit_hash, commit_msg, session_id, committed_at,
+        (project_id, commit_hash, commit_msg, session_id, committed_at,
          tags)
-    VALUES (1, %s, %s, %s, %s, %s,
+    VALUES (%s, %s, %s, %s, %s,
             jsonb_build_object('source', %s))
     ON CONFLICT (commit_hash) DO UPDATE SET
         session_id = CASE
@@ -63,27 +63,27 @@ _SQL_UPDATE_COMMIT_META = (
 _SQL_SESSION_COMMITS_BASE = """
     SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
           FROM mem_mrr_commits
-         WHERE client_id=1 AND project=%s AND session_id = %s
+         WHERE project_id=%s AND session_id = %s
          ORDER BY committed_at
 """
 
 _SQL_SESSION_COMMITS_WITH_WINDOW = """
     SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
           FROM mem_mrr_commits
-         WHERE client_id=1 AND project=%s
+         WHERE project_id=%s
            AND (session_id = %s
             OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz))
          ORDER BY committed_at
 """
 
 _SQL_GET_SESSION_TAGS = (
-    "SELECT phase, feature, bug_ref, extra FROM mng_session_tags WHERE client_id=1 AND project=%s"
+    "SELECT phase, feature, bug_ref, extra FROM mng_session_tags WHERE project_id=%s"
 )
 
 _SQL_UPSERT_SESSION_TAGS = """
-    INSERT INTO mng_session_tags (client_id, project, phase, feature, bug_ref, extra, updated_at)
-    VALUES (1, %s, %s, %s, %s, %s, NOW())
-    ON CONFLICT (client_id, project) DO UPDATE SET
+    INSERT INTO mng_session_tags (project_id, phase, feature, bug_ref, extra, updated_at)
+    VALUES (%s, %s, %s, %s, %s, NOW())
+    ON CONFLICT (project_id) DO UPDATE SET
         phase = EXCLUDED.phase,
         feature = EXCLUDED.feature,
         bug_ref = EXCLUDED.bug_ref,
@@ -99,7 +99,7 @@ _SQL_LIST_RUNS_BASE = """
            w.name AS workflow_name
     FROM pr_graph_runs r
     LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
-    WHERE r.client_id=1 AND r.project=%s
+    WHERE r.project_id=%s
     ORDER BY r.started_at DESC LIMIT %s
 """
 
@@ -109,7 +109,7 @@ _SQL_LIST_RUNS_BY_WORKFLOW = """
            w.name AS workflow_name
     FROM pr_graph_runs r
     LEFT JOIN pr_graph_workflows w ON w.id = r.workflow_id
-    WHERE r.client_id=1 AND r.project=%s AND w.name=%s
+    WHERE r.project_id=%s AND w.name=%s
     ORDER BY r.started_at DESC LIMIT %s
 """
 
@@ -222,6 +222,7 @@ async def chat_history(
 
     if db.is_available():
         try:
+            project_id = db.get_or_create_project_id(p)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     # Total count (excluding noise)
@@ -235,7 +236,7 @@ async def chat_history(
 
                     cur.execute(
                         f"""SELECT COUNT(*) FROM mem_mrr_prompts
-                            WHERE client_id=1 AND project=%s
+                            WHERE project_id=%s
                               AND prompt IS NOT NULL AND prompt != ''
                               {noise_filter}{provider_filter}""",
                         (p,) + noise_args + provider_arg,
@@ -246,7 +247,7 @@ async def chat_history(
                         f"""SELECT source_id, session_id, tags->>'source' AS source, prompt,
                                    response, tags, created_at
                             FROM mem_mrr_prompts
-                            WHERE client_id=1 AND project=%s
+                            WHERE project_id=%s
                               AND prompt IS NOT NULL AND prompt != ''
                               {noise_filter}{provider_filter}
                             ORDER BY created_at DESC
@@ -317,9 +318,10 @@ async def commits_history(
     p = project or settings.active_project or "default"
 
     if db.is_available():
+        project_id = db.get_or_create_project_id(p)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_LIST_COMMITS, (p, limit))
+                cur.execute(_SQL_LIST_COMMITS, (project_id, limit))
                 cols = [d[0] for d in cur.description]
                 rows = [dict(zip(cols, r)) for r in cur.fetchall()]
                 # Normalise types for JSON
@@ -419,6 +421,7 @@ async def sync_commits(project: str | None = Query(None)):
         raise HTTPException(status_code=503, detail="PostgreSQL not available")
 
     p = project or settings.active_project or "default"
+    project_id = db.get_or_create_project_id(p)
     log_path = _project_dir(project) / "_system" / "commit_log.jsonl"
     if not log_path.exists():
         return {"imported": 0, "project": p}
@@ -439,8 +442,7 @@ async def sync_commits(project: str | None = Query(None)):
                 continue
             source_val = raw.get("source", "git")
             rows.append((
-                1,                                        # client_id
-                p,
+                project_id,
                 commit_hash,
                 raw.get("message", raw.get("msg", "")),
                 raw.get("session_id"),
@@ -453,7 +455,7 @@ async def sync_commits(project: str | None = Query(None)):
 
     _SQL_BATCH_UPSERT = """
         INSERT INTO mem_mrr_commits
-            (client_id, project, commit_hash, commit_msg, session_id, committed_at, tags)
+            (project_id, commit_hash, commit_msg, session_id, committed_at, tags)
         VALUES %s
         ON CONFLICT (commit_hash) DO UPDATE SET
             session_id = CASE
@@ -512,9 +514,10 @@ async def get_session_tags(project: str | None = Query(None)):
     """Get current active session tags for a project."""
     p = project or settings.active_project or "default"
     if db.is_available():
+        project_id = db.get_or_create_project_id(p)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_SESSION_TAGS, (p,))
+                cur.execute(_SQL_GET_SESSION_TAGS, (project_id,))
                 row = cur.fetchone()
                 if row:
                     return {"project": p, "phase": row[0], "feature": row[1],
@@ -555,11 +558,12 @@ async def put_session_tags(body: SessionTagsUpdate, project: str | None = Query(
     tags_path.write_text(_json.dumps(tags, indent=2))
 
     if db.is_available():
+        project_id = db.get_or_create_project_id(p)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_UPSERT_SESSION_TAGS,
-                    (p, body.phase, body.feature, body.bug_ref,
+                    (project_id, body.phase, body.feature, body.bug_ref,
                      _json.dumps(body.extra or {})),
                 )
 
@@ -591,6 +595,7 @@ async def workflow_runs(
     # Try DB first (LangGraph runs in pr_graph_runs)
     if db.is_available() and project:
         try:
+            project_id = db.get_or_create_project_id(project)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     # Use the workflow-filtered variant when a name is provided;
@@ -598,12 +603,12 @@ async def workflow_runs(
                     if workflow:
                         cur.execute(
                             _SQL_LIST_RUNS_BY_WORKFLOW,
-                            (project, workflow, min(limit, 200)),
+                            (project_id, workflow, min(limit, 200)),
                         )
                     else:
                         cur.execute(
                             _SQL_LIST_RUNS_BASE,
-                            (project, min(limit, 200)),
+                            (project_id, min(limit, 200)),
                         )
                     rows = cur.fetchall()
 
@@ -757,6 +762,7 @@ async def session_commits(
     commits: list[dict] = []
 
     if db.is_available():
+        project_id = db.get_or_create_project_id(p)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Use the time-window variant when session timestamps are available
@@ -765,10 +771,10 @@ async def session_commits(
                 if created_at and updated_at:
                     cur.execute(
                         _SQL_SESSION_COMMITS_WITH_WINDOW,
-                        (p, session_id, created_at, updated_at),
+                        (project_id, session_id, created_at, updated_at),
                     )
                 else:
-                    cur.execute(_SQL_SESSION_COMMITS_BASE, (p, session_id))
+                    cur.execute(_SQL_SESSION_COMMITS_BASE, (project_id, session_id))
                 cols = [d[0] for d in cur.description]
                 for row in cur.fetchall():
                     r = dict(zip(cols, row))

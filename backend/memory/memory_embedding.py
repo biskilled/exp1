@@ -60,10 +60,10 @@ _EXT_LANG: dict[str, str] = {
 
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
-           (client_id, project, event_type, source_id, session_id,
+           (project_id, event_type, source_id, session_id,
             chunk, chunk_type, content, embedding, summary, action_items, tags, importance)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
-       ON CONFLICT (client_id, project, event_type, source_id, chunk)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
+       ON CONFLICT (project_id, event_type, source_id, chunk)
        DO UPDATE SET
            content      = EXCLUDED.content,
            embedding    = EXCLUDED.embedding,
@@ -76,25 +76,25 @@ _SQL_UPSERT_EVENT = """
 _SQL_GET_COMMIT = """
     SELECT commit_hash, commit_msg, summary, tags, session_id
     FROM mem_mrr_commits
-    WHERE client_id=1 AND project=%s AND commit_hash=%s
+    WHERE project_id=%s AND commit_hash=%s
 """
 
 _SQL_UPDATE_COMMIT_TAGS = """
     UPDATE mem_mrr_commits
     SET tags = tags || %s::jsonb
-    WHERE commit_hash = %s AND client_id = 1
+    WHERE commit_hash = %s
 """
 
 _SQL_UPDATE_COMMIT_SUMMARY = """
     UPDATE mem_mrr_commits
     SET summary = %s
-    WHERE commit_hash = %s AND client_id = 1 AND (summary IS NULL OR summary = '')
+    WHERE commit_hash = %s AND (summary IS NULL OR summary = '')
 """
 
 _SQL_GET_ITEM = """
     SELECT id, item_type, title, raw_text, summary
     FROM mem_mrr_items
-    WHERE client_id=1 AND project=%s AND id=%s::uuid
+    WHERE project_id=%s AND id=%s::uuid
 """
 
 _SQL_LOAD_PROMPT = """
@@ -245,12 +245,13 @@ def _upsert_event(
     enriched: dict = {"event": source_type, "chunk_type": chunk_type}
     enriched.update(merged)  # caller tags override system keys
     vec_str = f"[{','.join(str(x) for x in embedding)}]" if embedding else None
+    project_id = db.get_or_create_project_id(project)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_UPSERT_EVENT,
-                    (project, source_type, source_id, session_id,
+                    (project_id, source_type, source_id, session_id,
                      chunk, chunk_type, content, vec_str, summary,
                      action_items, json.dumps(enriched), importance),
                 )
@@ -308,14 +309,15 @@ class MemoryEmbedding:
 
         # Fetch MRR tags from the most recent prompt in this session
         mrr_tags: dict = {}
+        _pb_project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT tags FROM mem_mrr_prompts "
-                        "WHERE client_id=1 AND project=%s AND session_id=%s "
+                        "WHERE project_id=%s AND session_id=%s "
                         "ORDER BY created_at DESC LIMIT 1",
-                        (project, session_id),
+                        (_pb_project_id, session_id),
                     )
                     tr = cur.fetchone()
                     if tr:
@@ -360,10 +362,11 @@ class MemoryEmbedding:
         """
         if not db.is_available():
             return None
+        _c_project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_COMMIT, (project, commit_hash))
+                    cur.execute(_SQL_GET_COMMIT, (_c_project_id, commit_hash))
                     row = cur.fetchone()
             if not row:
                 return None
@@ -463,10 +466,11 @@ class MemoryEmbedding:
         """
         if not db.is_available():
             return None
+        _i_project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_ITEM, (project, item_id))
+                    cur.execute(_SQL_GET_ITEM, (_i_project_id, item_id))
                     row = cur.fetchone()
             if not row:
                 return None
@@ -481,8 +485,8 @@ class MemoryEmbedding:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT tags FROM mem_mrr_items WHERE client_id=1 AND project=%s AND id=%s::uuid",
-                        (project, item_id),
+                        "SELECT tags FROM mem_mrr_items WHERE project_id=%s AND id=%s::uuid",
+                        (_i_project_id, item_id),
                     )
                     tr = cur.fetchone()
                     if tr:
@@ -562,13 +566,14 @@ class MemoryEmbedding:
         """Embed a mem_mrr_messages chunk. Returns UUID or None."""
         if not db.is_available():
             return None
+        _m_project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT id, platform, channel, messages FROM mem_mrr_messages "
-                        "WHERE client_id=1 AND project=%s AND id=%s::uuid",
-                        (project, message_id),
+                        "WHERE project_id=%s AND id=%s::uuid",
+                        (_m_project_id, message_id),
                     )
                     row = cur.fetchone()
             if not row:
@@ -604,8 +609,8 @@ class MemoryEmbedding:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT tags FROM mem_mrr_messages WHERE client_id=1 AND project=%s AND id=%s::uuid",
-                        (project, message_id),
+                        "SELECT tags FROM mem_mrr_messages WHERE project_id=%s AND id=%s::uuid",
+                        (_m_project_id, message_id),
                     )
                     tr = cur.fetchone()
                     if tr:
@@ -639,8 +644,9 @@ class MemoryEmbedding:
         vec_str = f"[{','.join(str(x) for x in vec)}]"
 
         # Build WHERE clause
-        conditions = ["client_id=1", "project=%s", "embedding IS NOT NULL"]
-        params: list = [project]
+        _s_project_id = db.get_or_create_project_id(project)
+        conditions = ["project_id=%s", "embedding IS NOT NULL"]
+        params: list = [_s_project_id]
 
         if source_types:
             placeholders = ",".join(["%s"] * len(source_types))
@@ -1029,12 +1035,13 @@ async def ingest_commit(project: str, commit_hash: str, code_dir: str) -> int:
         meta: dict = {"commit_msg": commit_msg}
         if db.is_available():
             try:
+                _ic_project_id = db.get_or_create_project_id(project)
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
                             "SELECT tags FROM mem_mrr_commits "
-                            "WHERE client_id=1 AND project=%s AND commit_hash=%s",
-                            (project, commit_hash),
+                            "WHERE project_id=%s AND commit_hash=%s",
+                            (_ic_project_id, commit_hash),
                         )
                         row = cur.fetchone()
                         if row and row[0]:

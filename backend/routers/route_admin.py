@@ -120,9 +120,9 @@ _SQL_INSERT_CATEGORY = """
 
 _SQL_UPSERT_TAG = """
     INSERT INTO planner_tags
-        (client_id, project, category_id, name, status, created_at)
-    VALUES (1, %s, %s, %s, 'active', NOW())
-    ON CONFLICT (client_id, project, name) DO UPDATE
+        (project_id, category_id, name, status, created_at)
+    VALUES (%s, %s, %s, 'active', NOW())
+    ON CONFLICT (project_id, name) DO UPDATE
         SET category_id = EXCLUDED.category_id
     RETURNING id
 """
@@ -699,15 +699,16 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
 
                 # Migrate commits
                 if _table_exists(cur, "commits"):
+                    project_id = db.get_or_create_project_id(project)
                     cur.execute(
                         """INSERT INTO mem_mrr_commits
-                               (client_id, project, commit_hash, commit_msg, summary, phase, feature,
+                               (project_id, commit_hash, commit_msg, summary, phase, feature,
                                 bug_ref, source, session_id, tags, committed_at, created_at)
-                            SELECT 1, %s, commit_hash, commit_msg, summary, phase, feature,
+                            SELECT %s, commit_hash, commit_msg, summary, phase, feature,
                                    bug_ref, source, session_id, tags, committed_at, created_at
                             FROM commits WHERE project=%s
                             ON CONFLICT (commit_hash) DO NOTHING""",
-                        (project, project),
+                        (project_id, project),
                     )
                     counts["commits"] = cur.rowcount
 
@@ -719,13 +720,13 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
                 if _table_exists(cur, "embeddings"):
                     cur.execute(
                         """INSERT INTO mem_ai_events
-                               (client_id, project, source_type, source_id, chunk_index, content, embedding,
+                               (project_id, source_type, source_id, chunk_index, content, embedding,
                                 chunk_type, doc_type, language, file_path, metadata, created_at)
-                            SELECT 1, %s, source_type, source_id, chunk_index, content, embedding,
+                            SELECT %s, source_type, source_id, chunk_index, content, embedding,
                                    chunk_type, doc_type, language, file_path, metadata, created_at
                             FROM embeddings WHERE project=%s
-                            ON CONFLICT (client_id, project, source_type, source_id, chunk_index) DO NOTHING""",
-                        (project, project),
+                            ON CONFLICT (project_id, source_type, source_id, chunk_index) DO NOTHING""",
+                        (project_id, project),
                     )
                     counts["embeddings"] = cur.rowcount
 

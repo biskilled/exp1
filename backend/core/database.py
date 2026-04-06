@@ -17,9 +17,10 @@ Usage:
     if db.is_available():
         with db.conn() as conn:
             with conn.cursor() as cur:
+                project_id = db.get_project_id(project)
                 cur.execute(
-                    "SELECT * FROM mem_mrr_commits WHERE client_id=%s AND project=%s",
-                    (cid, project)
+                    "SELECT * FROM mem_mrr_commits WHERE project_id=%s",
+                    (project_id,)
                 )
     else:
         # fall back to file-based storage
@@ -38,6 +39,17 @@ import psycopg2.pool
 from core.config import settings
 
 log = logging.getLogger(__name__)
+
+
+# ─── Project ID cache ────────────────────────────────────────────────────────
+_PROJECT_ID_CACHE: dict[tuple[int, str], int] = {}
+
+
+def _workspace() -> Path:
+    """Return absolute Path to the workspace/ directory."""
+    from core.config import settings
+    return Path(settings.workspace_dir)
+
 
 # ─── DDL: mng_clients ────────────────────────────────────────────────────────
 
@@ -150,25 +162,65 @@ CREATE INDEX IF NOT EXISTS idx_mcp_client ON mng_coupons(client_id);
 # ─── DDL: mng_* entity + session + role tables ───────────────────────────────
 
 _DDL_MNG_TABLES = """
--- Session tags per client+project
+-- mng_projects: one row per project (replaces project TEXT partition key everywhere)
+CREATE TABLE IF NOT EXISTS mng_projects (
+    id                  SERIAL         PRIMARY KEY,
+    client_id           INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    name                VARCHAR(255)   NOT NULL,
+    description         TEXT           NOT NULL DEFAULT '',
+    workspace_path      TEXT,
+    code_dir            TEXT,
+    default_provider    VARCHAR(50)    NOT NULL DEFAULT 'claude',
+    git_branch          VARCHAR(100)   DEFAULT 'main',
+    git_username        TEXT,
+    git_email           TEXT,
+    github_repo         TEXT,
+    github_client_id    TEXT,
+    auto_commit_push    BOOLEAN        NOT NULL DEFAULT FALSE,
+    claude_cli_support  BOOLEAN        NOT NULL DEFAULT FALSE,
+    cursor_support      BOOLEAN        NOT NULL DEFAULT FALSE,
+    enabled_providers   JSONB          NOT NULL DEFAULT '[]',
+    active_workflows    JSONB          NOT NULL DEFAULT '[]',
+    extra               JSONB          NOT NULL DEFAULT '{}',
+    is_active           BOOLEAN        NOT NULL DEFAULT TRUE,
+    created_at          TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    UNIQUE(client_id, name)
+);
+INSERT INTO mng_projects (client_id, name, description)
+VALUES (1, '_global', 'Global scope — agent roles and shared templates')
+ON CONFLICT (client_id, name) DO NOTHING;
+CREATE INDEX IF NOT EXISTS idx_mng_projects_client ON mng_projects(client_id);
+
+-- mng_user_projects: user ↔ project membership with role
+CREATE TABLE IF NOT EXISTS mng_user_projects (
+    user_id     VARCHAR(36)  NOT NULL REFERENCES mng_users(id) ON DELETE CASCADE,
+    project_id  INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    role        VARCHAR(20)  NOT NULL DEFAULT 'member',
+    joined_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, project_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mng_user_projects_proj ON mng_user_projects(project_id);
+
+-- Session tags per project (fresh install: project_id; migration handles existing)
 CREATE TABLE IF NOT EXISTS mng_session_tags (
     id         SERIAL       PRIMARY KEY,
     client_id  INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project    VARCHAR(255) NOT NULL,
+    project_id INT          NOT NULL REFERENCES mng_projects(id),
     phase      VARCHAR(50),
     feature    VARCHAR(255),
     bug_ref    VARCHAR(255),
     extra      JSONB        NOT NULL DEFAULT '{}',
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE(client_id, project)
+    UNIQUE(project_id)
 );
-CREATE INDEX IF NOT EXISTS idx_mst_cp ON mng_session_tags(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mst_pid ON mng_session_tags(project_id);
 
--- Agent roles per client+project (templates + custom)
+-- Agent roles per project (fresh install: project_id; migration handles existing)
 CREATE TABLE IF NOT EXISTS mng_agent_roles (
     id            SERIAL       PRIMARY KEY,
     client_id     INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project       VARCHAR(100) NOT NULL DEFAULT '_global',
+    project_id    INT          NOT NULL REFERENCES mng_projects(id),
     name          VARCHAR(255) NOT NULL,
     description   TEXT         NOT NULL DEFAULT '',
     system_prompt TEXT         NOT NULL DEFAULT '',
@@ -187,9 +239,6 @@ ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS auto_commit     BOOLEAN    
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS tools           JSONB        DEFAULT '[]';
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS react           BOOLEAN      NOT NULL DEFAULT TRUE;
 ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS max_iterations  INT          NOT NULL DEFAULT 10;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mar_cid_proj_name
-    ON mng_agent_roles(client_id, project, name);
-CREATE INDEX IF NOT EXISTS idx_mar_cp ON mng_agent_roles(client_id, project);
 
 -- Agent role version history
 CREATE TABLE IF NOT EXISTS mng_agent_role_versions (
@@ -229,6 +278,62 @@ CREATE TABLE IF NOT EXISTS mng_role_system_links (
 );
 CREATE INDEX IF NOT EXISTS idx_mrsl_role   ON mng_role_system_links(role_id);
 CREATE INDEX IF NOT EXISTS idx_mrsl_sysrol ON mng_role_system_links(system_role_id);
+
+-- ── Migration: mng_session_tags project TEXT → project_id INT FK ─────────────
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='mng_session_tags' AND column_name='project'
+  ) THEN
+    INSERT INTO mng_projects(client_id, name)
+    SELECT DISTINCT client_id, project FROM mng_session_tags
+    ON CONFLICT (client_id, name) DO NOTHING;
+    ALTER TABLE mng_session_tags ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE mng_session_tags t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE mng_session_tags ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE mng_session_tags ADD CONSTRAINT fk_mst_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_mst_cp;
+    BEGIN
+      ALTER TABLE mng_session_tags DROP CONSTRAINT IF EXISTS mng_session_tags_client_id_project_key;
+    EXCEPTION WHEN undefined_object THEN NULL; END;
+    ALTER TABLE mng_session_tags DROP COLUMN IF EXISTS project;
+    BEGIN
+      ALTER TABLE mng_session_tags ADD CONSTRAINT mng_session_tags_project_id_key UNIQUE(project_id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_mst_pid ON mng_session_tags(project_id);
+
+-- ── Migration: mng_agent_roles project TEXT → project_id INT FK ─────────────
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='mng_agent_roles' AND column_name='project'
+  ) THEN
+    INSERT INTO mng_projects(client_id, name)
+    SELECT DISTINCT client_id, project FROM mng_agent_roles
+    ON CONFLICT (client_id, name) DO NOTHING;
+    ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE mng_agent_roles t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE mng_agent_roles ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE mng_agent_roles ADD CONSTRAINT fk_mar_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_mar_cid_proj_name;
+    DROP INDEX IF EXISTS idx_mar_cp;
+    ALTER TABLE mng_agent_roles DROP COLUMN IF EXISTS project;
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mar_pid_name ON mng_agent_roles(project_id, name);
+CREATE INDEX IF NOT EXISTS idx_mar_pid ON mng_agent_roles(project_id);
 """
 
 # ─── DDL: pr_* flat project tables (15) ──────────────────────────────────────
@@ -241,7 +346,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id    INT           NOT NULL REFERENCES mng_clients(id),
-    project      VARCHAR(255)  NOT NULL,
+    project_id   INT           NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     session_id   TEXT,
     source_id    TEXT,
     prompt       TEXT          NOT NULL DEFAULT '',
@@ -249,9 +354,9 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     tags         JSONB         NOT NULL DEFAULT '{}',
     created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS        idx_mmrr_p_cp      ON mem_mrr_prompts(client_id, project);
+CREATE INDEX IF NOT EXISTS        idx_mmrr_p_pid     ON mem_mrr_prompts(project_id);
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(client_id, project, source_id) WHERE source_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(project_id, source_id) WHERE source_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC);
 CREATE INDEX IF NOT EXISTS        idx_mmrr_p_tags    ON mem_mrr_prompts USING gin(tags);
 
@@ -259,7 +364,7 @@ CREATE INDEX IF NOT EXISTS        idx_mmrr_p_tags    ON mem_mrr_prompts USING gi
 CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     commit_hash  VARCHAR(64)    PRIMARY KEY,
     client_id    INT            NOT NULL REFERENCES mng_clients(id),
-    project      VARCHAR(255)   NOT NULL,
+    project_id   INT            NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     commit_msg   TEXT           NOT NULL DEFAULT '',
     summary      TEXT           NOT NULL DEFAULT '',
     diff_summary TEXT           NOT NULL DEFAULT '',
@@ -269,7 +374,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     committed_at TIMESTAMPTZ,
     created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_cp       ON mem_mrr_commits(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid      ON mem_mrr_commits(project_id);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm     ON mem_mrr_commits(committed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_session  ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt   ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
@@ -279,7 +384,7 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags     ON mem_mrr_commits USING gin(tags
 CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id           INT           NOT NULL REFERENCES mng_clients(id),
-    project             VARCHAR(255)  NOT NULL,
+    project_id          INT           NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     category_name       TEXT          NOT NULL,
     name                TEXT          NOT NULL,
     description         TEXT          NOT NULL DEFAULT '',
@@ -296,9 +401,9 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     embedding           VECTOR(1536),
-    UNIQUE(client_id, project, category_name, name)
+    UNIQUE(project_id, category_name, name)
 );
-CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cp     ON mem_ai_work_items(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid    ON mem_ai_work_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat    ON mem_ai_work_items(category_name);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_status ON mem_ai_work_items(status);
 
@@ -306,34 +411,33 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_status ON mem_ai_work_items(status);
 CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id        INT           NOT NULL REFERENCES mng_clients(id),
-    project          VARCHAR(255)  NOT NULL,
+    project_id       INT           NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     fact_key         TEXT          NOT NULL,
     fact_value       TEXT          NOT NULL,
-    category         TEXT          DEFAULT NULL,   -- 'stack'|'pattern'|'convention'|'constraint'|'client'
+    category         TEXT          DEFAULT NULL,
     valid_from       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     valid_until      TIMESTAMPTZ,
-    source_memory_id UUID,         -- historical reference
-    conflict_status  TEXT          DEFAULT NULL,   -- NULL|'ok'|'superseded'|'pending_review'
+    source_memory_id UUID,
+    conflict_status  TEXT          DEFAULT NULL,
     embedding        VECTOR(1536)
 );
-CREATE INDEX IF NOT EXISTS        idx_mem_ai_pf_cp      ON mem_ai_project_facts(client_id, project) WHERE valid_until IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_ai_pf_current ON mem_ai_project_facts(client_id, project, fact_key) WHERE valid_until IS NULL;
+CREATE INDEX IF NOT EXISTS        idx_mem_ai_pf_pid     ON mem_ai_project_facts(project_id) WHERE valid_until IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_ai_pf_current ON mem_ai_project_facts(project_id, fact_key) WHERE valid_until IS NULL;
 
 -- Graph workflow definitions
 CREATE TABLE IF NOT EXISTS pr_graph_workflows (
     id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id      INT            NOT NULL REFERENCES mng_clients(id),
-    project        VARCHAR(255)   NOT NULL,
+    project_id     INT            NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     name           VARCHAR(255)   NOT NULL,
     description    TEXT           NOT NULL DEFAULT '',
     max_iterations INTEGER        NOT NULL DEFAULT 3,
     log_directory  TEXT           NOT NULL DEFAULT '',
     created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-    UNIQUE(client_id, project, name)
+    UNIQUE(project_id, name)
 );
-ALTER TABLE pr_graph_workflows ADD COLUMN IF NOT EXISTS log_directory TEXT NOT NULL DEFAULT '';
-CREATE INDEX IF NOT EXISTS idx_pr_gw_cp ON pr_graph_workflows(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_pr_gw_pid ON pr_graph_workflows(project_id);
 
 -- Graph nodes (LLM steps; scoped via workflow FK)
 CREATE TABLE IF NOT EXISTS pr_graph_nodes (
@@ -391,7 +495,7 @@ CREATE INDEX IF NOT EXISTS idx_pr_ge_workflow ON pr_graph_edges(workflow_id);
 CREATE TABLE IF NOT EXISTS pr_graph_runs (
     id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id      INT            NOT NULL REFERENCES mng_clients(id),
-    project        VARCHAR(255)   NOT NULL,
+    project_id     INT            NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     workflow_id    UUID           NOT NULL REFERENCES pr_graph_workflows(id) ON DELETE CASCADE,
     status         VARCHAR(50)    NOT NULL DEFAULT 'running',
     user_input     TEXT           NOT NULL DEFAULT '',
@@ -402,7 +506,7 @@ CREATE TABLE IF NOT EXISTS pr_graph_runs (
     error          TEXT,
     current_node   TEXT           DEFAULT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_pr_gr_cp       ON pr_graph_runs(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_pr_gr_pid      ON pr_graph_runs(project_id);
 CREATE INDEX IF NOT EXISTS idx_pr_gr_workflow ON pr_graph_runs(workflow_id);
 ALTER TABLE pr_graph_runs ADD COLUMN IF NOT EXISTS current_node TEXT DEFAULT NULL;
 
@@ -427,14 +531,13 @@ CREATE INDEX IF NOT EXISTS idx_pr_gnr_node ON pr_graph_node_results(node_id);
 
 -- Sequential ID counters (atomic per project+category)
 CREATE TABLE IF NOT EXISTS pr_seq_counters (
-    client_id INT          NOT NULL REFERENCES mng_clients(id),
-    project   VARCHAR(255) NOT NULL,
-    category  VARCHAR(100) NOT NULL,
-    next_val  INT          NOT NULL DEFAULT 10000,
-    PRIMARY KEY (client_id, project, category)
+    project_id INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    category   VARCHAR(100) NOT NULL,
+    next_val   INT          NOT NULL DEFAULT 10000,
+    PRIMARY KEY (project_id, category)
 );
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS seq_num INT;
-CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq ON mem_ai_work_items(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL;
 
 """
 
@@ -458,7 +561,7 @@ CREATE TABLE IF NOT EXISTS mng_tags_categories (
 CREATE TABLE IF NOT EXISTS planner_tags (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id           INT         NOT NULL REFERENCES mng_clients(id),
-    project             TEXT        NOT NULL,
+    project_id          INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     name                TEXT        NOT NULL,
     category_id         INT         REFERENCES mng_tags_categories(id),
     parent_id           UUID        REFERENCES planner_tags(id),
@@ -483,9 +586,9 @@ CREATE TABLE IF NOT EXISTS planner_tags (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     embedding           VECTOR(1536),
-    UNIQUE(client_id, project, name, category_id)
+    UNIQUE(project_id, name, category_id)
 );
-CREATE INDEX IF NOT EXISTS idx_planner_tags_cp     ON planner_tags(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_planner_tags_pid    ON planner_tags(project_id);
 CREATE INDEX IF NOT EXISTS idx_planner_tags_parent ON planner_tags(parent_id);
 CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
 
@@ -493,7 +596,7 @@ CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
 CREATE TABLE IF NOT EXISTS mem_mrr_items (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project     VARCHAR(255) NOT NULL,
+    project_id  INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     item_type   TEXT         NOT NULL,
     title       TEXT,
     meeting_at  TIMESTAMPTZ,
@@ -503,7 +606,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_items (
     tags        JSONB        NOT NULL DEFAULT '{}',
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_mmrr_items_cp   ON mem_mrr_items(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mmrr_items_pid  ON mem_mrr_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_type ON mem_mrr_items(item_type);
 CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags     ON mem_mrr_items USING gin(tags);
 
@@ -511,7 +614,7 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags     ON mem_mrr_items USING gin(tags);
 CREATE TABLE IF NOT EXISTS mem_mrr_messages (
     id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id  INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project    VARCHAR(255) NOT NULL,
+    project_id INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     platform   TEXT         NOT NULL,
     channel    TEXT,
     thread_ref TEXT,
@@ -520,30 +623,30 @@ CREATE TABLE IF NOT EXISTS mem_mrr_messages (
     tags       JSONB        NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_mmrr_messages_cp   ON mem_mrr_messages(client_id, project);
-CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags        ON mem_mrr_messages USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_messages_pid ON mem_mrr_messages(project_id);
+CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING gin(tags);
 
 -- ── Embedding / AI events table ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS mem_ai_events (
     id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project      VARCHAR(255) NOT NULL,
-    event_type   TEXT         NOT NULL,   -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
-    source_id    TEXT         NOT NULL,   -- UUID, commit hash, or session_id
+    project_id   INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    event_type   TEXT         NOT NULL,
+    source_id    TEXT         NOT NULL,
     session_id   TEXT,
     chunk        INT          NOT NULL DEFAULT 0,
-    chunk_type   TEXT         NOT NULL DEFAULT 'full',  -- 'full'|'section'|'function'|'diff_file'
+    chunk_type   TEXT         NOT NULL DEFAULT 'full',
     content      TEXT         NOT NULL,
-    summary      TEXT,                        -- Haiku digest or session summary bullets
-    action_items TEXT         NOT NULL DEFAULT '',   -- bullets for open threads + next steps (all event types)
-    tags         JSONB        NOT NULL DEFAULT '{}',  -- unified classification+metadata dict
+    summary      TEXT,
+    action_items TEXT         NOT NULL DEFAULT '',
+    tags         JSONB        NOT NULL DEFAULT '{}',
     importance   SMALLINT     NOT NULL DEFAULT 1,
     processed_at TIMESTAMPTZ,
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     embedding    VECTOR(1536),
-    UNIQUE(client_id, project, event_type, source_id, chunk)
+    UNIQUE(project_id, event_type, source_id, chunk)
 );
-CREATE INDEX IF NOT EXISTS idx_mem_ai_events_cp      ON mem_ai_events(client_id, project);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pid     ON mem_ai_events(project_id);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_session ON mem_ai_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_type    ON mem_ai_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pending ON mem_ai_events(processed_at) WHERE processed_at IS NULL;
@@ -737,6 +840,277 @@ ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS diff_details;
 -- pipeline can avoid re-processing already-handled events.
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS source_event_id UUID;
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS source_session_id TEXT;
+-- ── 010_project_ids: migrate all remaining tables project TEXT → project_id INT FK ─
+-- Collects distinct (client_id, project) from each table into mng_projects,
+-- then: ADD project_id, UPDATE from join, SET NOT NULL, ADD FK, DROP project.
+-- Each block is wrapped in IF EXISTS so it is fully idempotent.
+DO $$ DECLARE tbl TEXT;
+BEGIN
+  FOR tbl IN VALUES ('mem_mrr_prompts'),('mem_mrr_commits'),('mem_mrr_items'),
+                    ('mem_mrr_messages'),('mem_ai_events'),('mem_ai_work_items'),
+                    ('mem_ai_project_facts'),('pr_graph_workflows'),('pr_graph_runs'),
+                    ('planner_tags')
+  LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema='public' AND table_name=tbl AND column_name='project') THEN
+      EXECUTE format(
+        'INSERT INTO mng_projects(client_id, name)
+         SELECT DISTINCT client_id, project FROM %I
+         ON CONFLICT (client_id, name) DO NOTHING', tbl);
+    END IF;
+  END LOOP;
+END $$;
+
+-- mem_mrr_prompts
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='mem_mrr_prompts' AND column_name='project') THEN
+    ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE mem_mrr_prompts t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE mem_mrr_prompts ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE mem_mrr_prompts ADD CONSTRAINT fk_mrr_prompts_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_mmrr_p_cp;
+    DROP INDEX IF EXISTS idx_mmrr_p_source;
+    ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS project;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source ON mem_mrr_prompts(project_id, source_id) WHERE source_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_mmrr_p_pid ON mem_mrr_prompts(project_id);
+  END IF;
+END $$;
+
+-- mem_mrr_commits
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='mem_mrr_commits' AND column_name='project') THEN
+    ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE mem_mrr_commits t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE mem_mrr_commits ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE mem_mrr_commits ADD CONSTRAINT fk_mrr_commits_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_mmrr_c_cp;
+    ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS project;
+    CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid ON mem_mrr_commits(project_id);
+  END IF;
+END $$;
+
+-- mem_mrr_items
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='mem_mrr_items' AND column_name='project') THEN
+    ALTER TABLE mem_mrr_items ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE mem_mrr_items t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE mem_mrr_items ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE mem_mrr_items ADD CONSTRAINT fk_mrr_items_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_mmrr_items_cp;
+    ALTER TABLE mem_mrr_items DROP COLUMN IF EXISTS project;
+    CREATE INDEX IF NOT EXISTS idx_mmrr_items_pid ON mem_mrr_items(project_id);
+  END IF;
+END $$;
+
+-- mem_mrr_messages
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='mem_mrr_messages' AND column_name='project') THEN
+    ALTER TABLE mem_mrr_messages ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE mem_mrr_messages t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE mem_mrr_messages ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE mem_mrr_messages ADD CONSTRAINT fk_mrr_messages_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_mmrr_messages_cp;
+    ALTER TABLE mem_mrr_messages DROP COLUMN IF EXISTS project;
+    CREATE INDEX IF NOT EXISTS idx_mmrr_messages_pid ON mem_mrr_messages(project_id);
+  END IF;
+END $$;
+
+-- mem_ai_events
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='mem_ai_events' AND column_name='project') THEN
+    ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE mem_ai_events t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE mem_ai_events ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE mem_ai_events ADD CONSTRAINT fk_ai_events_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_mem_ai_events_cp;
+    BEGIN
+      ALTER TABLE mem_ai_events DROP CONSTRAINT IF EXISTS mem_ai_events_client_id_project_event_type_source_id_chunk_key;
+    EXCEPTION WHEN undefined_object THEN NULL; END;
+    ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS project;
+    BEGIN
+      ALTER TABLE mem_ai_events ADD CONSTRAINT mem_ai_events_pid_etype_src_chunk_key
+        UNIQUE(project_id, event_type, source_id, chunk);
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pid ON mem_ai_events(project_id);
+  END IF;
+END $$;
+
+-- mem_ai_work_items
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='mem_ai_work_items' AND column_name='project') THEN
+    ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE mem_ai_work_items t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE mem_ai_work_items ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE mem_ai_work_items ADD CONSTRAINT fk_ai_wi_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_mem_ai_wi_cp;
+    DROP INDEX IF EXISTS idx_mem_ai_wi_seq;
+    BEGIN
+      ALTER TABLE mem_ai_work_items DROP CONSTRAINT IF EXISTS mem_ai_work_items_client_id_project_category_name_name_key;
+    EXCEPTION WHEN undefined_object THEN NULL; END;
+    ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS project;
+    BEGIN
+      ALTER TABLE mem_ai_work_items ADD CONSTRAINT mem_ai_wi_pid_cat_name_key
+        UNIQUE(project_id, category_name, name);
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid ON mem_ai_work_items(project_id);
+    CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL;
+  END IF;
+END $$;
+
+-- mem_ai_project_facts
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='mem_ai_project_facts' AND column_name='project') THEN
+    ALTER TABLE mem_ai_project_facts ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE mem_ai_project_facts t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE mem_ai_project_facts ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE mem_ai_project_facts ADD CONSTRAINT fk_ai_pf_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_mem_ai_pf_cp;
+    DROP INDEX IF EXISTS idx_mem_ai_pf_current;
+    ALTER TABLE mem_ai_project_facts DROP COLUMN IF EXISTS project;
+    CREATE INDEX IF NOT EXISTS idx_mem_ai_pf_pid ON mem_ai_project_facts(project_id) WHERE valid_until IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_ai_pf_current ON mem_ai_project_facts(project_id, fact_key) WHERE valid_until IS NULL;
+  END IF;
+END $$;
+
+-- pr_graph_workflows
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='pr_graph_workflows' AND column_name='project') THEN
+    ALTER TABLE pr_graph_workflows ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE pr_graph_workflows t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE pr_graph_workflows ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE pr_graph_workflows ADD CONSTRAINT fk_gw_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_pr_gw_cp;
+    BEGIN
+      ALTER TABLE pr_graph_workflows DROP CONSTRAINT IF EXISTS pr_graph_workflows_client_id_project_name_key;
+    EXCEPTION WHEN undefined_object THEN NULL; END;
+    ALTER TABLE pr_graph_workflows DROP COLUMN IF EXISTS project;
+    BEGIN
+      ALTER TABLE pr_graph_workflows ADD CONSTRAINT pr_gw_pid_name_key UNIQUE(project_id, name);
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    CREATE INDEX IF NOT EXISTS idx_pr_gw_pid ON pr_graph_workflows(project_id);
+  END IF;
+END $$;
+
+-- pr_graph_runs
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='pr_graph_runs' AND column_name='project') THEN
+    ALTER TABLE pr_graph_runs ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE pr_graph_runs t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE pr_graph_runs ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE pr_graph_runs ADD CONSTRAINT fk_gr_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_pr_gr_cp;
+    ALTER TABLE pr_graph_runs DROP COLUMN IF EXISTS project;
+    CREATE INDEX IF NOT EXISTS idx_pr_gr_pid ON pr_graph_runs(project_id);
+  END IF;
+END $$;
+
+-- planner_tags
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='planner_tags' AND column_name='project') THEN
+    ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE planner_tags t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE planner_tags ALTER COLUMN project_id SET NOT NULL;
+    BEGIN
+      ALTER TABLE planner_tags ADD CONSTRAINT fk_pt_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    DROP INDEX IF EXISTS idx_planner_tags_cp;
+    BEGIN
+      ALTER TABLE planner_tags DROP CONSTRAINT IF EXISTS planner_tags_client_id_project_name_key;
+      ALTER TABLE planner_tags DROP CONSTRAINT IF EXISTS planner_tags_project_name_cat_key;
+    EXCEPTION WHEN undefined_object THEN NULL; END;
+    ALTER TABLE planner_tags DROP COLUMN IF EXISTS project;
+    BEGIN
+      ALTER TABLE planner_tags ADD CONSTRAINT planner_tags_pid_name_cat_key
+        UNIQUE(project_id, name, category_id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    CREATE INDEX IF NOT EXISTS idx_planner_tags_pid ON planner_tags(project_id);
+  END IF;
+END $$;
+
+-- pr_seq_counters (special: PK includes project)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='pr_seq_counters' AND column_name='project') THEN
+    -- Collect projects first
+    INSERT INTO mng_projects(client_id, name)
+    SELECT DISTINCT client_id, project FROM pr_seq_counters
+    ON CONFLICT (client_id, name) DO NOTHING;
+    ALTER TABLE pr_seq_counters ADD COLUMN IF NOT EXISTS project_id INT;
+    UPDATE pr_seq_counters t SET project_id = p.id
+      FROM mng_projects p WHERE p.name = t.project AND p.client_id = t.client_id
+      WHERE t.project_id IS NULL;
+    ALTER TABLE pr_seq_counters ALTER COLUMN project_id SET NOT NULL;
+    -- Drop old PK (which included project) then drop column
+    ALTER TABLE pr_seq_counters DROP CONSTRAINT IF EXISTS pr_seq_counters_pkey;
+    ALTER TABLE pr_seq_counters DROP COLUMN IF EXISTS project;
+    -- Add new PK and FK
+    BEGIN
+      ALTER TABLE pr_seq_counters ADD PRIMARY KEY (project_id, category);
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN
+      ALTER TABLE pr_seq_counters ADD CONSTRAINT fk_seq_proj
+        FOREIGN KEY (project_id) REFERENCES mng_projects(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+  END IF;
+END $$;
 """
 
 
@@ -1096,16 +1470,26 @@ class _Database:
             import json as _json
             from psycopg2.extras import execute_values
             with conn.cursor() as cur:
+                # Resolve _global project_id
+                cur.execute(
+                    "SELECT id FROM mng_projects WHERE client_id=1 AND name='_global'"
+                )
+                _global_row = cur.fetchone()
+                if not _global_row:
+                    log.warning("_global project not found — skipping agent role seed")
+                    return
+                global_pid = _global_row[0]
+
                 # Batch all roles into one INSERT (single round trip)
                 rows = [
-                    (1, "_global", name, desc, prompt, provider, model, role_type,
+                    (global_pid, name, desc, prompt, provider, model, role_type,
                      auto_commit, _json.dumps(tools), react, max_iter)
                     for (name, desc, prompt, provider, model, role_type,
                          auto_commit, tools, react, max_iter) in _ROLES
                 ]
                 # Append internal fact-extraction role
                 rows.append((
-                    1, "_global", "internal_project_fact",
+                    global_pid, "internal_project_fact",
                     "Internal: extracts durable architectural facts from memory summaries.",
                     _INTERNAL_FACT_PROMPT, "claude", "claude-haiku-4-5-20251001",
                     "internal", False, "[]", False, 5,
@@ -1113,11 +1497,11 @@ class _Database:
                 execute_values(
                     cur,
                     """INSERT INTO mng_agent_roles
-                           (client_id, project, name, description, system_prompt,
+                           (project_id, name, description, system_prompt,
                             provider, model, role_type, auto_commit,
                             tools, react, max_iterations)
                        VALUES %s
-                       ON CONFLICT (client_id, project, name) DO UPDATE SET
+                       ON CONFLICT (project_id, name) DO UPDATE SET
                            description    = EXCLUDED.description,
                            system_prompt  = EXCLUDED.system_prompt,
                            provider       = EXCLUDED.provider,
@@ -1163,6 +1547,16 @@ class _Database:
         if not templates_dir.exists():
             return
 
+        # Look up _global project_id once, before iterating YAML files
+        cur.execute(
+            "SELECT id FROM mng_projects WHERE client_id=1 AND name='_global'"
+        )
+        _row = cur.fetchone()
+        if not _row:
+            log.debug("_global project not found — skipping YAML role seed")
+            return
+        global_pid = _row[0]
+
         for yaml_path in sorted(templates_dir.glob("*.yaml")):
             try:
                 data = _yaml.safe_load(yaml_path.read_text())
@@ -1184,11 +1578,11 @@ class _Database:
 
                 cur.execute(
                     """INSERT INTO mng_agent_roles
-                           (client_id, project, name, description, system_prompt,
+                           (project_id, name, description, system_prompt,
                             provider, model, role_type, auto_commit,
                             tools, react, max_iterations, inputs, outputs)
-                       VALUES (1, '_global', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                       ON CONFLICT (client_id, project, name) DO UPDATE SET
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT (project_id, name) DO UPDATE SET
                            description    = EXCLUDED.description,
                            system_prompt  = EXCLUDED.system_prompt,
                            provider       = EXCLUDED.provider,
@@ -1201,7 +1595,7 @@ class _Database:
                            inputs         = EXCLUDED.inputs,
                            outputs        = EXCLUDED.outputs,
                            updated_at     = NOW()""",
-                    (name, description, system_prompt, provider, model,
+                    (global_pid, name, description, system_prompt, provider, model,
                      role_type, auto_commit, tools, react, max_it, inputs, outputs),
                 )
                 log.debug(f"YAML role upserted: '{name}' ({yaml_path.name})")
@@ -1607,6 +2001,75 @@ class _Database:
                 )
         conn.commit()
         log.debug(f"✅ memory prompts YAML seeded ({len(data)} entries)")
+
+    # ── Project ID helpers ─────────────────────────────────────────────────────
+
+    def get_project_id(self, name: str, client_id: int = 1) -> int | None:
+        """Resolve project name → project_id (module-level cache). Returns None if not found."""
+        key = (client_id, name)
+        if key in _PROJECT_ID_CACHE:
+            return _PROJECT_ID_CACHE[key]
+        if not self.is_available():
+            return None
+        try:
+            with self.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT id FROM mng_projects WHERE client_id=%s AND name=%s",
+                        (client_id, name),
+                    )
+                    row = cur.fetchone()
+            if row:
+                _PROJECT_ID_CACHE[key] = row[0]
+                return row[0]
+        except Exception as e:
+            log.debug(f"get_project_id({name!r}) failed: {e}")
+        return None
+
+    def get_or_create_project_id(
+        self,
+        name: str,
+        client_id: int = 1,
+        config: dict | None = None,
+    ) -> int:
+        """Resolve or create project, returning project_id.
+
+        On first call for a name, upserts a row in mng_projects and caches the ID.
+        Subsequent calls return from cache.
+        """
+        pid = self.get_project_id(name, client_id)
+        if pid is not None:
+            return pid
+        cfg = config or {}
+        params = {
+            "client_id": client_id,
+            "name": name,
+            "description": cfg.get("description", ""),
+            "code_dir": cfg.get("code_dir"),
+            "default_provider": cfg.get("default_provider", "claude"),
+            "workspace_path": str(_workspace() / name),
+        }
+        with self.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO mng_projects
+                           (client_id, name, description, code_dir, default_provider, workspace_path)
+                       VALUES (%(client_id)s, %(name)s, %(description)s, %(code_dir)s,
+                               %(default_provider)s, %(workspace_path)s)
+                       ON CONFLICT (client_id, name) DO UPDATE SET
+                           description      = COALESCE(EXCLUDED.description, mng_projects.description),
+                           code_dir         = COALESCE(EXCLUDED.code_dir, mng_projects.code_dir),
+                           updated_at       = NOW()
+                       RETURNING id""",
+                    params,
+                )
+                pid = cur.fetchone()[0]
+        _PROJECT_ID_CACHE[(client_id, name)] = pid
+        return pid
+
+    def invalidate_project_cache(self, name: str, client_id: int = 1) -> None:
+        """Remove a project from the cache (call after rename or delete)."""
+        _PROJECT_ID_CACHE.pop((client_id, name), None)
 
     @staticmethod
     def _seed_client_defaults(client_id: int, conn) -> None:

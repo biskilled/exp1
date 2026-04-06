@@ -155,6 +155,7 @@ def _handle_search_memory(args: dict) -> str:
     try:
         from core.database import db
         if db.is_available():
+            project_id = db.get_or_create_project_id(project)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     # ── Vector search (primary) ───────────────────────────
@@ -165,22 +166,22 @@ def _handle_search_memory(args: dict) -> str:
                             cur.execute(
                                 """SELECT me.event_type, me.content, me.summary, me.created_at
                                    FROM mem_ai_events me
-                                   WHERE me.client_id=1 AND me.project=%s
+                                   WHERE me.project_id=%s
                                      AND me.embedding IS NOT NULL
                                      AND %s = ANY(me.summary_tags)
                                    ORDER BY me.embedding <=> %s::vector
                                    LIMIT %s""",
-                                (project, feature, vs, limit),
+                                (project_id, feature, vs, limit),
                             )
                         else:
                             cur.execute(
                                 """SELECT event_type, content, summary, created_at
                                    FROM mem_ai_events
-                                   WHERE client_id=1 AND project=%s
+                                   WHERE project_id=%s
                                      AND embedding IS NOT NULL
                                    ORDER BY embedding <=> %s::vector
                                    LIMIT %s""",
-                                (project, vs, limit),
+                                (project_id, vs, limit),
                             )
                         rows = cur.fetchall()
                         for row in rows:
@@ -194,20 +195,20 @@ def _handle_search_memory(args: dict) -> str:
                             cur.execute(
                                 """SELECT me.event_type, me.content, me.summary, me.created_at
                                    FROM mem_ai_events me
-                                   WHERE me.client_id=1 AND me.project=%s
+                                   WHERE me.project_id=%s
                                      AND me.content ILIKE %s
                                      AND %s = ANY(me.summary_tags)
                                    ORDER BY me.created_at DESC LIMIT %s""",
-                                (project, f"%{query}%", feature, limit),
+                                (project_id, f"%{query}%", feature, limit),
                             )
                         else:
                             cur.execute(
                                 """SELECT event_type, content, summary, created_at
                                    FROM mem_ai_events
-                                   WHERE client_id=1 AND project=%s
+                                   WHERE project_id=%s
                                      AND content ILIKE %s
                                    ORDER BY created_at DESC LIMIT %s""",
-                                (project, f"%{query}%", limit),
+                                (project_id, f"%{query}%", limit),
                             )
                         for row in cur.fetchall():
                             ts = row[3].strftime("%Y-%m-%d") if row[3] else "?"
@@ -255,24 +256,25 @@ def _handle_get_recent_history(args: dict) -> str:
     try:
         from core.database import db
         if db.is_available():
+            project_id = db.get_or_create_project_id(project)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     if feature:
                         cur.execute(
                             """SELECT p.prompt, p.response, p.created_at
                                FROM mem_mrr_prompts p
-                               WHERE p.client_id=1 AND p.project=%s
+                               WHERE p.project_id=%s
                                  AND %s = ANY(p.tags)
                                ORDER BY p.created_at DESC LIMIT %s""",
-                            (project, f"feature:{feature}", limit),
+                            (project_id, f"feature:{feature}", limit),
                         )
                     else:
                         cur.execute(
                             """SELECT prompt, response, created_at
                                FROM mem_mrr_prompts
-                               WHERE client_id=1 AND project=%s
+                               WHERE project_id=%s
                                ORDER BY created_at DESC LIMIT %s""",
-                            (project, limit),
+                            (project_id, limit),
                         )
                     for row in cur.fetchall():
                         ts = row[2].strftime("%Y-%m-%d %H:%M") if row[2] else "?"
@@ -311,13 +313,14 @@ def _handle_get_project_facts(args: dict) -> str:
     try:
         from core.database import db
         if db.is_available():
+            project_id = db.get_or_create_project_id(project)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """SELECT fact_key, fact_value, category FROM mem_ai_project_facts
-                           WHERE client_id=1 AND project=%s AND valid_until IS NULL
+                           WHERE project_id=%s AND valid_until IS NULL
                            ORDER BY category NULLS LAST, fact_key""",
-                        (project,),
+                        (project_id,),
                     )
                     rows = cur.fetchall()
                     if rows:
@@ -365,6 +368,7 @@ def _handle_get_tag_context(args: dict) -> str:
         if not db.is_available():
             return "Database not available."
 
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # ── Tag + meta ────────────────────────────────────────────
@@ -374,9 +378,9 @@ def _handle_get_tag_context(args: dict) -> str:
                               t.short_desc, t.requirements, t.due_date, t.priority
                        FROM planner_tags t
                        LEFT JOIN mng_tags_categories c ON c.id = t.category_id
-                       WHERE t.client_id=1 AND t.project=%s AND t.name=%s
+                       WHERE t.project_id=%s AND t.name=%s
                        LIMIT 1""",
-                    (project, tag_name),
+                    (project_id, tag_name),
                 )
                 tag_row = cur.fetchone()
                 if not tag_row:
@@ -398,9 +402,9 @@ def _handle_get_tag_context(args: dict) -> str:
                 cur.execute(
                     """SELECT requirements, action_items, design, code_summary, updated_at
                        FROM planner_tags
-                       WHERE client_id=1 AND project=%s AND id=%s::uuid
+                       WHERE project_id=%s AND id=%s::uuid
                        LIMIT 1""",
-                    (project, tag_id),
+                    (project_id, tag_id),
                 )
                 snap = cur.fetchone()
                 if snap:
@@ -424,10 +428,10 @@ def _handle_get_tag_context(args: dict) -> str:
                 cur.execute(
                     """SELECT e.event_type, e.content, e.summary, e.created_at
                        FROM mem_ai_events e
-                       WHERE e.client_id=1 AND e.project=%s
+                       WHERE e.project_id=%s
                        ORDER BY e.created_at DESC
                        LIMIT %s""",
-                    (project, limit),
+                    (project_id, limit),
                 )
                 events = cur.fetchall()
                 if events:
@@ -442,9 +446,9 @@ def _handle_get_tag_context(args: dict) -> str:
                     """SELECT name, category_name, lifecycle_status, status,
                               acceptance_criteria, seq_num
                        FROM mem_ai_work_items
-                       WHERE client_id=1 AND project=%s AND name ILIKE %s
+                       WHERE project_id=%s AND name ILIKE %s
                        ORDER BY created_at DESC LIMIT 5""",
-                    (project, f"%{tag_name}%"),
+                    (project_id, f"%{tag_name}%"),
                 )
                 wis = cur.fetchall()
                 if wis:
@@ -495,6 +499,7 @@ def _handle_search_features(args: dict) -> str:
         if not db.is_available():
             return "Database not available."
 
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Vector search first
@@ -506,10 +511,10 @@ def _handle_search_features(args: dict) -> str:
                                   t.updated_at,
                                   1 - (t.embedding <=> %s::vector) AS score
                            FROM planner_tags t
-                           WHERE t.client_id=1 AND t.project=%s AND t.embedding IS NOT NULL
+                           WHERE t.project_id=%s AND t.embedding IS NOT NULL
                            ORDER BY t.embedding <=> %s::vector
                            LIMIT %s""",
-                        (vs, project, vs, limit),
+                        (vs, project_id, vs, limit),
                     )
                 else:
                     # Tag name match fallback
@@ -517,9 +522,9 @@ def _handle_search_features(args: dict) -> str:
                         """SELECT t.name, t.requirements, t.action_items, t.code_summary,
                                   t.updated_at, 1.0 AS score
                            FROM planner_tags t
-                           WHERE t.client_id=1 AND t.project=%s AND t.name ILIKE %s
+                           WHERE t.project_id=%s AND t.name ILIKE %s
                            ORDER BY t.updated_at DESC LIMIT %s""",
-                        (project, f"%{query}%", limit),
+                        (project_id, f"%{query}%", limit),
                     )
                 rows = cur.fetchall()
                 for row in rows:

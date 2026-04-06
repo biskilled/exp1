@@ -31,10 +31,10 @@ from memory.mem_sessions import SessionStore
 
 _SQL_INSERT_INTERACTION = """
     INSERT INTO mem_mrr_prompts
-           (client_id, project, session_id, source_id,
+           (project_id, session_id, source_id,
             prompt, response, tags, created_at)
-       VALUES (1, %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
-       ON CONFLICT (client_id, project, source_id) WHERE source_id IS NOT NULL DO NOTHING
+       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+       ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL DO NOTHING
 """
 
 _SQL_INSERT_TRANSACTION = """
@@ -44,35 +44,35 @@ _SQL_INSERT_TRANSACTION = """
 """
 
 _SQL_GET_SESSION_FEATURE = """
-    SELECT feature FROM mng_session_tags WHERE client_id=1 AND project=%s
+    SELECT feature FROM mng_session_tags WHERE project_id=%s
 """
 
 _SQL_GET_ACTIVE_FEATURES = """
     SELECT t.name FROM planner_tags t
-       JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-       WHERE t.client_id=1 AND t.project=%s AND tc.name='feature' AND t.status='active'
+       JOIN mng_tags_categories tc ON tc.id = t.category_id
+       WHERE t.project_id=%s AND tc.name='feature' AND t.status='active'
        ORDER BY t.name
 """
 
 _SQL_UPSERT_SESSION_FEATURE = """
-    INSERT INTO mng_session_tags (client_id, project, feature)
-       VALUES (1, %s, %s)
-       ON CONFLICT (client_id, project) DO UPDATE SET feature=%s, updated_at=NOW()
+    INSERT INTO mng_session_tags (project_id, feature)
+       VALUES (%s, %s)
+       ON CONFLICT (project_id) DO UPDATE SET feature=%s, updated_at=NOW()
 """
 
 _SQL_GET_WORKFLOW_BY_NAME = """
-    SELECT id, name FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND name=%s
+    SELECT id, name FROM pr_graph_workflows WHERE project_id=%s AND name=%s
 """
 
 _SQL_GET_WORKFLOW_FUZZY = """
     SELECT id, name FROM pr_graph_workflows
-    WHERE client_id=1 AND project=%s AND lower(name) LIKE %s
+    WHERE project_id=%s AND lower(name) LIKE %s
     LIMIT 1
 """
 
 _SQL_INSERT_GRAPH_RUN = """
-    INSERT INTO pr_graph_runs (id, client_id, project, workflow_id, status, user_input)
-    VALUES (%s, 1, %s, %s, 'running', %s)
+    INSERT INTO pr_graph_runs (id, project_id, workflow_id, status, user_input)
+    VALUES (%s, %s, %s, 'running', %s)
 """
 
 _SQL_UPDATE_COMMIT_PHASE = """
@@ -81,7 +81,7 @@ _SQL_UPDATE_COMMIT_PHASE = """
         WHEN %s IS NOT NULL THEN (tags - 'phase') || jsonb_build_object('phase', %s)
         ELSE tags - 'phase'
     END
-    WHERE client_id=1 AND project=%s AND session_id=%s
+    WHERE project_id=%s AND session_id=%s
 """
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -132,13 +132,14 @@ def _append_history(
             tags_dict[prefix] = v
 
     tags_dict["source"] = provider or "aicli"
+    project_id = db.get_or_create_project_id(project)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # mem_mrr_prompts — feeds memory distillation pipeline
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
-                    (project, session_id, ts,
+                    (project_id, session_id, ts,
                      (user_msg or "")[:4000], (response or "")[:8000],
                      _json.dumps(tags_dict), ts),
                 )
@@ -353,10 +354,11 @@ async def _auto_detect_session_feature(
         if len(user_msgs) != 1:
             return
 
+        project_id = db.get_or_create_project_id(project)
         # Guard: skip if session already has a feature tag
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_SESSION_FEATURE, (project,))
+                cur.execute(_SQL_GET_SESSION_FEATURE, (project_id,))
                 row = cur.fetchone()
         if row and row[0]:
             return
@@ -369,7 +371,7 @@ async def _auto_detect_session_feature(
         # Load existing feature names
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_ACTIVE_FEATURES, (project,))
+                cur.execute(_SQL_GET_ACTIVE_FEATURES, (project_id,))
                 features = [r[0] for r in cur.fetchall()]
 
         if not features:
@@ -404,7 +406,7 @@ async def _auto_detect_session_feature(
         # Apply feature to session_tags
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_UPSERT_SESSION_FEATURE, (project, feature_name, feature_name))
+                cur.execute(_SQL_UPSERT_SESSION_FEATURE, (project_id, feature_name, feature_name))
 
         # Also update the session JSON file's feature field
         store = SessionStore(
@@ -431,15 +433,16 @@ async def _handle_run_command(pipeline_name: str, project: str, session_id: str)
 
     import uuid as _uuid
     try:
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_WORKFLOW_BY_NAME, (project, pipeline_name))
+                cur.execute(_SQL_GET_WORKFLOW_BY_NAME, (project_id, pipeline_name))
                 row = cur.fetchone()
         if not row:
             # Try partial/case-insensitive match
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_WORKFLOW_FUZZY, (project, f"%{pipeline_name.lower()}%"))
+                    cur.execute(_SQL_GET_WORKFLOW_FUZZY, (project_id, f"%{pipeline_name.lower()}%"))
                     row = cur.fetchone()
         if not row:
             return f"⚠ No pipeline named **{pipeline_name}** found. Check the Pipelines tab for available flows."
@@ -451,7 +454,7 @@ async def _handle_run_command(pipeline_name: str, project: str, session_id: str)
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_INSERT_GRAPH_RUN,
-                    (run_id, project, workflow_id, f"/run {pipeline_name}"),
+                    (run_id, project_id, workflow_id, f"/run {pipeline_name}"),
                 )
 
         from pipelines.pipeline_graph_runner import run_graph_workflow
@@ -495,12 +498,13 @@ class HookResponseRequest(BaseModel):
 def _count_session_prompts(project: str, session_id: str) -> int:
     """Count how many prompts exist for this session (used for batch trigger)."""
     try:
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) FROM mem_mrr_prompts "
-                    "WHERE client_id=1 AND project=%s AND session_id=%s",
-                    (project, session_id),
+                    "WHERE project_id=%s AND session_id=%s",
+                    (project_id, session_id),
                 )
                 return cur.fetchone()[0]
     except Exception:
@@ -563,11 +567,12 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
         from core.tags import tags_to_dict as _tags_to_dict
         hook_tags = _tags_to_dict(tags_list)
         hook_tags["source"] = body.source or "claude_cli"
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
-                    (project, body.session_id, ts,
+                    (project_id, body.session_id, ts,
                      (body.prompt or "")[:4000], "",
                      _json.dumps(hook_tags), ts),
                 )
@@ -593,15 +598,16 @@ async def hook_update_response(project: str, body: HookResponseRequest):
     if not db.is_available():
         return {"ok": False, "reason": "db_unavailable"}
     try:
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 if body.ts:
                     cur.execute(
                         """UPDATE mem_mrr_prompts SET response = %s
-                           WHERE client_id=1 AND project=%s
+                           WHERE project_id=%s
                              AND source_id = %s AND session_id = %s
                              AND (response IS NULL OR response = '')""",
-                        ((body.response or "")[:8000], project, body.ts, body.session_id),
+                        ((body.response or "")[:8000], project_id, body.ts, body.session_id),
                     )
                 else:
                     # Find latest empty-response row for this session
@@ -609,12 +615,12 @@ async def hook_update_response(project: str, body: HookResponseRequest):
                         """UPDATE mem_mrr_prompts SET response = %s
                            WHERE id = (
                                SELECT id FROM mem_mrr_prompts
-                               WHERE client_id=1 AND project=%s
+                               WHERE project_id=%s
                                  AND session_id = %s
                                  AND (response IS NULL OR response = '')
                                ORDER BY created_at DESC LIMIT 1
                            )""",
-                        ((body.response or "")[:8000], project, body.session_id),
+                        ((body.response or "")[:8000], project_id, body.session_id),
                     )
                 updated = cur.rowcount
         return {"ok": True, "updated": updated}
@@ -803,9 +809,10 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
         import logging as _log
         _logger = _log.getLogger(__name__)
         try:
+            project_id = db.get_or_create_project_id(project)
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_UPDATE_COMMIT_PHASE, (phase, phase, project, session_id))
+                    cur.execute(_SQL_UPDATE_COMMIT_PHASE, (phase, phase, project_id, session_id))
                     c_rows = cur.rowcount
             _logger.info(
                 f"backfill_session_phase: project={project} session={session_id[:8]} "

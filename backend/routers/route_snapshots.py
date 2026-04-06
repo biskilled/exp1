@@ -34,14 +34,14 @@ router = APIRouter()
 
 _SQL_GET_TAG_ID = """
     SELECT id FROM planner_tags
-    WHERE client_id = 1 AND project = %s AND name = %s
+    WHERE project_id = %s AND name = %s
     LIMIT 1
 """
 
 _SQL_GET_MEMORY_EVENTS = """
     SELECT me.id, me.event_type, me.source_id, me.session_id, me.content, me.importance
     FROM mem_ai_events me
-    WHERE me.client_id = 1 AND me.project = %s
+    WHERE me.project_id = %s
     ORDER BY me.created_at
 """
 
@@ -59,7 +59,7 @@ _SQL_UPSERT_SNAPSHOT = """
         code_summary = %s::jsonb,
         embedding    = %s,
         updated_at   = NOW()
-    WHERE id = %s::uuid AND project = %s
+    WHERE id = %s::uuid
     RETURNING id
 """
 
@@ -74,14 +74,14 @@ _SQL_GET_SNAPSHOT = """
            NULL, t.updated_at, t.updated_at,
            t.name AS tag_name
     FROM planner_tags t
-    WHERE t.client_id = 1 AND t.project = %s AND t.name = %s
+    WHERE t.project_id = %s AND t.name = %s
     LIMIT 1
 """
 
 _SQL_UPSERT_FACT = """
-    INSERT INTO mem_ai_project_facts (client_id, project, fact_key, fact_value, valid_from)
-    VALUES (1, %s, %s, %s, NOW())
-    ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL
+    INSERT INTO mem_ai_project_facts (project_id, fact_key, fact_value, valid_from)
+    VALUES (%s, %s, %s, NOW())
+    ON CONFLICT (project_id, fact_key) WHERE valid_until IS NULL
     DO UPDATE SET fact_value = EXCLUDED.fact_value
 """
 
@@ -146,10 +146,11 @@ def _parse_snapshot_json(text: str) -> dict:
 async def generate_snapshot(project: str, tag_name: str):
     """Generate a 4-layer feature snapshot for a tag from its memory events."""
     _require_db()
+    project_id = db.get_or_create_project_id(project)
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_TAG_ID, (project, tag_name))
+            cur.execute(_SQL_GET_TAG_ID, (project_id, tag_name))
             tag_row = cur.fetchone()
     if not tag_row:
         raise HTTPException(status_code=404, detail=f"Tag '{tag_name}' not found in project '{project}'")
@@ -157,7 +158,7 @@ async def generate_snapshot(project: str, tag_name: str):
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_MEMORY_EVENTS, (project,))
+            cur.execute(_SQL_GET_MEMORY_EVENTS, (project_id,))
             events = cur.fetchall()
 
     if not events:
@@ -236,7 +237,7 @@ async def generate_snapshot(project: str, tag_name: str):
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_UPSERT_FACT,
-                        (project, f"feature.{tag_name}.patterns", patterns_str),
+                        (project_id, f"feature.{tag_name}.patterns", patterns_str),
                     )
             facts_extracted += 1
         except Exception as e:
@@ -288,9 +289,10 @@ async def generate_snapshot(project: str, tag_name: str):
 async def get_snapshot(project: str, tag_name: str):
     """Retrieve an existing feature snapshot."""
     _require_db()
+    project_id = db.get_or_create_project_id(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_SNAPSHOT, (project, tag_name))
+            cur.execute(_SQL_GET_SNAPSHOT, (project_id, tag_name))
             row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"No snapshot found for '{tag_name}'")

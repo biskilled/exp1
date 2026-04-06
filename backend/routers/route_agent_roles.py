@@ -124,40 +124,50 @@ def _validate_role_data(data: dict) -> list[str]:
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
 _SQL_LIST_ROLES = (
-    """SELECT id, project, name, description, system_prompt,
-              provider, model, tags, is_active, created_at, updated_at,
-              inputs, outputs, role_type, output_schema, auto_commit,
-              COALESCE(tools, '[]'::jsonb), COALESCE(react, TRUE),
-              COALESCE(max_iterations, 10)
-       FROM mng_agent_roles
-       WHERE client_id=1 AND is_active=TRUE AND (project='_global' OR project=%s)
-       ORDER BY project DESC, name"""
+    """SELECT ar.id, p.name AS project, ar.name, ar.description, ar.system_prompt,
+              ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
+              ar.inputs, ar.outputs, ar.role_type, ar.output_schema, ar.auto_commit,
+              COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.react, TRUE),
+              COALESCE(ar.max_iterations, 10)
+       FROM mng_agent_roles ar
+       JOIN mng_projects p ON p.id = ar.project_id
+       WHERE ar.is_active=TRUE AND (ar.project_id=%s OR ar.project_id=%s)
+       ORDER BY ar.project_id DESC, ar.name"""
 )
 
 _SQL_GET_ROLE_BY_ID = (
-    """SELECT id, project, name, description, system_prompt,
-              provider, model, tags, is_active, created_at, updated_at,
-              inputs, outputs, role_type, output_schema, auto_commit,
-              COALESCE(tools, '[]'::jsonb), COALESCE(react, TRUE),
-              COALESCE(max_iterations, 10)
-       FROM mng_agent_roles WHERE id=%s"""
+    """SELECT ar.id, p.name AS project, ar.name, ar.description, ar.system_prompt,
+              ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
+              ar.inputs, ar.outputs, ar.role_type, ar.output_schema, ar.auto_commit,
+              COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.react, TRUE),
+              COALESCE(ar.max_iterations, 10)
+       FROM mng_agent_roles ar
+       JOIN mng_projects p ON p.id = ar.project_id
+       WHERE ar.id=%s"""
 )
 
 _SQL_INSERT_ROLE = (
-    """INSERT INTO mng_agent_roles
-           (client_id, project, name, description, system_prompt, provider, model, tags,
+    """WITH ins AS (
+       INSERT INTO mng_agent_roles
+           (project_id, name, description, system_prompt, provider, model, tags,
             inputs, outputs, role_type, output_schema, auto_commit,
             tools, react, max_iterations)
-       VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-       RETURNING id, project, name, description, system_prompt,
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+       RETURNING id, project_id, name, description, system_prompt,
                  provider, model, tags, is_active, created_at, updated_at,
                  inputs, outputs, role_type, output_schema, auto_commit,
                  COALESCE(tools, '[]'::jsonb), COALESCE(react, TRUE),
-                 COALESCE(max_iterations, 10)"""
+                 COALESCE(max_iterations, 10)
+    )
+    SELECT ins.id, p.name AS project, ins.name, ins.description, ins.system_prompt,
+           ins.provider, ins.model, ins.tags, ins.is_active, ins.created_at, ins.updated_at,
+           ins.inputs, ins.outputs, ins.role_type, ins.output_schema, ins.auto_commit,
+           ins.tools, ins.react, ins.max_iterations
+    FROM ins JOIN mng_projects p ON p.id = ins.project_id"""
 )
 
 _SQL_DELETE_ROLE = (
-    "UPDATE mng_agent_roles SET is_active=FALSE, updated_at=NOW() WHERE id=%s AND client_id=1"
+    "UPDATE mng_agent_roles SET is_active=FALSE, updated_at=NOW() WHERE id=%s"
 )
 
 _SQL_INSERT_ROLE_VERSION = (
@@ -175,7 +185,7 @@ _SQL_GET_ROLE_FOR_UPDATE = (
     """SELECT id, system_prompt, provider, model,
               COALESCE(tools, '[]'::jsonb), COALESCE(react, TRUE),
               COALESCE(max_iterations, 10)
-       FROM mng_agent_roles WHERE id=%s AND client_id=1"""
+       FROM mng_agent_roles WHERE id=%s"""
 )
 
 _SQL_GET_VERSION_BY_ID = (
@@ -183,13 +193,13 @@ _SQL_GET_VERSION_BY_ID = (
 )
 
 _SQL_GET_ROLE_CURRENT_STATE = (
-    "SELECT system_prompt, provider, model FROM mng_agent_roles WHERE id=%s AND client_id=1"
+    "SELECT system_prompt, provider, model FROM mng_agent_roles WHERE id=%s"
 )
 
 _SQL_RESTORE_ROLE = (
     """UPDATE mng_agent_roles
        SET system_prompt=%s, provider=%s, model=%s, updated_at=NOW()
-       WHERE id=%s AND client_id=1"""
+       WHERE id=%s"""
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -336,9 +346,11 @@ async def list_roles(
                    "is_active": r.get("is_active", True)} for r in _BUILTIN_ROLES]
         )
         return {"roles": visible, "is_admin": admin, "fallback": True}
+    global_pid = db.get_project_id('_global') or 0
+    project_pid = db.get_or_create_project_id(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_LIST_ROLES, (project,))
+            cur.execute(_SQL_LIST_ROLES, (global_pid, project_pid))
             rows = cur.fetchall()
     return {
         "roles": [_row_to_role(r, admin=admin) for r in rows],
@@ -371,11 +383,12 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
     _require_db()
     _require_admin(user)
     import json as _json
+    project_id = db.get_or_create_project_id(body.project)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_INSERT_ROLE,
-                (body.project, body.name, body.description, body.system_prompt,
+                (project_id, body.name, body.description, body.system_prompt,
                  body.provider, body.model, body.tags,
                  _json.dumps(body.inputs), _json.dumps(body.outputs),
                  body.role_type,

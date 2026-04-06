@@ -1,0 +1,5 @@
+active_workflows: []
+code_dir: ../../test-proj
+default_provider: claude
+description: test project
+name: test-proj

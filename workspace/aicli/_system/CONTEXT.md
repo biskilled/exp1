@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-06 00:03 UTC — do not edit manually.
+> Auto-generated 2026-04-06 00:59 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 364
-- **Last active**: 2026-04-06T00:02:33Z
+- **Sessions**: 365
+- **Last active**: 2026-04-06T00:04:23Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -28,7 +28,7 @@
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
-- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
+- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm
 - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
@@ -52,11 +52,11 @@
 ## In Progress
 
 - Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step
+- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions
 - Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping
-- Memory layer trigger consolidation: establish unified event-based triggering for /memory pathway with differentiated process_item and messages handling
-- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking
 - Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
-- Post-fix validation: verify backend startup race condition resolution and memory endpoint variable scoping fixes remain stable
+- Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern
+- Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed
 
 ## Key Decisions
 
@@ -70,11 +70,11 @@
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
-- Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ⤴ link) showing only that prompt's commits
+- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↪ link) showing only that prompt's commits
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+- Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
 
 ---
 

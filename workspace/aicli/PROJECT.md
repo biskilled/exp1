@@ -376,8 +376,8 @@ All tables follow a structured naming convention:
 ## Recent Work
 
 - Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step
+- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions
 - Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping
-- Memory layer trigger consolidation: establish unified event-based triggering for /memory pathway with differentiated process_item and messages handling
-- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking
 - Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
-- Post-fix validation: verify backend startup race condition resolution and memory endpoint variable scoping fixes remain stable
+- Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern
+- Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed

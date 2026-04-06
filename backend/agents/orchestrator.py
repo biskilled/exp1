@@ -364,13 +364,14 @@ class AgentWorkflow:
                 "tags": ["pipeline", wf.pipeline, wf.final_verdict],
             })
             content = json.dumps(summary)
+            project_id = db.get_or_create_project_id(wf.project)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """INSERT INTO mem_mrr_prompts
-                           (client_id, project, source, session_id, content, metadata, created_at)
-                           VALUES (1, %s, %s, %s, %s, %s::jsonb, NOW())""",
-                        (wf.project, f"pipeline:{wf.pipeline}", wf.run_id, content, metadata),
+                           (project_id, source, session_id, content, metadata, created_at)
+                           VALUES (%s, %s, %s, %s, %s::jsonb, NOW())""",
+                        (project_id, f"pipeline:{wf.pipeline}", wf.run_id, content, metadata),
                     )
                 conn.commit()
             log.debug("Workflow '%s' saved to mem_mrr_prompts (run_id=%s)", wf.pipeline, wf.run_id)

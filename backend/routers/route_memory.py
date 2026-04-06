@@ -34,7 +34,7 @@ router = APIRouter()
 _SQL_GET_SESSION_PROMPTS = """
     SELECT prompt, response, created_at
     FROM mem_mrr_prompts
-    WHERE client_id=1 AND project=%s AND session_id=%s
+    WHERE project_id=%s AND session_id=%s
       AND prompt IS NOT NULL AND prompt != ''
     ORDER BY created_at
 """
@@ -47,12 +47,12 @@ _SQL_GET_SYSTEM_ROLE = """
 
 _SQL_UPSERT_SESSION_SUMMARY = """
     INSERT INTO mem_ai_events
-        (client_id, project, event_type, source_id, session_id,
+        (project_id, event_type, source_id, session_id,
          chunk, chunk_type, content, summary, action_items,
          importance, tags, created_at)
-    VALUES (1, %s, 'session_summary', %s, %s,
+    VALUES (%s, 'session_summary', %s, %s,
             0, 'full', %s, %s, %s, 2, %s::jsonb, NOW())
-    ON CONFLICT (client_id, project, event_type, source_id, chunk)
+    ON CONFLICT (project_id, event_type, source_id, chunk)
     DO UPDATE SET
         content      = EXCLUDED.content,
         summary      = EXCLUDED.summary,
@@ -64,14 +64,14 @@ _SQL_UPSERT_SESSION_SUMMARY = """
 _SQL_LIST_SESSION_SUMMARIES = """
     SELECT e.id, e.session_id, e.summary, e.action_items, e.tags, e.created_at
     FROM mem_ai_events e
-    WHERE e.client_id=1 AND e.project=%s AND e.event_type='session_summary'
+    WHERE e.project_id=%s AND e.event_type='session_summary'
     ORDER BY e.created_at DESC
     LIMIT %s
 """
 
 _SQL_GET_EXISTING_SUMMARY = """
     SELECT id FROM mem_ai_events
-    WHERE client_id=1 AND project=%s AND event_type='session_summary'
+    WHERE project_id=%s AND event_type='session_summary'
       AND source_id=%s
     LIMIT 1
 """
@@ -122,9 +122,10 @@ async def _generate_session_summary(
     Read session prompts, call Haiku with session_end_synthesis prompt,
     return {summary, action_items}.
     """
+    project_id = db.get_or_create_project_id(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_SESSION_PROMPTS, (project, session_id))
+            cur.execute(_SQL_GET_SESSION_PROMPTS, (project_id, session_id))
             pairs = cur.fetchall()
 
     if not pairs:
@@ -225,13 +226,14 @@ async def create_session_summary(
     Triggers root files regeneration as a background task.
     """
     _require_db()
+    project_id = db.get_or_create_project_id(project)
     session_id = body.session_id
 
     # Skip if already exists (unless force=True)
     if not body.force:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_EXISTING_SUMMARY, (project, session_id))
+                cur.execute(_SQL_GET_EXISTING_SUMMARY, (project_id, session_id))
                 if cur.fetchone():
                     return {"status": "already_exists", "session_id": session_id}
 
@@ -256,7 +258,7 @@ async def create_session_summary(
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_UPSERT_SESSION_SUMMARY,
-                (project, session_id, session_id,
+                (project_id, session_id, session_id,
                  combined_content, summary_text,
                  action_items, auto_tags),
             )
@@ -283,9 +285,10 @@ async def list_session_summaries(
 ):
     """Return recent session summaries (from mem_ai_events where event_type='session_summary')."""
     _require_db()
+    project_id = db.get_or_create_project_id(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_LIST_SESSION_SUMMARIES, (project, limit))
+            cur.execute(_SQL_LIST_SESSION_SUMMARIES, (project_id, limit))
             rows = cur.fetchall()
     return {
         "summaries": [
@@ -384,7 +387,7 @@ async def embed_commits(
             with conn.cursor() as cur:
                 cur.execute(
                     """SELECT commit_hash FROM mem_mrr_commits
-                       WHERE client_id=1 AND project=%s
+                       WHERE project_id=%s
                          AND (tags->>'llm') IS NULL
                        ORDER BY committed_at DESC NULLS LAST
                        LIMIT %s""",

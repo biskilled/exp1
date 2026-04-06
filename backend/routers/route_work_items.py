@@ -56,11 +56,11 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 
 _SQL_INSERT_WORK_ITEM = (
     """INSERT INTO mem_ai_work_items
-           (client_id, project, category_name, name, description,
+           (project_id, category_name, name, description,
             status, lifecycle_status, due_date, parent_id,
             acceptance_criteria, implementation_plan, tags, seq_num)
-       VALUES (1, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-       ON CONFLICT (client_id, project, category_name, name) DO NOTHING
+       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+       ON CONFLICT (project_id, category_name, name) DO NOTHING
        RETURNING id, name, category_name, created_at, seq_num"""
 )
 
@@ -71,11 +71,11 @@ _SQL_GET_WORK_ITEM = (
               w.agent_run_id, w.agent_status, w.tags,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
-       WHERE w.client_id=1 AND w.project=%s AND w.id=%s::uuid"""
+       WHERE w.project_id=%s AND w.id=%s::uuid"""
 )
 
 _SQL_DELETE_WORK_ITEM = (
-    "DELETE FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id"
+    "DELETE FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s RETURNING id"
 )
 
 _SQL_GET_WORK_ITEM_BY_SEQ = (
@@ -85,7 +85,7 @@ _SQL_GET_WORK_ITEM_BY_SEQ = (
               w.agent_run_id, w.agent_status, w.tags,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
-       WHERE w.client_id=1 AND w.project=%s AND w.seq_num=%s
+       WHERE w.project_id=%s AND w.seq_num=%s
        LIMIT 1"""
 )
 
@@ -97,14 +97,14 @@ _SQL_GET_INTERACTIONS = (
     """SELECT i.id, i.session_id, i.source_id,
               i.prompt, i.response, i.created_at
        FROM mem_mrr_prompts i
-       WHERE i.tags @> jsonb_build_object('work-item', %s::text) AND i.client_id=1 AND i.project=%s
+       WHERE i.tags @> jsonb_build_object('work-item', %s::text) AND i.project_id=%s
        ORDER BY i.created_at DESC LIMIT %s"""
 )
 
 _SQL_GET_FACTS = (
     """SELECT id, fact_key, fact_value, valid_from
        FROM mem_ai_project_facts
-       WHERE client_id=1 AND project=%s AND valid_until IS NULL
+       WHERE project_id=%s AND valid_until IS NULL
        ORDER BY fact_key"""
 )
 
@@ -116,11 +116,11 @@ _SQL_GET_MEMORY_ITEMS = (
 )
 
 _SQL_GET_WORK_ITEM_FOR_PIPELINE = (
-    "SELECT name, description, acceptance_criteria FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s"
+    "SELECT name, description, acceptance_criteria FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s"
 )
 
 _SQL_INSERT_PIPELINE_RUN = (
-    """INSERT INTO pr_graph_runs (id, client_id, project, workflow_id, status, user_input)
+    """INSERT INTO pr_graph_runs (id, client_id, project_id, workflow_id, status, user_input)
        VALUES (%s, 1, %s, %s, 'running', %s)"""
 )
 
@@ -157,17 +157,17 @@ _SQL_UPDATE_WORK_ITEM_LIFECYCLE = (
 
 _SQL_EXPIRE_PIPELINE_FACT = (
     """UPDATE mem_ai_project_facts SET valid_until=NOW()
-       WHERE client_id=1 AND project=%s AND fact_key=%s AND valid_until IS NULL"""
+       WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL"""
 )
 
 _SQL_INSERT_PIPELINE_FACT = (
-    "INSERT INTO mem_ai_project_facts (client_id, project, fact_key, fact_value) VALUES (1, %s, %s, %s)"
+    "INSERT INTO mem_ai_project_facts (project_id, fact_key, fact_value) VALUES (%s, %s, %s)"
 )
 
 _SQL_INSERT_PIPELINE_INTERACTION = (
     """INSERT INTO mem_mrr_prompts
-       (id, client_id, project, llm_source, response, session_id, tags, created_at)
-       VALUES (%s, 1, %s, 'pipeline', %s, %s, jsonb_build_object('work-item', %s::text), NOW())"""
+       (id, project_id, llm_source, response, session_id, tags, created_at)
+       VALUES (%s, %s, 'pipeline', %s, %s, jsonb_build_object('work-item', %s::text), NOW())"""
 )
 
 _SQL_PIPELINE_TAGGED_INTERACTIONS = (
@@ -190,21 +190,21 @@ _SQL_PIPELINE_TAGGED_COMMITS = (
 
 _SQL_PIPELINE_MEMORY_ITEMS = (
     """SELECT content FROM mem_ai_events
-       WHERE client_id=1 AND project=%s
+       WHERE project_id=%s
        ORDER BY created_at DESC LIMIT 3"""
 )
 
 _SQL_UPSERT_PIPELINE_WORKFLOW = (
     """INSERT INTO pr_graph_workflows
-           (client_id, project, name, description, max_iterations,
+           (client_id, project_id, name, description, max_iterations,
             created_at, updated_at)
        VALUES (1, %s, %s, %s, 3, NOW(), NOW())
-       ON CONFLICT (client_id, project, name) DO UPDATE
+       ON CONFLICT (client_id, project_id, name) DO UPDATE
            SET updated_at=NOW()"""
 )
 
 _SQL_GET_PIPELINE_WORKFLOW_ID = (
-    "SELECT id FROM pr_graph_workflows WHERE client_id=1 AND project=%s AND name=%s"
+    "SELECT id FROM pr_graph_workflows WHERE client_id=1 AND project_id=%s AND name=%s"
 )
 
 _SQL_DELETE_PIPELINE_EDGES = "DELETE FROM pr_graph_edges WHERE workflow_id=%s"
@@ -232,7 +232,7 @@ _SQL_GET_ALL_AGENT_ROLES = (
 
 _SQL_LIST_ENTITY_VALUES_ACTIVE = (
     """SELECT id::text, name FROM planner_tags
-       WHERE client_id=1 AND project=%s AND status='active'
+       WHERE project_id=%s AND status='active'
        ORDER BY name LIMIT 50"""
 )
 
@@ -263,7 +263,7 @@ async def _trigger_memory_regen(project: str) -> None:
         log.debug(f"_trigger_memory_regen error: {e}")
 
 
-async def _embed_work_item(project: str, item_id: str, name: str, description: str, criteria: str) -> None:
+async def _embed_work_item(project_id: int, item_id: str, name: str, description: str, criteria: str) -> None:
     """Embed work item content and store the vector on the row."""
     try:
         from memory.memory_embedding import _embed
@@ -274,8 +274,8 @@ async def _embed_work_item(project: str, item_id: str, name: str, description: s
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE mem_ai_work_items SET embedding = %s::vector WHERE id = %s::uuid AND client_id=1 AND project=%s",
-                        (vec_str, item_id, project),
+                        "UPDATE mem_ai_work_items SET embedding = %s::vector WHERE id = %s::uuid AND project_id=%s",
+                        (vec_str, item_id, project_id),
                     )
     except Exception as e:
         log.debug(f"_embed_work_item error: {e}")
@@ -333,8 +333,9 @@ async def list_work_items(
         return {"items": [], "project": _project(project), "fallback": True}
     _require_db()
     p = _project(project)
-    where = ["w.client_id=1", "w.project=%s"]
-    params: list = [p]
+    p_id = db.get_or_create_project_id(p)
+    where = ["w.project_id=%s"]
+    params: list = [p_id]
     if category:
         where.append("w.category_name=%s"); params.append(category)
     if status:
@@ -375,13 +376,14 @@ async def create_work_item(
     f"""Create a new work item."""
     _require_db()
     p = _project(project or body.project)
+    p_id = db.get_or_create_project_id(p)
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            seq = next_seq(cur, p, body.category_name)
+            seq = next_seq(cur, p_id, body.category_name)
             cur.execute(
                 _SQL_INSERT_WORK_ITEM,
-                (p, body.category_name, body.name, body.description,
+                (p_id, body.category_name, body.name, body.description,
                  body.status, body.lifecycle_status, body.due_date or None,
                  body.parent_id or None,
                  body.acceptance_criteria, body.implementation_plan,
@@ -390,7 +392,7 @@ async def create_work_item(
             r = cur.fetchone()
     item_id = str(r[0])
     # Embed work item content + regenerate memory files in background
-    asyncio.create_task(_embed_work_item(p, item_id, body.name, body.description, body.acceptance_criteria))
+    asyncio.create_task(_embed_work_item(p_id, item_id, body.name, body.description, body.acceptance_criteria))
     asyncio.create_task(_trigger_memory_regen(p))
     # Match new work item to existing tags in background
     background_tasks.add_task(_run_matching, p, item_id)
@@ -412,6 +414,7 @@ async def patch_work_item(
     f"""Update work item fields. Triggers feature memory synthesis when lifecycle → done.f"""
     _require_db()
     p = _project(project)
+    p_id = db.get_or_create_project_id(p)
     fields, params = [], []
     if body.name                is not None: fields.append("name=%s");                params.append(body.name)
     if body.description         is not None: fields.append("description=%s");         params.append(body.description)
@@ -431,8 +434,8 @@ async def patch_work_item(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT status FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s",
-                    (item_id, p),
+                    "SELECT status FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
+                    (item_id, p_id),
                 )
                 row = cur.fetchone()
                 if row and row[0] == "prereq":
@@ -441,12 +444,12 @@ async def patch_work_item(
 
     fields.append("updated_at=NOW()")
     params.append(item_id)
-    params.append(p)
+    params.append(p_id)
 
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE mem_ai_work_items SET {','.join(fields)} WHERE id=%s::uuid AND client_id=1 AND project=%s RETURNING id, status",
+                f"UPDATE mem_ai_work_items SET {','.join(fields)} WHERE id=%s::uuid AND project_id=%s RETURNING id, status",
                 params,
             )
             result = cur.fetchone()
@@ -461,12 +464,12 @@ async def patch_work_item(
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT name, description, acceptance_criteria FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s",
-                    (item_id, p),
+                    "SELECT name, description, acceptance_criteria FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
+                    (item_id, p_id),
                 )
                 row = cur.fetchone()
         if row:
-            asyncio.create_task(_embed_work_item(p, item_id, row[0], row[1], row[2]))
+            asyncio.create_task(_embed_work_item(p_id, item_id, row[0], row[1], row[2]))
 
     # Re-run tag matching if name, description, or summary fields changed
     if any(f in body_dict for f in content_fields):
@@ -483,9 +486,10 @@ async def delete_work_item(item_id: str, project: str | None = Query(None)):
     """Delete a work item and all its interaction_tags.f"""
     _require_db()
     p = _project(project)
+    p_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_DELETE_WORK_ITEM, (item_id, p))
+            cur.execute(_SQL_DELETE_WORK_ITEM, (item_id, p_id))
             if not cur.fetchone():
                 raise HTTPException(404, "Work item not found")
     return {"ok": True}
@@ -498,9 +502,10 @@ async def get_work_item_by_number(seq_num: int, project: str | None = Query(None
     """Resolve a short sequential number (e.g. #10005) to the full work item."""
     _require_db()
     p = _project(project)
+    p_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_WORK_ITEM_BY_SEQ, (p, seq_num))
+            cur.execute(_SQL_GET_WORK_ITEM_BY_SEQ, (p_id, seq_num))
             r = cur.fetchone()
             if not r:
                 raise HTTPException(404, f"Work item #{seq_num} not found in project {p!r}")
@@ -530,9 +535,10 @@ async def get_work_item_interactions(
     """Return recent interactions tagged to this work item.f"""
     _require_db()
     p = _project(project)
+    p_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_INTERACTIONS, (item_id, p, limit))
+            cur.execute(_SQL_GET_INTERACTIONS, (item_id, p_id, limit))
             cols = [d[0] for d in cur.description]
             rows = []
             for r in cur.fetchall():
@@ -567,9 +573,10 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
     """
     _require_db()
     p = _project(project)
+    p_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_WORK_ITEM_FOR_PIPELINE, (item_id, p))
+            cur.execute(_SQL_GET_WORK_ITEM_FOR_PIPELINE, (item_id, p_id))
             row = cur.fetchone()
     if not row:
         raise HTTPException(404, "Work item not found")
@@ -588,7 +595,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
         if workflow_id:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_INSERT_PIPELINE_RUN, (run_id, p, workflow_id, task[:2000]))
+                    cur.execute(_SQL_INSERT_PIPELINE_RUN, (run_id, p_id, workflow_id, task[:2000]))
     except Exception as e:
         log.debug(f"Could not create pipeline run record: {e}")
 
@@ -650,7 +657,8 @@ def _build_pipeline_context(
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_PIPELINE_MEMORY_ITEMS, (project,))
+                p_id_ctx = db.get_or_create_project_id(project)
+                cur.execute(_SQL_PIPELINE_MEMORY_ITEMS, (p_id_ctx,))
                 mems = cur.fetchall()
         if mems:
             lines += ["", "## Previous Memory Summaries"]
@@ -1000,14 +1008,15 @@ async def _ensure_pipeline_workflow(project: str) -> int | None:
         ]
 
         # ── 3. Upsert workflow; delete + recreate nodes so all changes apply ──
+        p_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_UPSERT_PIPELINE_WORKFLOW,
-                    (project, WF_NAME,
+                    (p_id, WF_NAME,
                      "4-agent PM → Architect → Developer → Reviewer pipeline (approval gates)"),
                 )
-                cur.execute(_SQL_GET_PIPELINE_WORKFLOW_ID, (project, WF_NAME))
+                cur.execute(_SQL_GET_PIPELINE_WORKFLOW_ID, (p_id, WF_NAME))
                 wf_id = cur.fetchone()[0]
 
                 # Always delete and recreate so role assignments + approval flags apply
@@ -1054,7 +1063,7 @@ async def search_work_items(
     if not vec:
         raise HTTPException(503, "Embedding unavailable — check OpenAI API key")
     vec_str = f"[{','.join(str(x) for x in vec)}]"
-    where = "client_id=1 AND project=%s AND embedding IS NOT NULL"
+    where = "project_id=%s AND embedding IS NOT NULL"
     params: list = [vec_str, p]
     if category:
         where += " AND category_name=%s"
@@ -1108,7 +1117,7 @@ async def search_project_facts(
                 """SELECT id, fact_key, fact_value, category, valid_from, source_memory_id,
                           1 - (embedding <=> %s::vector) AS score
                    FROM mem_ai_project_facts
-                   WHERE client_id=1 AND project=%s AND valid_until IS NULL AND embedding IS NOT NULL
+                   WHERE project_id=%s AND valid_until IS NULL AND embedding IS NOT NULL
                    ORDER BY embedding <=> %s::vector
                    LIMIT %s""",
                 (vec_str, p, vec_str, limit),
@@ -1137,9 +1146,10 @@ async def get_project_facts(project: str | None = Query(None)):
         return {"facts": [], "project": _project(project), "total": 0, "fallback": True}
     _require_db()
     p = _project(project)
+    p_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_GET_FACTS, (p,))
+            cur.execute(_SQL_GET_FACTS, (p_id,))
             cols = [d[0] for d in cur.description]
             facts = []
             for r in cur.fetchall():
@@ -1162,8 +1172,9 @@ async def get_memory_items(
     f"""Return recent memory_items (distilled session/feature summaries)."""
     _require_db()
     p = _project(project)
-    where_parts = ["client_id=1", "project=%s"]
-    params: list = [p]
+    p_id = db.get_or_create_project_id(p)
+    where_parts = ["project_id=%s"]
+    params: list = [p_id]
     if scope:
         where_parts.append("scope=%s"); params.append(scope)
 

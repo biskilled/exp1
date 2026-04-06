@@ -11,7 +11,7 @@ short number across any AI tool:
 
 Usage (inside an open connection cursor):
     from data.dl_seq import next_seq
-    seq = next_seq(cur, project, category_name)
+    seq = next_seq(cur, project_id, category_name)
 """
 from __future__ import annotations
 
@@ -28,25 +28,33 @@ SEQ_STARTS: dict[str, int] = {
 _DEFAULT_START = 10000
 
 
-def next_seq(cur, project: str, category: str) -> int:
-    """Atomically allocate and return the next seq_num for (project, category).
+def next_seq(cur, project_id: int, category: str) -> int:
+    """Atomically allocate and return the next seq_num for (project_id, category).
 
     Uses INSERT…ON CONFLICT to guarantee exactly-once increment even under
     concurrent requests.  Must be called inside an open transaction that will
     be committed by the caller.
+
+    Args:
+        cur:        An open psycopg2 cursor within an active transaction.
+        project_id: Integer PK from the projects table (replaces project TEXT).
+        category:   Category name, e.g. 'feature', 'bug', 'task'.
+
+    Returns:
+        The allocated sequential number (start value on first use, then +1 each call).
     """
     cat = (category or "").lower()
     start = SEQ_STARTS.get(cat, _DEFAULT_START)
 
-    # On first use for this (project, category) the row is created with
+    # On first use for this (project_id, category) the row is created with
     # next_val = start + 1 and we return start (the first assigned value).
     # On subsequent calls the UPDATE adds 1 and we return new_next - 1.
     cur.execute(
-        """INSERT INTO pr_seq_counters (client_id, project, category, next_val)
-               VALUES (1, %s, %s, %s)
-               ON CONFLICT (client_id, project, category) DO UPDATE
+        """INSERT INTO pr_seq_counters (project_id, category, next_val)
+               VALUES (%s, %s, %s)
+               ON CONFLICT (project_id, category) DO UPDATE
                    SET next_val = pr_seq_counters.next_val + 1
                RETURNING next_val""",
-        (project, category, start + 1),
+        (project_id, category, start + 1),
     )
     return cur.fetchone()[0] - 1

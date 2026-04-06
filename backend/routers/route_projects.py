@@ -27,8 +27,8 @@ _SQL_GET_ENTITY_SUMMARY = (
               0 AS event_count,
               0 AS commit_count
        FROM mng_tags_categories tc
-       JOIN planner_tags t ON t.category_id = tc.id AND t.client_id=1 AND t.project=%s
-       WHERE tc.client_id=1 AND t.status != 'archived'
+       JOIN planner_tags t ON t.category_id = tc.id AND t.project_id=%s
+       WHERE t.status != 'archived'
        ORDER BY tc.name, t.status"""
 )
 
@@ -42,11 +42,11 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
                   E'\n\n' ORDER BY i.created_at
               ) AS history_text
        FROM mem_mrr_prompts i
-       WHERE i.client_id=1 AND i.project=%s
+       WHERE i.project_id=%s
          AND i.session_id IS NOT NULL
          AND NOT EXISTS (
              SELECT 1 FROM mem_ai_events m
-             WHERE m.client_id=1 AND m.project=i.project
+             WHERE m.project_id=i.project_id
                AND m.event_type='prompt_batch'
                AND m.session_id=i.session_id
          )
@@ -57,20 +57,20 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
 
 _SQL_INSERT_MEMORY_ITEM_SESSION = (
     """INSERT INTO mem_ai_events
-           (client_id, project, event_type, source_id, session_id, content, importance)
-       VALUES (1, %s, 'prompt_batch', %s, %s, %s, %s)
-       ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING
+           (project_id, event_type, source_id, session_id, content, importance)
+       VALUES (%s, 'prompt_batch', %s, %s, %s, %s)
+       ON CONFLICT (project_id, event_type, source_id, chunk) DO NOTHING
        RETURNING id"""
 )
 
 _SQL_GET_WORK_ITEM_FOR_FEATURE_MEMORY = (
-    "SELECT name, description FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1 AND project=%s"
+    "SELECT name, description FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s"
 )
 
 _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
     """SELECT me.content
        FROM mem_ai_events me
-       WHERE me.client_id=1 AND me.project=%s
+       WHERE me.project_id=%s
          AND me.event_type='prompt_batch'
        ORDER BY me.created_at DESC
        LIMIT 10"""
@@ -78,44 +78,44 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
 
 _SQL_INSERT_MEMORY_ITEM_FEATURE = (
     """INSERT INTO mem_ai_events
-           (client_id, project, event_type, source_id, session_id, content, importance)
-       VALUES (1, %s, 'feature_summary', %s::uuid, %s, %s, %s)
-       ON CONFLICT (client_id, project, event_type, source_id) DO UPDATE
+           (project_id, event_type, source_id, session_id, content, importance)
+       VALUES (%s, 'feature_summary', %s::uuid, %s, %s, %s)
+       ON CONFLICT (project_id, event_type, source_id) DO UPDATE
            SET content=EXCLUDED.content, importance=EXCLUDED.importance
        RETURNING id"""
 )
 
 _SQL_GET_FACT_EXTRACTOR_ROLE = (
     """SELECT system_prompt, model, provider FROM mng_agent_roles
-       WHERE client_id=1 AND project='_global'
+       WHERE project_id=%s
          AND name='internal_project_fact' AND is_active=TRUE
        LIMIT 1"""
 )
 
 _SQL_GET_RECENT_MEMORY_ITEMS = (
     """SELECT id::text, content FROM mem_ai_events
-       WHERE client_id=1 AND project=%s
+       WHERE project_id=%s
        ORDER BY created_at DESC LIMIT 6"""
 )
 
 _SQL_GET_CURRENT_FACTS = (
     """SELECT fact_key, fact_value FROM mem_ai_project_facts
-       WHERE client_id=1 AND project=%s AND valid_until IS NULL
+       WHERE project_id=%s AND valid_until IS NULL
        ORDER BY fact_key"""
 )
 
 _SQL_EXPIRE_OLD_FACT = (
     """UPDATE mem_ai_project_facts SET valid_until=NOW()
-       WHERE client_id=1 AND project=%s
+       WHERE project_id=%s
          AND fact_key=%s AND valid_until IS NULL
          AND fact_value != %s"""
 )
 
 _SQL_INSERT_NEW_FACT = (
     """INSERT INTO mem_ai_project_facts
-           (client_id, project, fact_key, fact_value, source_memory_id)
-       VALUES (1, %s, %s, %s, %s::uuid)
-       ON CONFLICT (client_id, project, fact_key) WHERE valid_until IS NULL
+           (project_id, fact_key, fact_value, source_memory_id)
+       VALUES (%s, %s, %s, %s::uuid)
+       ON CONFLICT (project_id, fact_key) WHERE valid_until IS NULL
        DO NOTHING
        RETURNING id"""
 )
@@ -126,19 +126,19 @@ _SQL_UPDATE_FACT_EMBEDDING = (
 
 _SQL_GET_DISTILLED_FACTS = (
     """SELECT fact_key, fact_value FROM mem_ai_project_facts
-       WHERE client_id=1 AND project=%s AND valid_until IS NULL
+       WHERE project_id=%s AND valid_until IS NULL
        ORDER BY fact_key"""
 )
 
 _SQL_GET_DISTILLED_MEMORY_ITEMS = (
     """SELECT content, event_type, session_id, created_at FROM mem_ai_events
-       WHERE client_id=1 AND project=%s
+       WHERE project_id=%s
        ORDER BY created_at DESC LIMIT 8"""
 )
 
 _SQL_GET_EXISTING_ENTITY_VALUES = (
     """SELECT id::text, name FROM planner_tags
-       WHERE client_id=1 AND project=%s AND status='active'
+       WHERE project_id=%s AND status='active'
        ORDER BY name LIMIT 50"""
 )
 
@@ -146,7 +146,7 @@ _SQL_GET_ACTIVE_ENTITY_VALUES_FOR_AUTOTAG = (
     """SELECT t.id::text, tc.name AS category, t.name
        FROM planner_tags t
        JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-       WHERE t.client_id=1 AND t.project=%s AND t.status='active'
+       WHERE t.project_id=%s AND t.status='active'
        ORDER BY tc.name, t.name"""
 )
 
@@ -157,57 +157,57 @@ _SQL_GET_CATEGORIES_FOR_PROJECT = (
 
 _SQL_INSERT_ENTITY_VALUE_AUTO = (
     """INSERT INTO planner_tags
-           (client_id, project, category_id, name, lifecycle, seq_num)
-       VALUES (1, %s, %s, %s, 'idea', %s)
-       ON CONFLICT (client_id, project, name) DO NOTHING
+           (project_id, category_id, name, lifecycle, seq_num)
+       VALUES (%s, %s, %s, 'idea', %s)
+       ON CONFLICT (project_id, name) DO NOTHING
        RETURNING id::text, name"""
 )
 
 _SQL_GET_RECENT_SESSION_PROMPTS = (
     """SELECT left(prompt,120), prompt FROM mem_mrr_prompts
-       WHERE client_id=1 AND project=%s
+       WHERE project_id=%s
          AND created_at > NOW() - INTERVAL '24 hours'
        ORDER BY created_at DESC LIMIT 20"""
 )
 
 _SQL_GET_EXISTING_BUG_NAMES = (
-    "SELECT LOWER(name) FROM mem_ai_work_items WHERE client_id=1 AND project=%s AND category_name='bug'"
+    "SELECT LOWER(name) FROM mem_ai_work_items WHERE project_id=%s AND category_name='bug'"
 )
 
 _SQL_INSERT_BUG_WORK_ITEM = (
     """INSERT INTO mem_ai_work_items
-           (client_id, project, category_name, name, description,
+           (project_id, category_name, name, description,
             status, lifecycle_status, tags, seq_num)
-       VALUES (1, %s, 'bug', %s, %s, 'prereq', 'idea', '{}', %s)
-       ON CONFLICT (client_id, project, category_name, name) DO NOTHING
+       VALUES (%s, 'bug', %s, %s, 'prereq', 'idea', '{}', %s)
+       ON CONFLICT (project_id, category_name, name) DO NOTHING
        RETURNING id, name, seq_num"""
 )
 
 _SQL_GET_UNEMBEDDED_COMMITS = (
     """SELECT c.commit_hash FROM mem_mrr_commits c
-       WHERE c.client_id=1 AND c.project=%s
+       WHERE c.project_id=%s
          AND NOT EXISTS (
            SELECT 1 FROM mem_ai_events e
-           WHERE e.client_id=1 AND e.project=%s
+           WHERE e.project_id=%s
              AND e.event_type='commit' AND e.source_id=c.commit_hash
        )
        ORDER BY c.committed_at DESC LIMIT 30"""
 )
 
 _SQL_COUNT_INTERACTIONS_TOTAL = (
-    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s"
+    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s"
 )
 
 _SQL_COUNT_INTERACTIONS_SINCE = (
-    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND created_at > %s::timestamptz"
+    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND created_at > %s::timestamptz"
 )
 
 _SQL_GET_UNPROCESSED_ITEMS = (
     """SELECT id::text FROM mem_mrr_items
-       WHERE client_id=1 AND project=%s
+       WHERE project_id=%s
          AND NOT EXISTS (
              SELECT 1 FROM mem_ai_events e
-             WHERE e.client_id=1 AND e.project=mem_mrr_items.project
+             WHERE e.project_id=mem_mrr_items.project_id
                AND e.event_type='item' AND e.source_id=mem_mrr_items.id::text
          )
        ORDER BY created_at DESC LIMIT 20"""
@@ -215,10 +215,10 @@ _SQL_GET_UNPROCESSED_ITEMS = (
 
 _SQL_GET_UNPROCESSED_MESSAGES = (
     """SELECT id::text FROM mem_mrr_messages
-       WHERE client_id=1 AND project=%s
+       WHERE project_id=%s
          AND NOT EXISTS (
              SELECT 1 FROM mem_ai_events e
-             WHERE e.client_id=1 AND e.project=mem_mrr_messages.project
+             WHERE e.project_id=mem_mrr_messages.project_id
                AND e.event_type='message' AND e.source_id=mem_mrr_messages.id::text
          )
        ORDER BY created_at DESC LIMIT 20"""
@@ -226,7 +226,7 @@ _SQL_GET_UNPROCESSED_MESSAGES = (
 
 _SQL_GET_ACTIVE_PLANNER_TAGS = (
     """SELECT name FROM planner_tags
-       WHERE client_id=1 AND project=%s AND status IN ('open', 'active')
+       WHERE project_id=%s AND status IN ('open', 'active')
        ORDER BY updated_at DESC LIMIT 10"""
 )
 
@@ -337,8 +337,37 @@ def _ensure_per_llm_dirs(sys_dir: Path) -> None:
 
 @router.get("/")
 async def list_projects():
-    """List all project workspaces."""
+    """List all project workspaces. Reads from mng_projects when DB is available, falls back to filesystem."""
     ws = _workspace()
+
+    # DB-primary: read from mng_projects
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT name, description, code_dir, default_provider,
+                               is_active, created_at, workspace_path
+                        FROM mng_projects WHERE client_id=1 AND name != '_global'
+                        ORDER BY name
+                    """)
+                    db_projects = cur.fetchall()
+            projects = []
+            for row in db_projects:
+                name, description, code_dir, default_provider, is_active, created_at, workspace_path = row
+                projects.append({
+                    "name": name,
+                    "description": description or "",
+                    "code_dir": code_dir or "",
+                    "default_provider": default_provider or "claude",
+                    "is_active": is_active,
+                    "active": name == settings.active_project,
+                })
+            return {"projects": projects, "active": settings.active_project}
+        except Exception as _e:
+            log.warning("list_projects: DB query failed, falling back to filesystem: %s", _e)
+
+    # Filesystem fallback
     if not ws.exists():
         return {"projects": []}
 
@@ -1085,10 +1114,12 @@ async def _summarize_session_memory(project: str) -> int:
         if not key:
             return 0
 
+        project_id = db.get_or_create_project_id(project)
+
         # Find sessions with >= 3 interactions not yet in memory_items
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_SESSIONS_UNSUMMARIZED, (project,))
+                cur.execute(_SQL_GET_SESSIONS_UNSUMMARIZED, (project_id,))
                 sessions = cur.fetchall()
 
         if not sessions:
@@ -1153,7 +1184,7 @@ async def _summarize_session_memory(project: str) -> int:
                     with conn.cursor() as cur:
                         cur.execute(
                             _SQL_INSERT_MEMORY_ITEM_SESSION,
-                            (project, last_prompt_id, session_id, final_summary, importance),
+                            (project_id, last_prompt_id, session_id, final_summary, importance),
                         )
                         row = cur.fetchone()
                         if row:
@@ -1194,17 +1225,19 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
         if not key:
             return None
 
+        project_id = db.get_or_create_project_id(project)
+
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Get work item details
-                cur.execute(_SQL_GET_WORK_ITEM_FOR_FEATURE_MEMORY, (work_item_id, project))
+                cur.execute(_SQL_GET_WORK_ITEM_FOR_FEATURE_MEMORY, (work_item_id, project_id))
                 wi_row = cur.fetchone()
                 if not wi_row:
                     return None
                 wi_name, wi_desc = wi_row
 
                 # Find memory_items whose source_ids overlap with this work_item's interactions
-                cur.execute(_SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM, (project, work_item_id))
+                cur.execute(_SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM, (project_id, work_item_id))
                 session_summaries = [r[0] for r in cur.fetchall()]
 
         if not session_summaries:
@@ -1258,7 +1291,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
                 importance = min(5, max(1, (score + 1) // 2))
                 cur.execute(
                     _SQL_INSERT_MEMORY_ITEM_FEATURE,
-                    (project, work_item_id, wi_name, final_summary, importance),
+                    (project_id, work_item_id, wi_name, final_summary, importance),
                 )
                 row = cur.fetchone()
                 if not row:
@@ -1312,6 +1345,9 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
         from data.dl_api_keys import get_key
         import anthropic
 
+        project_id = db.get_or_create_project_id(project)
+        global_project_id = db.get_project_id("_global") or project_id
+
         # ── Load the internal role (system_prompt + model + provider) ─────────
         role_system = ""
         role_model = settings.haiku_model
@@ -1319,7 +1355,7 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_FACT_EXTRACTOR_ROLE)
+                    cur.execute(_SQL_GET_FACT_EXTRACTOR_ROLE, (global_project_id,))
                     row = cur.fetchone()
                     if row and row[0]:
                         role_system   = row[0]
@@ -1335,9 +1371,9 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
         # ── Load sources: recent memory_items + existing facts ────────────────
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_RECENT_MEMORY_ITEMS, (project,))
+                cur.execute(_SQL_GET_RECENT_MEMORY_ITEMS, (project_id,))
                 mem_rows = cur.fetchall()
-                cur.execute(_SQL_GET_CURRENT_FACTS, (project,))
+                cur.execute(_SQL_GET_CURRENT_FACTS, (project_id,))
                 existing_facts = {r[0]: r[1] for r in cur.fetchall()}
 
         if not mem_rows:
@@ -1407,10 +1443,10 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
             with conn.cursor() as cur:
                 for k, v in facts:
                     # If value changed → expire the old fact
-                    cur.execute(_SQL_EXPIRE_OLD_FACT, (project, k, v))
+                    cur.execute(_SQL_EXPIRE_OLD_FACT, (project_id, k, v))
                     # Insert new fact (ON CONFLICT skips if value identical)
                     try:
-                        cur.execute(_SQL_INSERT_NEW_FACT, (project, k, v, memory_item_id or src_id))
+                        cur.execute(_SQL_INSERT_NEW_FACT, (project_id, k, v, memory_item_id or src_id))
                         row = cur.fetchone()
                         if row:
                             new_fact_ids.append((str(row[0]), k, v))
@@ -1431,6 +1467,37 @@ async def _extract_project_facts(project: str, memory_item_id: str | None = None
         log.debug(f"_extract_project_facts failed: {e}")
         return 0
 
+
+
+async def _sync_workspace_projects() -> list[str]:
+    """Upsert mng_projects rows from all workspace project.yaml files."""
+    from pathlib import Path as _Path
+    synced = []
+    workspace = _Path(settings.workspace_dir)
+    if not workspace.exists():
+        return synced
+    for proj_dir in workspace.iterdir():
+        if not proj_dir.is_dir() or proj_dir.name.startswith('_'):
+            continue
+        yaml_path = proj_dir / "project.yaml"
+        cfg: dict = {}
+        if yaml_path.exists():
+            try:
+                import yaml as _yaml
+                cfg = _yaml.safe_load(yaml_path.read_text()) or {}
+            except Exception:
+                pass
+        cfg['workspace_path'] = str(proj_dir)
+        db.get_or_create_project_id(proj_dir.name, config=cfg)
+        synced.append(proj_dir.name)
+    return synced
+
+
+@router.post("/sync")
+async def sync_workspace_projects():
+    """Sync all workspace projects to mng_projects table."""
+    synced = await _sync_workspace_projects()
+    return {"synced": synced, "count": len(synced)}
 
 @router.post("/{project_name}/memory")
 async def generate_memory(project_name: str):
@@ -1475,16 +1542,17 @@ async def generate_memory(project_name: str):
     recent: list[dict] = []
     if db.is_available():
         try:
+            _proj_id_mem = db.get_or_create_project_id(project_name)
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """SELECT source_id, session_id, tags->>'source' AS source,
                                   prompt, response, created_at
                            FROM mem_mrr_prompts
-                           WHERE client_id=1 AND project=%s
+                           WHERE project_id=%s
                              AND prompt IS NOT NULL AND prompt != ''
                            ORDER BY created_at DESC LIMIT 120""",
-                        (project_name,),
+                        (_proj_id_mem,),
                     )
                     rows = cur.fetchall()
             for source_id, session_id, source, prompt, response, created_at in reversed(rows):
@@ -1532,7 +1600,7 @@ async def generate_memory(project_name: str):
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_ENTITY_SUMMARY, (project_name, project_name))
+                    cur.execute(_SQL_GET_ENTITY_SUMMARY, (_proj_id_mem,))
                     entity_rows = cur.fetchall()
             # Build per-category groups
             _cats: dict[str, list] = {}
@@ -1567,9 +1635,9 @@ async def generate_memory(project_name: str):
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_DISTILLED_FACTS, (project_name,))
+                    cur.execute(_SQL_GET_DISTILLED_FACTS, (_proj_id_mem,))
                     distilled_facts = [{"key": r[0], "value": r[1]} for r in cur.fetchall()]
-                    cur.execute(_SQL_GET_DISTILLED_MEMORY_ITEMS, (project_name,))
+                    cur.execute(_SQL_GET_DISTILLED_MEMORY_ITEMS, (_proj_id_mem,))
                     distilled_memory_items = [
                         {
                             "content": r[0],
@@ -1971,7 +2039,8 @@ async def generate_memory(project_name: str):
                 try:
                     with db.conn() as conn:
                         with conn.cursor() as cur:
-                            cur.execute(_SQL_GET_EXISTING_ENTITY_VALUES, (project_name,))
+                            _pid_ev = db.get_or_create_project_id(project_name)
+                            cur.execute(_SQL_GET_EXISTING_ENTITY_VALUES, (_pid_ev,))
                             existing_values = [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
                 except Exception:
                     pass
@@ -2071,12 +2140,13 @@ async def memory_status(project_name: str, bust: bool = False):
     interactions_since = 0
     if db.is_available():
         try:
+            _pid_ms = db.get_or_create_project_id(project_name)
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_COUNT_INTERACTIONS_TOTAL, (project_name,))
+                    cur.execute(_SQL_COUNT_INTERACTIONS_TOTAL, (_pid_ms,))
                     interactions_total = (cur.fetchone() or (0,))[0]
                     if last_memory_run:
-                        cur.execute(_SQL_COUNT_INTERACTIONS_SINCE, (project_name, last_memory_run))
+                        cur.execute(_SQL_COUNT_INTERACTIONS_SINCE, (_pid_ms, last_memory_run))
                         interactions_since = (cur.fetchone() or (0,))[0]
                     else:
                         interactions_since = interactions_total
@@ -2109,11 +2179,13 @@ async def _process_unembedded_items_messages(project: str) -> None:
         from memory.memory_embedding import MemoryEmbedding
         emb = MemoryEmbedding()
 
+        project_id = db.get_or_create_project_id(project)
+
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_UNPROCESSED_ITEMS, (project,))
+                cur.execute(_SQL_GET_UNPROCESSED_ITEMS, (project_id,))
                 item_ids = [r[0] for r in cur.fetchall()]
-                cur.execute(_SQL_GET_UNPROCESSED_MESSAGES, (project,))
+                cur.execute(_SQL_GET_UNPROCESSED_MESSAGES, (project_id,))
                 msg_ids = [r[0] for r in cur.fetchall()]
 
         for iid in item_ids:
@@ -2140,9 +2212,11 @@ async def _run_feature_snapshots(project: str) -> None:
         return
     _log = logging.getLogger(__name__)
     try:
+        project_id = db.get_or_create_project_id(project)
+
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_ACTIVE_PLANNER_TAGS, (project,))
+                cur.execute(_SQL_GET_ACTIVE_PLANNER_TAGS, (project_id,))
                 tag_names = [r[0] for r in cur.fetchall()]
 
         if not tag_names:
@@ -2179,10 +2253,12 @@ async def _ingest_new_commits(project: str, code_dir: str, ingest_commit_fn) -> 
     if not db.is_available():
         return
     try:
+        project_id = db.get_or_create_project_id(project)
+
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Find commit hashes not yet in embeddings
-                cur.execute(_SQL_GET_UNEMBEDDED_COMMITS, (project, project))
+                cur.execute(_SQL_GET_UNEMBEDDED_COMMITS, (project_id, project_id))
                 hashes = [r[0] for r in cur.fetchall()]
         for h in hashes:
             await ingest_commit_fn(project, h, code_dir)
@@ -2231,10 +2307,12 @@ async def _auto_create_entities(project: str, since: str | None = None) -> int:
         if not key:
             return 0
 
+        project_id = db.get_or_create_project_id(project)
+
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Get categories available for this project
-                cur.execute(_SQL_GET_CATEGORIES_FOR_PROJECT, (project,))
+                cur.execute(_SQL_GET_CATEGORIES_FOR_PROJECT)
                 cat_rows = cur.fetchall()  # (id, name)
                 if not cat_rows:
                     return 0
@@ -2246,19 +2324,19 @@ async def _auto_create_entities(project: str, since: str | None = None) -> int:
                     return 0
 
                 # Get existing entity names to avoid duplicates
-                cur.execute(_SQL_GET_ACTIVE_ENTITY_VALUES_FOR_AUTOTAG, (project,))
+                cur.execute(_SQL_GET_ACTIVE_ENTITY_VALUES_FOR_AUTOTAG, (project_id,))
                 existing = cur.fetchall()  # (id, category, name)
                 existing_names = {name.lower() for _, _, name in existing}
 
                 # Get untagged prompts since last /memory run
                 since_sql = "AND created_at > %s::timestamptz" if since else ""
-                params: list = [project]
+                params: list = [project_id]
                 if since:
                     params.append(since)
                 cur.execute(
                     "SELECT id::text, 'prompt', LEFT(prompt, 120) "
                     "FROM mem_mrr_prompts "
-                    f"WHERE client_id=1 AND project=%s AND ai_tags IS NULL {since_sql} "
+                    f"WHERE project_id=%s AND ai_tags IS NULL {since_sql} "
                     "ORDER BY created_at DESC LIMIT 30",
                     params,
                 )
@@ -2323,8 +2401,8 @@ async def _auto_create_entities(project: str, since: str | None = None) -> int:
                         # Tag lands in ai_suggestion; suggested category stored in description
                         full_desc = f"[suggested: {suggested_cat}] {desc}".strip()[:300]
                         from data.dl_seq import next_seq
-                        seq = next_seq(cur, project, 'ai_suggestion')
-                        cur.execute(_SQL_INSERT_ENTITY_VALUE_AUTO, (ai_suggestion_cat_id, project, name, full_desc, seq))
+                        seq = next_seq(cur, project_id, 'ai_suggestion')
+                        cur.execute(_SQL_INSERT_ENTITY_VALUE_AUTO, (project_id, ai_suggestion_cat_id, name, full_desc, seq))
                         if cur.fetchone():
                             created += 1
                             existing_names.add(name.lower())
@@ -2358,16 +2436,18 @@ async def auto_detect_bugs(project_name: str):
         if not key:
             return {"created": 0, "detected": 0, "skipped": 0, "reason": "no_api_key"}
 
+        project_id = db.get_or_create_project_id(project_name)
+
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Recent prompt events
-                cur.execute(_SQL_GET_RECENT_SESSION_PROMPTS, (project_name,))
+                cur.execute(_SQL_GET_RECENT_SESSION_PROMPTS, (project_id,))
                 events = cur.fetchall()  # (title, content)
                 if not events:
                     return {"created": 0, "detected": 0, "skipped": 0, "reason": "no_events"}
 
                 # Existing bug names (lowercase) to avoid duplicates
-                cur.execute(_SQL_GET_EXISTING_BUG_NAMES, (project_name,))
+                cur.execute(_SQL_GET_EXISTING_BUG_NAMES, (project_id,))
                 existing_bug_names = {r[0] for r in cur.fetchall()}
 
                 # Bug category id
@@ -2424,10 +2504,10 @@ async def auto_detect_bugs(project_name: str):
                             skipped += 1
                             continue
                         from data.dl_seq import next_seq
-                        seq = next_seq(cur, project_name, "bug")
+                        seq = next_seq(cur, project_id, "bug")
                         cur.execute(
                             _SQL_INSERT_BUG_WORK_ITEM,
-                            (project_name, name, desc, seq),
+                            (project_id, name, desc, seq),
                         )
                         if cur.fetchone():
                             created += 1
@@ -2488,3 +2568,76 @@ async def get_project(project_name: str):
                     pass
 
     return data
+
+class ProjectMemberAdd(BaseModel):
+    user_id: str
+    role: str = "member"  # 'owner'|'editor'|'viewer'
+
+
+@router.get("/{project}/members")
+def list_project_members(project: str):
+    if not db.is_available():
+        return {"members": []}
+    project_id = db.get_project_id(project)
+    if project_id is None:
+        raise HTTPException(404, f"Project '{project}' not found")
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT u.id, u.email, up.role, up.joined_at
+                   FROM mng_user_projects up
+                   JOIN mng_users u ON u.id = up.user_id
+                   WHERE up.project_id=%s ORDER BY up.joined_at""",
+                (project_id,)
+            )
+            rows = cur.fetchall()
+    return {"members": [{"user_id": r[0], "email": r[1], "role": r[2], "joined_at": str(r[3])} for r in rows]}
+
+
+@router.post("/{project}/members")
+def add_project_member(project: str, body: ProjectMemberAdd):
+    if not db.is_available():
+        raise HTTPException(503, "Database unavailable")
+    project_id = db.get_project_id(project)
+    if project_id is None:
+        raise HTTPException(404, f"Project '{project}' not found")
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO mng_user_projects (user_id, project_id, role)
+                   VALUES (%s, %s, %s) ON CONFLICT (user_id, project_id) DO UPDATE SET role=EXCLUDED.role""",
+                (body.user_id, project_id, body.role)
+            )
+    return {"ok": True}
+
+
+@router.put("/{project}/members/{user_id}")
+def update_project_member(project: str, user_id: str, body: ProjectMemberAdd):
+    if not db.is_available():
+        raise HTTPException(503, "Database unavailable")
+    project_id = db.get_project_id(project)
+    if project_id is None:
+        raise HTTPException(404, f"Project '{project}' not found")
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE mng_user_projects SET role=%s WHERE user_id=%s AND project_id=%s",
+                (body.role, user_id, project_id)
+            )
+    return {"ok": True}
+
+
+@router.delete("/{project}/members/{user_id}")
+def remove_project_member(project: str, user_id: str):
+    if not db.is_available():
+        raise HTTPException(503, "Database unavailable")
+    project_id = db.get_project_id(project)
+    if project_id is None:
+        raise HTTPException(404, f"Project '{project}' not found")
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM mng_user_projects WHERE user_id=%s AND project_id=%s",
+                (user_id, project_id)
+            )
+    return {"ok": True}

@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 _SQL_FACTS = """
     SELECT COALESCE(category, 'general'), fact_key, fact_value
     FROM mem_ai_project_facts
-    WHERE client_id=1 AND project=%s AND valid_until IS NULL
+    WHERE project_id=%s AND valid_until IS NULL
       AND conflict_status IS DISTINCT FROM 'pending_review'
     ORDER BY category NULLS LAST, fact_key
 """
@@ -53,7 +53,7 @@ _SQL_ACTIVE_WORK_ITEMS = """
            wi.seq_num, t.name AS tag_name
     FROM mem_ai_work_items wi
     LEFT JOIN planner_tags t ON t.id = wi.tag_id
-    WHERE wi.client_id=1 AND wi.project=%s AND wi.status != 'done'
+    WHERE wi.project_id=%s AND wi.status != 'done'
     ORDER BY CASE wi.lifecycle_status
                WHEN 'development' THEN 1 WHEN 'testing' THEN 2
                WHEN 'review' THEN 3      WHEN 'design'  THEN 4
@@ -65,7 +65,7 @@ _SQL_ACTIVE_WORK_ITEMS = """
 _SQL_LATEST_SESSION = """
     SELECT summary, action_items, created_at, session_id
     FROM mem_ai_events
-    WHERE client_id=1 AND project=%s AND event_type='session_summary'
+    WHERE project_id=%s AND event_type='session_summary'
     ORDER BY created_at DESC
     LIMIT 1
 """
@@ -81,21 +81,21 @@ _SQL_ALL_RELATIONS = """
 _SQL_FEATURE_SNAPSHOTS = """
     SELECT t.id, t.name, t.project, t.summary, t.action_items, t.design, t.code_summary
     FROM planner_tags t
-    WHERE t.project = %s AND (t.summary IS NOT NULL OR t.action_items IS NOT NULL)
+    WHERE t.project_id = %s AND (t.summary IS NOT NULL OR t.action_items IS NOT NULL)
     ORDER BY t.updated_at DESC LIMIT 20
 """
 
 _SQL_BLOCKED_TAGS = """
     SELECT t.id, t.name, t.status, t.short_desc
     FROM planner_tags t
-    WHERE t.project = %s AND t.status = 'active'
+    WHERE t.project_id = %s AND t.status = 'active'
 """
 
 _SQL_TOP_EVENTS = """
     SELECT content, event_type, importance, created_at,
            importance * EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance
     FROM mem_ai_events
-    WHERE client_id=1 AND project=%s
+    WHERE project_id=%s
     ORDER BY relevance DESC
     LIMIT %s
 """
@@ -103,14 +103,14 @@ _SQL_TOP_EVENTS = """
 _SQL_ACTIVE_TAGS = """
     SELECT t.id, t.name, t.status, t.short_desc, t.priority, t.due_date
     FROM planner_tags t
-    WHERE t.project = %s AND t.status IN ('open', 'active')
+    WHERE t.project_id = %s AND t.status IN ('open', 'active')
     ORDER BY t.priority ASC, t.updated_at DESC LIMIT 20
 """
 
 _SQL_FEATURE_SNAPSHOT_BY_TAG = """
     SELECT t.id, t.name, t.project, t.requirements, t.summary, t.action_items, t.design, t.code_summary
     FROM planner_tags t
-    WHERE t.id = %s AND t.project = %s
+    WHERE t.id = %s AND t.project_id = %s
 """
 
 _SQL_FEATURE_RELATIONS = """
@@ -161,16 +161,17 @@ class MemoryFiles:
         if not db.is_available():
             return ctx
 
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     # Project facts grouped by category
-                    cur.execute(_SQL_FACTS, (project,))
+                    cur.execute(_SQL_FACTS, (project_id,))
                     for cat, key, val in cur.fetchall():
                         ctx["facts_by_cat"].setdefault(cat, []).append((key, val))
 
                     # Active work items
-                    cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project,))
+                    cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
                     for name, desc, lifecycle, cat_name, seq_num, tag_name in cur.fetchall():
                         ctx["active_work"].append({
                             "name": name, "desc": (desc or "")[:120],
@@ -179,7 +180,7 @@ class MemoryFiles:
                         })
 
                     # Latest session summary
-                    cur.execute(_SQL_LATEST_SESSION, (project,))
+                    cur.execute(_SQL_LATEST_SESSION, (project_id,))
                     row = cur.fetchone()
                     if row:
                         ctx["latest_session"] = {
@@ -190,21 +191,21 @@ class MemoryFiles:
                         }
 
                     # Blockers and dependencies
-                    cur.execute(_SQL_BLOCKERS, (project,))
+                    cur.execute(_SQL_BLOCKERS, (project_id,))
                     ctx["blockers"] = [
                         {"from": r[0], "relation": r[1], "to": r[2], "note": r[3] or ""}
                         for r in cur.fetchall()
                     ]
 
                     # All relations
-                    cur.execute(_SQL_ALL_RELATIONS, (project,))
+                    cur.execute(_SQL_ALL_RELATIONS, (project_id,))
                     ctx["all_relations"] = [
                         {"from": r[0], "relation": r[1], "to": r[2], "note": r[3] or ""}
                         for r in cur.fetchall()
                     ]
 
                     # Feature snapshots (inline on planner_tags)
-                    cur.execute(_SQL_FEATURE_SNAPSHOTS, (project,))
+                    cur.execute(_SQL_FEATURE_SNAPSHOTS, (project_id,))
                     for t_id, t_name, t_project, summary, action, design, code_sum in cur.fetchall():
                         ctx["features"][t_name] = {
                             "requirements":    summary or "",
@@ -215,7 +216,7 @@ class MemoryFiles:
                         }
 
                     # Blocked/active tags (short_desc inline on planner_tags)
-                    cur.execute(_SQL_BLOCKED_TAGS, (project,))
+                    cur.execute(_SQL_BLOCKED_TAGS, (project_id,))
                     ctx["blocked_tags"] = [(r[1], r[3] or "") for r in cur.fetchall()]
 
                     # Feature details: tags with embedding or summary (inline fields)
@@ -223,10 +224,10 @@ class MemoryFiles:
                         SELECT t.id, t.name, t.short_desc, t.requirements, t.summary,
                                t.action_items, t.design, t.code_summary
                         FROM planner_tags t
-                        WHERE t.project = %s
+                        WHERE t.project_id = %s
                           AND (t.embedding IS NOT NULL OR t.summary IS NOT NULL)
                         ORDER BY t.updated_at DESC LIMIT 30
-                    """, (project,))
+                    """, (project_id,))
                     ctx["feature_details"] = [
                         {
                             "id":           str(r[0]),
@@ -250,10 +251,11 @@ class MemoryFiles:
         """Return top-N events by time-decayed relevance score."""
         if not db.is_available():
             return []
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_TOP_EVENTS, (project, limit))
+                    cur.execute(_SQL_TOP_EVENTS, (project_id, limit))
                     return [
                         {
                             "content":     r[0],
@@ -272,10 +274,11 @@ class MemoryFiles:
         """Return tag names for active/open tags (active features that have snapshots)."""
         if not db.is_available():
             return []
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_ACTIVE_TAGS, (project,))
+                    cur.execute(_SQL_ACTIVE_TAGS, (project_id,))
                     # _SQL_ACTIVE_TAGS returns (id, name, status, short_desc, priority, due_date)
                     return [r[1] for r in cur.fetchall()]
         except Exception:
@@ -396,13 +399,14 @@ class MemoryFiles:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     # Look up tag by name to get its id, then read inline snapshot fields
+                    project_id = db.get_or_create_project_id(project)
                     cur.execute("""
                         SELECT t.id, t.name, t.project, t.requirements, t.summary,
                                t.action_items, t.design, t.code_summary, t.short_desc
                         FROM planner_tags t
-                        WHERE t.project = %s AND t.name = %s
+                        WHERE t.project_id = %s AND t.name = %s
                         LIMIT 1
-                    """, (project, tag_name))
+                    """, (project_id, tag_name))
                     row = cur.fetchone()
                     if row:
                         snap = {

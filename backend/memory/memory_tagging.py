@@ -32,14 +32,14 @@ log = logging.getLogger(__name__)
 
 _SQL_GET_TAG = """
     SELECT id FROM planner_tags
-    WHERE client_id=1 AND project=%s AND name=%s
+    WHERE project_id=%s AND name=%s
     LIMIT 1
 """
 
 _SQL_INSERT_TAG = """
-    INSERT INTO planner_tags (client_id, project, name, category_id, status)
-    VALUES (1, %s, %s, %s, 'active')
-    ON CONFLICT (client_id, project, name, category_id) DO NOTHING
+    INSERT INTO planner_tags (project_id, name, category_id, status)
+    VALUES (%s, %s, %s, 'active')
+    ON CONFLICT (project_id, name, category_id) DO NOTHING
     RETURNING id
 """
 
@@ -50,14 +50,14 @@ _SQL_LIST_TAGS = """
            t.short_desc, t.due_date, t.priority, 0 AS source_count
     FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-    WHERE t.client_id = 1 AND t.project = %s
+    WHERE t.project_id = %s
       AND t.merged_into IS NULL
     ORDER BY t.created_at
 """
 
 _SQL_MERGE_TAGS = """
     UPDATE planner_tags SET merged_into=%s::uuid, updated_at=NOW()
-    WHERE client_id=1 AND project=%s AND name=%s
+    WHERE project_id=%s AND name=%s
     RETURNING id
 """
 
@@ -77,19 +77,20 @@ class MemoryTagging:
         """Return existing tag UUID or create a new one. Returns UUID string."""
         if not db.is_available():
             return None
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_TAG, (project, name))
+                    cur.execute(_SQL_GET_TAG, (project_id, name))
                     row = cur.fetchone()
                     if row:
                         return str(row[0])
-                    cur.execute(_SQL_INSERT_TAG, (project, name, category_id))
+                    cur.execute(_SQL_INSERT_TAG, (project_id, name, category_id))
                     row = cur.fetchone()
                     if row:
                         return str(row[0])
                     # Race: another session inserted first
-                    cur.execute(_SQL_GET_TAG, (project, name))
+                    cur.execute(_SQL_GET_TAG, (project_id, name))
                     row = cur.fetchone()
                     return str(row[0]) if row else None
         except Exception as e:
@@ -102,10 +103,11 @@ class MemoryTagging:
         """Return planner_tags as a nested parent→children tree."""
         if not db.is_available():
             return []
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_LIST_TAGS, (project,))
+                    cur.execute(_SQL_LIST_TAGS, (project_id,))
                     rows = cur.fetchall()
         except Exception:
             return []
@@ -149,10 +151,11 @@ class MemoryTagging:
         into_id = self.get_or_create_tag(project, into_name)
         if not into_id:
             return
+        project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_MERGE_TAGS, (into_id, project, from_name))
+                    cur.execute(_SQL_MERGE_TAGS, (into_id, project_id, from_name))
         except Exception as e:
             log.debug(f"MemoryTagging.merge_tags error: {e}")
 
@@ -270,28 +273,30 @@ class MemoryTagging:
                         'summary': row[3] or '', 'category_name': row[4] or ''}
 
     def _find_exact_tag(self, project: str, name: str) -> dict | None:
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT id, name, category_id FROM planner_tags
-                    WHERE project = %s AND LOWER(name) = LOWER(%s)
+                    WHERE project_id = %s AND LOWER(name) = LOWER(%s)
                       AND status != 'archived' LIMIT 1
-                """, (project, name))
+                """, (project_id, name))
                 row = cur.fetchone()
                 if not row:
                     return None
                 return {'id': str(row[0]), 'name': row[1], 'category_id': row[2]}
 
     def _vector_search_tags(self, project: str, embedding: list, limit: int = 15) -> list[dict]:
+        project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT id, name, category_id, short_desc,
                            1 - (embedding <=> %s::vector) AS score
                     FROM planner_tags
-                    WHERE project = %s AND embedding IS NOT NULL AND status != 'archived'
+                    WHERE project_id = %s AND embedding IS NOT NULL AND status != 'archived'
                     ORDER BY embedding <=> %s::vector LIMIT %s
-                """, (embedding, project, embedding, limit))
+                """, (embedding, project_id, embedding, limit))
                 rows = cur.fetchall()
                 return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
                          'short_desc': r[3], 'score': float(r[4])} for r in rows]
