@@ -49,12 +49,12 @@
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-    "Session phase persistence with red \u26a0 badge for missing phase; tag suggestions marked distinctly (separate color) and auto-saved via _acceptSuggestedTag",
+    "Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
+    "Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures",
+    "Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling",
+    "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking",
     "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u2197 link) showing only that prompt's commits",
-    "Backend: FastAPI + uvicorn; routers/ for API endpoints, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP",
-    "Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat",
-    "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev",
-    "Backend startup race condition fixed: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention"
+    "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Session ordering by created_at verified: maintains chronological list and prevents phase/tag updates from reordering sessions",
-    "Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red \u26a0 badge for missing phase across UI/CLI/workflow",
-    "Commit-per-prompt inline display deployed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash \u2197 link)",
-    "Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits simultaneously",
-    "AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner",
-    "Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, created date"
+    "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step",
+    "Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping",
+    "Memory layer trigger consolidation: establish unified event-based triggering for /memory pathway with differentiated process_item and messages handling",
+    "LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking",
+    "Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API",
+    "Post-fix validation: verify backend startup race condition resolution and memory endpoint variable scoping fixes remain stable"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-05T23:28:22Z",
+  "last_memory_run": "2026-04-05T23:59:08Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -132,20 +132,20 @@
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-      "Session phase persistence with red \u26a0 badge for missing phase; tag suggestions marked distinctly (separate color) and auto-saved via _acceptSuggestedTag",
+      "Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention",
+      "Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures",
+      "Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling",
+      "Phase persistence with red \u26a0 badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking",
       "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u2197 link) showing only that prompt's commits",
-      "Backend: FastAPI + uvicorn; routers/ for API endpoints, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP",
-      "Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat",
-      "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev",
-      "Backend startup race condition fixed: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention"
+      "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev"
     ],
     "in_progress": [
-      "Session ordering by created_at verified: maintains chronological list and prevents phase/tag updates from reordering sessions",
-      "Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red \u26a0 badge for missing phase across UI/CLI/workflow",
-      "Commit-per-prompt inline display deployed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash \u2197 link)",
-      "Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits simultaneously",
-      "AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner",
-      "Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, created date"
+      "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step",
+      "Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping",
+      "Memory layer trigger consolidation: establish unified event-based triggering for /memory pathway with differentiated process_item and messages handling",
+      "LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking",
+      "Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API",
+      "Post-fix validation: verify backend startup race condition resolution and memory endpoint variable scoping fixes remain stable"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -154,19 +154,21 @@
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+",
       "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "db_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev",
       "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
+      "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
       "database_version": "PostgreSQL 15+",
       "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "**aicli** is a shared AI memory platform combining a Python 3.12 CLI, FastAPI backend, and Electron desktop UI to provide project memory synthesis, semantic search, and workflow automation. It uses PostgreSQL 15+ with pgvector embeddings, supports multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok), and employs async DAG workflows with real-time web visualization. The system unifies event tracking, tag management, project facts, and work items while maintaining strict session chronology and preventing data loss on concurrent updates.",
-    "memory_digest": "**2026-04-05** `project_state` \u2014 Session ordering refactored to use created_at instead of updated_at, preventing tag/phase updates from reordering chronological session list. **2026-04-05** `project_state` \u2014 Phase persistence enhanced with database loading on init and red \u26a0 badge for missing phases across UI/CLI/workflow views. **2026-04-05** `project_state` \u2014 Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash links. **2026-04-05** `project_state` \u2014 Tag deduplication verified: 149 total tags with 0 duplicates; removal via \u2715 buttons propagates simultaneously across Chat/History/Commits views. **2026-04-05** `project_state` \u2014 AI suggestion auto-save implemented: suggestions create tags in proper category via _acceptSuggestedTag, marked distinctly with separate color, appear immediately in Planner. **2026-04-05** `project_state` \u2014 Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, and created date properties."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop frontend for managing AI-assisted development workflows. Current state: core infrastructure stable with unified memory tables (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features), JWT authentication, multi-LLM provider support, and DAG-based workflow execution; actively consolidating memory layer architecture, unifying feature snapshots, and establishing complete work_item relationship mapping to enable full memory functionality.",
+    "memory_digest": "**[2026-04-05]** `project_facts` \u2014 Identified critical gap: memory_items and project_facts tables are not being populated as designed; memory layer architecture requires comprehensive documentation covering all layer descriptions, mirroring mechanism, event triggers, and specific LLM prompts at each processing step. **[2026-04-05]** `architecture` \u2014 Consolidated feature snapshot strategy: plannet_tags currently serves as feature snapshot holder but lacks proper semantic naming; plan to merge into feature_snapshot structure with complete work_item relationship mapping. **[2026-04-05]** `memory_triggers` \u2014 Established need for unified event-based triggering in /memory pathway to consistently handle all new items, with differentiated logic for process_item versus messages handling. **[2026-04-06]** `backend_fixes` \u2014 Fixed _Database attribute error by removing stale db.ensure_project_schema() call from main.py; added retry logic to handle race conditions when project list loads empty on startup. **[2026-04-06]** `memory_endpoints` \u2014 Resolved CLAUDE.md memory endpoint variable scoping issue (undefined code_dir at line 1120). **[2026-04-06]** `ui_enhancements` \u2014 LLM model identifier now required as visible tag in UI interface for transparency. **[2026-04-05]** `project_visibility` \u2014 Fixed AiCli project display in project list; ensured current project indicator works correctly. **[2026-04-05]** `data_model` \u2014 Clarified users are nested under clients (hierarchical structure: one client \u2192 multiple users). **[2026-04-06]** `testing` \u2014 Post-fix validation phase: verifying backend startup resilience and memory endpoint fixes remain stable across sessions."
   }
 }

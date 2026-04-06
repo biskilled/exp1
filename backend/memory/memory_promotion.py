@@ -46,8 +46,7 @@ _SQL_GET_WORK_ITEM_BY_NAME = """
 """
 
 _SQL_GET_MEMORY_EVENTS = """
-    SELECT me.id, me.summary, me.event_type, me.created_at, me.llm_source,
-           me.session_action_items
+    SELECT me.id, me.summary, me.event_type, me.created_at, me.action_items
     FROM mem_ai_events me
     WHERE me.client_id=1 AND me.project=%s
     ORDER BY me.created_at DESC LIMIT 50
@@ -95,6 +94,32 @@ _SQL_MARK_FACT_CONFLICT = """
 _SQL_MARK_EVENTS_PROCESSED = """
     UPDATE mem_ai_events SET processed_at=NOW()
     WHERE id=ANY(%s::uuid[]) AND processed_at IS NULL
+"""
+
+# Find events not yet used as source for any work item extraction
+_SQL_GET_UNEXTRACTED_EVENTS = """
+    SELECT me.id, me.event_type, me.session_id, me.summary, me.action_items,
+           me.created_at, me.tags
+    FROM mem_ai_events me
+    WHERE me.client_id=1 AND me.project=%s
+      AND me.event_type IN ('prompt_batch', 'session_summary')
+      AND me.summary IS NOT NULL AND me.summary != ''
+      AND NOT EXISTS (
+          SELECT 1 FROM mem_ai_work_items wi
+          WHERE wi.client_id=1 AND wi.project=me.project
+            AND wi.source_event_id = me.id
+      )
+    ORDER BY me.created_at DESC
+    LIMIT %s
+"""
+
+_SQL_INSERT_EXTRACTED_WORK_ITEM = """
+    INSERT INTO mem_ai_work_items
+        (client_id, project, category_name, name, description,
+         status, lifecycle_status, source_event_id, source_session_id, created_at)
+    VALUES (1, %s, %s, %s, %s, 'active', 'idea', %s::uuid, %s, NOW())
+    ON CONFLICT (client_id, project, category_name, name) DO NOTHING
+    RETURNING id
 """
 
 
@@ -300,13 +325,13 @@ class MemoryPromotion:
             "workflow":     [],
         }
         event_ids: list[str] = []
-        for ev_id, summary, event_type, created_at, llm_source, session_action_items in events:
+        for ev_id, summary, event_type, created_at, action_items in events:
             event_ids.append(str(ev_id))
             rel = compute_relevance(1, created_at)
             bucket = event_type if event_type in batch_types else "prompt_batch"
             content = summary or ""
-            if session_action_items:
-                content += f" | actions: {session_action_items}"
+            if action_items:
+                content += f" | actions: {action_items}"
             batch_types[bucket].append(f"[relevance={rel:.2f}] {content}")
 
         # Build user message with all 6 batch type sections
@@ -488,3 +513,85 @@ class MemoryPromotion:
         if not raw:
             return None
         return _parse_json(raw) or None
+
+    async def extract_work_items_from_events(
+        self,
+        project: str,
+        batch_size: int = 10,
+    ) -> int:
+        """
+        Scan recent unprocessed events (prompt_batch + session_summary) and use
+        Haiku to identify actionable work items (tasks, bugs, features).
+
+        Each extracted item is stored in mem_ai_work_items with source_event_id
+        and source_session_id set so it's not re-extracted on the next run.
+
+        Returns count of work items created.
+        """
+        if not db.is_available():
+            return 0
+
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_GET_UNEXTRACTED_EVENTS, (project, batch_size))
+                    events = cur.fetchall()
+        except Exception as e:
+            log.debug(f"extract_work_items_from_events query error: {e}")
+            return 0
+
+        if not events:
+            return 0
+
+        system_prompt = await _load_system_role("work_item_extraction") or (
+            "You are a project memory analyst. Given a digest of recent development activity, "
+            "identify actionable work items: bugs to fix, features to build, tasks to complete. "
+            "Return JSON only:\n"
+            "{\"items\": [\n"
+            "  {\"category\": \"bug|feature|task\", \"name\": \"short-slug\", "
+            "\"description\": \"1-2 sentence explanation\"}\n"
+            "]}\n"
+            "Return at most 5 items. Use lowercase-hyphenated slugs for name. "
+            "Return {\"items\": []} if nothing actionable is found."
+        )
+
+        created = 0
+        for ev_id, event_type, session_id, summary, action_items, created_at, tags in events:
+            content_parts = [p for p in [summary, action_items] if p and p.strip()]
+            content = "\n\n".join(content_parts)[:3000]
+            if not content.strip():
+                continue
+
+            event_label = "session summary" if event_type == "session_summary" else "prompt batch"
+            user_msg = f"Event type: {event_label}\nDate: {str(created_at)[:10]}\n\n{content}"
+
+            raw = await _call_llm(system_prompt, user_msg, max_tokens=500)
+            if not raw:
+                continue
+
+            parsed = _parse_json(raw)
+            items = parsed.get("items", []) if parsed else []
+            if not items:
+                continue
+
+            for item in items[:5]:
+                category = item.get("category", "task")
+                name = (item.get("name") or "").strip().lower()[:200]
+                description = (item.get("description") or "").strip()[:1000]
+                if not name or not description:
+                    continue
+                try:
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                _SQL_INSERT_EXTRACTED_WORK_ITEM,
+                                (project, category, name, description,
+                                 str(ev_id), session_id),
+                            )
+                            if cur.fetchone():
+                                created += 1
+                except Exception as e:
+                    log.debug(f"extract_work_items insert error: {e}")
+
+        log.info(f"extract_work_items_from_events: created {created} items for '{project}'")
+        return created

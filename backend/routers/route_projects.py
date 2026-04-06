@@ -43,7 +43,6 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
               ) AS history_text
        FROM mem_mrr_prompts i
        WHERE i.client_id=1 AND i.project=%s
-         AND i.event_type='prompt'
          AND i.session_id IS NOT NULL
          AND NOT EXISTS (
              SELECT 1 FROM mem_ai_events m
@@ -59,8 +58,8 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
 _SQL_INSERT_MEMORY_ITEM_SESSION = (
     """INSERT INTO mem_ai_events
            (client_id, project, event_type, source_id, session_id, content, importance)
-       VALUES (1, %s, 'prompt_batch', %s::uuid, %s, %s, %s)
-       ON CONFLICT (client_id, project, event_type, source_id) DO NOTHING
+       VALUES (1, %s, 'prompt_batch', %s, %s, %s, %s)
+       ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING
        RETURNING id"""
 )
 
@@ -166,7 +165,7 @@ _SQL_INSERT_ENTITY_VALUE_AUTO = (
 
 _SQL_GET_RECENT_SESSION_PROMPTS = (
     """SELECT left(prompt,120), prompt FROM mem_mrr_prompts
-       WHERE client_id=1 AND project=%s AND event_type='prompt'
+       WHERE client_id=1 AND project=%s
          AND created_at > NOW() - INTERVAL '24 hours'
        ORDER BY created_at DESC LIMIT 20"""
 )
@@ -196,11 +195,39 @@ _SQL_GET_UNEMBEDDED_COMMITS = (
 )
 
 _SQL_COUNT_INTERACTIONS_TOTAL = (
-    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt'"
+    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s"
 )
 
 _SQL_COUNT_INTERACTIONS_SINCE = (
-    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND event_type='prompt' AND created_at > %s::timestamptz"
+    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE client_id=1 AND project=%s AND created_at > %s::timestamptz"
+)
+
+_SQL_GET_UNPROCESSED_ITEMS = (
+    """SELECT id::text FROM mem_mrr_items
+       WHERE client_id=1 AND project=%s
+         AND NOT EXISTS (
+             SELECT 1 FROM mem_ai_events e
+             WHERE e.client_id=1 AND e.project=mem_mrr_items.project
+               AND e.event_type='item' AND e.source_id=mem_mrr_items.id::text
+         )
+       ORDER BY created_at DESC LIMIT 20"""
+)
+
+_SQL_GET_UNPROCESSED_MESSAGES = (
+    """SELECT id::text FROM mem_mrr_messages
+       WHERE client_id=1 AND project=%s
+         AND NOT EXISTS (
+             SELECT 1 FROM mem_ai_events e
+             WHERE e.client_id=1 AND e.project=mem_mrr_messages.project
+               AND e.event_type='message' AND e.source_id=mem_mrr_messages.id::text
+         )
+       ORDER BY created_at DESC LIMIT 20"""
+)
+
+_SQL_GET_ACTIVE_PLANNER_TAGS = (
+    """SELECT name FROM planner_tags
+       WHERE client_id=1 AND project=%s AND status IN ('open', 'active')
+       ORDER BY updated_at DESC LIMIT 10"""
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1451,26 +1478,24 @@ async def generate_memory(project_name: str):
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT source_id, session_id, llm_source, prompt,
-                                  response, phase, created_at
+                        """SELECT source_id, session_id, tags->>'source' AS source,
+                                  prompt, response, created_at
                            FROM mem_mrr_prompts
                            WHERE client_id=1 AND project=%s
-                             AND event_type='prompt'
                              AND prompt IS NOT NULL AND prompt != ''
                            ORDER BY created_at DESC LIMIT 120""",
                         (project_name,),
                     )
                     rows = cur.fetchall()
-            for source_id, session_id, llm_source, prompt, response, phase, created_at in reversed(rows):
+            for source_id, session_id, source, prompt, response, created_at in reversed(rows):
                 if prompt.strip().startswith(("<task-notification>", "<tool-use-id>", "<task-id>", "<parameter>")):
                     continue
                 recent.append({
                     "ts":         source_id or (created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if created_at else ""),
-                    "source":     llm_source or "ui",
+                    "source":     source or "ui",
                     "session_id": session_id,
                     "user_input": prompt,
                     "output":     response or "",
-                    "phase":      phase,
                 })
         except Exception as e:
             log.warning("generate_memory: DB history read failed: %s", e)
@@ -1923,6 +1948,15 @@ async def generate_memory(project_name: str):
         except Exception:
             pass
 
+    # ── Memory pipeline: items, messages, feature snapshots, work item extraction ─
+    if db.is_available():
+        try:
+            asyncio.create_task(_process_unembedded_items_messages(project_name))
+            asyncio.create_task(_run_work_item_extraction(project_name))
+            asyncio.create_task(_run_feature_snapshots(project_name))
+        except Exception:
+            pass
+
     # ── Tag suggestions — ask Haiku based on recent history ──────────────────
     # Works with or without PostgreSQL: existing_values is best-effort from DB,
     # falls back to [] so Haiku still suggests tags even when DB is unavailable.
@@ -2064,6 +2098,80 @@ async def memory_status(project_name: str, bust: bool = False):
     }
     _MEMORY_STATUS_CACHE[project_name] = (time.monotonic(), result)
     return result
+
+
+async def _process_unembedded_items_messages(project: str) -> None:
+    """Process mem_mrr_items and mem_mrr_messages that have no mem_ai_events entry yet."""
+    if not db.is_available():
+        return
+    _log = logging.getLogger(__name__)
+    try:
+        from memory.memory_embedding import MemoryEmbedding
+        emb = MemoryEmbedding()
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_GET_UNPROCESSED_ITEMS, (project,))
+                item_ids = [r[0] for r in cur.fetchall()]
+                cur.execute(_SQL_GET_UNPROCESSED_MESSAGES, (project,))
+                msg_ids = [r[0] for r in cur.fetchall()]
+
+        for iid in item_ids:
+            try:
+                await emb.process_item(project, iid)
+            except Exception as e:
+                _log.debug(f"_process_unembedded_items: item {iid} failed: {e}")
+
+        for mid in msg_ids:
+            try:
+                await emb.process_messages(project, mid)
+            except Exception as e:
+                _log.debug(f"_process_unembedded_items: message {mid} failed: {e}")
+
+        if item_ids or msg_ids:
+            _log.info(f"_process_unembedded_items_messages: {len(item_ids)} items, {len(msg_ids)} messages for '{project}'")
+    except Exception as e:
+        _log.debug(f"_process_unembedded_items_messages failed: {e}")
+
+
+async def _run_feature_snapshots(project: str) -> None:
+    """Run promote_feature_snapshot() for all active feature tags."""
+    if not db.is_available():
+        return
+    _log = logging.getLogger(__name__)
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_GET_ACTIVE_PLANNER_TAGS, (project,))
+                tag_names = [r[0] for r in cur.fetchall()]
+
+        if not tag_names:
+            return
+
+        from memory.memory_promotion import MemoryPromotion
+        prom = MemoryPromotion()
+        for tag_name in tag_names:
+            try:
+                await prom.promote_feature_snapshot(project, tag_name)
+            except Exception as e:
+                _log.debug(f"_run_feature_snapshots: '{tag_name}' failed: {e}")
+        _log.info(f"_run_feature_snapshots: processed {len(tag_names)} tags for '{project}'")
+    except Exception as e:
+        _log.debug(f"_run_feature_snapshots failed: {e}")
+
+
+async def _run_work_item_extraction(project: str) -> None:
+    """Extract work items from recent unprocessed events."""
+    if not db.is_available():
+        return
+    _log = logging.getLogger(__name__)
+    try:
+        from memory.memory_promotion import MemoryPromotion
+        created = await MemoryPromotion().extract_work_items_from_events(project)
+        if created:
+            _log.info(f"_run_work_item_extraction: created {created} work items for '{project}'")
+    except Exception as e:
+        _log.debug(f"_run_work_item_extraction failed: {e}")
 
 
 async def _ingest_new_commits(project: str, code_dir: str, ingest_commit_fn) -> None:

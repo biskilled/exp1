@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-05 23:27 UTC by aicli /memory_
+_Generated: 2026-04-05 23:57 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-**aicli** is a shared AI memory platform combining a Python 3.12 CLI, FastAPI backend, and Electron desktop UI to provide project memory synthesis, semantic search, and workflow automation. It uses PostgreSQL 15+ with pgvector embeddings, supports multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok), and employs async DAG workflows with real-time web visualization. The system unifies event tracking, tag management, project facts, and work items while maintaining strict session chronology and preventing data loss on concurrent updates.
+aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop frontend for managing AI-assisted development workflows. Current state: core infrastructure stable with unified memory tables (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features), JWT authentication, multi-LLM provider support, and DAG-based workflow execution; actively consolidating memory layer architecture, unifying feature snapshots, and establishing complete work_item relationship mapping to enable full memory functionality.
 
 ## Project Facts
 
@@ -95,293 +95,130 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
-- Session phase persistence with red ⚠ badge for missing phase; tag suggestions marked distinctly (separate color) and auto-saved via _acceptSuggestedTag
+- Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
+- Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
+- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
 - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
-- Backend: FastAPI + uvicorn; routers/ for API endpoints, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
-- Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat
-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
-- Backend startup race condition fixed: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 
 ## In Progress
 
-- Session ordering by created_at verified: maintains chronological list and prevents phase/tag updates from reordering sessions
-- Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/workflow
-- Commit-per-prompt inline display deployed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link)
-- Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
-- AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner
-- Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, created date
+- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step
+- Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping
+- Memory layer trigger consolidation: establish unified event-based triggering for /memory pathway with differentiated process_item and messages handling
+- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking
+- Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
+- Post-fix validation: verify backend startup race condition resolution and memory endpoint variable scoping fixes remain stable
 
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit` — 2026-04-05
+### `prompt_batch: 8f29a8d3-13a3-42ed-9219-de7bfe53e3d2` — 2026-04-05
 
-diff --git a/workspace/aicli/_system/project_state.json b/workspace/aicli/_system/project_state.json
-index a2ad8b8..99db52f 100644
---- a/workspace/aicli/_system/project_state.json
-+++ b/workspace/aicli/_system/project_state.json
-@@ -50,7 +50,7 @@
-     "Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking and suggested/user-created distinction",
-     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-     "Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list",
--    "Unified UI: Planner tab consolidates all tag management (single tags view with category/status/properties); Chat (+) for tag selection with category filtering",
-+    "Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat (+) with category filtering",
-     "Tag suggestions marked distinctly (separate color/mark) and auto-saved via _acceptSuggestedTag; phase persistence with red \u26a0 badge for missing phase",
-     "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u2197 link) showing only that prompt's commits",
-     "Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP",
-@@ -83,10 +83,10 @@
-     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
-   ],
-   "in_progress": [
--    "Session ordering refactored: sessions now order by created_at instead of updated_at to maintain chronological list and prevent phase/tag updates from reordering",
-+    "Session ordering by created_at implemented to maintain chronological list and prevent phase/tag updates from reordering sessions",
-     "Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red \u26a0 badge for missing phase across UI/CLI/workflow",
-     "Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash \u2197 link)",
--    "Tag deduplication and cross-view sync: 149 total tags (0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits simultaneously",
-+    "Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits simultaneously",
-     "AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner",
-     "Planner tab unified redesign: consolidated into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tags split"
-   ],
-@@ -120,7 +120,7 @@
-     "cloud": "Railway (Dockerfile + railway.toml)",
-     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
-   },
--  "last_memory_run": "2026-04-05T18:10:33Z",
-+  "last_memory_run": "2026-04-05T18:14:46Z",
-   "_synthesis_cache": {
-     "key_decisions": [
-       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
-@@ -133,17 +133,17 @@
-       "Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking and suggested/user-created distinction",
-       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-       "Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list",
--      "Unified UI: Planner tab consolidates all tag management (single tags view with category/status/properties); Chat (+) for tag selection with category filtering",
-+      "Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat (+) with category filtering",
-       "Tag suggestions marked distinctly (separate color/mark) and auto-saved via _acceptSuggestedTag; phase persistence with red \u26a0 badge for missing phase",
-       "Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash \u2197 link) showing only that prompt's commits",
-       "Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP",
-       "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev"
-     ],
-     "in_progress": [
--      "Session ordering refactored: sessions now order by created_at instead of updated_at to maintain chronological list and prevent phase/tag updates from reordering",
-+      "Session ordering by created_at implemented to maintain chronological list and prevent phase/tag updates from reordering sessions",
-       "Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red \u26a0 badge for missing phase across UI/CLI/workflow",
-       "Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash \u2197 link)",
--      "Tag deduplication and cross-view sync: 149 total tags (0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits simultaneously",
-+      "Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via \u2715 buttons propagates across Chat/History/Commits simultaneously",
-       "AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner"
+# Development Session Summary (2026-03-18)
 
-### `commit` — 2026-04-05
+• **Fixed `_Database` attribute error** — removed stale `db.ensure_project_schema()` call from `main.py`
 
-diff --git a/workspace/aicli/_system/llm_prompts/gemini_context.md b/workspace/aicli/_system/llm_prompts/gemini_context.md
-new file mode 100644
-index 0000000..60b4bc9
---- /dev/null
-+++ b/workspace/aicli/_system/llm_prompts/gemini_context.md
-@@ -0,0 +1,44 @@
-+# Project Context: aicli
-+# Generated: 2026-04-05 18:22 UTC
-+
-+## Project Facts
-+
-+### General
-+
-+- auth_pattern: login_as_first_level_hierarchy
-+- backend_startup_race_condition_fix: retry_logic_handles_empty_project_list_on_first_load
-+- data_model_hierarchy: clients_contain_multiple_users
-+- data_persistence_issue: tags_disappear_on_session_switch
-+- db_engine: SQL
-+- db_schema_method_convention: _ensure_shared_schema_replaces_ensure_project_schema
-+- deployment_target: Claude_CLI_and_LLM_platforms
-+- email_verification_integration: incremental_enhancement_to_existing_signin_register_forms
-+- mcp_integration: embedding_and_data_retrieval_for_work_item_management
-+- memory_endpoint_template_variable_scoping: code_dir_variable_fixed_at_line_1120
-+- memory_management_pattern: load_once_on_access_update_on_save
-+- pending_implementation: memory_items_and_project_facts_table_population
-+- pending_issues: project_visibility_bug_active_project_not_displaying
-+- performance_optimization: redundant_SQL_calls_eliminated
-+- pipeline/auth: Acceptance criteria:
-+# PM Analysis: Email Verification Feature
-+
-+---
-+
-+## Context Summary
-+
-+The tagged context reveals this work item is an **incremental enhancement** to an existing authentication system. Sign In and Create Account forms are already live and functional. The prior PM analysis identified email verification as the missing layer—the system currently accepts any email without confirming ownership. The analys
-+
-+Reviewer: ```json
-+{
-+  "passed": false,
-+  "score": 4,
-+  "issues": [
-+    "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
-+- sql_performance_strategy: redundant_calls_eliminated_load_once_pattern
-+- stale_code_removed: git_supervisor_module_deleted_automated_git_workflow_no_longer_used
-+- tagging_system: nested_hierarchy_beyond_2_levels
-+- tagging_system_hierarchy: nested_hierarchy_beyond_2_levels_approved
-+- ui_action_menu_pattern: 3_dot_menu_for_action_visibility
-+- ui_library: 3_dot_menu_pattern
-+- unimplemented_features: memory_items_and_project_facts_tables_not_updating
-+- unresolved_issues: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
+• **Fixed CLAUDE.md memory endpoint error** — resolved undefined `code_dir` variable in line 1120
 
+• **Improved backend startup resilience** — added retry logic in `_continueToApp()` to handle race conditions when projects load returns empty
 
-### `commit` — 2026-04-05
+• **Fixed project visibility issue** — AiCli project now displays correctly in project list (not just Recent), addressing missing current project indicator
 
-diff --git a/workspace/aicli/_system/llm_prompts/full.md b/workspace/aicli/_system/llm_prompts/full.md
-new file mode 100644
-index 0000000..ac2ff6b
---- /dev/null
-+++ b/workspace/aicli/_system/llm_prompts/full.md
-@@ -0,0 +1,43 @@
-+You are a senior developer working on **aicli**.
-+Respect all project facts below. Never contradict them unless explicitly asked.
-+When working on a specific feature, ask for its snapshot before making decisions.
-+
-+## Project Notes
-+
-+- **auth_pattern**: login_as_first_level_hierarchy
-+- **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
-+- **data_model_hierarchy**: clients_contain_multiple_users
-+- **data_persistence_issue**: tags_disappear_on_session_switch
-+- **db_engine**: SQL
-+- **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
-+- **deployment_target**: Claude_CLI_and_LLM_platforms
-+- **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
-+- **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
-+- **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
-+- **memory_management_pattern**: load_once_on_access_update_on_save
-+- **pending_implementation**: memory_items_and_project_facts_table_population
-+- **pending_issues**: project_visibility_bug_active_project_not_displaying
-+- **performance_optimization**: redundant_SQL_calls_eliminated
-+- **pipeline/auth**: Acceptance criteria:
-+# PM Analysis: Email Verification Feature
-+
-+---
-+
-+## Context Summary
-+
-+The tagged context reveals this work item is an **incremental enhancement** to an existing authentication system. Sign In and Create Account forms are already live and functional. The prior PM analysis identified email verification as the missing layer—the system currently accepts any email without confirming ownership. The analys
-+
-+Reviewer: ```json
-+{
-+  "passed": false,
-+  "score": 4,
-+  "issues": [
-+    "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
-+- **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
-+- **stale_code_removed**: git_supervisor_module_deleted_automated_git_workflow_no_longer_used
-+- **tagging_system**: nested_hierarchy_beyond_2_levels
-+- **tagging_system_hierarchy**: nested_hierarchy_beyond_2_levels_approved
-+- **ui_action_menu_pattern**: 3_dot_menu_for_action_visibility
-+- **ui_library**: 3_dot_menu_pattern
-+- **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
-+- **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
+• **Clarified data model structure** — confirmed users are nested under clients (one client → multiple users)
 
+• **Identified memory mechanism gap** — `memory_items` and `project_facts` tables are **not being updated** as designed; needs implementation to enable proper memory functionality
 
-### `commit` — 2026-04-05
+### `memory_item` — 2026-04-05
 
-diff --git a/workspace/aicli/_system/llm_prompts/compact.md b/workspace/aicli/_system/llm_prompts/compact.md
-new file mode 100644
-index 0000000..7c64f6b
---- /dev/null
-+++ b/workspace/aicli/_system/llm_prompts/compact.md
-@@ -0,0 +1,3 @@
-+You are a senior developer working on **aicli**.
-+Respect all project facts below. Never contradict them unless explicitly asked.
-+When working on a specific feature, ask for its snapshot before making decisions.
+# Development Session Summary (2026-04-05)
 
+## UI Enhancement
+• Make the LLM model identifier visible as a tag in the UI interface
 
-### `commit` — 2026-04-05
+## Memory Architecture Documentation
+Requested comprehensive `aicli_memory.md` documentation including:
+- All memory layer descriptions and their responsibilities
+- Mirroring layer mechanism and how it propagates state
+- Event triggering logic and trigger points for each layer
+- Specific prompts used at each processing step
+- Integration considerations for work_item and project_fa structures
 
-diff --git a/workspace/aicli/_system/dev_runtime_state.json b/workspace/aicli/_system/dev_runtime_state.json
-index f2cc779..ff02e29 100644
---- a/workspace/aicli/_system/dev_runtime_state.json
-+++ b/workspace/aicli/_system/dev_runtime_state.json
-@@ -1,8 +1,8 @@
- {
--  "last_updated": "2026-04-05T18:14:20Z",
-+  "last_updated": "2026-04-05T18:23:16Z",
-   "last_session_id": "c9289bdc-baf2-462e-a6ce-a1972bd529aa",
--  "last_session_ts": "2026-04-05T18:14:20Z",
--  "session_count": 355,
-+  "last_session_ts": "2026-04-05T18:23:16Z",
-+  "session_count": 356,
-   "last_provider": "claude",
-   "last_prompt_preview": "hellow, how are you ?",
-   "source": "claude_cli"
+## Data Structure Consolidation
+• **Feature Snapshot Unification**: Merge `plannet_tags` (currently serving as feature snapshot holder) into a properly named `feature_snapshot` structure for semantic clarity
+• **Process Item/Messages Trigger**: Consolidate trigger logic in `/memory` pathway to uniformly handle all new items with event-based triggering
+• **Work Item Linking**: Establish and clarify proper linkage between work_item entities and memory/snapshot layers (relationship definition incomplete)
 
+## Outstanding Questions
+- Exact trigger conditions and data flow for each memory layer step
+- How process_item and messages differentiate in the memory layer
+- Complete work_item relationship mapping to memory structures
 
-### `commit` — 2026-04-05
+### `prompt_batch: 8b91f9d9-7632-4c3d-a386-d1bf3d48c864` — 2026-04-05
 
-diff --git a/workspace/aicli/_system/cursor/rules.md b/workspace/aicli/_system/cursor/rules.md
-index da83136..8cf5059 100644
---- a/workspace/aicli/_system/cursor/rules.md
-+++ b/workspace/aicli/_system/cursor/rules.md
-@@ -1,63 +1 @@
--# aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 18:10 UTC
--
--# aicli — Shared AI Memory Platform
--
--_Last updated: 2026-03-14 | Version 2.2.0_
--
-----
--
--## Tech Stack
--
--- **cli**: Python 3.12 + prompt_toolkit + rich
--- **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
--- **frontend**: Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server
--- **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
--- **storage_primary**: PostgreSQL 15+
--- **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
--- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
--- **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
--- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
--- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
--- **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
--- **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization + auto-tag suggestions
--- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
--- **mcp**: Stdio MCP server with 12+ tools
--- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
--- **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
--- **config_management**: config.py + YAML pipelines + pyproject.toml
--- **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
--- **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
--- **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
--- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
--- **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
--- **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
--- **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- **database**: PostgreSQL 15+
--- **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
--- **database_version**: PostgreSQL 15+
--- **build_tooling**: npm 8+ with Electron-builder; Vite dev server
--- **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
--- **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
--- **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
--- **deployment_cloud**: Railway (Dockerfile + railway.toml)
--- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
--- **deployment_local**: bash start_backend.sh + ui/npm run dev
--
--## Key Decisions
--
--- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
--- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables replace per-project fragmentation
--- Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
--- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
--- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
--- Claude Haiku dual-layer memory synthesis generating 5 files with LLM response summarization (not full output) + auto-tag suggestions
--- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
--- Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking and suggested/user-created distinction
--- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
--- Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list
--- Unified UI: Planner tab consolidates all tag management (single tags view with category/status/properties); Chat (+) for tag selection with category filtering
--- Tag suggestions marked distinctly (separate color/mark) and auto-saved via _acceptSuggestedTag; phase persistence with red ⚠ badge for missing phase
--- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
--- Backend: 
+# Development Session Summary (2026-04-05)
+
+## UI Enhancement
+• Make the LLM model identifier visible as a tag in the UI interface
+
+## Memory Architecture Documentation
+Requested comprehensive `aicli_memory.md` documentation including:
+- All memory layer descriptions and their responsibilities
+- Mirroring layer mechanism and how it propagates state
+- Event triggering logic and trigger points for each layer
+- Specific prompts used at each processing step
+- Integration considerations for work_item and project_fa structures
+
+## Data Structure Consolidation
+• **Feature Snapshot Unification**: Merge `plannet_tags` (currently serving as feature snapshot holder) into a properly named `feature_snapshot` structure for semantic clarity
+• **Process Item/Messages Trigger**: Consolidate trigger logic in `/memory` pathway to uniformly handle all new items with event-based triggering
+• **Work Item Linking**: Establish and clarify proper linkage between work_item entities and memory/snapshot layers (relationship definition incomplete)
+
+## Outstanding Questions
+- Exact trigger conditions and data flow for each memory layer step
+- How process_item and messages differentiate in the memory layer
+- Complete work_item relationship mapping to memory structures
+
+### `memory_item` — 2026-04-05
+
+# Development Session Summary (Apr 3-5, 2026)
+
+• **Fixed database schema errors**: Removed non-existent `lifecycle` column from `route_entities` (line 359) and `work_item_id` column reference from `route_work_items` (line 351); removed unused `PHASE` column from commits table
+
+• **Tag UI/API issues**: Fixed 422 Unprocessable Entity errors causing "[object object]" display; database schema misalignment prevented tag-prompt/commit associations from persisting
+
+• **Broke tag loading functionality**: After schema fixes, existing tags stopped loading in tag picker and previously attached tags to prompts/commits became inaccessible—requires tag relationship query debugging
+
+• **Commit sync API error**: `/history/commits/sync` endpoint failing at `execute_values()` (route_history line 441) during batch upsert operation—SQL generation issue needs investigation
+
+• **Planned mem_ai_events refactor**: Restructure column order (move `llm_source` after `project`), audit data population sources, and reconcile `tags` (MRR) vs `metadata` (events) columns for consistency across system
+
+### `prompt_batch: 6ffb562b-40dd-4aea-80a1-408ce5204f03` — 2026-04-05
+
+# Development Session Summary (Apr 3-5, 2026)
+
+• **Fixed database schema errors**: Removed non-existent `lifecycle` column from `route_entities` (line 359) and `work_item_id` column reference from `route_work_items` (line 351); removed unused `PHASE` column from commits table
+
+• **Tag UI/API issues**: Fixed 422 Unprocessable Entity errors causing "[object object]" display; database schema misalignment prevented tag-prompt/commit associations from persisting
+
+• **Broke tag loading functionality**: After schema fixes, existing tags stopped loading in tag picker and previously attached tags to prompts/commits became inaccessible—requires tag relationship query debugging
+
+• **Commit sync API error**: `/history/commits/sync` endpoint failing at `execute_values()` (route_history line 441) during batch upsert operation—SQL generation issue needs investigation
+
+• **Planned mem_ai_events refactor**: Restructure column order (move `llm_source` after `project`), audit data population sources, and reconcile `tags` (MRR) vs `metadata` (events) columns for consistency across system
+
+### `memory_item` — 2026-04-05
+
+# Session Summary: Memory Architecture & Workflow Foundation
+
+- **Memory system audited & validated**: Tag system working end-to-end; `/memory` synthesis process now correctly aggregates JSONL entries with proper UUID array handling via PostgreSQL `ARRAY_AGG()`
+- **MCP integration confirmed but not yet active in session**: `.mcp.json` configured with Anthropic/OpenAI keys loaded from `.env` (ANTHROPIC_API_KEY, OPENAI_API_KEY); direct HTTP calls used instead of MCP client this session
+- **Performance improvements delivered**: Moved from 40 raw JSONL entries per call → synthesized summaries, reducing token overhead and improving retrieval accuracy for work item context
+- **Workflow system design initiated**: Analyzed specrails.dev and external references as templates; goal is to build DAG-based workflows with parent-child task dependencies (e.g., UI → Dropbox) similar to specrails pipeline model
+- **Default pipeline & hierarchical task support lost**: Discovered previous parent-child relationship feature (UI → dropbox example) removed; user wants to restore task linking and connect default pipeline execution to new workflow engine
 
 ## AI Synthesis
 
-**2026-04-05** `project_state` — Session ordering refactored to use created_at instead of updated_at, preventing tag/phase updates from reordering chronological session list. **2026-04-05** `project_state` — Phase persistence enhanced with database loading on init and red ⚠ badge for missing phases across UI/CLI/workflow views. **2026-04-05** `project_state` — Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash links. **2026-04-05** `project_state` — Tag deduplication verified: 149 total tags with 0 duplicates; removal via ✕ buttons propagates simultaneously across Chat/History/Commits views. **2026-04-05** `project_state` — AI suggestion auto-save implemented: suggestions create tags in proper category via _acceptSuggestedTag, marked distinctly with separate color, appear immediately in Planner. **2026-04-05** `project_state` — Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, and created date properties.
+**[2026-04-05]** `project_facts` — Identified critical gap: memory_items and project_facts tables are not being populated as designed; memory layer architecture requires comprehensive documentation covering all layer descriptions, mirroring mechanism, event triggers, and specific LLM prompts at each processing step. **[2026-04-05]** `architecture` — Consolidated feature snapshot strategy: plannet_tags currently serves as feature snapshot holder but lacks proper semantic naming; plan to merge into feature_snapshot structure with complete work_item relationship mapping. **[2026-04-05]** `memory_triggers` — Established need for unified event-based triggering in /memory pathway to consistently handle all new items, with differentiated logic for process_item versus messages handling. **[2026-04-06]** `backend_fixes` — Fixed _Database attribute error by removing stale db.ensure_project_schema() call from main.py; added retry logic to handle race conditions when project list loads empty on startup. **[2026-04-06]** `memory_endpoints` — Resolved CLAUDE.md memory endpoint variable scoping issue (undefined code_dir at line 1120). **[2026-04-06]** `ui_enhancements` — LLM model identifier now required as visible tag in UI interface for transparency. **[2026-04-05]** `project_visibility` — Fixed AiCli project display in project list; ensured current project indicator works correctly. **[2026-04-05]** `data_model` — Clarified users are nested under clients (hierarchical structure: one client → multiple users). **[2026-04-06]** `testing` — Post-fix validation phase: verifying backend startup resilience and memory endpoint fixes remain stable across sessions.

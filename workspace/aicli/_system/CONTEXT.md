@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-05 23:28 UTC — do not edit manually.
+> Auto-generated 2026-04-05 23:59 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 362
-- **Last active**: 2026-04-05T23:27:57Z
+- **Sessions**: 363
+- **Last active**: 2026-04-05T23:36:56Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- Session ordering by created_at verified: maintains chronological list and prevents phase/tag updates from reordering sessions
-- Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/workflow
-- Commit-per-prompt inline display deployed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link)
-- Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
-- AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner
-- Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, created date
+- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step
+- Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping
+- Memory layer trigger consolidation: establish unified event-based triggering for /memory pathway with differentiated process_item and messages handling
+- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking
+- Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
+- Post-fix validation: verify backend startup race condition resolution and memory endpoint variable scoping fixes remain stable
 
 ## Key Decisions
 
@@ -69,12 +69,12 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
-- Session phase persistence with red ⚠ badge for missing phase; tag suggestions marked distinctly (separate color) and auto-saved via _acceptSuggestedTag
+- Backend startup race condition fixed via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
+- Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
+- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
 - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
-- Backend: FastAPI + uvicorn; routers/ for API endpoints, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
-- Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat
-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
-- Backend startup race condition fixed: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 
 ---
 

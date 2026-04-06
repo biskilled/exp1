@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Session ordering by created_at verified: maintains chronological list and prevents phase/tag updates from reordering sessions
-- Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/workflow
-- Commit-per-prompt inline display deployed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link)
-- Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
-- AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner
-- Planner tab unified redesign completed: consolidated into single tags view with category, active/inactive status, short description, created date
+- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step
+- Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping
+- Memory layer trigger consolidation: establish unified event-based triggering for /memory pathway with differentiated process_item and messages handling
+- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking
+- Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
+- Post-fix validation: verify backend startup race condition resolution and memory endpoint variable scoping fixes remain stable

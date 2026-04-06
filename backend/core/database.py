@@ -732,6 +732,11 @@ ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS llm_source;
 -- diff_details was never populated by any code path; process_commit() fetches
 -- diffs directly via git. Drop it and store file stats in tags["files"] instead.
 ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS diff_details;
+-- ── 009_work_items_event_link ─────────────────────────────────────────────────
+-- Link work items back to the event that generated them so the extraction
+-- pipeline can avoid re-processing already-handled events.
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS source_event_id UUID;
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS source_session_id TEXT;
 """
 
 

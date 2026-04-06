@@ -49,15 +49,14 @@ _SQL_UPSERT_SESSION_SUMMARY = """
     INSERT INTO mem_ai_events
         (client_id, project, event_type, source_id, session_id,
          chunk, chunk_type, content, summary, action_items,
-         llm_source, importance, tags, created_at)
+         importance, tags, created_at)
     VALUES (1, %s, 'session_summary', %s, %s,
-            0, 'full', %s, %s, %s, %s, 2, %s::jsonb, NOW())
+            0, 'full', %s, %s, %s, 2, %s::jsonb, NOW())
     ON CONFLICT (client_id, project, event_type, source_id, chunk)
     DO UPDATE SET
         content      = EXCLUDED.content,
         summary      = EXCLUDED.summary,
         action_items = EXCLUDED.action_items,
-        llm_source   = EXCLUDED.llm_source,
         tags         = EXCLUDED.tags
     RETURNING id
 """
@@ -121,7 +120,7 @@ async def _generate_session_summary(
 ) -> Optional[dict]:
     """
     Read session prompts, call Haiku with session_end_synthesis prompt,
-    return {summary, session_action_items}.
+    return {summary, action_items}.
     """
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -249,14 +248,17 @@ async def create_session_summary(
 
     haiku_model = getattr(settings, "haiku_model", "claude-haiku-4-5-20251001")
     import json as _json
-    auto_tags = _json.dumps({"event": "session_summary", "chunk_type": "full"})
+    auto_tags = _json.dumps({
+        "event": "session_summary", "chunk_type": "full",
+        "llm": haiku_model,
+    })
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_UPSERT_SESSION_SUMMARY,
                 (project, session_id, session_id,
                  combined_content, summary_text,
-                 action_items, haiku_model, auto_tags),
+                 action_items, auto_tags),
             )
             row = cur.fetchone()
             event_id = str(row[0]) if row else None
