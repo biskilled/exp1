@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item status dual-column UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators (#27ae60 active, #e67e22 in_progress, #4a90e2 done, #888 paused) in entities.js drawer
-- Work item commits association: added /work-items/{id}/commits endpoint returning commit_hash, commit_msg, summary, committed_at linked via JSONB tags; integrated api.workItems.commits() client method
-- Work item schema migration: replaced single status field with status_user + status_ai columns; added code_summary field for semantic embedding and planner_tags cross-table cosine-similarity matching
-- Work item embedding strategy: unified embedding space for work_items + planner_tags using ai_name + ai_desc + requirements + summary + code_summary; same vector space enables cross-table semantic matching
-- Frontend initialization fix: removed undefined _plannerSelectAiSubtype reference that caused window._plannerSync assignment failure; fixed init crash on drawer open
-- Unlinked work items query: updated WHERE clause to filter status_user != 'done' (was status='active'); includes interaction_count and commit_count aggregate columns in list responses
+- Work item dual-status UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators; updated table headers and drawer UI
+- Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching
+- Work item commits association: added /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; integrated api.workItems.commits() client method
+- Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary fields for cross-table cosine-similarity matching
+- Database query optimization: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and status column updates; refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'
+- System context cleanup: removed outdated system context and claude session files; consolidated dev_runtime_state.json tracking (session count 396, last session 2026-04-06T17:34:59Z)

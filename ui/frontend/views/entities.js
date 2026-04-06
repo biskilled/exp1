@@ -91,8 +91,18 @@ export function renderEntities(container) {
 
       <!-- Bottom panel: Work Items (always visible) -->
     <div id="planner-wi-panel"
-         style="height:210px;border-top:2px solid var(--border);flex-shrink:0;
-                display:flex;flex-direction:column;background:var(--surface)">
+         style="height:210px;flex-shrink:0;display:flex;flex-direction:column;
+                background:var(--surface)">
+      <!-- Resize handle -->
+      <div id="wi-panel-resizer"
+           style="height:5px;background:var(--border);cursor:ns-resize;flex-shrink:0;
+                  display:flex;align-items:center;justify-content:center;
+                  border-top:1px solid var(--border);transition:background 0.1s"
+           onmousedown="window._wiPanelResizeStart(event)"
+           onmouseenter="this.style.background='var(--accent)44'"
+           onmouseleave="this.style.background='var(--border)'">
+        <div style="width:32px;height:2px;background:var(--muted);border-radius:2px;opacity:.5"></div>
+      </div>
       <!-- Panel header -->
       <div style="display:flex;align-items:center;gap:0.5rem;padding:3px 10px;
                   border-bottom:1px solid var(--border);flex-shrink:0;
@@ -105,8 +115,11 @@ export function renderEntities(container) {
                  padding:0.13rem 0.42rem;border-radius:var(--radius);cursor:pointer;
                  font-family:var(--font);outline:none">+ New</button>
       </div>
-      <!-- Panel list -->
-      <div id="wi-panel-list" style="flex:1;overflow-y:auto;overflow-x:hidden">
+      <!-- Panel list (also a drop zone for unlinking) -->
+      <div id="wi-panel-list" style="flex:1;overflow-y:auto;overflow-x:hidden"
+           ondragover="window._wiPanelDragOver(event)"
+           ondragleave="window._wiPanelDragLeave(event)"
+           ondrop="window._wiPanelDrop(event)">
         <div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">Loading…</div>
       </div>
     </div>
@@ -180,6 +193,7 @@ export function renderEntities(container) {
       await api.workItems.patch(id, proj, { tag_id: '' });
       toast('Unlinked', 'success');
       _loadWiPanel(proj);
+      _renderTagTableFromCache();
     } catch(err) { toast('Unlink failed: ' + err.message, 'error'); }
   };
   window._wiPanelNewItem = () => {
@@ -193,6 +207,64 @@ export function renderEntities(container) {
       .catch(err => toast(err.message, 'error'));
   };
   document.getElementById('wi-panel-add-btn')?.addEventListener('click', window._wiPanelNewItem);
+
+  // Resize handle: drag up = taller, drag down = shorter
+  window._wiPanelResizeStart = (e) => {
+    e.preventDefault();
+    const panel = document.getElementById('planner-wi-panel');
+    if (!panel) return;
+    const startY = e.clientY;
+    const startH = panel.offsetHeight;
+    const resizer = document.getElementById('wi-panel-resizer');
+    if (resizer) resizer.style.background = 'var(--accent)66';
+    const onMove = (ev) => {
+      const delta = startY - ev.clientY;  // drag up = positive = taller
+      panel.style.height = Math.max(60, Math.min(520, startH + delta)) + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (resizer) resizer.style.background = '';
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  // Drag from sub-row in top pane back to bottom panel (to unlink)
+  window._wiSubRowDragStart = (e, id, name, cat) => {
+    _dragWiData = { id, ai_name: name, ai_category: cat };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+  };
+
+  // Bottom panel drop zone (accept work items dragged from top → unlink)
+  window._wiPanelDragOver = (e) => {
+    if (_dragWiData) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const list = document.getElementById('wi-panel-list');
+      if (list) list.style.outline = '2px dashed var(--accent)';
+    }
+  };
+  window._wiPanelDragLeave = (e) => {
+    const list = document.getElementById('wi-panel-list');
+    if (list && !list.contains(e.relatedTarget)) list.style.outline = '';
+  };
+  window._wiPanelDrop = async (e) => {
+    e.preventDefault();
+    const list = document.getElementById('wi-panel-list');
+    if (list) list.style.outline = '';
+    if (!_dragWiData) return;
+    const wi = { ..._dragWiData };
+    _dragWiData = null;
+    const proj = _plannerState.project;
+    try {
+      await api.workItems.patch(wi.id, proj, { tag_id: '' });
+      toast(`Unlinked "${wi.ai_name}"`, 'success');
+      _loadWiPanel(proj);
+      _renderTagTableFromCache();
+    } catch(err) { toast('Unlink failed: ' + err.message, 'error'); }
+  };
 
   if (!project) {
     document.getElementById('planner-tags-pane').innerHTML =
@@ -305,16 +377,13 @@ async function _loadWiPanel(project) {
   const list = document.getElementById('wi-panel-list');
   if (!list) return;
   try {
-    const data = await api.workItems.list({ project });
-    const items = (data.work_items || []).filter(w => !w.merged_into);
+    const data = await api.workItems.unlinked(project);
+    const items = data.items || [];
     _wiPanelItems = {};
     items.forEach(wi => { _wiPanelItems[wi.id] = wi; });
     _renderWiPanel(items, project);
     const cnt = document.getElementById('wi-panel-count');
-    if (cnt) {
-      const unlinked = items.filter(w => !w.tag_id).length;
-      cnt.textContent = `(${items.length}${unlinked < items.length ? ` · ${unlinked} unlinked` : ''})`;
-    }
+    if (cnt) cnt.textContent = items.length ? `(${items.length} unlinked)` : '(all linked ✓)';
   } catch(e) {
     if (list) list.innerHTML = '<div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">Could not load work items</div>';
   }
@@ -370,6 +439,72 @@ function _renderWiPanel(items, project) {
       </div>
     </div>`;
   }).join('');
+}
+
+/** Load work items linked to tags in the current category, inject as sub-rows. */
+async function _loadTagLinkedWorkItems(project, catName) {
+  try {
+    const data = await api.workItems.list({ project, category: catName });
+    const linked = (data.work_items || []).filter(w => w.tag_id && !w.merged_into);
+    if (!linked.length) return;
+    const CAT_ICON = { feature: '✨', bug: '🐛', task: '📋' };
+    const STATUS_UC = { active: '#27ae60', in_progress: '#e67e22', done: '#4a90e2', paused: '#888' };
+    // Group by tag_id
+    const byTag = {};
+    linked.forEach(w => { (byTag[w.tag_id] = byTag[w.tag_id] || []).push(w); });
+    Object.entries(byTag).forEach(([tagId, wis]) => {
+      const tagRow = document.querySelector(`tr[data-tag-id="${CSS.escape(tagId)}"]`);
+      if (!tagRow) return;
+      // Remove any previously injected sub-rows for this tag
+      let next = tagRow.nextSibling;
+      while (next && next.classList && next.classList.contains('wi-sub-row')) {
+        const toRemove = next;
+        next = next.nextSibling;
+        toRemove.remove();
+      }
+      // Insert sub-rows (in reverse so first item ends up first)
+      [...wis].reverse().forEach(wi => {
+        const sc = STATUS_UC[wi.status_user] || '#888';
+        const icon = CAT_ICON[wi.ai_category] || '📋';
+        const tr = document.createElement('tr');
+        tr.className = 'wi-sub-row';
+        tr.dataset.wiId = wi.id;
+        tr.dataset.parentTagId = tagId;
+        tr.draggable = true;
+        tr.style.cssText = 'cursor:grab;user-select:none;transition:background 0.1s';
+        tr.innerHTML = `
+          <td colspan="3" style="padding:2px 8px 2px 26px;border-bottom:1px solid var(--border);
+                                  background:var(--accent)07">
+            <div style="display:flex;align-items:center;gap:4px">
+              <span style="font-size:0.7rem;flex-shrink:0">${icon}</span>
+              <span style="font-size:0.63rem;color:var(--text);flex:1;overflow:hidden;
+                           text-overflow:ellipsis;white-space:nowrap"
+                    title="${_esc(wi.ai_desc||'')}">${_esc(wi.ai_name)}</span>
+              <span style="font-size:0.52rem;color:${sc};background:${sc}22;
+                           padding:0.02rem 0.25rem;border-radius:8px;flex-shrink:0">${wi.status_user||'active'}</span>
+              <button title="Unlink — move back to Work Items"
+                onclick="event.stopPropagation();window._wiUnlink('${_esc(wi.id)}','${_esc(project)}')"
+                style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.75rem;
+                       padding:0 3px;line-height:1;flex-shrink:0;opacity:.6"
+                onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=.6">↓</button>
+            </div>
+          </td>`;
+        tr.addEventListener('mouseenter', () => tr.style.background = 'var(--accent)12');
+        tr.addEventListener('mouseleave', () => tr.style.background = '');
+        tr.addEventListener('dragstart', (e) => {
+          _dragWiData = { id: wi.id, ai_name: wi.ai_name, ai_category: wi.ai_category };
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', wi.id);
+          tr.style.opacity = '0.45';
+        });
+        tr.addEventListener('dragend', () => {
+          tr.style.opacity = '';
+          _dragWiData = null;
+        });
+        tagRow.parentNode.insertBefore(tr, tagRow.nextSibling);
+      });
+    });
+  } catch(e) { /* non-critical */ }
 }
 
 // ── Old Work Items panel (kept for reference, no longer rendered in top pane) ─
@@ -948,6 +1083,12 @@ function _renderTagTable(pane, catId, catName, catColor, catIcon) {
   `;
 
   _attachTagTableDnd(pane, catName);
+
+  // For work item categories (bug/feature/task), inject linked work items as sub-rows
+  if (_isWorkItemCat(catName)) {
+    const { project } = _plannerState;
+    if (project) _loadTagLinkedWorkItems(project, catName).catch(() => {});
+  }
 
   window._plannerShowNewTag = (catId, parentId = null) => {
     const row   = document.getElementById('planner-new-tag-row');
@@ -1823,7 +1964,11 @@ function _attachTagTableDnd(pane, catName) {
       _dragWiData = null;
       const proj = _plannerState.project;
       api.workItems.patch(wi.id, proj, { tag_id: tagId })
-        .then(() => { toast(`Linked "${wi.ai_name}" → "${tagName}"`, 'success'); _loadWiPanel(proj); })
+        .then(() => {
+          toast(`Linked "${wi.ai_name}" → "${tagName}"`, 'success');
+          _loadWiPanel(proj);
+          _renderTagTableFromCache();  // re-render tag table → sub-rows injected async
+        })
         .catch(err => toast(err.message, 'error'));
       return;
     }
