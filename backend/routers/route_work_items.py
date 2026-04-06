@@ -34,6 +34,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
               w.requirements, w.code_summary, w.summary,
               w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
+              w.merged_into,
               w.created_at, w.updated_at, w.seq_num,
               tc.color, tc.icon,
               (SELECT COUNT(*) FROM mem_mrr_prompts p
@@ -210,6 +211,10 @@ class WorkItemCreate(BaseModel):
     tags:                dict = {}
 
 
+class WorkItemMerge(BaseModel):
+    merge_with: str   # UUID of the other work item to merge with
+
+
 class WorkItemPatch(BaseModel):
     ai_name:             Optional[str] = None
     ai_desc:             Optional[str] = None
@@ -223,6 +228,7 @@ class WorkItemPatch(BaseModel):
     tags:                Optional[dict] = None
     tag_id:              Optional[str] = None
     ai_tag_id:           Optional[str] = None
+    merged_into:         Optional[str] = None
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -269,6 +275,7 @@ async def list_work_items(
         where.append("w.ai_category=%s"); params.append(category)
     if status:
         where.append("w.status_user=%s"); params.append(status)
+    where.append("w.merged_into IS NULL")   # exclude items absorbed into a merge
     if name:
         where.append("w.ai_name=%s"); params.append(name)
 
@@ -359,6 +366,9 @@ async def patch_work_item(
     if body.ai_tag_id           is not None:
         fields.append("ai_tag_id=%s")
         params.append(body.ai_tag_id if body.ai_tag_id else None)
+    if body.merged_into         is not None:
+        fields.append("merged_into=%s")
+        params.append(body.merged_into if body.merged_into else None)
 
     if not fields:
         raise HTTPException(400, "Nothing to update")
@@ -462,6 +472,85 @@ async def get_work_item_interactions(
     return {"interactions": rows, "work_item_id": item_id, "project": p}
 
 
+# ── Merge two work items ─────────────────────────────────────────────────────
+
+
+@router.post("/{item_id}/merge", status_code=201)
+async def merge_work_item_into(
+    item_id: str,
+    body: WorkItemMerge,
+    background_tasks: BackgroundTasks,
+    project: str | None = Query(None),
+):
+    """Merge item_id and body.merge_with into a new combined work item.
+    Both originals are marked merged_into=<new_id>, status_user='done'.
+    """
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, ai_category, ai_name, ai_desc, requirements, action_items, "
+                "acceptance_criteria, summary, tag_id, seq_num "
+                "FROM mem_ai_work_items WHERE project_id=%s AND id=ANY(%s::uuid[])",
+                (p_id, [item_id, body.merge_with]),
+            )
+            rows = cur.fetchall()
+
+    if len(rows) < 2:
+        raise HTTPException(404, "One or both work items not found")
+
+    a = dict(zip(["id","ai_category","ai_name","ai_desc","requirements","action_items",
+                  "acceptance_criteria","summary","tag_id","seq_num"], rows[0]))
+    b = dict(zip(["id","ai_category","ai_name","ai_desc","requirements","action_items",
+                  "acceptance_criteria","summary","tag_id","seq_num"], rows[1]))
+
+    # Build merged item — combine fields, prefer non-empty values
+    import json as _json
+    new_name        = f"{a['ai_name']} + {b['ai_name']}"
+    new_desc        = f"{a['ai_desc'] or ''}\n{b['ai_desc'] or ''}".strip()
+    new_req         = f"{a['requirements'] or ''}\n{b['requirements'] or ''}".strip()
+    new_actions     = f"{a['action_items'] or ''}\n{b['action_items'] or ''}".strip()
+    new_criteria    = f"{a['acceptance_criteria'] or ''}\n{b['acceptance_criteria'] or ''}".strip()
+    new_category    = a['ai_category']  # use first item's category
+    linked_tag_id   = a['tag_id'] or b['tag_id']  # keep any linked tag
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            seq = next_seq(cur, p_id, new_category)
+            cur.execute(
+                """INSERT INTO mem_ai_work_items
+                       (project_id, ai_category, ai_name, ai_desc, requirements,
+                        action_items, acceptance_criteria, tag_id, status_user, status_ai, seq_num)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'active','active',%s)
+                   ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
+                   RETURNING id""",
+                (p_id, new_category, new_name, new_desc, new_req,
+                 new_actions, new_criteria,
+                 str(linked_tag_id) if linked_tag_id else None, seq),
+            )
+            new_row = cur.fetchone()
+            if not new_row:
+                raise HTTPException(409, f"Merged item '{new_name}' already exists")
+            new_id = str(new_row[0])
+
+            # Mark both originals as merged
+            cur.execute(
+                "UPDATE mem_ai_work_items SET merged_into=%s::uuid, status_user='done', updated_at=NOW() "
+                "WHERE id=ANY(%s::uuid[]) AND project_id=%s",
+                (new_id, [item_id, body.merge_with], p_id),
+            )
+
+    asyncio.create_task(_embed_work_item(p_id, new_id, new_name, new_desc, new_req, ""))
+    asyncio.create_task(_trigger_memory_regen(p))
+    background_tasks.add_task(_run_matching, p, new_id)
+
+    return {"id": new_id, "ai_name": new_name, "ai_category": new_category,
+            "merged_from": [item_id, body.merge_with], "project": p}
+
+
 # ── Commits linked to a work item ────────────────────────────────────────────
 
 @router.get("/{item_id}/commits")
@@ -513,7 +602,7 @@ async def search_work_items(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""SELECT id, ai_name, ai_category, ai_desc, status,
+                f"""SELECT id, ai_name, ai_category, ai_desc, status_user,
                            acceptance_criteria, seq_num,
                            1 - (embedding <=> %s::vector) AS score
                     FROM mem_ai_work_items
@@ -528,7 +617,7 @@ async def search_work_items(
             {
                 "id": str(r[0]), "ai_name": r[1], "category": r[2],
                 "ai_desc": (r[3] or "")[:300],
-                "status": r[4],
+                "status_user": r[4],
                 "criteria_preview": (r[5] or "")[:200],
                 "seq_num": r[6], "score": round(float(r[7]), 4),
             }

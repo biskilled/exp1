@@ -397,6 +397,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     tags                JSONB        NOT NULL DEFAULT '{}',
     ai_tag_id           UUID         REFERENCES planner_tags(id),
     tag_id              UUID         REFERENCES planner_tags(id),
+    merged_into         UUID         REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
     status_user         VARCHAR(20)  NOT NULL DEFAULT 'active',
     status_ai           VARCHAR(20)  NOT NULL DEFAULT 'active',
     seq_num             INT,
@@ -1180,6 +1181,10 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_sai   ON mem_ai_work_items(status_ai);
 -- Migrate status → status_user (plain statement, no DO block needed since ADD sets DEFAULT)
 UPDATE mem_ai_work_items SET status_user = status WHERE status IS NOT NULL AND status_user = 'active';
 ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS status;
+-- ── 013_work_items_merge ──────────────────────────────────────────────────────
+-- merged_into: when two work items are merged, both originals point to the new item.
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS merged_into UUID REFERENCES mem_ai_work_items(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_merged ON mem_ai_work_items(merged_into) WHERE merged_into IS NOT NULL;
 """
 
 

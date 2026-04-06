@@ -88,7 +88,30 @@ export function renderEntities(container) {
         </div>
 
       </div>
+
+      <!-- Bottom panel: Work Items (always visible) -->
+    <div id="planner-wi-panel"
+         style="height:210px;border-top:2px solid var(--border);flex-shrink:0;
+                display:flex;flex-direction:column;background:var(--surface)">
+      <!-- Panel header -->
+      <div style="display:flex;align-items:center;gap:0.5rem;padding:3px 10px;
+                  border-bottom:1px solid var(--border);flex-shrink:0;
+                  background:var(--surface2)">
+        <span style="font-size:0.6rem;font-weight:700;color:var(--text);letter-spacing:.03em">⬡ WORK ITEMS</span>
+        <span id="wi-panel-count" style="font-size:0.55rem;color:var(--muted)"></span>
+        <span style="flex:1"></span>
+        <button id="wi-panel-add-btn"
+          style="background:var(--accent);border:none;color:#fff;font-size:0.57rem;
+                 padding:0.13rem 0.42rem;border-radius:var(--radius);cursor:pointer;
+                 font-family:var(--font);outline:none">+ New</button>
+      </div>
+      <!-- Panel list -->
+      <div id="wi-panel-list" style="flex:1;overflow-y:auto;overflow-x:hidden">
+        <div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">Loading…</div>
+      </div>
     </div>
+
+  </div>
   `;
 
   // Wire window globals
@@ -112,6 +135,64 @@ export function renderEntities(container) {
   window._plannerDrawerRemoveLink = _plannerDrawerRemoveLink;
   window._plannerGenerateSnapshot = _plannerGenerateSnapshot;
   window._plannerDrawerMerge      = _plannerDrawerMerge;
+  window._plannerOpenWorkItemDrawer = (id, cat, proj) => _openWorkItemDrawer(id, cat, proj, null, '#4a90e2', '📋');
+  window._wiBotDragStart = (e, id, name, cat) => {
+    _dragWiData = { id, ai_name: name, ai_category: cat };
+    e.dataTransfer.effectAllowed = 'link';
+    e.dataTransfer.setData('text/plain', id);
+    e.currentTarget.style.opacity = '0.5';
+  };
+  window._wiBotDragEnd = (e) => {
+    if (e && e.currentTarget) e.currentTarget.style.opacity = '';
+    _dragWiData = null;
+    document.querySelectorAll('[data-tag-id]').forEach(r => { r.style.background = ''; r.style.outline = ''; });
+    const h = document.getElementById('planner-dnd-hint');
+    if (h) h.style.display = 'none';
+  };
+  window._wiBotItemDragOver = (e, el) => {
+    const targetId = el.dataset.wiId;
+    if (!_dragWiData || !targetId || targetId === _dragWiData.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    el.style.outline = '2px solid var(--accent)';
+    const h = document.getElementById('planner-dnd-hint');
+    if (h) { h.style.display = 'block'; h.textContent = `⊕ Merge with "${_esc(el.dataset.wiName || '')}"`;
+             h.style.left = (e.clientX+16)+'px'; h.style.top = (e.clientY+12)+'px'; }
+  };
+  window._wiBotItemDragLeave = (e, el) => { el.style.outline = ''; };
+  window._wiBotItemDrop = async (e, targetId, proj) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.currentTarget;
+    el.style.outline = '';
+    if (!_dragWiData || !targetId || targetId === _dragWiData.id) return;
+    const sourceId = _dragWiData.id;
+    const sourceName = _dragWiData.ai_name;
+    _dragWiData = null;
+    try {
+      await api.workItems.merge(sourceId, targetId, proj);
+      toast(`Merged "${sourceName}" ⊕ merged`, 'success');
+      _loadWiPanel(proj);
+    } catch(err) { toast('Merge failed: ' + err.message, 'error'); }
+  };
+  window._wiUnlink = async (id, proj) => {
+    try {
+      await api.workItems.patch(id, proj, { tag_id: '' });
+      toast('Unlinked', 'success');
+      _loadWiPanel(proj);
+    } catch(err) { toast('Unlink failed: ' + err.message, 'error'); }
+  };
+  window._wiPanelNewItem = () => {
+    const { project } = _plannerState;
+    const cat = prompt('Category (bug/feature/task):');
+    if (!cat) return;
+    const name = prompt('Work item name:');
+    if (!name) return;
+    api.workItems.create(project, { ai_category: cat.toLowerCase(), ai_name: name })
+      .then(() => { toast(`Created "${name}"`, 'success'); _loadWiPanel(project); })
+      .catch(err => toast(err.message, 'error'));
+  };
+  document.getElementById('wi-panel-add-btn')?.addEventListener('click', window._wiPanelNewItem);
 
   if (!project) {
     document.getElementById('planner-tags-pane').innerHTML =
@@ -144,6 +225,8 @@ async function _initPlanner(project) {
     const first = cats.find(c => _isWorkItemCat(c.name) && c.id != null) || cats.find(c => c.id != null);
     if (first) await _plannerSelectCat(first.id, first.name);
   }
+  // Load persistent work items bottom panel
+  _loadWiPanel(project);
 }
 
 // ── Category list ─────────────────────────────────────────────────────────────
@@ -160,7 +243,6 @@ function _renderCategoryList() {
   const pipeline  = cats.filter(c => _isWorkItemCat(c.name));
   const tags      = cats.filter(c => !_isWorkItemCat(c.name) && c.name !== 'ai_suggestion');
 
-  const isSelWI   = _plannerState.selectedCatName === '__work_items__';
   const isSel = (id) => _plannerState.selectedCat === id;
   const catRow = c => `
     <div class="planner-cat-row" data-id="${c.id}" data-cat-name="${_esc(c.name)}"
@@ -177,51 +259,16 @@ function _renderCategoryList() {
       <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${getCacheValues(c.id).length}</span>
     </div>`;
 
-  // Work Items sentinel row (always shown at top)
-  const wiSentinel = `
-    <div class="planner-cat-row" data-cat-name="__work_items__"
-         onclick="window._plannerSelectCat('__work_items__','__work_items__')"
-         style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;
-                cursor:pointer;margin-bottom:2px;transition:background 0.1s;
-                background:${isSelWI ? 'var(--accent)22' : 'transparent'};
-                border-left:2px solid ${isSelWI ? 'var(--accent)' : 'transparent'}">
-      <span style="font-size:0.85rem">⬡</span>
-      <span style="font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Work Items</span>
-      <span id="wi-unlinked-count" style="font-size:0.55rem;color:var(--muted);flex-shrink:0"></span>
-    </div>`;
-
-  // Load unlinked count async
-  api.workItems.unlinked(_plannerState.project).then(d => {
-    const el = document.getElementById('wi-unlinked-count');
-    if (el && d && d.total > 0) el.textContent = d.total;
-  }).catch(() => {});
-
   const divider = tags.length ? `
     <div style="font-size:0.5rem;text-transform:uppercase;letter-spacing:.1em;
                 color:var(--muted);padding:8px 8px 3px;margin-top:4px;
                 border-top:1px solid var(--border)">Tags</div>` : '';
 
-  list.innerHTML = wiSentinel + pipeline.map(catRow).join('') + divider + tags.map(catRow).join('');
+  list.innerHTML = pipeline.map(catRow).join('') + divider + tags.map(catRow).join('');
 }
 
 async function _plannerSelectCat(catId, catName) {
   _plannerState.aiSubtypeFilter = null;
-
-  // Work Items sentinel — special panel
-  if (catId === '__work_items__' || catName === '__work_items__') {
-    _plannerState.selectedCat = '__work_items__';
-    _plannerState.selectedCatName = '__work_items__';
-    _plannerState.selectedCatColor = 'var(--accent)';
-    _plannerState.selectedCatIcon = '⬡';
-    document.querySelectorAll('.planner-cat-row').forEach(r => {
-      const sel = r.dataset.catName === '__work_items__';
-      r.style.background = sel ? 'var(--accent)22' : 'transparent';
-      r.style.borderLeft = sel ? '2px solid var(--accent)' : '2px solid transparent';
-    });
-    const pane = document.getElementById('planner-tags-pane');
-    if (pane) _renderWorkItemsPane(pane, _plannerState.project);
-    return;
-  }
 
   // Fallback categories have null IDs — reload cache and resolve real ID by name
   if (catId === null || catId === undefined) {
@@ -246,21 +293,86 @@ async function _plannerSelectCat(catId, catName) {
     r.style.borderLeft = sel ? '2px solid var(--accent)' : '2px solid transparent';
   });
 
-  // Work item categories (feature/bug/task) use the work_items table
-  if (_isWorkItemCat(catName)) {
-    const pane = document.getElementById('planner-tags-pane');
-    if (pane) {
-      const { selectedCatColor: catColor, selectedCatIcon: catIcon, project } = _plannerState;
-      _renderWorkItemTable(pane, catName, catColor, catIcon, project);
+  _renderTagTableFromCache();
+}
+
+// ── Work Items bottom panel ────────────────────────────────────────────────────
+
+let _dragWiData = null;   // { id, ai_name, ai_category } — set while dragging a work item
+let _wiPanelItems = {};   // id → wi object, cache for bottom panel
+
+async function _loadWiPanel(project) {
+  const list = document.getElementById('wi-panel-list');
+  if (!list) return;
+  try {
+    const data = await api.workItems.list({ project });
+    const items = (data.work_items || []).filter(w => !w.merged_into);
+    _wiPanelItems = {};
+    items.forEach(wi => { _wiPanelItems[wi.id] = wi; });
+    _renderWiPanel(items, project);
+    const cnt = document.getElementById('wi-panel-count');
+    if (cnt) {
+      const unlinked = items.filter(w => !w.tag_id).length;
+      cnt.textContent = `(${items.length}${unlinked < items.length ? ` · ${unlinked} unlinked` : ''})`;
     }
-  } else {
-    _renderTagTableFromCache();
+  } catch(e) {
+    if (list) list.innerHTML = '<div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">Could not load work items</div>';
   }
 }
 
-// ── Work Items panel (AI-detected, unlinked) ──────────────────────────────────
+function _renderWiPanel(items, project) {
+  const list = document.getElementById('wi-panel-list');
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = '<div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">No work items yet — click + New to create one</div>';
+    return;
+  }
+  const CAT_ICON = { feature: '✨', bug: '🐛', task: '📋' };
+  const STATUS_UC = { active: '#27ae60', in_progress: '#e67e22', done: '#4a90e2', paused: '#888' };
+  list.innerHTML = items.map(wi => {
+    const icon = CAT_ICON[wi.ai_category] || '📋';
+    const sc = STATUS_UC[wi.status_user] || '#888';
+    const linkedBadge = wi.tag_id
+      ? `<span title="Linked" style="font-size:0.52rem;color:var(--accent);margin-left:2px">✓</span>
+         <button title="Unlink from tag" onclick="event.stopPropagation();window._wiUnlink('${_esc(wi.id)}','${_esc(project)}')"
+           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.7rem;
+                  padding:0 2px;line-height:1;vertical-align:middle">×</button>`
+      : (wi.ai_tag_id
+          ? `<span title="AI-suggested link" style="font-size:0.52rem;color:var(--muted);margin-left:2px;opacity:.7">✦</span>`
+          : '');
+    const detail = (wi.action_items || wi.ai_desc || '').replace(/\n/g, ' ').slice(0, 80);
+    return `<div draggable="true"
+         data-wi-id="${_esc(wi.id)}"
+         data-wi-name="${_esc(wi.ai_name)}"
+         ondragstart="window._wiBotDragStart(event,'${_esc(wi.id)}','${_esc(wi.ai_name)}','${_esc(wi.ai_category)}')"
+         ondragend="window._wiBotDragEnd(event)"
+         ondragover="window._wiBotItemDragOver(event,this)"
+         ondragleave="window._wiBotItemDragLeave(event,this)"
+         ondrop="window._wiBotItemDrop(event,'${_esc(wi.id)}','${_esc(project)}')"
+         onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(wi.ai_category)}','${_esc(project)}')"
+         style="display:grid;grid-template-columns:1fr 1fr;padding:3px 8px;
+                border-bottom:1px solid var(--border);cursor:grab;user-select:none;
+                transition:background 0.1s"
+         onmouseenter="this.style.background='var(--surface2)'"
+         onmouseleave="this.style.background=''">
+      <div style="display:flex;align-items:center;gap:3px;overflow:hidden;min-width:0">
+        <span style="flex-shrink:0;font-size:0.78rem">${icon}</span>
+        <span style="font-size:0.64rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;
+                     white-space:nowrap" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
+        <span style="font-size:0.52rem;color:${sc};background:${sc}22;padding:0.02rem 0.25rem;
+                     border-radius:8px;white-space:nowrap;flex-shrink:0">${wi.status_user || 'active'}</span>
+        ${linkedBadge}
+      </div>
+      <div style="font-size:0.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+                  white-space:nowrap;align-self:center;padding-left:4px"
+           title="${_esc(wi.ai_desc || '')}">
+        ${_esc(detail) || '—'}
+      </div>
+    </div>`;
+  }).join('');
+}
 
-let _dragWiData = null;  // { id, ai_name, ai_category } while dragging
+// ── Old Work Items panel (kept for reference, no longer rendered in top pane) ─
 
 async function _renderWorkItemsPane(pane, project) {
   pane.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:1rem">Loading…</div>';
@@ -678,7 +790,7 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
       try {
         await api.workItems.delete(wid, proj);
         _plannerCloseDrawer();
-        _renderWorkItemTable(pane, catName, catColor, catIcon, project);
+        _loadWiPanel(proj);
       } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
     };
 
@@ -1407,6 +1519,7 @@ async function _plannerSync() {
     await loadTagCache(project, true);
     _renderCategoryList();
     if (selectedCat) _renderTagTableFromCache();
+    _loadWiPanel(project);
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -1659,7 +1772,22 @@ function _attachTagTableDnd(pane, catName) {
 
   tbody.addEventListener('dragover', function(e) {
     const row = e.target.closest('tr[data-tag-id]');
-    if (!row || !_dragTag) return;
+    if (!row) return;
+    if (_dragWiData) {
+      // Work item → tag: link work item to this tag
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'link';
+      row.style.background = 'var(--accent)22';
+      row.style.outline = '1px solid var(--accent)';
+      _ensureDndHint();
+      const h = document.getElementById('planner-dnd-hint');
+      if (h) { h.style.display = 'block';
+               h.textContent = `→ Link to "${row.dataset.tagName || ''}"`;
+               h.style.color = 'var(--accent)';
+               h.style.left = (e.clientX + 16) + 'px'; h.style.top = (e.clientY + 12) + 'px'; }
+      return;
+    }
+    if (!_dragTag) return;
     if (_dragTag.category_name !== row.dataset.catName) { e.dataTransfer.dropEffect = 'none'; return; }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -1670,13 +1798,36 @@ function _attachTagTableDnd(pane, catName) {
   });
 
   tbody.addEventListener('dragleave', function(e) {
-    if (!this.contains(e.relatedTarget)) _dndClearHighlight();
+    if (!this.contains(e.relatedTarget)) {
+      _dndClearHighlight();
+      // Clear work item hover styles
+      this.querySelectorAll('tr[data-tag-id]').forEach(r => { r.style.background = ''; r.style.outline = ''; });
+      const h = document.getElementById('planner-dnd-hint');
+      if (h && _dragWiData) h.style.display = 'none';
+    }
   });
 
   tbody.addEventListener('drop', function(e) {
     e.preventDefault();
     const row = e.target.closest('tr[data-tag-id]');
-    if (!row || !_dragTag || !_dragZone) { _dndClearHighlight(); return; }
+    if (!row) { _dndClearHighlight(); return; }
+    row.style.background = '';
+    row.style.outline = '';
+    const h = document.getElementById('planner-dnd-hint');
+    if (h) h.style.display = 'none';
+    if (_dragWiData) {
+      // Link work item to this tag
+      const tagId  = row.dataset.tagId;
+      const tagName = row.dataset.tagName;
+      const wi = { ..._dragWiData };
+      _dragWiData = null;
+      const proj = _plannerState.project;
+      api.workItems.patch(wi.id, proj, { tag_id: tagId })
+        .then(() => { toast(`Linked "${wi.ai_name}" → "${tagName}"`, 'success'); _loadWiPanel(proj); })
+        .catch(err => toast(err.message, 'error'));
+      return;
+    }
+    if (!_dragTag || !_dragZone) { _dndClearHighlight(); return; }
     const zone = _dragZone;
     const target = { id: row.dataset.tagId, name: row.dataset.tagName,
                      category_id: Number(row.dataset.catId), category_name: row.dataset.catName };

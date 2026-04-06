@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Memory items and project_facts table population: implement missing update logic to enable event-based triggering with differentiated process_item/messages handling
-- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanisms, event triggers, and processing prompts for each synthesis stage
-- MEMORY.md schema alignment: tables updated to reflect current schema (mem_ai_* tables); verification that all documentation mirrors implementation
-- Copy-to-clipboard functionality: text selection and copying capability in history UI for improved usability and content accessibility
-- LLM model identifier visibility: expose model identifier as visible tag/indicator in UI for transparency and tracking across sessions
-- Feature snapshot consolidation: unify plannet_tags structure with work_items and memory linkage; verify prompt-response hook integration
+- Work item status dual-column UI: implemented status_user (user dropdown) and status_ai (AI suggestion badge) with separate color indicators in entities.js drawer
+- Work item commits association: added /work-items/{id}/commits endpoint and api.workItems.commits() to retrieve linked commits via JSONB tags
+- Work item schema migration: replaced single status field with status_user + status_ai; added code_summary field for semantic embedding and planner_tags matching
+- Memory items and project_facts population: awaiting table update logic to enable event-based triggering with differentiated processing
+- Frontend initialization fix: removed undefined _plannerSelectAiSubtype reference that caused window._plannerSync assignment failure; fixed init crash
+- Work item embedding strategy: unified embedding space for work_items + planner_tags via code_summary + requirements + summary for cross-table cosine-similarity matching
