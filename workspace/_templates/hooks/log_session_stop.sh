@@ -7,7 +7,9 @@
 # This hook:
 #   1. Reads the Claude Code session transcript to capture the assistant response
 #   2. Updates the history.jsonl entry with the response (output field)
-#   3. Updates dev_runtime_state.json with session metadata
+#   3. Saves the response to DB via hook-response endpoint
+#   4. Updates dev_runtime_state.json with session metadata
+#   5. Triggers session summary, memory regen, and bug auto-detection
 
 INPUT=$(cat)
 
@@ -37,7 +39,9 @@ except:
 " "$WORK_DIR" 2>/dev/null || echo "aicli")
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-RUNTIME_FILE="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system/dev_runtime_state.json"
+HIST_DIR="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system"
+HIST_FILE="${HIST_DIR}/history.jsonl"
+RUNTIME_FILE="${HIST_DIR}/dev_runtime_state.json"
 
 BACKEND_URL=$(python3 -c "
 import yaml, sys, os
@@ -119,32 +123,79 @@ for line in reversed(lines):
         sys.exit(0)
 " "$SESSION" "$WORK_DIR" 2>/dev/null || echo "")
 
-# ── Update response in DB via backend ────────────────────────────────────────
-# Find the most recent hook-log entry for this session and set its response field.
-if [ -n "$RESPONSE_TEXT" ] && [ -n "$SESSION" ]; then
+# ── Update history.jsonl: fill in output for this session's entry ────────────
+if [ -f "$HIST_FILE" ]; then
 python3 -c "
-import json, sys, urllib.request
+import json, sys
+from pathlib import Path
 
-# Find the ts of the most recent prompt for this session
-# We POST to hook-response; the backend matches by session_id and empty response
-payload = json.dumps({
-    'ts':          '',    # empty = backend finds latest empty-response row for session
-    'session_id':  sys.argv[2],
-    'response':    sys.argv[3],
+hist_file   = Path(sys.argv[1])
+session_id  = sys.argv[2]
+response    = sys.argv[3]
+stop_reason = sys.argv[4]
+
+lines = hist_file.read_text(encoding='utf-8').strip().split('\n')
+updated = False
+# Walk backwards to find the latest claude_cli entry for this session without output
+for i in range(len(lines) - 1, -1, -1):
+    try:
+        e = json.loads(lines[i])
+    except Exception:
+        continue
+    if (e.get('source') == 'claude_cli'
+            and e.get('session_id') == session_id
+            and not e.get('output')):
+        e['output']      = response
+        e['stop_reason'] = stop_reason
+        lines[i] = json.dumps(e)
+        updated = True
+        break
+
+if updated:
+    hist_file.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+" "$HIST_FILE" "$SESSION" "$RESPONSE_TEXT" "$STOP_REASON" 2>/dev/null
+fi
+
+# ── Save response to DB via hook-response ────────────────────────────────────
+# Read the ts that was logged by log_user_prompt.sh for this session
+TS_FOR_SESSION=$(python3 -c "
+import json, sys
+from pathlib import Path
+
+hist_file  = Path(sys.argv[1])
+session_id = sys.argv[2]
+
+if not hist_file.exists():
+    sys.exit(0)
+
+lines = hist_file.read_text(encoding='utf-8').strip().split('\n')
+for i in range(len(lines) - 1, -1, -1):
+    try:
+        e = json.loads(lines[i])
+    except Exception:
+        continue
+    if e.get('source') == 'claude_cli' and e.get('session_id') == session_id:
+        print(e.get('ts', ''))
+        sys.exit(0)
+" "$HIST_FILE" "$SESSION" 2>/dev/null || echo "")
+
+if [ -n "$RESPONSE_TEXT" ] && [ -n "$SESSION" ]; then
+    PAYLOAD=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'ts': sys.argv[1],
+    'session_id': sys.argv[2],
+    'response': sys.argv[3],
     'stop_reason': sys.argv[4],
-}).encode()
-
-req = urllib.request.Request(
-    sys.argv[1] + '/chat/' + sys.argv[5] + '/hook-response',
-    data=payload,
-    headers={'Content-Type': 'application/json'},
-    method='POST',
-)
-try:
-    urllib.request.urlopen(req, timeout=3)
-except Exception:
-    pass
-" "$BACKEND_URL" "$SESSION" "$RESPONSE_TEXT" "$STOP_REASON" "$ACTIVE_PROJECT" 2>/dev/null
+}))
+" "$TS_FOR_SESSION" "$SESSION" "$RESPONSE_TEXT" "$STOP_REASON" 2>/dev/null)
+    if [ -n "$PAYLOAD" ]; then
+        curl -sf --connect-timeout 2 --max-time 10 \
+            -X POST "${BACKEND_URL}/chat/${ACTIVE_PROJECT}/hook-response" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            -o /dev/null 2>/dev/null || true
+    fi
 fi
 
 # ── Update dev_runtime_state.json ────────────────────────────────────────────
@@ -171,19 +222,27 @@ state['source']           = 'claude_cli'
 runtime_file.write_text(json.dumps(state, indent=2))
 " "$RUNTIME_FILE" "$SESSION" 2>/dev/null
 
-# ── Generate session summary (stores in pr_session_summaries + mem_ai_events) ──
+# ── Generate session summary (stores in mem_ai_events) ───────────────────────
 if [ -n "$SESSION" ]; then
-curl -sf --connect-timeout 2 --max-time 10 \
-    -X POST "${BACKEND_URL}/memory/${ACTIVE_PROJECT}/session-summary" \
-    -H "Content-Type: application/json" \
-    -d "{\"session_id\":\"${SESSION}\",\"force\":false}" \
-    -o /dev/null 2>/dev/null &   # run in background
+    curl -sf --connect-timeout 2 --max-time 10 \
+        -X POST "${BACKEND_URL}/memory/${ACTIVE_PROJECT}/session-summary" \
+        -H "Content-Type: application/json" \
+        -d "{\"session_id\":\"${SESSION}\",\"force\":false}" \
+        -o /dev/null 2>/dev/null &   # run in background
 fi
 
 # ── Auto-regenerate MEMORY.md so next session starts with fresh context ───────
+# Call the backend /memory endpoint if it's running.
+# This means Claude (and any LLM) always reads up-to-date history at next startup.
 curl -sf --connect-timeout 2 --max-time 15 \
     -X POST "${BACKEND_URL}/projects/${ACTIVE_PROJECT}/memory" \
     -H "Content-Type: application/json" \
     -o /dev/null 2>/dev/null &   # run in background, don't block
+
+# Auto-detect bugs mentioned in this session → create work items
+curl -sf --connect-timeout 2 --max-time 30 \
+    -X POST "${BACKEND_URL}/projects/${ACTIVE_PROJECT}/auto-detect-bugs" \
+    -H "Content-Type: application/json" \
+    -o /dev/null 2>/dev/null &   # fire-and-forget
 
 exit 0

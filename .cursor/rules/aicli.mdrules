@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:08 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:13 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -61,3 +61,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
 - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
 - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
+
+## Recent Context (last 5 changes)
+
+- [2026-04-06] test prompt after fix
+- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
+- [2026-04-06] verify prompt after client_id fix
+- [2026-04-06] final verify prompt
+- [2026-04-06] Now I started to see prompts, but I do see in history just small text instead of all prompt and llm response . also can 

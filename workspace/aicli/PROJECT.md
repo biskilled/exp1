@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
+- UI history display enhancement: expand prompt/LLM response visibility in history panel to show full text instead of truncated summaries
+- Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface
 - Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed
-- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step
-- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions
-- Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping
-- Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
-- Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern
+- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts
+- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking
+- Feature snapshot unification: merge plannet_tags into feature_snapshot structure with complete work_item relationship mapping

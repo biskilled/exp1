@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
+    "UI history display enhancement: expand prompt/LLM response visibility in history panel to show full text instead of truncated summaries",
+    "Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface",
     "Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed",
-    "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step",
-    "LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions",
-    "Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping",
-    "Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API",
-    "Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern"
+    "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts",
+    "LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking",
+    "Feature snapshot unification: merge plannet_tags into feature_snapshot structure with complete work_item relationship mapping"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-06T02:08:49Z",
+  "last_memory_run": "2026-04-06T02:14:21Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -140,12 +140,12 @@
       "Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures"
     ],
     "in_progress": [
+      "UI history display enhancement: expand prompt/LLM response visibility in history panel to show full text instead of truncated summaries",
+      "Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface",
       "Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed",
-      "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step",
-      "LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions",
-      "Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping",
-      "Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API",
-      "Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern"
+      "Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts",
+      "LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking",
+      "Feature snapshot unification: merge plannet_tags into feature_snapshot structure with complete work_item relationship mapping"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -159,9 +159,9 @@
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm",
-      "database_version": "PostgreSQL 15+"
+      "database": "PostgreSQL 15+"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector), desktop UI (Electron + Vanilla JS), and async DAG workflow engine that synthesizes project context using Claude Haiku. The system tracks development events, work items, and features across projects while maintaining semantic search via embeddings and enabling multi-LLM provider support (Claude/OpenAI/DeepSeek/Gemini/Grok). Currently stabilizing memory layer implementation and unifying feature snapshot structures across database and UI layers.",
-    "memory_digest": "**2026-03-14** `architecture` \u2014 Established unified mem_ai_* table schema (events, tags_relations, project_facts, work_items, features) replacing per-project tables for centralized memory management. **2026-03-14** `backend` \u2014 Implemented JWT+DEV_MODE authentication with hierarchical Client\u2192User pattern and login_as_first_level_hierarchy; fixed startup race condition via _ensure_shared_schema retry logic. **2026-03-14** `memory_synthesis` \u2014 Designed Claude Haiku dual-layer synthesis generating 5 output files with auto-tag suggestions, LLM response summarization, and timestamp-based deduplication. **2026-03-14** `workflow_ui` \u2014 Built Cytoscape.js DAG visualization with 2-pane approval panel for async workflow execution and chat-based node negotiation. **2026-03-14** `desktop_ui` \u2014 Implemented Electron + Vanilla JS stack with xterm.js terminal, Monaco editor, and Vite dev server; zero-framework architecture for simplicity. **2026-03-14** `feature_snapshot` \u2014 Identified need to consolidate plannet_tags \u2192 feature_snapshot with unified work_item linkage across memory/project_facts layers. **2026-03-14** `memory_endpoints` \u2014 Verified event-based triggering for memory items via /memory pathway with differentiated process_item/messages handling; documented code_dir variable scoping fix. **2026-03-14** `documentation` \u2014 Prioritized comprehensive aicli_memory.md covering all memory layers, mirroring mechanisms, event triggers, and specific LLM prompts at each synthesis step."
+    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 CLI, FastAPI backend with PostgreSQL+pgvector, and Electron desktop UI to enable teams to build persistent project context and automated workflows. Currently at version 2.2.0, it integrates multiple LLM providers, dual-layer memory synthesis, async DAG workflow execution, and Claude Haiku-powered memory consolidation\u2014with active work on history UI display, memory table population, and architectural documentation.",
+    "memory_digest": "**[2026-04-06]** `user` \u2014 Identified critical UI usability gaps: history panel truncates prompt/LLM responses to small text summaries instead of showing full content; text copying not implemented in history interface. **[2026-04-05]** `product` \u2014 Requested memory architecture documentation (aicli_memory.md) covering all layers, mirroring mechanism, event triggers, and specific prompts at each processing step. **[2026-04-05]** `product` \u2014 Defined feature snapshot consolidation: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping and event-based triggering in /memory pathway. **[2026-03-18]** `engineering` \u2014 Fixed backend startup race condition via retry logic in _continueToApp() to handle empty project list on first load; ensures AiCli project displays in project list correctly. **[2026-03-18]** `engineering` \u2014 Identified memory mechanism gap: memory_items and project_facts tables not being updated as designed; blocks proper memory functionality and requires implementation. **[2026-03-18]** `engineering` \u2014 Removed stale db.ensure_project_schema() call from main.py and resolved undefined code_dir variable in CLAUDE.md line 1120; clarified _ensure_shared_schema convention replaces project schema method."
   }
 }

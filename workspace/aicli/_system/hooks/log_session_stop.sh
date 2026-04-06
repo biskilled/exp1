@@ -7,7 +7,9 @@
 # This hook:
 #   1. Reads the Claude Code session transcript to capture the assistant response
 #   2. Updates the history.jsonl entry with the response (output field)
-#   3. Updates dev_runtime_state.json with session metadata
+#   3. Saves the response to DB via hook-response endpoint
+#   4. Updates dev_runtime_state.json with session metadata
+#   5. Triggers session summary, memory regen, and bug auto-detection
 
 INPUT=$(cat)
 
@@ -40,6 +42,16 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 HIST_DIR="${WORK_DIR}/workspace/${ACTIVE_PROJECT}/_system"
 HIST_FILE="${HIST_DIR}/history.jsonl"
 RUNTIME_FILE="${HIST_DIR}/dev_runtime_state.json"
+
+BACKEND_URL=$(python3 -c "
+import yaml, sys, os
+config = os.path.join(sys.argv[1], 'aicli.yaml')
+try:
+    d = yaml.safe_load(open(config)) or {}
+    print(d.get('backend_url', 'http://localhost:8000').rstrip('/'))
+except:
+    print('http://localhost:8000')
+" "$WORK_DIR" 2>/dev/null || echo "http://localhost:8000")
 
 # ── Read assistant response from Claude Code session file ─────────────────────
 # Claude Code stores sessions at: ~/.claude/projects/{project-hash}/{session_id}.jsonl
@@ -144,6 +156,48 @@ if updated:
 " "$HIST_FILE" "$SESSION" "$RESPONSE_TEXT" "$STOP_REASON" 2>/dev/null
 fi
 
+# ── Save response to DB via hook-response ────────────────────────────────────
+# Read the ts that was logged by log_user_prompt.sh for this session
+TS_FOR_SESSION=$(python3 -c "
+import json, sys
+from pathlib import Path
+
+hist_file  = Path(sys.argv[1])
+session_id = sys.argv[2]
+
+if not hist_file.exists():
+    sys.exit(0)
+
+lines = hist_file.read_text(encoding='utf-8').strip().split('\n')
+for i in range(len(lines) - 1, -1, -1):
+    try:
+        e = json.loads(lines[i])
+    except Exception:
+        continue
+    if e.get('source') == 'claude_cli' and e.get('session_id') == session_id:
+        print(e.get('ts', ''))
+        sys.exit(0)
+" "$HIST_FILE" "$SESSION" 2>/dev/null || echo "")
+
+if [ -n "$RESPONSE_TEXT" ] && [ -n "$SESSION" ]; then
+    PAYLOAD=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'ts': sys.argv[1],
+    'session_id': sys.argv[2],
+    'response': sys.argv[3],
+    'stop_reason': sys.argv[4],
+}))
+" "$TS_FOR_SESSION" "$SESSION" "$RESPONSE_TEXT" "$STOP_REASON" 2>/dev/null)
+    if [ -n "$PAYLOAD" ]; then
+        curl -sf --connect-timeout 2 --max-time 10 \
+            -X POST "${BACKEND_URL}/chat/${ACTIVE_PROJECT}/hook-response" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            -o /dev/null 2>/dev/null || true
+    fi
+fi
+
 # ── Update dev_runtime_state.json ────────────────────────────────────────────
 python3 -c "
 import json, sys
@@ -168,19 +222,18 @@ state['source']           = 'claude_cli'
 runtime_file.write_text(json.dumps(state, indent=2))
 " "$RUNTIME_FILE" "$SESSION" 2>/dev/null
 
+# ── Generate session summary (stores in mem_ai_events) ───────────────────────
+if [ -n "$SESSION" ]; then
+    curl -sf --connect-timeout 2 --max-time 10 \
+        -X POST "${BACKEND_URL}/memory/${ACTIVE_PROJECT}/session-summary" \
+        -H "Content-Type: application/json" \
+        -d "{\"session_id\":\"${SESSION}\",\"force\":false}" \
+        -o /dev/null 2>/dev/null &   # run in background
+fi
+
 # ── Auto-regenerate MEMORY.md so next session starts with fresh context ───────
 # Call the backend /memory endpoint if it's running.
 # This means Claude (and any LLM) always reads up-to-date history at next startup.
-BACKEND_URL=$(python3 -c "
-import yaml, sys, os
-config = os.path.join(sys.argv[1], 'aicli.yaml')
-try:
-    d = yaml.safe_load(open(config)) or {}
-    print(d.get('backend_url', 'http://localhost:8000').rstrip('/'))
-except:
-    print('http://localhost:8000')
-" "$WORK_DIR" 2>/dev/null || echo "http://localhost:8000")
-
 curl -sf --connect-timeout 2 --max-time 15 \
     -X POST "${BACKEND_URL}/projects/${ACTIVE_PROJECT}/memory" \
     -H "Content-Type: application/json" \
