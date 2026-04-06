@@ -5,7 +5,7 @@ _Generated: 2026-04-06 10:22 UTC by aicli /memory_
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop frontend (Vanilla JS + Cytoscape), enabling teams to manage AI-assisted workflows through semantic memory synthesis, multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), and async DAG-based pipeline execution. The platform is currently in v2.2.0 with recent focus on fixing data persistence layers (JSONB upserts), completing commit history synchronization from git, and enabling memory layer event triggering for project facts and work item consolidation.
+aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL semantic storage (pgvector), and an Electron desktop UI for collaborative AI-driven development workflows. It synthesizes project context into structured memory (events, facts, work items, features) using Claude Haiku dual-layer analysis, supports multi-LLM providers, and executes async DAG workflows with visual approval panels. Currently stabilizing database upsert logic, commit synchronization, and memory synthesis triggers while expanding UI usability (copy-to-clipboard, full commit metadata display).
 
 ## Tech Stack
 
@@ -57,10 +57,10 @@ aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + P
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
 - Memory layer trigger consolidation: event-based triggering for all new items (/memory pathway) with differentiated process_item/messages handling
-- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
-- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
 - PostgreSQL batch upsert JSONB with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
 - Backend startup race condition handled via retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+- Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
+- Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
 
 ## In Progress
 
@@ -73,4 +73,13 @@ aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + P
 
 ## AI Synthesis
 
-**[2026-03-14]** `db-fix` — Resolved PostgreSQL batch upsert JSONB duplicate row insertion error by adding explicit ::jsonb casting to tags field in ON CONFLICT DO UPDATE clause. **[2026-03-14]** `commit-sync` — Implemented /history/commits/sync endpoint successfully importing 364+ unique commit hashes from multiple sources with proper prompt-to-commit linkage and deduplication logic. **[2026-03-14]** `ui-display` — Fixed commit message truncation in commits tab; verified database schema supports complete commit metadata storage and frontend display. **[2026-03-14]** `memory-hooks` — Validated dual-hook architecture where hook-response and session-summary hooks correctly persist both user prompts and LLM responses to mem_mrr_prompts table. **[2026-03-14]** `memory-population` — Enabled event-based triggering for memory items and project_facts with differentiated process_item vs. messages handling for core memory synthesis functionality. **[2026-03-14]** `ux-enhancement` — Identified copy-to-clipboard functionality gap in history UI; prioritized implementation of text selection and copy capability for improved user workflow.
+**[2026-03-14]** `PostgreSQL` — Fixed ON CONFLICT DO UPDATE duplicate row insertion error by adding explicit ::jsonb casting for tags field in batch upsert queries.
+**[2026-03-14]** `Commit Sync` — Implemented /history/commits/sync endpoint to import 364+ unique commit hashes with proper prompt linkage and deduplication logic.
+**[2026-03-14]** `UI/History` — Fixed commit message truncation in commits tab to ensure complete metadata displays; verified dual-hook architecture saves prompts and responses to mem_mrr_prompts.
+**[2026-03-14]** `Memory Layer` — Enabled event-based triggering for memory items and project_facts population with differentiated process_item/messages handling.
+**[2026-03-14]** `Startup Robustness` — Resolved backend race condition on first load with retry_logic_handles_empty_project_list and _ensure_shared_schema consolidation.
+**[2026-03-14]** `Phase & Tags` — Implemented red ⚠ badge for missing phase; auto-saved tag suggestions via _acceptSuggestedTag with distinct visual marking.
+**[2026-03-14]** `Data Persistence` — Standardized load_once_on_access, update_on_save pattern; session ordering by created_at to prevent reordering on tag/phase updates.
+**[2026-03-14]** `Commit Display` — Added commit-per-prompt inline display with accent left-border and hash ↩ links showing only that prompt's commits.
+**[2026-03-14]** `Chunking Strategy` — Smart chunking per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs) with manual relations via CLI/admin UI.
+**[2026-03-14]** `Deployment & CLI` — Unified deployment across Railway cloud (Dockerfile + railway.toml), Electron-builder desktop, and local bash/npm startup scripts.
