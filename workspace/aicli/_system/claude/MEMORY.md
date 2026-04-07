@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-07 22:41 UTC by aicli /memory_
+_Generated: 2026-04-07 22:42 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to enable teams to collaboratively capture, organize, and synthesize project context through semantic memory, work item tracking, and AI-powered workflow automation. Currently in active development (v2.2.0) with focus on performance optimization, tag visibility in the planner UI, agent role-based access control, and pipeline DAG loading—all built on PostgreSQL with pgvector embeddings and multi-LLM provider support (Claude, OpenAI, DeepSeek, Gemini, Grok).
+aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL (pgvector) semantic storage and an Electron desktop UI for Claude, OpenAI, DeepSeek, Gemini, and Grok integration. It implements a 4-layer memory architecture (ephemeral sessions → raw events → LLM-digested events → structured work items → user planner tags) with async DAG workflow execution, smart code chunking, and MCP-based tool integration. Currently addressing database performance optimization, tag visibility issues, and memory synchronization across project states.
 
 ## Project Facts
 
@@ -97,23 +97,23 @@ Reviewer: ```json
 - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
-- Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
-- 4-layer memory architecture: ephemeral session messages → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items, mem_ai_project_facts → user-managed planner_tags
-- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+- 4-layer memory architecture: ephemeral session messages → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts → user-managed planner_tags
+- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
-- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
-- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm
+- Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
+- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ## In Progress
 
-- Database query performance optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) showing ~60s round-trip, 0.9s per query; investigating indexing and join strategy
-- Planner tag visibility debugging: categories uploaded but individual tags not displaying in category; checking router mapping and tag query logic in category-to-tag binding
-- Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending
-- Pipeline DAG loading failure: workflows not populating in UI; verifying Cytoscape graph initialization and node/edge data binding from backend
-- Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)
-- Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage
+- Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows
+- Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table
+- Database query performance optimization: route_work_items showing ~60s round-trip latency; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join operations
+- Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic
+- Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries
+- Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state
 
 ## Active Features / Bugs / Tasks
 
@@ -163,6 +163,53 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index b5b1abd..e0e3735 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-07 17:12 UTC
++> Generated by aicli 2026-04-07 22:38 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit` — 2026-04-07
+
+Updated documentation for memory and project management based on insights from a Claude discussion session to reflect current best practices and findings.
+
+### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 0d6ba29..18adae5 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 17:12 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:38 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
+ - [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
+ - [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
+ - [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
+-- [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
+\ No newline at end of file
++- [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
++- [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
+\ No newline at end of file
+
 
 ### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
 
@@ -247,83 +294,8 @@ index 0d6ba29..18adae5 100644
 
 ### `commit` — 2026-04-07
 
-Commit: chore: remove aicli system context and claude memory files
-Hash: 413d1a2a
-Generated/internal files: workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
-
-### `commit: fa708653-5003-4882-8b5c-07ef4d0d32e5` — 2026-04-07
-
-diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index 7ce0d5b..c0f87ac 100644
---- a/ui/frontend/views/entities.js
-+++ b/ui/frontend/views/entities.js
-@@ -118,12 +118,18 @@ export function renderEntities(container) {
- // ── Init: use cache if warm, otherwise load ──────────────────────────────────
- 
- async function _initPlanner(project) {
--  if (!isCacheLoaded() || getCacheProject() !== project) {
-+  const hasFallback = getCacheCategories().some(c => c.id === null);
-+  if (!isCacheLoaded() || getCacheProject() !== project || hasFallback) {
-     document.getElementById('planner-cat-list').innerHTML =
-       '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">Loading…</div>';
--    await loadTagCache(project);
-+    await loadTagCache(project, hasFallback);
-   }
-   _renderCategoryList();
-+  // Auto-select first category so right pane is populated on open
-+  const cats = getCacheCategories();
-+  if (!_plannerState.selectedCat && cats.length > 0 && cats[0].id != null) {
-+    await _plannerSelectCat(cats[0].id, cats[0].name);
-+  }
- }
- 
- // ── Category list ─────────────────────────────────────────────────────────────
-@@ -150,6 +156,16 @@ function _renderCategoryList() {
- }
- 
- async function _plannerSelectCat(catId, catName) {
-+  // Fallback categories have null IDs — reload cache and resolve real ID by name
-+  if (catId === null || catId === undefined) {
-+    const pane = document.getElementById('planner-tags-pane');
-+    if (pane) pane.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:16px">Loading…</div>';
-+    await loadTagCache(_plannerState.project, true);
-+    const real = getCacheCategories().find(c => c.name === catName && c.id != null);
-+    if (real) return _plannerSelectCat(real.id, real.name);
-+    if (pane) pane.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:16px">Database not ready yet — try again shortly</div>';
-+    return;
-+  }
-   _plannerState.selectedCat = catId;
-   _plannerState.selectedCatName = catName;
-   const cat = getCacheCategories().find(c => c.id === catId) || {};
-
-
-### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
-
-Commit: docs: update system context and memory files after claude session
-Hash: 538614e3
-Code files (3):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-
-### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
-
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index c033571..965ef1a 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,7 +375,7 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
--- Schema cleanup: removed diff_summary and source_session_id columns from work item commit queries; verified migration 008 dropped these fields and memory_planner.py now uses tags['files'] dict instead of deprecated columns
-+- Commit table schema verification: confirmed diff_summary (TEXT) stays as human-readable git --stat output; diff_details (JSONB) was dropped and cleaned from mcp/server.py and memory_mirroring.py
- - Backend data loading optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation; Railway migrations functional but slow (~60s per round-trip, 0.9s per query)
- - Work item drag-and-drop UI refinement: fixing hover state propagation for target tag highlights; ensuring dropped work items persist in correct parent and disappear from source after page reload
- - Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope
-
+Removed aicli system context and Claude memory files as part of cleanup. These files were no longer needed as part of the project structure.
 
 ## AI Synthesis
 
-**[2026-04-07]** `memory system` — Memory synthesis system updated with latest context and session tags; 4-layer architecture consolidates ephemeral messages → raw captures → LLM digests → work items → user planner tags. **[2026-04-07]** `shared-memory feature` — Shared memory functionality scoped for inter-process/inter-thread communication; acceptance criteria defined with focus on synchronization primitives and thread-safety guarantees; currently in planning phase with no implementation commits yet. **[2026-03-14]** `project foundation` — aicli v2.2.0 established with dual storage (PostgreSQL + pgvector), JWT auth with hierarchical Clients→Users pattern, LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok), and Electron desktop UI using Vanilla JS + Cytoscape.js for workflow visualization. **[2026-03-14]** `workflow engine` — Async DAG executor implemented via asyncio.gather with loop-back logic and max_iterations cap; Cytoscape provides graph visualization with 2-pane approval panel for user negotiation in workflows. **[2026-03-14]** `data model` — Unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) with per-project tables (commits, events, embeddings, tags, links, memory_items, facts); tag deduplication and session ordering by created_at to prevent unintended reordering. **[2026-03-14]** `chunking strategy` — Smart chunking per source type: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI. **[2026-03-14]** `mcp integration` — Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint for data synchronization. **[2026-03-14]** `deployment` — Three-tier deployment: Railway for cloud (Dockerfile + railway.toml), Electron-builder for desktop (Mac/Windows/Linux), local bash/npm for development. **[in-progress]** `performance` — Backend startup and query performance under investigation; route_work_items queries averaging 0.9s with ~60s round-trip times; indexing strategy and join optimization pending. **[in-progress]** `tag visibility` — Planner tag display issue where categories upload but individual tags don't cascade; debugging router mapping and tag query logic.
+**[2026-04-07]** User session — Investigated mem_ai_commits table structure and schema conventions; clarified diff_summary and diff_details columns and their role in event linking and semantic embedding workflows. **[2026-04-07]** Code review — Documented memory flow from mirror tables through unified mem_ai_* tables; identified triggers and consolidation mechanisms for each table type. **[2026-04-07]** Performance analysis — Identified 60s round-trip latency in route_work_items queries; determined _SQL_UNLINKED_WORK_ITEMS and join strategy as optimization targets. **[2026-04-07]** Tag system debugging — Tags uploading to categories but not displaying in individual tag lists; router mapping and tag query logic under review. **[2026-04-07]** Project ID resolution — Fixed embed_commits to use project_id parameter instead of project string in database queries. **[2026-04-07]** Memory sync — Executed /memory endpoint to synchronize session data into memory_items and align mem_ai_* tables with latest project state. **[2026-04-07]** Documentation update — Generated updated copilot-instructions.md and aicli.mdrules reflecting current session context and architectural decisions. **[Prior]** 4-layer memory architecture finalized with ephemeral → raw capture → LLM digests → work items → planner tags pipeline. **[Prior]** Dual status tracking (status_user/status_ai) and code_summary field for work items implemented for semantic search. **[Prior]** Smart chunking strategy (per-class/function/section/file) deployed with manual relation support via CLI/admin UI.
