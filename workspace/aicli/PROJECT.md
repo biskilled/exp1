@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item tag-linking persistence and display: fixed _loadTagLinkedWorkItems filter logic where ai_category was incorrectly matching work item's category instead of tag's category; work items now persist and display correctly after drag-drop linkage and page reload
-- Work item dual-status UI implementation: status_user dropdown for user control + status_ai badge for AI suggestions with separate color indicators; integrated into table headers and item drawer
-- Work item embedding strategy: unified embedding space via code_summary + requirements + summary fields for cross-table cosine-similarity matching with planner_tags
-- Work item commits association: /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; commit-per-prompt inline display with accent left-border
-- Tag deduplication across views: 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
-- UI drag-and-drop work item feature: user can drag work items between panes with visual feedback; investigating pane resizing via separator line interaction
+- Work item UI drag-and-drop refinement: fixing hover state propagation (only target tag highlights) and ensuring dropped work items persist in correct parent and disappear from source list after reload
+- Work item column alignment and source_session_id semantics: investigating column sizing consistency and clarifying source_session_id usage in work_items table schema
+- Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions are properly scoped and exported
+- Work item dual-status UI completion: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views
+- Work item embedding strategy for cross-matching: unified embedding space via code_summary + requirements + summary fields for cosine-similarity matching with planner_tags
+- Memory items and system state refresh: running /memory endpoint to update all memory_items with latest session data and ensure memory tables are properly populated across workspace

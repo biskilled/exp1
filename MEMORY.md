@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-06 23:06 UTC by aicli /memory_
+_Generated: 2026-04-07 01:11 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector), Electron desktop UI (Vanilla JS + Cytoscape DAG visualization), and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok) for semantic tagging, workflow automation, and collaborative memory synthesis. Currently stabilizing work item drag-drop UI, dual-status tracking, and memory population after recent schema consolidation around unified mem_ai_* tables.
 
 ## Project Facts
 
@@ -59,7 +63,7 @@ Reviewer: ```json
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
-- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm
+- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm
 - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
@@ -94,18 +98,18 @@ Reviewer: ```json
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)
-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
 - Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created
 - Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display
+- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm dev
 
 ## In Progress
 
-- Work item tag-linking persistence and display: fixed _loadTagLinkedWorkItems filter logic where ai_category was incorrectly matching work item's category instead of tag's category; work items now persist and display correctly after drag-drop linkage and page reload
-- Work item dual-status UI implementation: status_user dropdown for user control + status_ai badge for AI suggestions with separate color indicators; integrated into table headers and item drawer
-- Work item embedding strategy: unified embedding space via code_summary + requirements + summary fields for cross-table cosine-similarity matching with planner_tags
-- Work item commits association: /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering; commit-per-prompt inline display with accent left-border
-- Tag deduplication across views: 149 tags total (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
-- UI drag-and-drop work item feature: user can drag work items between panes with visual feedback; investigating pane resizing via separator line interaction
+- Work item UI drag-and-drop refinement: fixing hover state propagation (only target tag highlights) and ensuring dropped work items persist in correct parent and disappear from source list after reload
+- Work item column alignment and source_session_id semantics: investigating column sizing consistency and clarifying source_session_id usage in work_items table schema
+- Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions are properly scoped and exported
+- Work item dual-status UI completion: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views
+- Work item embedding strategy for cross-matching: unified embedding space via code_summary + requirements + summary fields for cosine-similarity matching with planner_tags
+- Memory items and system state refresh: running /memory endpoint to update all memory_items with latest session data and ensure memory tables are properly populated across workspace
 
 ## Active Features / Bugs / Tasks
 
@@ -156,159 +160,193 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `prompt_batch: 04974a99-4e27-44d8-ba75-c7b9e54ba9c7` — 2026-04-06
-
-The drag-and-drop issue was caused by `_loadTagLinkedWorkItems` filtering work items by the tag's category instead of the work item's own category. Removing the category filter and relying on the DOM selector to scope injected items fixed both the missing dropped items and the persistence issue when returning to the screen.
-
 ### `commit` — 2026-04-06
 
-diff --git a/workspace/aicli/_system/project_state.json b/workspace/aicli/_system/project_state.json
-index 30863c3..cbef165 100644
---- a/workspace/aicli/_system/project_state.json
-+++ b/workspace/aicli/_system/project_state.json
-@@ -120,7 +120,7 @@
-     "cloud": "Railway (Dockerfile + railway.toml)",
-     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
-   },
--  "last_memory_run": "2026-04-06T17:53:11Z",
-+  "last_memory_run": "2026-04-06T18:14:23Z",
-   "_synthesis_cache": {
-     "key_decisions": [
-       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
-@@ -160,10 +160,13 @@
-       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
-       "mcp": "Stdio MCP server with 12+ tools",
--      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder; local bash/npm",
--      "database_version": "PostgreSQL 15+"
-+      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
-+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-+      "deployment_local": "bash start_backend.sh + npm run dev",
-+      "config_management": "config.py + YAML pipelines + pyproject.toml",
-+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
-     },
--    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL semantic storage (pgvector), and an Electron desktop UI for collaborative development workflows. It integrates multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok) with DAG-based workflow execution, dual-status work item tracking, and unified memory synthesis. Current focus is on enhancing the UI with drag-and-drop work item repositioning and resizable pane layouts while maintaining semantic embedding consistency across project entities.",
--    "memory_digest": "**[2026-04-06]** `claude_cli` \u2014 Completed work item dual-status UI implementation with separate status_user/status_ai tracking and visual indicators; migrated schema to support status_user + status_ai + code_summary fields for semantic embedding. **[2026-04-06]** `claude_cli` \u2014 Added /work-items/{id}/commits endpoint with JSONB tag filtering and integrated api.workItems.commits() client method for work item-commit association. **[2026-04-06]** `claude_cli` \u2014 Unified embedding strategy across work_items and planner_tags using code_summary + requirements + summary for cosine-similarity cross-table matching. **[2026-04-06]** `claude_cli` \u2014 Optimized database queries: extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery, refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done'. **[2026-04-06]** `claude_cli_direct` \u2014 Auto-committed 16 files post-session with system context and memory consolidation; dev_runtime_state.json shows 396 sessions, latest 2026-04-06T17:34:59Z. **[2026-04-06]** `user_inquiry` \u2014 Feature request: drag-and-drop work items between top/bottom screen panes and resizable bottom pane height via separator line."
-+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL pgvector storage, a Python 3.12 CLI, and an Electron desktop UI with vanilla JS. It implements multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), async DAG workflow execution, dual-layer memory synthesis, and intelligent code chunking to track project knowledge and work items. Current focus is enhancing work item management with dual-status tracking, semantic embeddings, and improved UI interactions for better task coordination.",
-+    "memory_digest": "**2026-03-14** `schema` \u2014 Work items schema migrated from single status to dual-status model: status_user (user-controlled) and status_ai (AI suggestions) with separate color indicators in UI; added code_summary field for semantic embedding and cross-matching with planner_tags. **2026-03-14** `api` \u2014 Implemented /work-items/{id}/commits endpoint returning linked commits via JSONB tags filtering and integrated api.workItems.commits() client method for work item-commit association. **2026-03-14** `database` \u2014 Extended _SQL_LIST_WORK_ITEMS_BASE with commit_count subquery and refactored _SQL_UNLINKED_WORK_ITEMS to filter by status_user != 'done' for improved query optimization. **2026-03-14** `embedding` \u2014 Unified embedding space strategy for work_items + planner_tags via code_summary + requirements + summary fields enabling cross-table cosine-similarity matching. **2026-03-14** `ui` \u2014 Work item drawer and table UI updated to display dual status with separate badges; user requested drag-and-drop support between top/bottom screen panes with resizable separator line."
-   }
- }
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 3044ebd..5f65c9c 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-06 18:14 UTC
++> Generated by aicli 2026-04-06 22:55 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -56,8 +56,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+ - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+-- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
+-- Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+-- Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
+-- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+\ No newline at end of file
++- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
++- Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)
++- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
++- Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created
++- Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display
 \ No newline at end of file
 
 
 ### `commit` — 2026-04-06
 
-diff --git a/workspace/aicli/_system/llm_prompts/gemini_context.md b/workspace/aicli/_system/llm_prompts/gemini_context.md
-index a5352dd..fdef887 100644
---- a/workspace/aicli/_system/llm_prompts/gemini_context.md
-+++ b/workspace/aicli/_system/llm_prompts/gemini_context.md
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 2c8d399..40da97b 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
- # Project Context: aicli
--# Generated: 2026-04-06 17:54 UTC
-+# Generated: 2026-04-06 22:50 UTC
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 18:14 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 22:55 UTC
  
- ## Project Facts
+ # aicli — Shared AI Memory Platform
  
-@@ -53,7 +53,7 @@ Users cannot copy text from the history UI, limiting usability of viewing histor
- Category: bug
- History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
- 
--### #20066 History display incomplete - missing LLM responses
-+### #20066 billing
- Category: bug
- History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
- 
-@@ -65,21 +65,21 @@ aiCli_memory tables are not updated and don't match current schema. Some tables
- Category: bug
- Multiple events from history table don't make sense and appear to be erroneous data that should be removed
- 
--### #20062 History display truncating LLM responses
-+### #20063 UI
- Category: bug
--History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
-+Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
- 
--### #20064 Nonsensical events in history table
-+### #20064 embeddings
- Category: bug
- History table contains numerous events that don't make logical sense, possibly from corrupted or orphaned historical dat
- 
--### #20063 Text copy functionality missing from history UI
-+### #20061 billing
- Category: bug
--Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
-+In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
- 
--### #20061 ON CONFLICT DO UPDATE duplicate row error
-+### #20062 mcp
- Category: bug
--In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
-+History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
- 
- ### #20057 History display truncation
- Category: bug
+@@ -56,8 +56,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+ - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+-- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
+-- Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+-- Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
+-- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
++- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
++- Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)
++- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
++- Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created
++- Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display
++
++## Recent Context (last 5 changes)
++
++- [2026-04-06] I would like to make sure columns are aligned in work_items. What is source_session_id usaed from in work_items? Also th
++- [2026-04-06] I do see an issue - Uncaught ReferenceError: _plannerSelectAiSubtype is not defined in ERROR    | routers.route_logs    
++- [2026-04-06] is it possilbe to actual move the work_item (drag) and drop that under the item (so work_item is removed from the lower 
++- [2026-04-06] There are some issue - when I drag all tabs that I hoover on top are marked (not just the tag I wanted to drop of). also
++- [2026-04-06] Looks better, still when I drag work_item - I do not see that droped under the item (now also when I try to go out and c
+\ No newline at end of file
 
 
 ### `commit` — 2026-04-06
 
-diff --git a/workspace/aicli/_system/llm_prompts/full.md b/workspace/aicli/_system/llm_prompts/full.md
-index a476738..d409ffc 100644
---- a/workspace/aicli/_system/llm_prompts/full.md
-+++ b/workspace/aicli/_system/llm_prompts/full.md
-@@ -46,13 +46,13 @@ Reviewer: ```json
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 2c8d399..40da97b 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 18:14 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 22:55 UTC
  
- - `#20068 dropbox` [bug]: Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
- - `#20069 mcp` [bug]: History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
--- `#20066 History display incomplete - missing LLM responses` [bug]: History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
-+- `#20066 billing` [bug]: History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
- - `#20065 auth` [bug]: aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
- - `#20067 auth` [bug]: Multiple events from history table don't make sense and appear to be erroneous data that should be removed
--- `#20062 History display truncating LLM responses` [bug]: History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
--- `#20064 Nonsensical events in history table` [bug]: History table contains numerous events that don't make logical sense, possibly from corrupted or orphaned historical dat
--- `#20063 Text copy functionality missing from history UI` [bug]: Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
--- `#20061 ON CONFLICT DO UPDATE duplicate row error` [bug]: In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
-+- `#20063 UI` [bug]: Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
-+- `#20064 embeddings` [bug]: History table contains numerous events that don't make logical sense, possibly from corrupted or orphaned historical dat
-+- `#20061 billing` [bug]: In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
-+- `#20062 mcp` [bug]: History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
- - `#20057 History display truncation` [bug]: History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
- - `#20060 Invalid llm_source column data` [bug]: llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
- - `#20058 Missing copy functionality in history UI` [bug]: Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
+ # aicli — Shared AI Memory Platform
+ 
+@@ -56,8 +56,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+ - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+-- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
+-- Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+-- Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
+-- Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
++- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
++- Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)
++- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
++- Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created
++- Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display
++
++## Recent Context (last 5 changes)
++
++- [2026-04-06] I would like to make sure columns are aligned in work_items. What is source_session_id usaed from in work_items? Also th
++- [2026-04-06] I do see an issue - Uncaught ReferenceError: _plannerSelectAiSubtype is not defined in ERROR    | routers.route_logs    
++- [2026-04-06] is it possilbe to actual move the work_item (drag) and drop that under the item (so work_item is removed from the lower 
++- [2026-04-06] There are some issue - when I drag all tabs that I hoover on top are marked (not just the tag I wanted to drop of). also
++- [2026-04-06] Looks better, still when I drag work_item - I do not see that droped under the item (now also when I try to go out and c
+\ No newline at end of file
 
 
 ### `commit` — 2026-04-06
 
-diff --git a/workspace/aicli/_system/llm_prompts/compact.md b/workspace/aicli/_system/llm_prompts/compact.md
-index 6f3d9ad..1efd241 100644
---- a/workspace/aicli/_system/llm_prompts/compact.md
-+++ b/workspace/aicli/_system/llm_prompts/compact.md
-@@ -6,7 +6,7 @@ When working on a specific feature, ask for its snapshot before making decisions
+Commit: docs: update system context and memory after claude session 04974a99
+Hash: d760cb38
+Files changed (20):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - CLAUDE.md
+  - MEMORY.md
+  - ui/frontend/views/entities.js
+  - workspace/aicli/PROJECT.md
+  - workspace/aicli/_system/CLAUDE.md
+  - workspace/aicli/_system/CONTEXT.md
+  - workspace/aicli/_system/aicli/context.md
+  - workspace/aicli/_system/aicli/copilot.md
+  - workspace/aicli/_system/claude/CLAUDE.md
+  - workspace/aicli/_system/claude/MEMORY.md
+  - workspace/aicli/_system/commit_log.jsonl
+  - workspace/aicli/_system/cursor/rules.md
+  - workspace/aicli/_system/dev_runtime_state.json
+  - workspace/aicli/_system/llm_prompts/compact.md
+  - workspace/aicli/_system/llm_prompts/full.md
+  - workspace/aicli/_system/llm_prompts/gemini_context.md
+  - workspace/aicli/_system/project_state.json
+
+### `commit` — 2026-04-07
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 40da97b..e9d7895 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 22:55 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 23:06 UTC
  
- - dropbox [bug]: Users cannot copy text from the history UI, limiting usability of viewing histor
- - mcp [bug]: History table contains numerous events that don't make sense and appear to be er
--- History display incomplete - missing LLM responses [bug]: History view only shows prompts, not LLM responses. After fixes, only small text
-+- billing [bug]: History view only shows prompts, not LLM responses. After fixes, only small text
+ # aicli — Shared AI Memory Platform
  
- ## Last Session
- • Reviewed the main mem_ai_work_items table structure to understand column usage and alignment • Identified that source_session_id references parent session context but usage needs clarification • Found 3 content columns (content, summary, requirements) with unclear differentiation — need to define purpose for each • Identified tags column should merge tags from mem_ai_events table • Flagged that column alignment and data flow between tables needs documentation before proceeding with changes.
+@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-06] I would like to make sure columns are aligned in work_items. What is source_session_id usaed from in work_items? Also th
+ - [2026-04-06] I do see an issue - Uncaught ReferenceError: _plannerSelectAiSubtype is not defined in ERROR    | routers.route_logs    
+ - [2026-04-06] is it possilbe to actual move the work_item (drag) and drop that under the item (so work_item is removed from the lower 
+ - [2026-04-06] There are some issue - when I drag all tabs that I hoover on top are marked (not just the tag I wanted to drop of). also
+-- [2026-04-06] Looks better, still when I drag work_item - I do not see that droped under the item (now also when I try to go out and c
+\ No newline at end of file
++- [2026-04-06] Looks better, still when I drag work_item - I do not see that droped under the item (now also when I try to go out and c
++- [2026-04-06] I would like to be able to move work_item back to work_item or to another items. also merge - merge can happend only to 
+\ No newline at end of file
 
 
-### `commit` — 2026-04-06
+### `commit` — 2026-04-07
 
-diff --git a/workspace/aicli/_system/dev_runtime_state.json b/workspace/aicli/_system/dev_runtime_state.json
-index e258e12..f1b06c7 100644
---- a/workspace/aicli/_system/dev_runtime_state.json
-+++ b/workspace/aicli/_system/dev_runtime_state.json
-@@ -1,8 +1,8 @@
- {
--  "last_updated": "2026-04-06T18:14:10Z",
-+  "last_updated": "2026-04-06T22:55:18Z",
-   "last_session_id": "04974a99-4e27-44d8-ba75-c7b9e54ba9c7",
--  "last_session_ts": "2026-04-06T18:14:10Z",
--  "session_count": 400,
-+  "last_session_ts": "2026-04-06T22:55:18Z",
-+  "session_count": 401,
-   "last_provider": "claude",
-   "last_prompt_preview": "hellow, how are you ?",
-   "source": "claude_cli"
+Commit: docs: update system prompts and memory after claude session
+Hash: 46b5b785
+Files changed (24):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - MEMORY.md
+  - backend/core/database.py
+  - backend/memory/memory_planner.py
+  - backend/routers/route_tags.py
+  - backend/routers/route_work_items.py
+  - ui/frontend/utils/api.js
+  - ui/frontend/views/entities.js
+  - workspace/_templates/memory/prompts.yaml
+  - workspace/aicli/_system/CLAUDE.md
+  - workspace/aicli/_system/CONTEXT.md
+  - workspace/aicli/_system/aicli/context.md
+  - workspace/aicli/_system/aicli/copilot.md
+  - workspace/aicli/_system/claude/CLAUDE.md
+  - workspace/aicli/_system/claude/MEMORY.md
+  - workspace/aicli/_system/commit_log.jsonl
+  - workspace/aicli/_system/cursor/rules.md
+  - workspace/aicli/_system/dev_runtime_state.json
 
+## AI Synthesis
+
+**[2026-04-06]** `claude_cli` — Fixed tag filtering regression: ai_category must now match tag's category (not work item's own category) in _loadTagLinkedWorkItems to ensure correct work item associations. **[2026-04-06]** `system` — Unified session-level UI in Planner tab for centralized tag management with single tags view; suggested tags visually distinguished from user-created tags. **[2026-04-06]** `system` — Confirmed work item persistence across navigation: drag-drop linkage properly saves to database; reload maintains linked work items in list display. **[2026-04-06]** `frontend` — Identified _plannerSelectAiSubtype undefined ReferenceError in routers.route_logs; planner helper functions require proper scoping and export. **[2026-04-06]** `ui` — Work item drag-and-drop has hover state propagation issue: all hovered tabs highlight instead of just target tag; needs refinement for better UX. **[2026-04-06]** `schema` — Clarifying source_session_id semantics in work_items table; investigating column alignment consistency for improved UI layout. **[2026-04-06]** `integration` — Work item dual-status UI integration: status_user dropdown + status_ai badge with separate color indicators needed across table and drawer views. **[2026-04-06]** `embeddings` — Work item cross-matching via unified embedding space: code_summary + requirements + summary fields enable cosine-similarity against planner_tags. **[2026-04-07]** `memory` — Initiate /memory endpoint refresh to populate all memory_items with latest session data; ensure memory tables properly reflect project state.
