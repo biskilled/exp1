@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-07 01:12 UTC — do not edit manually.
+> Auto-generated 2026-04-07 01:14 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 403
-- **Last active**: 2026-04-07T01:10:35Z
+- **Sessions**: 404
+- **Last active**: 2026-04-07T01:12:51Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- Work item UI drag-and-drop refinement: fixing hover state propagation (only target tag highlights) and ensuring dropped work items persist in correct parent and disappear from source list after reload
-- Work item column alignment and source_session_id semantics: investigating column sizing consistency and clarifying source_session_id usage in work_items table schema
-- Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions are properly scoped and exported
-- Work item dual-status UI completion: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views
-- Work item embedding strategy for cross-matching: unified embedding space via code_summary + requirements + summary fields for cosine-similarity matching with planner_tags
-- Memory items and system state refresh: running /memory endpoint to update all memory_items with latest session data and ensure memory tables are properly populated across workspace
+- Work item drag-and-drop UI refinement: fixing hover state propagation so only target tag highlights; ensuring dropped work items persist in correct parent and disappear from source list after page reload
+- Work item dual-status implementation: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views; schema alignment verification
+- Work item embedding strategy: unified embedding space via code_summary + requirements + summary fields for cosine-similarity matching with planner_tags across work_items and memory_items tables
+- Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state
+- Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope
+- Work item column semantics clarification: investigating source_session_id usage and resolving column alignment inconsistencies in work_items table display
 
 ## Key Decisions
 

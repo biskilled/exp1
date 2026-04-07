@@ -252,8 +252,9 @@ async def get_unlinked_work_items(project: str | None = Query(None)):
             for r in cur.fetchall():
                 row = dict(zip(cols, r))
                 row["id"] = str(row["id"])
-                if row.get("created_at"):
-                    row["created_at"] = row["created_at"].isoformat()
+                for dt_field in ("created_at", "start_date"):
+                    if row.get(dt_field):
+                        row[dt_field] = row[dt_field].isoformat()
                 rows.append(row)
     return {"items": rows, "project": p, "total": len(rows)}
 
