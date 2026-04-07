@@ -53,8 +53,8 @@
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
     "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
     "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
-    "Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly",
-    "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint"
+    "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
+    "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -83,10 +83,10 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Backend startup optimization: database query performance slow (~60s per round-trip, 0.9s per query); route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation",
-    "Planner tag visibility issue: categories uploaded but individual tags not displaying in each category; investigating router mapping and tag query logic",
+    "Database query performance optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) showing ~60s round-trip, 0.9s per query; investigating indexing and join strategy",
+    "Planner tag visibility debugging: categories uploaded but individual tags not displaying in category; checking router mapping and tag query logic in category-to-tag binding",
     "Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending",
-    "Pipeline loading failure: DAG workflows not populating; verifying Cytoscape graph initialization and node/edge data binding",
+    "Pipeline DAG loading failure: workflows not populating in UI; verifying Cytoscape graph initialization and node/edge data binding from backend",
     "Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)",
     "Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage"
   ],
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-07T22:41:16Z",
+  "last_memory_run": "2026-04-07T22:42:20Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -136,14 +136,14 @@
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
       "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
       "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
-      "Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly",
-      "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint"
+      "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
+      "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm"
     ],
     "in_progress": [
-      "Backend startup optimization: database query performance slow (~60s per round-trip, 0.9s per query); route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation",
-      "Planner tag visibility issue: categories uploaded but individual tags not displaying in each category; investigating router mapping and tag query logic",
+      "Database query performance optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) showing ~60s round-trip, 0.9s per query; investigating indexing and join strategy",
+      "Planner tag visibility debugging: categories uploaded but individual tags not displaying in category; checking router mapping and tag query logic in category-to-tag binding",
       "Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending",
-      "Pipeline loading failure: DAG workflows not populating; verifying Cytoscape graph initialization and node/edge data binding",
+      "Pipeline DAG loading failure: workflows not populating in UI; verifying Cytoscape graph initialization and node/edge data binding from backend",
       "Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)",
       "Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage"
     ],
@@ -156,15 +156,12 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
-      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries",
-      "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
+      "config_management": "config.py + YAML pipelines + pyproject.toml"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python/FastAPI backend with an Electron desktop UI, enabling teams to capture, synthesize, and search project history using Claude-powered embeddings and multi-model LLM support. Currently in active development with focus on backend performance optimization, planner tag visibility, PostgreSQL role-based access control, and memory synthesis pipeline stabilization.",
-    "memory_digest": "**[2026-03-22]** `backend/routers/route_memory.py` \u2014 Fixed embed_commits to resolve project string to project_id via db.get_or_create_project_id() before querying commits_{p} table, resolving SQL parameter mismatch at line 391. **[2026-03-22]** `backend startup` \u2014 Database query performance identified as bottleneck (~60s per round-trip, 0.9s per query); route_work_items _SQL_UNLINKED_WORK_ITEMS and merged_into/start_date alignment under optimization review. **[2026-03-22]** `frontend/planner` \u2014 Categories successfully uploading but individual tags within categories not rendering; router mapping and tag query logic requires verification for proper category\u2192tag association. **[2026-03-22]** `backend/auth` \u2014 Agent roles and system_roles PostgreSQL tables identified as required for role-based functionality; schema initialization pending. **[2026-03-22]** `frontend/pipelines` \u2014 DAG workflow visualization not populating; Cytoscape graph initialization and node/edge data binding investigation in progress. **[2026-03-22]** `memory/synthesis` \u2014 /memory endpoint data synchronization queued to sync session commits/events into memory_items and mem_ai_* tables with correct event linkage and project_id resolution."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to enable teams to collaboratively capture, organize, and synthesize project context through semantic memory, work item tracking, and AI-powered workflow automation. Currently in active development (v2.2.0) with focus on performance optimization, tag visibility in the planner UI, agent role-based access control, and pipeline DAG loading\u2014all built on PostgreSQL with pgvector embeddings and multi-LLM provider support (Claude, OpenAI, DeepSeek, Gemini, Grok).",
+    "memory_digest": "**[2026-04-07]** `memory system` \u2014 Memory synthesis system updated with latest context and session tags; 4-layer architecture consolidates ephemeral messages \u2192 raw captures \u2192 LLM digests \u2192 work items \u2192 user planner tags. **[2026-04-07]** `shared-memory feature` \u2014 Shared memory functionality scoped for inter-process/inter-thread communication; acceptance criteria defined with focus on synchronization primitives and thread-safety guarantees; currently in planning phase with no implementation commits yet. **[2026-03-14]** `project foundation` \u2014 aicli v2.2.0 established with dual storage (PostgreSQL + pgvector), JWT auth with hierarchical Clients\u2192Users pattern, LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok), and Electron desktop UI using Vanilla JS + Cytoscape.js for workflow visualization. **[2026-03-14]** `workflow engine` \u2014 Async DAG executor implemented via asyncio.gather with loop-back logic and max_iterations cap; Cytoscape provides graph visualization with 2-pane approval panel for user negotiation in workflows. **[2026-03-14]** `data model` \u2014 Unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) with per-project tables (commits, events, embeddings, tags, links, memory_items, facts); tag deduplication and session ordering by created_at to prevent unintended reordering. **[2026-03-14]** `chunking strategy` \u2014 Smart chunking per source type: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI. **[2026-03-14]** `mcp integration` \u2014 Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint for data synchronization. **[2026-03-14]** `deployment` \u2014 Three-tier deployment: Railway for cloud (Dockerfile + railway.toml), Electron-builder for desktop (Mac/Windows/Linux), local bash/npm for development. **[in-progress]** `performance` \u2014 Backend startup and query performance under investigation; route_work_items queries averaging 0.9s with ~60s round-trip times; indexing strategy and join optimization pending. **[in-progress]** `tag visibility` \u2014 Planner tag display issue where categories upload but individual tags don't cascade; debugging router mapping and tag query logic."
   }
 }

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-07 22:41 UTC — do not edit manually.
+> Auto-generated 2026-04-07 22:42 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 415
-- **Last active**: 2026-04-07T22:40:03Z
+- **Sessions**: 416
+- **Last active**: 2026-04-07T22:41:21Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,10 +51,10 @@
 
 ## In Progress
 
-- Backend startup optimization: database query performance slow (~60s per round-trip, 0.9s per query); route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation
-- Planner tag visibility issue: categories uploaded but individual tags not displaying in each category; investigating router mapping and tag query logic
+- Database query performance optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) showing ~60s round-trip, 0.9s per query; investigating indexing and join strategy
+- Planner tag visibility debugging: categories uploaded but individual tags not displaying in category; checking router mapping and tag query logic in category-to-tag binding
 - Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending
-- Pipeline loading failure: DAG workflows not populating; verifying Cytoscape graph initialization and node/edge data binding
+- Pipeline DAG loading failure: workflows not populating in UI; verifying Cytoscape graph initialization and node/edge data binding from backend
 - Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)
 - Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage
 
@@ -73,8 +73,8 @@
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Tag filtering in work item list: ai_category must match tag's category, not work item's own category
-- Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm
 
 ---
 

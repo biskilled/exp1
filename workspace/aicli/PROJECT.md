@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Backend startup optimization: database query performance slow (~60s per round-trip, 0.9s per query); route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation
-- Planner tag visibility issue: categories uploaded but individual tags not displaying in each category; investigating router mapping and tag query logic
+- Database query performance optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) showing ~60s round-trip, 0.9s per query; investigating indexing and join strategy
+- Planner tag visibility debugging: categories uploaded but individual tags not displaying in category; checking router mapping and tag query logic in category-to-tag binding
 - Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending
-- Pipeline loading failure: DAG workflows not populating; verifying Cytoscape graph initialization and node/edge data binding
+- Pipeline DAG loading failure: workflows not populating in UI; verifying Cytoscape graph initialization and node/edge data binding from backend
 - Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)
 - Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage

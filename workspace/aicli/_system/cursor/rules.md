@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:40 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:41 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -59,8 +59,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Tag filtering in work item list: ai_category must match tag's category, not work item's own category
-- Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm
 
 ## Recent Context (last 5 changes)
 

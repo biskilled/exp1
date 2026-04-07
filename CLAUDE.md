@@ -39,8 +39,8 @@ You are a senior Python software architect with deep expertise in:
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Tag filtering in work item list: ai_category must match tag's category, not work item's own category
-- Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm
 
 ---
 
