@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
+    "Backend data loading errors: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS execution) and line 288 (merged_into/start_date column alignment); Railway migration takes 60+ seconds per round-trip (~0.9s each), backend is functional but slow on initial load",
     "Work item drag-and-drop UI refinement: fixing hover state propagation so only target tag highlights; ensuring dropped work items persist in correct parent and disappear from source list after page reload",
+    "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions are properly scoped and exported to global scope",
+    "Work item column alignment and source_session_id semantics: investigating column sizing consistency and clarifying source_session_id usage in work_items table display",
     "Work item dual-status implementation: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views; schema alignment verification",
-    "Work item embedding strategy: unified embedding space via code_summary + requirements + summary fields for cosine-similarity matching with planner_tags across work_items and memory_items tables",
-    "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state",
-    "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope",
-    "Work item column semantics clarification: investigating source_session_id usage and resolving column alignment inconsistencies in work_items table display"
+    "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-07T01:13:15Z",
+  "last_memory_run": "2026-04-07T01:56:20Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -140,12 +140,12 @@
       "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm dev"
     ],
     "in_progress": [
+      "Backend data loading errors: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS execution) and line 288 (merged_into/start_date column alignment); Railway migration takes 60+ seconds per round-trip (~0.9s each), backend is functional but slow on initial load",
       "Work item drag-and-drop UI refinement: fixing hover state propagation so only target tag highlights; ensuring dropped work items persist in correct parent and disappear from source list after page reload",
+      "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions are properly scoped and exported to global scope",
+      "Work item column alignment and source_session_id semantics: investigating column sizing consistency and clarifying source_session_id usage in work_items table display",
       "Work item dual-status implementation: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views; schema alignment verification",
-      "Work item embedding strategy: unified embedding space via code_summary + requirements + summary fields for cosine-similarity matching with planner_tags across work_items and memory_items tables",
-      "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state",
-      "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope",
-      "Work item column semantics clarification: investigating source_session_id usage and resolving column alignment inconsistencies in work_items table display"
+      "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -153,17 +153,19 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
+      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
-      "database_version": "PostgreSQL 15+",
+      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment_local": "bash start_backend.sh + npm run dev",
+      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries",
       "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with Electron desktop UI and CLI, using PostgreSQL+pgvector for semantic search and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok). It provides unified project memory management via mem_ai_* tables, work item tracking with dual status (user/AI), async DAG workflow execution, and session-based tagging. Current focus is resolving work item drag-drop persistence bugs and completing dual-status UI with proper embedding strategy for cross-table semantic matching.",
-    "memory_digest": "**[2026-04-07]** Context auto-refresh \u2014 Project now at 402 sessions, maintaining unified memory tables (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features) for cross-session knowledge. **[2026-04-06]** Work item tag-linking persistence \u2014 Fixed regression where ai_category filter was matching work item's own category instead of tag's category in _loadTagLinkedWorkItems; work items now correctly persist after drag-drop and page reload. **[2026-04-06]** Dual-status UI integration \u2014 Implemented status_user dropdown + status_ai badge with distinct color indicators throughout work item table and drawer; aligned with DB schema for user vs AI control flow. **[2026-04-06]** Work item embedding strategy \u2014 Unified space via code_summary + requirements + summary fields for cosine-similarity cross-matching with planner_tags; enables semantic work item discovery and merging. **[2026-04-06]** Hover state propagation \u2014 Identified drag-drop hover regression where non-target tags incorrectly highlighted; only target should highlight on drag-over. **[2026-04-06]** Frontend scoping fix \u2014 _plannerSelectAiSubtype and other planner helpers need proper global export to resolve undefined reference in routers.route_logs. **[2026-04-06]** Session ordering behavior \u2014 Confirmed sessions sort by created_at (not updated_at) to prevent reordering when tags/phases are applied post-session. **[2026-04-06]** Memory endpoint \u2014 /memory runs Claude Haiku dual-layer synthesis with 5 output files and LLM response summarization; auto-tags deduplicated by timestamp. **[2026-04-06]** Column semantics \u2014 source_session_id references parent session context in work_items; clarification needed on when/how it's populated vs inherited. **[2026-04-06]** Deployment confidence \u2014 Railway cloud + Electron-builder desktop fully operational; local dev via bash start_backend.sh + npm run dev."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL vector database (pgvector), and Electron desktop UI (Vanilla JS) to enable AI-powered project management with semantic search, workflow automation via DAG execution, and intelligent memory synthesis. Currently in active development with focus on stabilizing work item UI persistence, fixing backend data loading performance on Railway, and ensuring all planner/tag management functions are properly scoped and functional across the frontend.",
+    "memory_digest": "**[2026-04-07]** `claude_cli` \u2014 Backend data loading errors identified in route_work_items (lines 249, 288): SQL query execution and column alignment issues. Railway migration takes 60+ seconds due to sequential round-trips (~0.9s each); backend is functional but requires patience on cold starts. Work item table schema needs verification for merged_into/start_date columns and source_session_id semantics. **[2026-04-07]** `synthesis` \u2014 Work item drag-and-drop persistence verified: linkage saves correctly to DB and survives page reload, but hover state propagation needs refinement (only target tag should highlight). **[2026-04-07]** `synthesis` \u2014 Frontend planner functions _plannerSelectAiSubtype and related helpers have undefined references in routers.route_logs; requires proper scoping and global export. **[2026-04-07]** `synthesis` \u2014 Work item dual-status UI implementation in progress: status_user dropdown + status_ai badge with separate color indicators needed across table and item drawer views. **[2026-04-07]** `synthesis` \u2014 Memory endpoint (/memory) requires execution to populate memory_items and sync mem_ai_* tables with latest session data across workspace. **[2026-04-06]** `synthesis` \u2014 Tag filtering regression fixed: ai_category must match tag's category (not work item's category) in _loadTagLinkedWorkItems; all tag management unified in Planner tab with suggested tags marked distinctly."
   }
 }

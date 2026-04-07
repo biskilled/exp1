@@ -1,5 +1,5 @@
 # Project Context: aicli
-# Generated: 2026-04-07 01:13 UTC
+# Generated: 2026-04-07 10:17 UTC
 
 ## Project Facts
 
@@ -62,13 +62,13 @@ History table contains numerous events that don't make sense and appear to be er
 Category: bug
 Multiple events from history table don't make sense and appear to be erroneous data that should be removed
 
-### #20065 auth
-Category: bug
-aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
-
 ### #20066 billing
 Category: bug
 History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
+
+### #20065 auth
+Category: bug
+aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
 
 ### #20061 billing
 Category: bug
@@ -86,17 +86,17 @@ History view shows only prompts but not LLM responses, or displays only small te
 Category: bug
 Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
 
-### #20057 auth
-Category: bug
-History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
-
 ### #20059 Spurious history events in database
 Category: bug
 History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
 
-### #20060 Invalid llm_source column data
+### #20060 embeddings
 Category: bug
 llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
+
+### #20057 auth
+Category: bug
+History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
 
 ### #20053 Copy text functionality missing from history UI
 Category: bug
