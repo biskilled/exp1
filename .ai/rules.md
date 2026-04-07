@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 15:05 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 16:44 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-06] I would like to be able to move work_item back to work_item or to another items. also merge - merge can happend only to 
 - [2026-04-07] can you update all memory_items (maybe run /memory) to have an uodated data
 - [2026-04-07] I do have some errors loading data - route_work_items line 249 - cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id,)) and line
 - [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
 - [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
+- [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
