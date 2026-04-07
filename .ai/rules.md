@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 01:55 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 14:59 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -57,15 +57,15 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
-- Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)
-- Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created
-- Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display
-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm dev
+- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
+- Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
+- Memory synthesis triggered from session data via /memory endpoint → Claude Haiku processes commits/events → outputs to mem_ai_events/project_facts tables
+- Project facts generated via LLM prompt analyzing session events and commits; stored in mem_ai_project_facts with event_id linkage for traceability
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-06] There are some issue - when I drag all tabs that I hoover on top are marked (not just the tag I wanted to drop of). also
 - [2026-04-06] Looks better, still when I drag work_item - I do not see that droped under the item (now also when I try to go out and c
 - [2026-04-06] I would like to be able to move work_item back to work_item or to another items. also merge - merge can happend only to 
 - [2026-04-07] can you update all memory_items (maybe run /memory) to have an uodated data
 - [2026-04-07] I do have some errors loading data - route_work_items line 249 - cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id,)) and line
+- [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,

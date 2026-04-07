@@ -51,10 +51,10 @@
     "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
     "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
-    "Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)",
-    "Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created",
-    "Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display",
-    "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm dev"
+    "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
+    "Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly",
+    "Memory synthesis triggered from session data via /memory endpoint \u2192 Claude Haiku processes commits/events \u2192 outputs to mem_ai_events/project_facts tables",
+    "Project facts generated via LLM prompt analyzing session events and commits; stored in mem_ai_project_facts with event_id linkage for traceability"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Backend data loading errors: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS execution) and line 288 (merged_into/start_date column alignment); Railway migration takes 60+ seconds per round-trip (~0.9s each), backend is functional but slow on initial load",
+    "Backend data loading errors: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS execution) and line 288 (merged_into/start_date column alignment); Railway migration takes 60+ seconds per round-trip, backend functional but slow on initial load",
     "Work item drag-and-drop UI refinement: fixing hover state propagation so only target tag highlights; ensuring dropped work items persist in correct parent and disappear from source list after page reload",
     "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions are properly scoped and exported to global scope",
-    "Work item column alignment and source_session_id semantics: investigating column sizing consistency and clarifying source_session_id usage in work_items table display",
-    "Work item dual-status implementation: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views; schema alignment verification",
-    "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state"
+    "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state with correct event linkage",
+    "Mirror table architecture investigation: understanding trigger mechanisms for mem_ai_events and mem_ai_project_facts, LLM prompts used in synthesis, and data flow from session commits/events",
+    "Work item dual-status implementation: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views; schema alignment verification"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-07T01:56:20Z",
+  "last_memory_run": "2026-04-07T14:59:54Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -134,18 +134,18 @@
       "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
       "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
-      "Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)",
-      "Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created",
-      "Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display",
-      "Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm dev"
+      "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
+      "Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly",
+      "Memory synthesis triggered from session data via /memory endpoint \u2192 Claude Haiku processes commits/events \u2192 outputs to mem_ai_events/project_facts tables",
+      "Project facts generated via LLM prompt analyzing session events and commits; stored in mem_ai_project_facts with event_id linkage for traceability"
     ],
     "in_progress": [
-      "Backend data loading errors: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS execution) and line 288 (merged_into/start_date column alignment); Railway migration takes 60+ seconds per round-trip (~0.9s each), backend is functional but slow on initial load",
+      "Backend data loading errors: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS execution) and line 288 (merged_into/start_date column alignment); Railway migration takes 60+ seconds per round-trip, backend functional but slow on initial load",
       "Work item drag-and-drop UI refinement: fixing hover state propagation so only target tag highlights; ensuring dropped work items persist in correct parent and disappear from source list after page reload",
       "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions are properly scoped and exported to global scope",
-      "Work item column alignment and source_session_id semantics: investigating column sizing consistency and clarifying source_session_id usage in work_items table display",
-      "Work item dual-status implementation: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views; schema alignment verification",
-      "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state"
+      "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state with correct event linkage",
+      "Mirror table architecture investigation: understanding trigger mechanisms for mem_ai_events and mem_ai_project_facts, LLM prompts used in synthesis, and data flow from session commits/events",
+      "Work item dual-status implementation: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views; schema alignment verification"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -153,19 +153,19 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "deployment_local": "bash start_backend.sh + npm run dev",
-      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
+      "database_version": "PostgreSQL 15+",
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
+      "node_modules_build": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL vector database (pgvector), and Electron desktop UI (Vanilla JS) to enable AI-powered project management with semantic search, workflow automation via DAG execution, and intelligent memory synthesis. Currently in active development with focus on stabilizing work item UI persistence, fixing backend data loading performance on Railway, and ensuring all planner/tag management functions are properly scoped and functional across the frontend.",
-    "memory_digest": "**[2026-04-07]** `claude_cli` \u2014 Backend data loading errors identified in route_work_items (lines 249, 288): SQL query execution and column alignment issues. Railway migration takes 60+ seconds due to sequential round-trips (~0.9s each); backend is functional but requires patience on cold starts. Work item table schema needs verification for merged_into/start_date columns and source_session_id semantics. **[2026-04-07]** `synthesis` \u2014 Work item drag-and-drop persistence verified: linkage saves correctly to DB and survives page reload, but hover state propagation needs refinement (only target tag should highlight). **[2026-04-07]** `synthesis` \u2014 Frontend planner functions _plannerSelectAiSubtype and related helpers have undefined references in routers.route_logs; requires proper scoping and global export. **[2026-04-07]** `synthesis` \u2014 Work item dual-status UI implementation in progress: status_user dropdown + status_ai badge with separate color indicators needed across table and item drawer views. **[2026-04-07]** `synthesis` \u2014 Memory endpoint (/memory) requires execution to populate memory_items and sync mem_ai_* tables with latest session data across workspace. **[2026-04-06]** `synthesis` \u2014 Tag filtering regression fixed: ai_category must match tag's category (not work item's category) in _loadTagLinkedWorkItems; all tag management unified in Planner tab with suggested tags marked distinctly."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL/pgvector storage, a Claude-powered memory synthesis engine, and an Electron desktop UI with workflow visualization. It enables teams to capture work item metadata, commits, and session events into unified semantic tables, generate AI-driven project facts and insights, and manage complex workflows through a DAG-based executor with approval panels. Currently stabilizing backend performance (60-second migration delays), fixing SQL query errors in work item retrieval, and refining work item dual-status UI with proper tag linkage persistence.",
+    "memory_digest": "**[2026-04-07]** `claude_cli` \u2014 Diagnostic investigation of mirror table architecture: clarified that mem_ai_events stores unified session data (commits, events, work item changes) triggered by /memory endpoint; mem_ai_project_facts generated via Claude Haiku LLM prompt analyzing session context (commits, tags, events) to extract high-level insights; work_items table triggered by drag-drop UI interactions and /memory sync endpoint.\n\n**[2026-04-07]** `diagnostic` \u2014 Identified critical backend performance bottleneck: Railway migrations take 60+ seconds per round-trip (~0.9s each request), causing initial project load slowness; route_work_items has two SQL errors (line 249 unlinked items query and line 288 merged item column alignment) requiring parameter binding fixes.\n\n**[2026-03-14]** `memory_synthesis` \u2014 Claude Haiku dual-layer memory system fully operational: processes commits/events into 5 output files with LLM response summarization, auto-tag suggestions, and timestamp tracking; tag deduplication prevents duplicates across sessions.\n\n**[Recent sessions]** `development` \u2014 Work item dual-status tracking (status_user + status_ai) integrated with color indicators; planner tab unified for tag management with suggested tags marked distinctly; drag-drop linkage saves correctly to DB with proper tag JSONB encoding.\n\n**[Recent sessions]** `ui_refinement` \u2014 Fixed tag filtering regression (ai_category must match tag's category, not work item's own); session ordering by created_at prevents reordering on tag updates; work item persistence across navigation working correctly.\n\n**[Recent sessions]** `frontend_debugging` \u2014 Planner helper functions scoped and exported to global scope; _plannerSelectAiSubtype reference errors resolved; work item column alignment verified for dual-status display and code_summary embedding field."
   }
 }
