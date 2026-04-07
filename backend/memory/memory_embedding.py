@@ -187,13 +187,17 @@ async def _load_system_role(name: str) -> Optional[str]:
         return None
 
 
-def _parse_haiku_json(raw: str, fallback: str) -> tuple[str, str]:
-    """Return (summary, action_items). Handles plain-text fallback gracefully."""
+def _parse_haiku_json(raw: str, fallback: str) -> tuple[str, str, int]:
+    """Return (summary, action_items, importance). Handles plain-text fallback gracefully."""
     try:
-        parsed = json.loads(raw)
-        return parsed.get("summary", fallback), parsed.get("action_items", "")
-    except (json.JSONDecodeError, AttributeError):
-        return raw or fallback, ""
+        # Strip markdown fences if present
+        clean = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`")
+        parsed = json.loads(clean)
+        importance = int(parsed.get("importance") or 5)
+        importance = max(1, min(10, importance))
+        return parsed.get("summary", fallback), parsed.get("action_items", ""), importance
+    except (json.JSONDecodeError, AttributeError, ValueError):
+        return raw or fallback, "", 5
 
 
 def _upsert_event(
@@ -302,7 +306,7 @@ class MemoryEmbedding:
         raw = await _haiku(sys_prompt, pairs, max_tokens=250)
         if not raw:
             return None
-        summary_text, action_items = _parse_haiku_json(raw, pairs[:200])
+        summary_text, action_items, importance = _parse_haiku_json(raw, pairs[:200])
 
         embedding = await _embed(summary_text)
         last_id   = prompts[-1]["id"]
@@ -329,7 +333,7 @@ class MemoryEmbedding:
         event_id = _upsert_event(
             project, "prompt_batch", last_id, 0, "full", summary_text, embedding,
             session_id=session_id,
-            summary=summary_text, action_items=action_items, tags=event_tags, importance=1,
+            summary=summary_text, action_items=action_items, tags=event_tags, importance=importance,
         )
 
         # Chunk long responses (raw embed, no LLM)
@@ -344,9 +348,17 @@ class MemoryEmbedding:
                         _upsert_event(
                             project, "prompt_batch", last_id, chunk_idx,
                             rc.get("chunk_type", "section"), rc["content"], rc_emb,
-                            session_id=session_id, tags=mrr_tags, importance=1,
+                            session_id=session_id, tags=mrr_tags, importance=importance,
                         )
                         chunk_idx += 1
+
+        # Auto-trigger work item extraction in background (fire-and-forget)
+        try:
+            import asyncio
+            from memory.memory_promotion import MemoryPromotion
+            asyncio.ensure_future(MemoryPromotion().extract_work_items_from_events(project, batch_size=5))
+        except Exception as _e:
+            log.debug(f"process_prompt_batch: auto-extract skipped: {_e}")
 
         return event_id
 
@@ -386,7 +398,7 @@ class MemoryEmbedding:
             user_content += f"\nSummary: {existing_summary}"
 
         raw = await _haiku(sys_prompt, user_content, max_tokens=200)
-        summary_text, action_items = _parse_haiku_json(raw, commit_msg[:300]) if raw else (commit_msg[:300], "")
+        summary_text, action_items, importance = _parse_haiku_json(raw, commit_msg[:300]) if raw else (commit_msg[:300], "", 5)
 
         embedding = await _embed(summary_text)
 
@@ -398,7 +410,7 @@ class MemoryEmbedding:
         event_id = _upsert_event(
             project, "commit", commit_hash_val, 0, "full", summary_text, embedding,
             session_id=session_id,
-            summary=summary_text, action_items=action_items, tags=digest_tags,
+            summary=summary_text, action_items=action_items, tags=digest_tags, importance=importance,
         )
 
         # Back-propagate summary + llm tag to mem_mrr_commits (visible in history UI)
@@ -526,12 +538,12 @@ class MemoryEmbedding:
                 'Return JSON only: {"summary": "1-2 sentence digest", "action_items": "- bullet or empty string"}'
             )
             raw = await _haiku(sys_prompt, raw_text[:3000], max_tokens=200)
-            item_summary, item_action_items = _parse_haiku_json(raw, (summary or raw_text)[:300]) if raw else ((summary or raw_text)[:300], "")
+            item_summary, item_action_items, item_importance = _parse_haiku_json(raw, (summary or raw_text)[:300]) if raw else ((summary or raw_text)[:300], "", 5)
             emb = await _embed(item_summary)
             result_id = _upsert_event(
                 project, "item", item_id, 0, "full", item_summary, emb,
                 summary=item_summary, action_items=item_action_items,
-                tags={**item_mrr_tags, "doc_type": item_type},
+                tags={**item_mrr_tags, "doc_type": item_type}, importance=item_importance,
             )
 
         if not result_id:
@@ -789,9 +801,45 @@ class MemoryEmbedding:
             chunk["chunk_index"] = idx
         return chunks
 
+    # Generated/internal files that add noise — excluded from per-file diff chunks
+    _GENERATED_FILE_PATTERNS = re.compile(
+        r'^(CLAUDE\.md|\.cursorrules|MEMORY\.md|\.claude/|'
+        r'workspace/.*/_system/|history\.jsonl|'
+        r'.*\.pyc$|__pycache__/)',
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _extract_code_symbols(section_text: str, language: Optional[str]) -> list[str]:
+        """Extract class/function/method names from a unified diff section."""
+        symbols: list[str] = []
+        if language == "python":
+            pattern = re.compile(r'^[+-]?\s*(?:class|def)\s+(\w+)', re.MULTILINE)
+        elif language in ("javascript", "typescript"):
+            pattern = re.compile(
+                r'^[+-]?\s*(?:class\s+(\w+)|function\s+(\w+)|'
+                r'(?:export\s+)?(?:async\s+)?function\s+(\w+)|'
+                r'(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\()',
+                re.MULTILINE,
+            )
+        else:
+            return symbols
+        seen: set[str] = set()
+        for m in pattern.finditer(section_text):
+            name = next((g for g in m.groups() if g), None)
+            if name and name not in seen:
+                symbols.append(name)
+                seen.add(name)
+        return symbols[:20]
+
     @staticmethod
     def smart_chunk_diff(diff_text: str, commit_hash: str, meta: Optional[dict] = None) -> list[dict]:
-        """Parse a git unified diff into summary + per-file chunks."""
+        """Parse a git unified diff into summary + per-file chunks.
+
+        Generated/internal files (CLAUDE.md, .cursorrules, etc.) are excluded
+        from per-file chunks but still counted in the summary stats.
+        Code symbols (class/function names) are extracted and stored in chunk tags.
+        """
         chunks: list[dict] = []
         meta = meta or {}
         file_sections = re.split(r'(?=^diff --git )', diff_text, flags=re.MULTILINE)
@@ -810,11 +858,20 @@ class MemoryEmbedding:
             summary_parts.append(f"Phase: {meta['phase']}")
         if meta.get("feature"):
             summary_parts.append(f"Feature: {meta['feature']}")
-        if changed_files:
-            files_list = "\n".join(f"  - {f}" for f in changed_files[:20])
-            summary_parts.append(f"Files changed ({len(changed_files)}):\n{files_list}")
 
-        # Accumulate per-file stats for summary tags
+        # Separate code files from generated/internal files
+        code_files = [f for f in changed_files
+                      if not MemoryEmbedding._GENERATED_FILE_PATTERNS.match(f)]
+        gen_files  = [f for f in changed_files
+                      if MemoryEmbedding._GENERATED_FILE_PATTERNS.match(f)]
+
+        if code_files:
+            files_list = "\n".join(f"  - {f}" for f in code_files[:20])
+            summary_parts.append(f"Code files ({len(code_files)}):\n{files_list}")
+        if gen_files:
+            summary_parts.append(f"Generated/internal files: {', '.join(gen_files[:5])}")
+
+        # Accumulate per-file stats (all files for stats, only code files for chunks)
         file_stats: list[dict] = []
         for section in file_sections:
             if not section.strip() or not section.startswith("diff --git"):
@@ -827,16 +884,30 @@ class MemoryEmbedding:
             section_lines = section.splitlines()
             added   = sum(1 for ln in section_lines if ln.startswith('+') and not ln.startswith('+++'))
             removed = sum(1 for ln in section_lines if ln.startswith('-') and not ln.startswith('---'))
-            file_stats.append({"name": filepath, "language": lang, "added": added, "removed": removed})
+            symbols = MemoryEmbedding._extract_code_symbols(section, lang)
+            is_generated = bool(MemoryEmbedding._GENERATED_FILE_PATTERNS.match(filepath))
+            file_stats.append({
+                "name": filepath, "language": lang,
+                "added": added, "removed": removed,
+                "symbols": symbols, "generated": is_generated,
+            })
 
-        # Summary chunk tags: files dict (name→rows_changed) + languages list
-        files_tag = {s["name"]: s["added"] + s["removed"] for s in file_stats}
-        languages_list = sorted({s["language"] for s in file_stats if s["language"]})
-        summary_tags: dict = {**meta, "commit_hash": commit_hash, "changed_files": changed_files}
+        # Summary chunk tags: code files only for "files" dict; all languages
+        code_stats = [s for s in file_stats if not s["generated"]]
+        files_tag = {s["name"]: s["added"] + s["removed"] for s in code_stats}
+        languages_list = sorted({s["language"] for s in code_stats if s["language"]})
+        all_symbols = list({sym for s in code_stats for sym in s.get("symbols", [])})
+
+        summary_tags: dict = {**meta, "commit_hash": commit_hash, "changed_files": code_files}
         if files_tag:
             summary_tags["files"] = files_tag
         if languages_list:
             summary_tags["languages"] = languages_list
+        if all_symbols:
+            summary_tags["symbols"] = all_symbols[:30]
+
+        if all_symbols:
+            summary_parts.append(f"Symbols changed: {', '.join(all_symbols[:15])}")
 
         chunks.append({
             "content": "\n".join(summary_parts), "chunk_type": "summary",
@@ -844,16 +915,17 @@ class MemoryEmbedding:
             "tags": summary_tags,
         })
 
-        for stat in file_stats:
+        # Per-file chunks — only non-generated code files
+        for stat in code_stats:
             filepath = stat["name"]
-            # Find the matching section text
             for section in file_sections:
                 m = re.match(r'diff --git a/(.*?) b/', section)
                 if m and m.group(1) == filepath:
+                    file_tag = {k: v for k, v in stat.items() if k != "generated"}
                     chunks.append({
                         "content": section[:6000], "chunk_type": "diff_file",
                         "chunk_index": len(chunks),
-                        "tags": {**meta, "commit_hash": commit_hash, "file": stat},
+                        "tags": {**meta, "commit_hash": commit_hash, "file": file_tag},
                     })
                     break
 

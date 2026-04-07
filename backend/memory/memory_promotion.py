@@ -121,8 +121,8 @@ _SQL_GET_UNEXTRACTED_EVENTS = """
 _SQL_INSERT_EXTRACTED_WORK_ITEM = """
     INSERT INTO mem_ai_work_items
         (project_id, ai_category, ai_name, ai_desc,
-         source_event_id, source_session_id, seq_num)
-    VALUES (%s, %s, %s, %s, %s::uuid, %s,
+         source_event_id, seq_num)
+    VALUES (%s, %s, %s, %s, %s::uuid,
             (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
     ON CONFLICT (project_id, ai_category, ai_name) DO UPDATE SET
         ai_desc    = EXCLUDED.ai_desc,
@@ -609,7 +609,7 @@ class MemoryPromotion:
                             cur.execute(
                                 _SQL_INSERT_EXTRACTED_WORK_ITEM,
                                 (project_id, category, name, description,
-                                 str(ev_id), session_id, project_id),
+                                 str(ev_id), project_id),
                             )
                             if cur.fetchone():
                                 created += 1

@@ -44,7 +44,7 @@ _SQL_GET_WORK_ITEMS = """
 """
 
 _SQL_GET_WI_COMMITS = """
-    SELECT commit_hash, commit_msg, summary, diff_summary
+    SELECT commit_hash, commit_msg, summary, tags
     FROM mem_mrr_commits
     WHERE project_id = %s AND tags @> jsonb_build_object('work-item', %s::text)
     ORDER BY committed_at DESC LIMIT 10
@@ -206,16 +206,16 @@ class MemoryPlanner:
             commits = self._load_wi_commits(p_id, wi_id)
             stats = self._load_wi_interaction_stats(p_id, wi_id)
 
-            # Aggregate diff stats across all commits
+            # Aggregate diff stats across all commits from tags["files"] dict (name→rows_changed)
             all_files: dict[str, bool] = {}
             total_added = 0
             total_removed = 0
             for c in commits:
-                ds = _parse_diff_stat(c.get("diff_summary") or "")
-                for f in ds["files"]:
-                    all_files[f] = True
-                total_added += ds["added"]
-                total_removed += ds["removed"]
+                ctags = c.get("tags") or {}
+                files_tag = ctags.get("files") or {}
+                if isinstance(files_tag, dict):
+                    for fname in files_tag:
+                        all_files[fname] = True
 
             wi_data.append({
                 **wi,
