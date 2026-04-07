@@ -46,54 +46,55 @@ Reviewer: ```json
 
 - `#20076 embeddings` [bug]: Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
 History 
-- `#20075 auth` [bug]: llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
-Multip
-- `#20069 mcp` [bug]: History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
 - `#20068 dropbox` [bug]: Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
+- `#20069 mcp` [bug]: History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
+- `#20067 auth` [bug]: Multiple events from history table don't make sense and appear to be erroneous data that should be removed
 - `#20065 auth` [bug]: aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
 - `#20066 billing` [bug]: History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
 - `#20061 billing` [bug]: In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
 - `#20063 UI` [bug]: Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
 - `#20062 mcp` [bug]: History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
-- `#20059 Spurious history events in database` [bug]: History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
 - `#20056 SQL execute syntax error` [bug]: Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
+- `#20057 auth` [bug]: History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
+- `#20059 Spurious history events in database` [bug]: History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
+- `#20060 Invalid llm_source column data` [bug]: llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
 - `#20053 Copy text functionality missing from history UI` [bug]: Users cannot copy text from the history section of the UI, which limits usability for reviewing and sharing past interac
-- `#20054 Column order not applied in mem_ai_events table` [bug]: After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
 - `#20055 Spurious event records in history table` [bug]: The event history table contains many events that don't make sense and appear to be leftover data from previous history 
+- `#20054 Column order not applied in mem_ai_events table` [bug]: After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
 - `#20052 History UI only shows prompts, not LLM responses` [bug]: The history display is not showing LLM responses, only prompts. Additionally, full prompt and LLM response text is trunc
-- `#20048 Missing Copy Functionality in UI History` [bug]: Users are unable to copy text from the history section in the UI, indicating missing copy-to-clipboard functionality.
+- `#20049 Unexpected Historical Events in Database` [bug]: The developer observed numerous events from history in the table that don't make sense and appear to be legacy/erroneous
 - `#20051 database.py Contains Obsolete Table References` [bug]: The database.py file is very long and contains references to old/deleted tables that need to be cleaned up and updated.
 - `#20050 Column Order Not Applied in mem_ai_events` [bug]: After requesting changes to column order (llm_source after project, embedding at end), no changes were observed in the m
-- `#20049 Unexpected Historical Events in Database` [bug]: The developer observed numerous events from history in the table that don't make sense and appear to be legacy/erroneous
+- `#20048 Missing Copy Functionality in UI History` [bug]: Users are unable to copy text from the history section in the UI, indicating missing copy-to-clipboard functionality.
 - `#20047 UI History Display Truncation` [bug]: Prompts and LLM responses in history are displaying as small text instead of showing the full content. Users cannot see 
 - `#20046 database.py contains outdated table definitions` [bug]: database.py is noted as being very long and containing old table definitions that are no longer in use, causing maintena
 - `#20045 Inconsistent data in mem_ai_events from history` [bug]: Developer observed many events from history in the table that don't make logical sense and questioned if they should be 
 - `#20044 Column ordering not applied to mem_ai_events table` [bug]: Developer noted that llm_source column was supposed to be moved after project column and embedding at the end, but chang
-- `#20043 Tag persistence issue` [bug]: Tags attached to prompts and commits are not visible after being saved. Additionally, new tag attachments are failing si
 - `#20042 Undefined column 'work_item_id' in work_item query` [bug]: psycopg2.errors.UndefinedColumn error in route_work_i: column p.work_item_id does not exist. The query references 'p.wor
-- `#20038 SQL execution error in /history/commits/sync endpoint` [bug]: Error occurred in route_history line 441 during execute_values() call with _SQL_BATCH_UPSERT. The cur.execute(b''.join(p
+- `#20043 Tag persistence issue` [bug]: Tags attached to prompts and commits are not visible after being saved. Additionally, new tag attachments are failing si
+- `#20039 Undefined column p.work_item_id in route_work_i` [bug]: psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
 - `#20041 Tagging system not persisting data` [bug]: Tags attached to prompts and commits are not visible after being saved. No connection between tagging system and data re
 - `#20040 Column ordering mismatch in mem_ai_events table` [bug]: llm_source column was not placed after project column as requested, and embedding column was not moved to the last posit
-- `#20039 Undefined column p.work_item_id in route_work_i` [bug]: psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
+- `#20038 SQL execution error in /history/commits/sync endpoint` [bug]: Error occurred in route_history line 441 during execute_values() call with _SQL_BATCH_UPSERT. The cur.execute(b''.join(p
 - `#20032 Missing llm_source column in mem_ai_events` [bug]: The llm_source field is missing from the mem_ai_events table, which is required for proper event tracking in the memory 
 - `#20034 Unused/irrelevant columns in schema` [bug]: Columns 'language' and 'file_path' exist in tables but developer questions their relevance and whether they are actually
 - `#20033 Incorrect table name in implementation` [bug]: Table referenced as 'mng_ai_tags_relations' but should be named 'mem_ai_tags_relations'. This naming discrepancy will ca
 - `#20031 Database changes not visible` [bug]: Developer reports inability to see changes in the database after DDL updates. The changes were supposedly applied but ar
-- `#20028 Unused columns in mem_ai_events table` [bug]: Table mem_ai_events contains deprecated columns (language, file_path) that are no longer used but haven't been removed o
+- `#20027 Missing llm_source field in mem_ai_events table` [bug]: Developer noted that llm_source column is missing from the mem_ai_events table where it should be present as part of the
 - `#20030 Incomplete table merge of pr_embeddings and pr_memory_events` [bug]: pr_embeddings and pr_memory_events tables were supposed to be merged into a single mem_ai_events table, but the migratio
 - `#20029 Incorrect table name mng_ai_tags_relations` [bug]: Table was incorrectly named mng_ai_tags_relations when it should be named mem_ai_tags_relations. Developer explicitly id
-- `#20027 Missing llm_source field in mem_ai_events table` [bug]: Developer noted that llm_source column is missing from the mem_ai_events table where it should be present as part of the
-- `#20025 Incorrect table naming convention` [bug]: Table was named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations' according to the memory structure naming c
+- `#20028 Unused columns in mem_ai_events table` [bug]: Table mem_ai_events contains deprecated columns (language, file_path) that are no longer used but haven't been removed o
 - `#20026 Schema merge incomplete` [bug]: pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table with an event_t
+- `#20025 Incorrect table naming convention` [bug]: Table was named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations' according to the memory structure naming c
+- `#20023 Tagging functionality not fully implemented` [bug]: Developer reports uncertainty that all tagging functionality is implemented as described in previous prompts, specifical
 - `#20022 Incorrect table name: mng_ai_tags_relations` [bug]: Developer explicitly identified that table is named 'mng_ai_tags_relations' but should be named 'mem_ai_tags_relations'.
 - `#20024 Table merge not completed: pr_embeddings and pr_memory_events` [bug]: Developer references that pr_embeddings and pr_memory_events were supposed to be merged into a single event table called
-- `#20023 Tagging functionality not fully implemented` [bug]: Developer reports uncertainty that all tagging functionality is implemented as described in previous prompts, specifical
 - `#20021 Table merge not completed for embeddings and memory events` [bug]: Developer notes that pr_embeddings and pr_memory_events were supposed to be merged into a single 'mem_ai_events' table, 
 - `#20020 Incorrect table name in tagging relations` [bug]: Developer explicitly identified that the table name should be 'mem_ai_tags_relations' but was incorrectly named 'mng_ai_
-- `#20018 Incorrect table name in tags relations` [bug]: Table is named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. Developer explicitly identified this error
 - `#20019 Table merge not completed for embeddings and events` [bug]: pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table, but this appea
-- `#20017 Table consolidation not completed` [bug]: Developer references that 'pr_embeddings' and 'pr_memory_events' were supposed to be merged into a single event table ca
+- `#20018 Incorrect table name in tags relations` [bug]: Table is named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. Developer explicitly identified this error
 - `#20016 Missing tagging functionality implementation` [bug]: Developer indicates that tagging functionality is not fully implemented. Specifically, 'mng_ai_tags_relations' table/fea
+- `#20017 Table consolidation not completed` [bug]: Developer references that 'pr_embeddings' and 'pr_memory_events' were supposed to be merged into a single event table ca
 - `#20014 Incomplete tagging functionality implementation` [bug]: The mng_ai_tags_relations table/functionality appears to not be fully implemented. Developer notes indicate the tagging 
 - `#20015 Schema merge not completed for embeddings` [bug]: Previous design specified that pr_embeddings and pr_memory_events should be merged into a single 'mem_ai_events' table, 
 - `#20013 Incorrect table name reference` [bug]: Table name mismatch: code references 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. This naming inconsis

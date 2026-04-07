@@ -34,7 +34,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
               w.requirements, w.code_summary, w.summary,
               w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
-              w.merged_into,
+              w.merged_into, w.start_date,
               w.created_at, w.updated_at, w.seq_num,
               tc.color, tc.icon,
               (SELECT COUNT(*) FROM mem_mrr_prompts p
@@ -52,7 +52,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 _SQL_UNLINKED_WORK_ITEMS = """
     SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
            w.status_user, w.status_ai, w.requirements, w.summary, w.tags,
-           w.created_at, w.seq_num,
+           w.start_date, w.created_at, w.seq_num,
            pt.name AS ai_tag_name,
            (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count
     FROM mem_ai_work_items w
@@ -231,6 +231,7 @@ class WorkItemPatch(BaseModel):
     tag_id:              Optional[str] = None
     ai_tag_id:           Optional[str] = None
     merged_into:         Optional[str] = None
+    start_date:          Optional[str] = None
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -289,7 +290,7 @@ async def list_work_items(
             rows = []
             for r in cur.fetchall():
                 row = dict(zip(cols, r))
-                for dt_field in ("created_at", "updated_at"):
+                for dt_field in ("created_at", "updated_at", "start_date"):
                     if row.get(dt_field):
                         row[dt_field] = row[dt_field].isoformat()
                 row["id"] = str(row["id"])
@@ -371,6 +372,11 @@ async def patch_work_item(
     if body.merged_into         is not None:
         fields.append("merged_into=%s")
         params.append(body.merged_into if body.merged_into else None)
+    if body.start_date is not None:
+        fields.append("start_date=%s")
+        params.append(body.start_date if body.start_date else None)
+    if body.status_user == 'in_progress':
+        fields.append("start_date=COALESCE(start_date, NOW())")
 
     if not fields:
         raise HTTPException(400, "Nothing to update")

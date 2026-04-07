@@ -5,7 +5,7 @@ When working on a specific feature, ask for its snapshot before making decisions
 ## Active Features
 
 - embeddings [bug]: Users cannot copy text from the history section in the UI, limiting usability fo
-- auth [bug]: llm_source field contains invalid or inconsistent data that doesn't match expect
+- dropbox [bug]: Users cannot copy text from the history UI, limiting usability of viewing histor
 - mcp [bug]: History table contains numerous events that don't make sense and appear to be er
 
 ## Last Session

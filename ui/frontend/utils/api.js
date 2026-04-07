@@ -322,6 +322,7 @@ api.tags = {
   delete:         (id, proj, force=false) => _del(`/tags/${enc(id)}?project=${enc(proj)}${force?'&force=true':''}`),
   merge:                 (body)  => _post('/tags/merge', body),
   migrateToAiSuggestions:(proj) => _post(`/tags/migrate-to-ai-suggestions?project=${enc(proj)}`),
+  plan:           (id, proj)     => _post(`/tags/${enc(id)}/plan?project=${enc(proj)}`),
   getSources:     (id, proj)     => _get(`/tags/${enc(id)}/sources?project=${enc(proj)}`),
   addSource:      (body)         => _post('/tags/source', body),
   removeSource:   (id)           => _del(`/tags/source/${enc(id)}`),

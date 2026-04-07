@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 22:55 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 23:06 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-06] I would like to make sure columns are aligned in work_items. What is source_session_id usaed from in work_items? Also th
 - [2026-04-06] I do see an issue - Uncaught ReferenceError: _plannerSelectAiSubtype is not defined in ERROR    | routers.route_logs    
 - [2026-04-06] is it possilbe to actual move the work_item (drag) and drop that under the item (so work_item is removed from the lower 
 - [2026-04-06] There are some issue - when I drag all tabs that I hoover on top are marked (not just the tag I wanted to drop of). also
 - [2026-04-06] Looks better, still when I drag work_item - I do not see that droped under the item (now also when I try to go out and c
+- [2026-04-06] I would like to be able to move work_item back to work_item or to another items. also merge - merge can happend only to 

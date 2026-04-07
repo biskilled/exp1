@@ -148,6 +148,28 @@ export function renderEntities(container) {
   window._plannerDrawerRemoveLink = _plannerDrawerRemoveLink;
   window._plannerGenerateSnapshot = _plannerGenerateSnapshot;
   window._plannerDrawerMerge      = _plannerDrawerMerge;
+
+  window._plannerRunPlan = async (tagId, tagName, catName, project) => {
+    const btn = document.getElementById('drawer-planner-btn');
+    const docSpan = document.getElementById('drawer-planner-doc');
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+      const r = await api.tags.plan(tagId, project);
+      toast(`Planner done · ${r.work_items_updated} items synced`, 'success');
+      if (docSpan) docSpan.innerHTML =
+        `<a href="#" onclick="event.preventDefault();window._plannerOpenDoc('${_esc(r.doc_path)}','${_esc(project)}')"
+           style="color:var(--accent);text-decoration:underline">&#128196; ${_esc(r.doc_path)}</a>`;
+      setTimeout(() => window._plannerOpenDrawer && window._plannerOpenDrawer(
+        getCacheCategories().find(c => c.name === catName)?.id, tagId), 300);
+    } catch (e) { toast('Planner error: ' + e.message, 'error'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = '&#9641; Run Planner'; } }
+  };
+
+  window._plannerOpenDoc = (docPath, project) => {
+    const nav = document.querySelector('[data-view="documents"]');
+    if (nav) nav.click();
+    setTimeout(() => window._documentsOpenFile?.(docPath, project), 250);
+  };
   window._plannerOpenWorkItemDrawer = (id, cat, proj) => _openWorkItemDrawer(id, cat, proj, null, '#4a90e2', '📋');
   window._wiBotDragStart = (e, id, name, cat) => {
     _dragWiData = { id, ai_name: name, ai_category: cat };
@@ -846,6 +868,27 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           </div>
         </div>
 
+        <!-- Stats row -->
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;font-size:0.6rem;color:var(--muted)">
+          <span>&#128172; <span id="wi-stat-prompts-${id}">${wi.interaction_count||0} prompts</span></span>
+          <span id="wi-stat-words-${id}">~… words</span>
+          <span>&#8859; ${wi.commit_count||0} commits</span>
+          <span id="wi-stat-files-${id}"></span>
+        </div>
+
+        <!-- Start date -->
+        <div>
+          <div style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);
+                      letter-spacing:.06em;margin-bottom:0.2rem">Start Date</div>
+          <input type="date"
+            value="${wi.start_date ? wi.start_date.slice(0,10) : ''}"
+            style="background:var(--bg);border:1px solid var(--border);color:var(--text);
+                   font-family:var(--font);font-size:0.65rem;padding:0.2rem 0.4rem;
+                   border-radius:var(--radius);outline:none"
+            onchange="api.workItems.patch('${id}','${project}',{start_date:this.value||''})
+                        .catch(e=>toast(e.message,'error'))" />
+        </div>
+
         <!-- Description -->
         <div>
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
@@ -1018,6 +1061,40 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           ${c.summary ? `<div style="color:var(--muted);font-size:0.58rem;margin-top:0.15rem">${_esc(c.summary.slice(0,80))}</div>` : ''}
           <div style="color:var(--muted);font-size:0.55rem;margin-top:0.1rem">${c.commit_hash ? c.commit_hash.slice(0,8) : ''} · ${c.committed_at ? c.committed_at.slice(0,10) : ''}</div>
         </div>`).join('');
+
+      // Parse file stats from commits
+      const allFiles = {};
+      let totalAdded = 0, totalRemoved = 0;
+      commits.forEach(c => {
+        if (!c.diff_summary) return;
+        const ins = (c.diff_summary.match(/(\d+) insertions?\(\+\)/)||[])[1];
+        const del = (c.diff_summary.match(/(\d+) deletions?\(-\)/)||[])[1];
+        if (ins) totalAdded += parseInt(ins);
+        if (del) totalRemoved += parseInt(del);
+        c.diff_summary.split('\n').forEach(line => {
+          const m = line.match(/^\s*(.+?)\s*\|\s*\d+/);
+          if (m) allFiles[m[1].trim()] = true;
+        });
+      });
+      const nFiles = Object.keys(allFiles).length;
+      const filesEl = document.getElementById(`wi-stat-files-${id}`);
+      if (filesEl && nFiles > 0)
+        filesEl.textContent = `&#128193; ${nFiles} files · +${totalAdded}/-${totalRemoved}`;
+      if (nFiles > 0) {
+        const listHtml = Object.keys(allFiles).map(f =>
+          `<div style="font-size:0.57rem;color:var(--muted)">${_esc(f)}</div>`).join('');
+        el.insertAdjacentHTML('beforeend',
+          `<details style="margin-top:4px"><summary style="font-size:0.58rem;
+             color:var(--muted);cursor:pointer">Files (${nFiles})</summary>${listHtml}</details>`);
+      }
+
+      // Load interactions for word count
+      api.workItems.interactions(id, project, 100).then(data => {
+        const total = (data?.interactions||[]).reduce(
+          (s, i) => s + (i.prompt||'').length + (i.response||'').length, 0);
+        const wordEl = document.getElementById(`wi-stat-words-${id}`);
+        if (wordEl) wordEl.textContent = `~${Math.round(total/5).toLocaleString()} words`;
+      }).catch(() => {});
     }).catch(() => {
       const el = document.getElementById(`wi-commits-${id}`);
       if (el) el.textContent = 'No linked commits';
@@ -1404,6 +1481,22 @@ function _renderDrawer() {
           <span style="font-size:0.62rem;color:var(--muted)">Checking…</span>
         </div>
       </div>` : ''}
+
+      <!-- Planner -->
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.35rem">Planner</div>
+        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+          <button id="drawer-planner-btn"
+            onclick="window._plannerRunPlan('${v.id}','${_esc(v.name)}','${_esc(catName)}','${_esc(_plannerState.project)}')"
+            style="font-size:0.62rem;padding:0.22rem 0.6rem;background:var(--surface2);
+                   border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+                   color:var(--text2);font-family:var(--font);outline:none;white-space:nowrap">
+            &#9641; Run Planner
+          </button>
+          <span id="drawer-planner-doc" style="font-size:0.57rem;color:var(--muted)"></span>
+        </div>
+      </div>
 
       <!-- Snapshot -->
       <div style="border-top:1px solid var(--border);padding-top:0.75rem">

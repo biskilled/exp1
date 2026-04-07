@@ -481,6 +481,15 @@ async def merge_tags(body: TagMerge):
 
 # ── Source endpoints ──────────────────────────────────────────────────────────
 
+@router.post("/{tag_id}/plan")
+async def run_planner_for_tag(tag_id: str, project: str = Query(...)):
+    """Run the Planner: synthesise work items, generate document, sync acceptance_criteria."""
+    _require_db()
+    from memory.memory_planner import MemoryPlanner
+    result = await MemoryPlanner().run_planner(project, tag_id)
+    return result
+
+
 @router.get("/{tag_id}/sources")
 async def get_tag_sources(tag_id: str, project: str = Query(...)):
     """Return prompts and commits tagged with this tag via their tags[] array.

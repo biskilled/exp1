@@ -402,6 +402,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     status_ai           VARCHAR(20)  NOT NULL DEFAULT 'active',
     seq_num             INT,
     source_event_id     UUID,
+    start_date          TIMESTAMPTZ,
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     embedding           VECTOR(1536),
@@ -1185,6 +1186,8 @@ ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS status;
 -- merged_into: when two work items are merged, both originals point to the new item.
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS merged_into UUID REFERENCES mem_ai_work_items(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_merged ON mem_ai_work_items(merged_into) WHERE merged_into IS NOT NULL;
+-- ── 014_planner_doc ──────────────────────────────────────────────────────────
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS start_date TIMESTAMPTZ;
 """
 
 

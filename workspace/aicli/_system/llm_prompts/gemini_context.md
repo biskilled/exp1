@@ -1,5 +1,5 @@
 # Project Context: aicli
-# Generated: 2026-04-06 22:59 UTC
+# Generated: 2026-04-06 23:33 UTC
 
 ## Project Facts
 
@@ -50,18 +50,17 @@ Category: bug
 Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
 History 
 
-### #20075 auth
+### #20068 dropbox
 Category: bug
-llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
-Multip
+Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
 
 ### #20069 mcp
 Category: bug
 History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
 
-### #20068 dropbox
+### #20067 auth
 Category: bug
-Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
+Multiple events from history table don't make sense and appear to be erroneous data that should be removed
 
 ### #20065 auth
 Category: bug
@@ -83,33 +82,41 @@ Users are unable to copy text from the history view in the UI, limiting the abil
 Category: bug
 History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
 
+### #20056 SQL execute syntax error
+Category: bug
+Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
+
+### #20057 auth
+Category: bug
+History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
+
 ### #20059 Spurious history events in database
 Category: bug
 History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
 
-### #20056 SQL execute syntax error
+### #20060 Invalid llm_source column data
 Category: bug
-Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
+llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
 
 ### #20053 Copy text functionality missing from history UI
 Category: bug
 Users cannot copy text from the history section of the UI, which limits usability for reviewing and sharing past interac
 
-### #20054 Column order not applied in mem_ai_events table
-Category: bug
-After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
-
 ### #20055 Spurious event records in history table
 Category: bug
 The event history table contains many events that don't make sense and appear to be leftover data from previous history 
+
+### #20054 Column order not applied in mem_ai_events table
+Category: bug
+After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
 
 ### #20052 History UI only shows prompts, not LLM responses
 Category: bug
 The history display is not showing LLM responses, only prompts. Additionally, full prompt and LLM response text is trunc
 
-### #20048 Missing Copy Functionality in UI History
+### #20049 Unexpected Historical Events in Database
 Category: bug
-Users are unable to copy text from the history section in the UI, indicating missing copy-to-clipboard functionality.
+The developer observed numerous events from history in the table that don't make sense and appear to be legacy/erroneous
 
 ### #20051 database.py Contains Obsolete Table References
 Category: bug
@@ -119,9 +126,9 @@ The database.py file is very long and contains references to old/deleted tables 
 Category: bug
 After requesting changes to column order (llm_source after project, embedding at end), no changes were observed in the m
 
-### #20049 Unexpected Historical Events in Database
+### #20048 Missing Copy Functionality in UI History
 Category: bug
-The developer observed numerous events from history in the table that don't make sense and appear to be legacy/erroneous
+Users are unable to copy text from the history section in the UI, indicating missing copy-to-clipboard functionality.
 
 ### #20047 UI History Display Truncation
 Category: bug
@@ -139,17 +146,17 @@ Developer observed many events from history in the table that don't make logical
 Category: bug
 Developer noted that llm_source column was supposed to be moved after project column and embedding at the end, but chang
 
-### #20043 Tag persistence issue
-Category: bug
-Tags attached to prompts and commits are not visible after being saved. Additionally, new tag attachments are failing si
-
 ### #20042 Undefined column 'work_item_id' in work_item query
 Category: bug
 psycopg2.errors.UndefinedColumn error in route_work_i: column p.work_item_id does not exist. The query references 'p.wor
 
-### #20038 SQL execution error in /history/commits/sync endpoint
+### #20043 Tag persistence issue
 Category: bug
-Error occurred in route_history line 441 during execute_values() call with _SQL_BATCH_UPSERT. The cur.execute(b''.join(p
+Tags attached to prompts and commits are not visible after being saved. Additionally, new tag attachments are failing si
+
+### #20039 Undefined column p.work_item_id in route_work_i
+Category: bug
+psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
 
 ### #20041 Tagging system not persisting data
 Category: bug
@@ -159,9 +166,9 @@ Tags attached to prompts and commits are not visible after being saved. No conne
 Category: bug
 llm_source column was not placed after project column as requested, and embedding column was not moved to the last posit
 
-### #20039 Undefined column p.work_item_id in route_work_i
+### #20038 SQL execution error in /history/commits/sync endpoint
 Category: bug
-psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
+Error occurred in route_history line 441 during execute_values() call with _SQL_BATCH_UPSERT. The cur.execute(b''.join(p
 
 ### #20032 Missing llm_source column in mem_ai_events
 Category: bug
@@ -179,9 +186,9 @@ Table referenced as 'mng_ai_tags_relations' but should be named 'mem_ai_tags_rel
 Category: bug
 Developer reports inability to see changes in the database after DDL updates. The changes were supposedly applied but ar
 
-### #20028 Unused columns in mem_ai_events table
+### #20027 Missing llm_source field in mem_ai_events table
 Category: bug
-Table mem_ai_events contains deprecated columns (language, file_path) that are no longer used but haven't been removed o
+Developer noted that llm_source column is missing from the mem_ai_events table where it should be present as part of the
 
 ### #20030 Incomplete table merge of pr_embeddings and pr_memory_events
 Category: bug
@@ -191,17 +198,21 @@ pr_embeddings and pr_memory_events tables were supposed to be merged into a sing
 Category: bug
 Table was incorrectly named mng_ai_tags_relations when it should be named mem_ai_tags_relations. Developer explicitly id
 
-### #20027 Missing llm_source field in mem_ai_events table
+### #20028 Unused columns in mem_ai_events table
 Category: bug
-Developer noted that llm_source column is missing from the mem_ai_events table where it should be present as part of the
+Table mem_ai_events contains deprecated columns (language, file_path) that are no longer used but haven't been removed o
+
+### #20026 Schema merge incomplete
+Category: bug
+pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table with an event_t
 
 ### #20025 Incorrect table naming convention
 Category: bug
 Table was named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations' according to the memory structure naming c
 
-### #20026 Schema merge incomplete
+### #20023 Tagging functionality not fully implemented
 Category: bug
-pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table with an event_t
+Developer reports uncertainty that all tagging functionality is implemented as described in previous prompts, specifical
 
 ### #20022 Incorrect table name: mng_ai_tags_relations
 Category: bug
@@ -211,10 +222,6 @@ Developer explicitly identified that table is named 'mng_ai_tags_relations' but 
 Category: bug
 Developer references that pr_embeddings and pr_memory_events were supposed to be merged into a single event table called
 
-### #20023 Tagging functionality not fully implemented
-Category: bug
-Developer reports uncertainty that all tagging functionality is implemented as described in previous prompts, specifical
-
 ### #20021 Table merge not completed for embeddings and memory events
 Category: bug
 Developer notes that pr_embeddings and pr_memory_events were supposed to be merged into a single 'mem_ai_events' table, 
@@ -223,21 +230,21 @@ Developer notes that pr_embeddings and pr_memory_events were supposed to be merg
 Category: bug
 Developer explicitly identified that the table name should be 'mem_ai_tags_relations' but was incorrectly named 'mng_ai_
 
-### #20018 Incorrect table name in tags relations
-Category: bug
-Table is named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. Developer explicitly identified this error
-
 ### #20019 Table merge not completed for embeddings and events
 Category: bug
 pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table, but this appea
 
-### #20017 Table consolidation not completed
+### #20018 Incorrect table name in tags relations
 Category: bug
-Developer references that 'pr_embeddings' and 'pr_memory_events' were supposed to be merged into a single event table ca
+Table is named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. Developer explicitly identified this error
 
 ### #20016 Missing tagging functionality implementation
 Category: bug
 Developer indicates that tagging functionality is not fully implemented. Specifically, 'mng_ai_tags_relations' table/fea
+
+### #20017 Table consolidation not completed
+Category: bug
+Developer references that 'pr_embeddings' and 'pr_memory_events' were supposed to be merged into a single event table ca
 
 ### #20014 Incomplete tagging functionality implementation
 Category: bug

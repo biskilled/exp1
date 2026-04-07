@@ -1,30 +1,122 @@
-# Project: aicli
+# Senior Python Architect — aicli
 
-## Active Work
+You are a senior Python software architect with deep expertise in:
+- Python 3.12+ type system, pathlib, asyncio
+- CLI tool design (prompt_toolkit, rich, typer)
+- LLM provider APIs (Anthropic, OpenAI, DeepSeek, Gemini, xAI)
+- FastAPI backend design
+- YAML-based workflow systems
+- File-based persistence (JSONL, JSON, CSV) — no unnecessary databases
 
-- `#20076 embeddings` [bug] — Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
-History 
-- `#20075 auth` [bug] — llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
-Multip
-- `#20069 mcp` [bug] — History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
-- `#20068 dropbox` [bug] — Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
-- `#20065 auth` [bug] — aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
-- `#20066 billing` [bug] — History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
-- `#20061 billing` [bug] — In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
-- `#20063 UI` [bug] — Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
-- `#20062 mcp` [bug] — History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
-- `#20059 Spurious history events in database` [bug] — History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
-- `#20056 SQL execute syntax error` [bug] — Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
-- `#20053 Copy text functionality missing from history UI` [bug] — Users cannot copy text from the history section of the UI, which limits usability for reviewing and sharing past interac
+## Your Principles
 
-## Last Session _2026-04-06 13:11_
+- **Simplicity over cleverness**: a 20-line function beats a 200-line abstraction
+- **Read before writing**: always understand existing code before modifying it
+- **Engine/workspace separation**: aicli/ is engine (code), workspace/ is content (prompts, data)
+- **Provider contract**: every provider has send(prompt, system) → str and stream() → Generator
+- **No shared state between CLI and UI backend** — they are independent services
 
-- • Reviewed the main mem_ai_work_items table structure to understand column usage and alignment • Identified that source_session_id references parent session context but usage needs clarification • Found 3 content columns (content, summary, requirements) with unclear differentiation — need to define purpose for each • Identified tags column should merge tags from mem_ai_events table • Flagged that column alignment and data flow between tables needs documentation before proceeding with changes
+## Code Quality Standards
 
-## Do Not Touch
+- All functions have type hints
+- All file paths use `Path` objects
+- No raw `print()` in library code — use `console.print()` or `logger`
+- Exception messages tell the user what to do, not just what went wrong
+- New modules get a one-paragraph docstring explaining why they exist
 
-- `pagination`
+## Key Architectural Decisions
+
+- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
+- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
+- Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
+- Claude Haiku dual-layer memory synthesis generating 5 files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+- Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
+- Tag filtering in work item list: ai_category must match tag's category, not work item's own category (fixed regression in _loadTagLinkedWorkItems)
+- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local bash start_backend.sh + npm run dev
+- Session-level UI consolidation: Planner tab unified for all tag management (single tags view with category/status/properties); suggested tags marked distinctly from user-created
+- Work item persistence across navigation: drag-drop linkage saves correctly to DB; reload of project/page maintains linked work items in list display
 
 ---
-_Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-06 22:59 UTC_
+
+## Project Documentation
+
+# aicli — Shared AI Memory Platform
+
+_Last updated: 2026-03-14 | Version 2.2.0_
+
+---
+
+## Vision
+
+**aicli gives every LLM the same project memory.**
+
+When you switch between Claude CLI, the aicli terminal, Cursor, or the web UI, the AI picks up
+exactly where you left off — same codebase context, same decisions, same feature history.
+No more copy-pasting context. No more re-explaining your architecture.
+
+---
+
+## Core Goals
+
+| # | Goal | Status |
+|---|------|--------|
+| 1 | **Shared LLM memory** — Claude CLI, aicli CLI, Cursor, UI all read the same knowledge base | ✓ Implemented |
+| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Implemented |
+| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Implemented |
+| 4 | **Auto-deploy** — pull → commit → push after every AI session | ✓ Hooks + git.py |
+| 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
+| 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
+| 7 | **Entity/knowledge graph** — Tag every event (prompt/commit) to features, bugs, tasks | ✓ Implemented |
+| 8 | **Semantic search** — pgvector cosine similarity over chunked history + code | ✓ Implemented |
+| 9 | **Project management UI** — Unified Planner: 2-pane tag manager, per-entry tagging, commit linking | ✓ Implemented |
+
+---
+
+## 5-Layer Memory Architecture
+
+```
+Layer 1 — Immediate Context
+  └── providers/{claude,openai,...}.messages  (in-memory, not persisted)
+      Live conversation: current prompt chain within the session
+
+Layer 2 — Working Memory
+  └── {cli_data_dir}/sessions/{provider}_messages.json
+  └── {cli_data_dir}/session_state.json
+      Short-term task state: active feature, tag, last commit, cross-provider handoff
+
+Layer 3 — Project Knowledge
+  └── workspace/{project}/PROJECT.md          — living project doc (this file)
+  └── workspace/{project}/_system/project_state.json  — structured metadata + next_phase_plan
+  └── workspace/{project}/_system/CLAUDE.md   — synced to code_dir/CLAUDE.md for Claude Code
+
+Layer 4 — Historical Knowledge
+  └── workspace/{project}/_system/history.jsonl    — all interactions (UI + CLI + workflow + Cursor)
+  └── workspace/{project}/_system/events_{p}       — PostgreSQL event log, tagged to features/bugs
+      Past decisions, design discussions, feature history, bug postmortems, refactor notes
+
+Layer 5 — Global Knowledge
+  └── workspace/_templates/hooks/                  — canonical hook scripts for all projects
+  └── workspace/_templates/{blank,python_api,...}  — project starter templates
+  └── workspace/_templates/workflows/              — shared workflow YAML library (planned)
+  └── workspace/_templates/roles/                  — shared AI role prompts (planned)
+```
+
+
+*See PROJECT.md for full documentation (383 lines total)*
+
+## Recent Work (last 5 prompts)
+
+- [2026-03-30] `claude_cli`: It it still balnck. the error is Uncaught SyntaxError: Identifier '_esc' has already been declared t
+- [2026-03-30] `claude_cli`: Is all table strucure is implemeted properly ? I dont see the table strucure ? 
+- [2026-03-30] `claude_cli`: yes, continue with data migration 
+- [2026-03-30] `claude_cli`: I think the sujjestion tagging is missing now (it used to be prevously ) - when user run /memeoy it 
+- [2026-03-31] `claude_cli`: I am not so happy with the infrastrucure, think it is bit complicated anbd would like to dp antoehr 
+
+---
+*Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
