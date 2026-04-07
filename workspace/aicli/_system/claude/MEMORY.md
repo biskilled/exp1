@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-07 22:39 UTC by aicli /memory_
+_Generated: 2026-04-07 22:40 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python/FastAPI backend with an Electron desktop UI, enabling teams to capture, synthesize, and search project history using Claude-powered embeddings and multi-model LLM support. Currently in active development with focus on backend performance optimization, planner tag visibility, PostgreSQL role-based access control, and memory synthesis pipeline stabilization.
 
 ## Project Facts
 
@@ -94,22 +98,22 @@ Reviewer: ```json
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
-- 4-layer memory architecture: Layer 0 (ephemeral session messages) → Layer 1 (mem_mrr_* raw capture) → Layer 2 (mem_ai_events LLM digests + embeddings) → Layer 3 (mem_ai_work_items, mem_ai_project_facts) → Layer 4 (user-managed planner_tags)
+- 4-layer memory architecture: ephemeral session messages → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items, mem_ai_project_facts → user-managed planner_tags
 - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Tag filtering in work item list: ai_category must match tag's category, not work item's own category
 - Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
-- Memory synthesis triggered from session data via /memory endpoint → Claude Haiku processes commits/events → outputs to mem_ai_events/project_facts tables
+- Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 
 ## In Progress
 
-- Commit table schema verification: confirmed diff_summary (TEXT) stays as human-readable git --stat output; diff_details (JSONB) was dropped and cleaned from mcp/server.py and memory_mirroring.py
-- Backend data loading optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation; Railway migrations functional but slow (~60s per round-trip, 0.9s per query)
-- Work item drag-and-drop UI refinement: fixing hover state propagation for target tag highlights; ensuring dropped work items persist in correct parent and disappear from source after page reload
-- Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope
-- Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state with correct event linkage
-- Mirror table architecture investigation: understanding trigger mechanisms for mem_ai_events and mem_ai_project_facts, LLM prompts used in synthesis, and data flow from session commits/events
+- Backend startup optimization: database query performance slow (~60s per round-trip, 0.9s per query); route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation
+- Planner tag visibility issue: categories uploaded but individual tags not displaying in each category; investigating router mapping and tag query logic
+- Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending
+- Pipeline loading failure: DAG workflows not populating; verifying Cytoscape graph initialization and node/edge data binding
+- Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)
+- Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage
 
 ## Active Features / Bugs / Tasks
 
@@ -159,6 +163,46 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `commit: fa708653-5003-4882-8b5c-07ef4d0d32e5` — 2026-04-07
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index dfdf22c..08adf80 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-03-22 02:30 UTC
++> Generated by aicli 2026-03-22 02:37 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
+
+diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
+index eff6e43..ea38661 100644
+--- a/backend/routers/route_memory.py
++++ b/backend/routers/route_memory.py
+@@ -382,6 +382,7 @@ async def embed_commits(
+     if not db.is_available():
+         raise HTTPException(status_code=503, detail="PostgreSQL not available")
+ 
++    project_id = db.get_or_create_project_id(project)
+     try:
+         with db.conn() as conn:
+             with conn.cursor() as cur:
+@@ -391,7 +392,7 @@ async def embed_commits(
+                          AND (tags->>'llm') IS NULL
+                        ORDER BY committed_at DESC NULLS LAST
+                        LIMIT %s""",
+-                    (project, limit),
++                    (project_id, limit),
+                 )
+                 hashes = [r[0] for r in cur.fetchall()]
+     except Exception as e:
+
 
 ### `commit: fa708653-5003-4882-8b5c-07ef4d0d32e5` — 2026-04-07
 
@@ -336,71 +380,6 @@ index 144dcc9..d3ab483 100644
 \ No newline at end of file
 
 
-### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
+## AI Synthesis
 
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index e756479..b5b1abd 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-07 16:48 UTC
-+> Generated by aicli 2026-04-07 17:12 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -54,10 +54,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
- - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
-+- 4-layer memory architecture: Layer 0 (ephemeral session messages) → Layer 1 (mem_mrr_* raw capture) → Layer 2 (mem_ai_events LLM digests + embeddings) → Layer 3 (mem_ai_work_items, mem_ai_project_facts) → Layer 4 (user-managed planner_tags)
- - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
- - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
- - Tag filtering in work item list: ai_category must match tag's category, not work item's own category
- - Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
--- Memory synthesis triggered from session data via /memory endpoint → Claude Haiku processes commits/events → outputs to mem_ai_events/project_facts tables
--- Project facts generated via LLM prompt analyzing session events and commits; stored in mem_ai_project_facts with event_id linkage for traceability
-\ No newline at end of file
-+- Memory synthesis triggered from session data via /memory endpoint → Claude Haiku processes commits/events → outputs to mem_ai_events/project_facts tables
-\ No newline at end of file
-
-
-### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index ce342af..0d6ba29 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 16:48 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 17:12 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -54,18 +54,18 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
- - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
-+- 4-layer memory architecture: Layer 0 (ephemeral session messages) → Layer 1 (mem_mrr_* raw capture) → Layer 2 (mem_ai_events LLM digests + embeddings) → Layer 3 (mem_ai_work_items, mem_ai_project_facts) → Layer 4 (user-managed planner_tags)
- - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
- - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
- - Tag filtering in work item list: ai_category must match tag's category, not work item's own category
- - Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
- - Memory synthesis triggered from session data via /memory endpoint → Claude Haiku processes commits/events → outputs to mem_ai_events/project_facts tables
--- Project facts generated via LLM prompt analyzing session events and commits; stored in mem_ai_project_facts with event_id linkage for traceability
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-07] I do have some errors loading data - route_work_items line 249 - cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id,)) and line
- - [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
- - [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
- - [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
--- [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
-\ No newline at end of file
-+- [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
-+- [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
-\ No newline at end of file
-
+**[2026-03-22]** `backend/routers/route_memory.py` — Fixed embed_commits to resolve project string to project_id via db.get_or_create_project_id() before querying commits_{p} table, resolving SQL parameter mismatch at line 391. **[2026-03-22]** `backend startup` — Database query performance identified as bottleneck (~60s per round-trip, 0.9s per query); route_work_items _SQL_UNLINKED_WORK_ITEMS and merged_into/start_date alignment under optimization review. **[2026-03-22]** `frontend/planner` — Categories successfully uploading but individual tags within categories not rendering; router mapping and tag query logic requires verification for proper category→tag association. **[2026-03-22]** `backend/auth` — Agent roles and system_roles PostgreSQL tables identified as required for role-based functionality; schema initialization pending. **[2026-03-22]** `frontend/pipelines` — DAG workflow visualization not populating; Cytoscape graph initialization and node/edge data binding investigation in progress. **[2026-03-22]** `memory/synthesis` — /memory endpoint data synchronization queued to sync session commits/events into memory_items and mem_ai_* tables with correct event linkage and project_id resolution.

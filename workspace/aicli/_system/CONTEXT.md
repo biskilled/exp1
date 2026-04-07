@@ -1,6 +1,6 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-07 22:40 UTC — do not edit manually.
+> Auto-generated 2026-04-07 22:41 UTC — do not edit manually.
 
 ## Quick Stats
 
@@ -51,12 +51,12 @@
 
 ## In Progress
 
-- Commit table schema verification: diff_summary (TEXT) confirmed as human-readable git --stat output; diff_details (JSONB) was dropped and cleaned from mcp/server.py and memory_mirroring.py
-- Backend data loading performance investigation: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under review; Railway migrations functional but slow (~60s per round-trip)
-- Planner tag visibility issue: categories loading in UI but tags within each category not fully displayed; missing synchronization between PostgreSQL role-based access and frontend tag enumeration
-- Mirror table architecture deep-dive: understanding trigger mechanisms for mem_ai_events and mem_ai_project_facts, LLM prompts used in synthesis, and data flow from session commits/events to memory layers
-- Frontend reference error resolution: _plannerSelectAiSubtype undefined in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope
-- Memory endpoint data population: running /memory to sync session data into memory_items and mem_ai_* tables; verifying event linkage and project fact generation correctness
+- Backend startup optimization: database query performance slow (~60s per round-trip, 0.9s per query); route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation
+- Planner tag visibility issue: categories uploaded but individual tags not displaying in each category; investigating router mapping and tag query logic
+- Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending
+- Pipeline loading failure: DAG workflows not populating; verifying Cytoscape graph initialization and node/edge data binding
+- Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)
+- Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage
 
 ## Key Decisions
 
@@ -68,13 +68,13 @@
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
-- 4-layer memory architecture: Layer 0 (ephemeral session messages) → Layer 1 (mem_mrr_* raw capture) → Layer 2 (mem_ai_events LLM digests + embeddings) → Layer 3 (mem_ai_work_items, mem_ai_project_facts) → Layer 4 (user-managed planner_tags)
+- 4-layer memory architecture: ephemeral session messages → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items, mem_ai_project_facts → user-managed planner_tags
 - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Tag filtering in work item list: ai_category must match tag's category, not work item's own category
 - Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
-- Memory synthesis triggered from session data via /memory endpoint → Claude Haiku processes commits/events → outputs to mem_ai_events/project_facts tables
+- Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 
 ---
 

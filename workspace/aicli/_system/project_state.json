@@ -48,13 +48,13 @@
     "Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication",
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
-    "4-layer memory architecture: Layer 0 (ephemeral session messages) \u2192 Layer 1 (mem_mrr_* raw capture) \u2192 Layer 2 (mem_ai_events LLM digests + embeddings) \u2192 Layer 3 (mem_ai_work_items, mem_ai_project_facts) \u2192 Layer 4 (user-managed planner_tags)",
+    "4-layer memory architecture: ephemeral session messages \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items, mem_ai_project_facts \u2192 user-managed planner_tags",
     "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
     "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
     "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
     "Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly",
-    "Memory synthesis triggered from session data via /memory endpoint \u2192 Claude Haiku processes commits/events \u2192 outputs to mem_ai_events/project_facts tables"
+    "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Commit table schema verification: confirmed diff_summary (TEXT) stays as human-readable git --stat output; diff_details (JSONB) was dropped and cleaned from mcp/server.py and memory_mirroring.py",
-    "Backend data loading optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation; Railway migrations functional but slow (~60s per round-trip, 0.9s per query)",
-    "Work item drag-and-drop UI refinement: fixing hover state propagation for target tag highlights; ensuring dropped work items persist in correct parent and disappear from source after page reload",
-    "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope",
-    "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state with correct event linkage",
-    "Mirror table architecture investigation: understanding trigger mechanisms for mem_ai_events and mem_ai_project_facts, LLM prompts used in synthesis, and data flow from session commits/events"
+    "Backend startup optimization: database query performance slow (~60s per round-trip, 0.9s per query); route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation",
+    "Planner tag visibility issue: categories uploaded but individual tags not displaying in each category; investigating router mapping and tag query logic",
+    "Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending",
+    "Pipeline loading failure: DAG workflows not populating; verifying Cytoscape graph initialization and node/edge data binding",
+    "Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)",
+    "Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-07T22:40:16Z",
+  "last_memory_run": "2026-04-07T22:41:16Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -131,21 +131,21 @@
       "Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication",
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
-      "4-layer memory architecture: Layer 0 (ephemeral session messages) \u2192 Layer 1 (mem_mrr_* raw capture) \u2192 Layer 2 (mem_ai_events LLM digests + embeddings) \u2192 Layer 3 (mem_ai_work_items, mem_ai_project_facts) \u2192 Layer 4 (user-managed planner_tags)",
+      "4-layer memory architecture: ephemeral session messages \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items, mem_ai_project_facts \u2192 user-managed planner_tags",
       "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
       "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
       "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
       "Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly",
-      "Memory synthesis triggered from session data via /memory endpoint \u2192 Claude Haiku processes commits/events \u2192 outputs to mem_ai_events/project_facts tables"
+      "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint"
     ],
     "in_progress": [
-      "Commit table schema verification: confirmed diff_summary (TEXT) stays as human-readable git --stat output; diff_details (JSONB) was dropped and cleaned from mcp/server.py and memory_mirroring.py",
-      "Backend data loading optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation; Railway migrations functional but slow (~60s per round-trip, 0.9s per query)",
-      "Work item drag-and-drop UI refinement: fixing hover state propagation for target tag highlights; ensuring dropped work items persist in correct parent and disappear from source after page reload",
-      "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope",
-      "Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state with correct event linkage",
-      "Mirror table architecture investigation: understanding trigger mechanisms for mem_ai_events and mem_ai_project_facts, LLM prompts used in synthesis, and data flow from session commits/events"
+      "Backend startup optimization: database query performance slow (~60s per round-trip, 0.9s per query); route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation",
+      "Planner tag visibility issue: categories uploaded but individual tags not displaying in each category; investigating router mapping and tag query logic",
+      "Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending",
+      "Pipeline loading failure: DAG workflows not populating; verifying Cytoscape graph initialization and node/edge data binding",
+      "Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)",
+      "Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -153,18 +153,18 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
-      "database_version": "PostgreSQL 15+",
+      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries",
+      "config_management": "config.py + YAML pipelines + pyproject.toml",
       "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform providing Claude CLI and Electron desktop interfaces for AI-assisted project management. It captures developer activity (prompts, commits, documents) through a 4-layer memory pipeline (raw capture \u2192 LLM digests \u2192 structured work items/facts \u2192 user-managed planner tags), with PostgreSQL pgvector backend for semantic search, FastAPI REST API, and async DAG workflow execution. Currently addressing backend query performance optimization and frontend UI consistency issues around work item management and tag drag-and-drop interactions.",
-    "memory_digest": "**[2026-04-07]** `git_schema` \u2014 Confirmed commit table schema: `diff_summary` (TEXT) retained as human-readable git --stat; `diff_details` (JSONB) dropped and removed from mcp/server.py and memory_mirroring.py references. **[2026-04-07]** `memory_architecture` \u2014 Finalized 4-layer memory model: Layer 1 (mem_mrr_* raw capture) \u2192 Layer 2 (mem_ai_events LLM digests + 1536-dim embeddings) \u2192 Layer 3 (mem_ai_work_items, mem_ai_project_facts structured artifacts) \u2192 Layer 4 (planner_tags user-managed). **[2026-04-07]** `backend_optimization` \u2014 Identified route_work_items bottleneck: _SQL_UNLINKED_WORK_ITEMS (line 249) and merged_into/start_date column alignment (line 288) causing 60s round-trip latency on Railway; individual queries execute in ~0.9s, suggesting N+1 or connection pool issue. **[2026-04-07]** `frontend_refactor` \u2014 Targeting _plannerSelectAiSubtype undefined reference error in routers.route_logs; requires proper function scoping and global export of all planner helper functions. **[2026-04-01]** `schema_migration` \u2014 Migration 008 successfully dropped diff_summary and source_session_id columns from work item queries; memory_planner.py refactored to use tags['files'] dict instead of deprecated columns. **[2026-04-01]** `ui_drag_drop` \u2014 Work item drag-and-drop refinement in progress: fixing hover state propagation for target tag highlights and ensuring persistence across page reloads."
+    "project_summary": "aicli is a shared AI memory platform combining a Python/FastAPI backend with an Electron desktop UI, enabling teams to capture, synthesize, and search project history using Claude-powered embeddings and multi-model LLM support. Currently in active development with focus on backend performance optimization, planner tag visibility, PostgreSQL role-based access control, and memory synthesis pipeline stabilization.",
+    "memory_digest": "**[2026-03-22]** `backend/routers/route_memory.py` \u2014 Fixed embed_commits to resolve project string to project_id via db.get_or_create_project_id() before querying commits_{p} table, resolving SQL parameter mismatch at line 391. **[2026-03-22]** `backend startup` \u2014 Database query performance identified as bottleneck (~60s per round-trip, 0.9s per query); route_work_items _SQL_UNLINKED_WORK_ITEMS and merged_into/start_date alignment under optimization review. **[2026-03-22]** `frontend/planner` \u2014 Categories successfully uploading but individual tags within categories not rendering; router mapping and tag query logic requires verification for proper category\u2192tag association. **[2026-03-22]** `backend/auth` \u2014 Agent roles and system_roles PostgreSQL tables identified as required for role-based functionality; schema initialization pending. **[2026-03-22]** `frontend/pipelines` \u2014 DAG workflow visualization not populating; Cytoscape graph initialization and node/edge data binding investigation in progress. **[2026-03-22]** `memory/synthesis` \u2014 /memory endpoint data synchronization queued to sync session commits/events into memory_items and mem_ai_* tables with correct event linkage and project_id resolution."
   }
 }

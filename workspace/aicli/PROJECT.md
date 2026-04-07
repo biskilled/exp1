@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Commit table schema verification: diff_summary (TEXT) confirmed as human-readable git --stat output; diff_details (JSONB) was dropped and cleaned from mcp/server.py and memory_mirroring.py
-- Backend data loading performance investigation: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under review; Railway migrations functional but slow (~60s per round-trip)
-- Planner tag visibility issue: categories loading in UI but tags within each category not fully displayed; missing synchronization between PostgreSQL role-based access and frontend tag enumeration
-- Mirror table architecture deep-dive: understanding trigger mechanisms for mem_ai_events and mem_ai_project_facts, LLM prompts used in synthesis, and data flow from session commits/events to memory layers
-- Frontend reference error resolution: _plannerSelectAiSubtype undefined in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope
-- Memory endpoint data population: running /memory to sync session data into memory_items and mem_ai_* tables; verifying event linkage and project fact generation correctness
+- Backend startup optimization: database query performance slow (~60s per round-trip, 0.9s per query); route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation
+- Planner tag visibility issue: categories uploaded but individual tags not displaying in each category; investigating router mapping and tag query logic
+- Agent roles PostgreSQL setup: agent_roles and system_roles tables required for role-based functionality; schema initialization and permission mapping pending
+- Pipeline loading failure: DAG workflows not populating; verifying Cytoscape graph initialization and node/edge data binding
+- Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries (route_memory.py line 391)
+- Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state with correct event linkage
