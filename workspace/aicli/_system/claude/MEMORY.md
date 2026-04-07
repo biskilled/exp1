@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-07 17:12 UTC by aicli /memory_
+_Generated: 2026-04-07 22:38 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform providing Claude CLI and Electron desktop interfaces for AI-assisted project management. It captures developer activity (prompts, commits, documents) through a 4-layer memory pipeline (raw capture → LLM digests → structured work items/facts → user-managed planner tags), with PostgreSQL pgvector backend for semantic search, FastAPI REST API, and async DAG workflow execution. Currently addressing backend query performance optimization and frontend UI consistency issues around work item management and tag drag-and-drop interactions.
 
 ## Project Facts
 
@@ -164,380 +160,217 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit` — 2026-04-07
+### `commit: 1c7bb929-1715-485c-bcaa-d4dfd21450ad` — 2026-04-07
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 93632e3..33b9811 100644
+index ba689bf..03f710f 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
--- Backend data loading errors: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS execution) and line 288 (merged_into/start_date column alignment); Railway initial load slow (~60s per round-trip, 0.9s per query), but functional
-+- Schema cleanup: removed diff_summary and source_session_id columns from work item commit queries; verified migration 008 dropped these fields and memory_planner.py now uses tags['files'] dict instead
-+- Backend data loading optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation; Railway migrations functional but slow (~60s per round-trip, 0.9s per query)
- - Work item drag-and-drop UI refinement: fixing hover state propagation for target tag highlights; ensuring dropped work items persist in correct parent and disappear from source after page reload
- - Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope
--- Work item column alignment and source_session_id semantics: investigating column sizing consistency and clarifying source_session_id usage in work_items table display
--- Work item dual-status implementation: integrating status_user dropdown + status_ai badge with separate color indicators throughout table and item drawer views; schema alignment verification
- - Memory endpoint data population: running /memory to sync session data into memory_items and ensure mem_ai_* tables properly reflect latest project state with correct event linkage
-+- Mirror table architecture investigation: understanding trigger mechanisms for mem_ai_events and mem_ai_project_facts, LLM prompts used in synthesis, and data flow from session commits/events
+-- Tags persistence debugging (2026-03-22) — Planner tag loading issue identified: _plannerState.project fallback categories (null IDs) not triggering cache reload; fix implements force-reload logic in _initPlanner with auto-select of first real category
+-- Planner UI tag display (2026-03-22) — Categories loading but all tags not visible; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch
+-- Backend module restructuring finalization (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; completed agents/ reorganization; removed stale core/encryption.py
+-- Database initialization race condition resolution (2026-03-22) — Verified PostgreSQL agent roles have real IDs (10+), router endpoints query proper tables; removed stale fallback workarounds from planner initialization
+-- UI code optimization and dead code removal (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup for memory leaks in graph_workflow.js
+-- Memory items and project_facts table population (pending) — Per specification, these tables should be updated to enable improved memory/context mechanism; logic not yet implemented
++- Tags persistence and cache loading (2026-03-22) — Identified _plannerState.project fallback category issue causing null IDs; implemented force-reload logic in _initPlanner with cache validation check and auto-select of first real category
++- Planner UI tag visibility fix (2026-03-22) — Categories loading but tags not displaying; implementing cache invalidation and re-render flow to ensure full tag hierarchy loads on session/project switch; anyValuesFallback check prevents stale cache
++- Backend module restructuring completion (2026-03-21-22) — Renamed files with prefixes (tool_, pipeline_, pr_, dl_, mem_); extracted SQL queries to module-level constants; reorganized agents/ folder; removed stale core/encryption.py
++- Database initialization and PostgreSQL agent roles (2026-03-22) — Verified agent roles have real IDs (10+); confirmed router endpoints query correct tables per project; eliminated fallback workarounds from planner initialization
++- Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js to prevent memory leaks
++- Memory items and project_facts population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism per specification
 
 
-### `commit` — 2026-04-07
-
-diff --git a/workspace/_templates/aicli_memory.md b/workspace/_templates/aicli_memory.md
-deleted file mode 100644
-index 6c388ce..0000000
---- a/workspace/_templates/aicli_memory.md
-+++ /dev/null
-@@ -1,331 +0,0 @@
--# aicli Memory Pipeline — Architecture Reference
--
--_Last updated: 2026-04-07 · Version 2.3.0_
--
-----
--
--## Overview
--
--The aicli memory pipeline is a 4-layer system that captures developer activity (prompts, commits,
--documents, messages), digests it with Haiku, embeds it with OpenAI, and promotes structured
--artifacts (work items, project facts) upward toward human-managed planner tags.
--
--```
--Developer activity
--      │
--      ▼
--┌─────────────────────────────────────────────────────────┐
--│  Layer 0 — Source Trigger                               │
--│  Hook scripts → POST /memory/* endpoints                │
--└──────────────────────────┬──────────────────────────────┘
--                           │
--                           ▼
--┌─────────────────────────────────────────────────────────┐
--│  Layer 1 — Mirror (mem_mrr_*)                           │
--│  Raw data verbatim, inline tags JSONB                   │
--└──────────────────────────┬──────────────────────────────┘
--                           │ MemoryEmbedding.process_*()
--                           ▼
--┌─────────────────────────────────────────────────────────┐
--│  Layer 2 — AI Events (mem_ai_events)                    │
--│  Haiku digest + OpenAI embedding + importance score     │
--└──────────────────────────┬──────────────────────────────┘
--                           │ MemoryPromotion.*()
--                           ▼
--┌─────────────────────────────────────────────────────────┐
--│  Layer 3 — Structured Artifacts                         │
--│  mem_ai_work_items  ·  mem_ai_project_facts             │
--└──────────────────────────┬──────────────────────────────┘
--                           │ User drag-drop / Planner button
--                           ▼
--┌─────────────────────────────────────────────────────────┐
--│  Layer 4 — User-Managed Tags (planner_tags)             │
--│  Features · Bugs · Tasks — owned by users               │
--└─────────────────────────────────────────────────────────┘
--```
--
-----
--
--## Layer 1 — Mirror Tables (`mem_mrr_*`)
--
--### `mem_mrr_prompts` — Raw prompt/response pairs
--
--**Trigger**: Hook script `post_prompt.sh` → `POST /memory/{project}/prompts`
--**Responsible**: Trigger (auto, no LLM)
--
--| Column | Responsible | Notes |
--|--------|-------------|-------|
--| `id` | Trigger | UUID PK |
--| `session_id` | Trigger | Groups turns in a session |
--| `source_id` | Trigger | External ID from hook |
--| `prompt` | Trigger | Raw user input |
--| `response` | Trigger | Raw AI response |
--| `tags` | Trigger | Inline JSONB: `{source, phase, feature, work-item, llm}` |
--| `created_at` | Trigger | Insert timestamp |
--
--**Relevance score**: 0/5 — raw data, no digest yet; useful only as source for Layer 2
--
-----
--
--### `mem_mrr_commits` — Raw git commits
--
--**Trigger**: Post-commit hook `post_commit.sh` → `POST /memory/{project}/commits`
--**Responsible**: Trigger (auto, no LLM initially)
--
--| Column | Responsible | Notes |
--|--------|-------------|-------|
--| `commit_hash` | Trigger | PK |
--| `commit_msg` | Trigger | Git commit message |
--| `summary` | **LLM** (back-propagated) | Haiku digest back-written by `process_commit()` |
--| `tags` | Trigger + LLM | Initial: `{source, phase, feature}`; LLM adds `files`, `languages`, `symbols` |
--| `session_id` | Trigger | Links to session |
--| `committed_at` | Trigger | Git timestamp |
--
--**`tags["files"]`**: `{filename: rows_changed}` — populated by `smart_chunk_diff()` from actual diff
--**`tags["symbols"]`**: class/function names from diff (Python/JS/TS) — populated by code symbol extraction
--**`tags["languages"]`**: list of languages in diff — populated by `_detect_language()`
--
--**Relevance score**: 3/5 — commit message is useful; summary + files/symbols make it 4/5
--
-----
--
--### `mem_mrr_items` — Documents, requirements, decisions
--
--**Trigger**: Manual `POST /memory/{project}/items` or CLI import
--**Responsible**: User (creates) + LLM (digests)
--
--| Column | Responsible | Notes |
--|--------|-------------|-------|
--| `id` | Trigger | UUID PK |
--| `item_type` | User | `requirement`, `decision`, `meeting`, `note` |
--| `title` | User | Short title |
--| `raw_text` | User | Full document content |
--| `summary` | **LLM** | Haiku digest (back-propagated if short item) |
--| `tags` | User | Inline JSONB classification |
--
--**Relevance score**: 4/5 — decisions and requirements are high-value; meeting notes 3/5
--
-----
--
--### `mem_mrr_messages` — Platform messages (Slack, Teams)
--
--**Trigger**: Integration hook → `POST /memory/{project}/messages`
--**Responsible**: Trigger (auto)
--
--| Column | Responsible | Notes |
--|--------|-------------|-------|
--| `id` | Trigger | UUID PK |
--| `platform` | Trigger | `slack`, `teams`, `discord` |
--| `channel` | Trigger | Channel/thread name |
--| `messages` | Trigger | JSONB array of `{user, text, ts}` |
--| `tags` | Trigger | Session/feature classification |
--
--**Relevance score**: 2/5 — discussion context; useful when linked to features
--
-----
--
--## Layer 2 — AI Events (`mem_ai_events`)
--
--**Trigger**: `MemoryEmbedding.process_*()` — called after each mirror INSERT
--**Responsible**: LLM (digest + importance) + Trigger (embedding)
--
--| Column | Responsible | Notes |
--|--------|-------------|-------|
--| `id` | Trigger | UUID PK |
--| `event_type` | Trigger | `prompt_batch`, `commit`, `item`, `message`, `session_summary`, `workflow` |
--| `source_id` | Trigger | FK to mirror row |
--| `session_id` | Trigger | Propagated from mirror |
--| `chunk` | Trigger | 0=summary/digest, 1+=detail chunks |
--| `chunk_type` | Trigger | `full`, `summary`, `section`, `diff_file`, `class`, `function` |
--| `content` | **LLM** | Haiku digest text (chunk=0); raw diff/code (chunk>0) |
--| `summary` | **LLM** | Haiku 1-2 sentence summary |
--| `action_items` | **LLM** | Extracted
-
-### `commit` — 2026-04-07
-
-diff --git a/aicli_memory.md b/aicli_memory.md
-index 605c687..ca019f2 100644
---- a/aicli_memory.md
-+++ b/aicli_memory.md
-@@ -1,663 +1,391 @@
- # aicli — Memory & Tagging Architecture
- 
--_Last updated: 2026-04-01 | Full rewrite — covers all 5 layers, tagging flows, Planner UI, issues, and refactoring advice_
-+_Last updated: 2026-04-07 | Updated for migration 014 + importance scoring + auto-extract pipeline_
- 
- ---
- 
- ## 0. Mental Model
- 
--aicli memory has **5 layers** stacked on top of each other.
--**Tagging is a separate, orthogonal system** that cuts across all layers to connect everything.
-+aicli memory has **4 active layers** stacked on top of each other.
-+**planner_tags** is the user-managed top layer; everything below is LLM/trigger-managed.
- 
- ```
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │ Layer 0 — Ephemeral         In-session message list (RAM / JSON)     │
-  │ Layer 1 — Raw Capture       Everything stored as-is   (mem_mrr_*)    │
-  │ Layer 2 — AI Events         Digested + embedded        (mem_ai_events)│
-- │ Layer 3 — Structured        Facts / Work Items / Snapshots           │
-- │ Layer 4 — Context Files     CLAUDE.md, .cursorrules, llm_prompts/    │
-- └──────────────────────────────────────────────────────────────────────┘
--
-- ┌──────────────────────────────────────────────────────────────────────┐
-- │ Tagging (orthogonal)        planner_tags + mem_mrr_tags + mem_ai_tags│
-+ │ Layer 3 — Structured        Work Items + Project Facts                │
-+ │ Layer 4 — User Tags         planner_tags  (USER-MANAGED)              │
-  └──────────────────────────────────────────────────────────────────────┘
- ```
- 
-+**Key design principle**:
-+- `planner_tags` = **User** owns this. LLM only writes when user clicks "Run Planner" or "Snapshot".
-+- Everything below `planner_tags` = **LLM + Triggers** own it. User does not manually edit.
-+- `tag_id` on work items = **User** sets via drag-drop only. `ai_tag_id` = LLM suggestion (auto).
-+
- ---
- 
- ## Layer 0 — Ephemeral (Session Messages)
- 
--**What it is**: The live `messages[]` array forwarded to the LLM on every turn.
--
-+**Responsible**: Trigger (auto, no DB)
- **Storage**: `workspace/{project}/_system/sessions/{session_id}.json`
- **Python class**: `SessionStore` (`backend/memory/mem_sessions.py`)
--**NOT stored in PostgreSQL** — file-only, short-lived.
--
--**Schema (per JSON file)**:
--```json
--{
--  "id": "uuid",
--  "created_at": "iso",
--  "updated_at": "iso",
--  "messages": [
--    { "role": "user|assistant", "content": "...", "ts": "iso" }
--  ],
--  "metadata": { "phase": "...", "feature": "...", "bug_ref": "..." }
--}
--```
- 
--**Trigger**: Every API request that calls `SessionStore.append_message()`.
--
--**Purpose**: Maintain conversation continuity within a session. Has nothing to do with the DB pipeline.
-+Not stored in PostgreSQL — file-only, short-lived within a session.
- 
- ---
- 
- ## Layer 1 — Raw Capture (`mem_mrr_*`)
- 
--**What it is**: Everything stored exactly as received. No AI processing. Acts as the source-of-truth audit trail.
--
--### Tables
-+Everything stored verbatim as received. No AI processing. The audit trail.
- 
--| Table | PK | Key columns | Written by |
--|-------|----|-------------|-----------|
--| `mem_mrr_prompts` | `id UUID` | project, session_id, prompt TEXT (≤4000), response TEXT (≤8000), source_id, llm_source, phase, ai_tags, work_item_id FK→mem_ai_work_items | `log_user_prompt.sh` hook → `POST /chat/{p}/hook-log` |
--| `mem_mrr_commits` | `commit_hash VARCHAR(64)` | project, commit_msg, diff_summary, diff_details JSONB, session_id, phase, feature, bug_ref, ai_tags, committed_at | `auto_commit_push.sh` hook → `POST /git/{p}/commit-push` |
--| `mem_mrr_items` | `id UUID` | project, item_type ('requirement'/'decision'/'meeting'), title, raw_text, summary, meeting_at, attendees TEXT[], ai_tags | Item ingest API (`POST /history/items`) |
--| `mem_mrr_messages` | `id UUID` | project, platform ('slack'/'teams'/'discord'), channel, thread_ref, messages JSONB, date_range TSTZRANGE, ai_tags | Platform connector API |
-+### `mem_mrr_prompts`
- 
--**The `ai_tags` lifecycle** (on all 4 tables):
--```
--NULL          → row arrived, not yet processed by AI tagging pipeline
--'approved'    → AI suggested a tag, user accepted it
--'ignored'     → AI suggested a tag, user rejected it
--```
-+**Trigger**: `post_prompt.sh` hook → `POST /memory/{p}/prompts`
- 
--**Python class**: `MemoryMirroring` (`backend/memory/memory_mirroring.py`)
--Key methods: `store_prompt()`, `store_commit()`, `store_item()`, `store_message()`, `get_untagged()`, `set_ai_tag_status()`
-+| Column | Responsible | Notes |
-+|--------|-------------|-------|
-+| `id` UUID | Trigger | PK |
-+| `session_id` | Trigger | Groups turns in a session |
-+| `source_id` | Trigger | External ID from hook |
-+| `prompt` TEXT | Trigger | Raw user input |
-+| `response` TEXT | Trigger | Raw AI response |
-+| `tags` JSONB | Trigger | `{source, phase, feature, work-item, llm}` — inline tagging |
-+| `created_at` | Trigger | Insert timestamp |
- 
--**Idempotent**: All inserts use ON CONFLICT patterns — safe to replay.
-+**Relevance: 0/5** — raw data, no digest; only useful as source for Layer 2
- 
- ---
- 
--## Layer 2 — AI Events (`mem_ai_events`)
-+### `mem_mrr_commits`
- 
--**What it is**: Every Layer 1 source gets digested by Haiku and embedded into a 1536-dim vector. This is the primary semantic search target.
--
--### Table: `mem_ai_events`
--
--| Column | Type | Notes |
--|--------|------|-------|
--| id | UUID PK | |
--| client_id | INT | |
--| project | VARCHAR | |
--| event_type | TEXT | `'prompt_batch'` \| `'commit'` \| `'item'` \| `'message'` \| `'session_summary'` \| `'workflow'` |
--| source_id | TEXT | UUID, commit hash, or session_id depending on event_type |
--| session_id | TEXT | Session that produced this event |
--| llm_source | VARCHAR(100) | Model that created the digest (e.g. `claude-haiku-4-5-20251001`) |
--| chunk | INT | 0 = full; >0 = multi-part (large docs/commits split into secti
-
-### `commit` — 2026-04-07
+### `commit: 1c7bb929-1715-485c-bcaa-d4dfd21450ad` — 2026-04-07
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 0f54796..c05702d 100644
+index 1940371..96413e9 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-07 15:05 UTC
-+> Generated by aicli 2026-04-07 16:44 UTC
+-> Generated by aicli 2026-03-22 02:44 UTC
++> Generated by aicli 2026-03-22 02:51 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -16,7 +16,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - storage_primary: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
+ - storage_semantic: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+ - db_schema: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
+-- authentication: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; encrypted API keys
++- authentication: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+ - llm_providers: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+ - workflow_engine: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
+ - workflow_ui: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+@@ -25,7 +25,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - mcp: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
+ - deployment: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
+ - database_schema: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+-- config_management: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml for IDE support
++- config_management: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
+ - db_tables: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - llm_provider_adapters: agents/providers/ with pr_ prefix for pricing and provider implementations
+ - pipeline_engine: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - billing_storage: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
+ - backend_modules: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - dev_environment: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
+-- database: PostgreSQL 15+ with agent roles initialized; per-project and shared schema tables
++- database: PostgreSQL 15+ with per-project and shared schema tables; agent roles initialized
+ 
+ ## Architectural Decisions
+ 
+@@ -43,12 +43,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
+ - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
+-- Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
++- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
+ - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
+-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
++- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
+ - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
+-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/
++- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
+ - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
+-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds needed
+-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons/promotions managed in SQL tables
+-- Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections
+\ No newline at end of file
++- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
++- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons managed in SQL 
+
+### `commit: fa5883c1-6516-4c07-9124-67308c8aa1af` — 2026-04-07
+
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index 856d6e8..7370b6c 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+ 
+ ## Recent Work
+ 
+-- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'Active' status when complete; lifecycle tags deprecated; user questioned why features show Active without proper descriptions—clarifying status enforcement logic
+-- Deprecated old/ directory usage (2026-03-23) — Confirmed old/ should not be modified; update memory to reflect this is legacy code; focus development on current directory structure
+-- Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; confirmed _plannerShowNewWorkItem calls _renderWorkItemTable() directly (correct path), not _renderTagTableFromCache()
+-- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing
++- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; user reports status not visible in UI Planner tab; enforce missing data detection at creation and sync with database
++- Tag visibility and review (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
++- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; timing issue during backend initialization; requires further investigation and fix
++- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
+ - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
+-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
++- Database startup race condition (2026-03-18) — Modified retry logic to handle empty project list on first load; confirmed _ensure_shared_schema pattern replaces old ensure_project_schema method
 
 
-### `commit` — 2026-04-07
+### `commit: fa5883c1-6516-4c07-9124-67308c8aa1af` — 2026-04-07
+
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index bfacbed..38e3674 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -131,10 +131,11 @@ async function _initPlanner(project) {
+     await loadTagCache(project, true);
+   }
+   _renderCategoryList();
+-  // Auto-select first category so right pane is populated on open
++  // Auto-select first pipeline category (feature/bug/task), else first overall
+   const cats = getCacheCategories();
+-  if (!_plannerState.selectedCat && cats.length > 0 && cats[0].id != null) {
+-    await _plannerSelectCat(cats[0].id, cats[0].name);
++  if (!_plannerState.selectedCat && cats.length > 0) {
++    const first = cats.find(c => _isWorkItemCat(c.name) && c.id != null) || cats.find(c => c.id != null);
++    if (first) await _plannerSelectCat(first.id, first.name);
+   }
+ }
+ 
+@@ -148,7 +149,11 @@ function _renderCategoryList() {
+     list.innerHTML = '<div style="color:var(--muted);font-size:0.62rem;padding:8px 10px">No categories yet</div>';
+     return;
+   }
+-  list.innerHTML = cats.map(c => `
++
++  const pipeline = cats.filter(c => _isWorkItemCat(c.name));
++  const tags     = cats.filter(c => !_isWorkItemCat(c.name));
++
++  const catRow = c => `
+     <div class="planner-cat-row" data-id="${c.id}"
+          onclick="window._plannerSelectCat(${c.id},'${_esc(c.name)}')"
+          style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;
+@@ -158,7 +163,14 @@ function _renderCategoryList() {
+       <span style="color:${c.color};font-size:0.85rem">${c.icon}</span>
+       <span style="font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(c.name)}</span>
+       <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${c.value_count ?? getCacheValues(c.id).length}</span>
+-    </div>`).join('');
++    </div>`;
++
++  const divider = tags.length ? `
++    <div style="font-size:0.5rem;text-transform:uppercase;letter-spacing:.1em;
++                color:var(--muted);padding:8px 8px 3px;margin-top:4px;
++                border-top:1px solid var(--border)">Tags</div>` : '';
++
++  list.innerHTML = pipeline.map(catRow).join('') + divider + tags.map(catRow).join('');
+ }
+ 
+ async function _plannerSelectCat(catId, catName) {
+
+
+### `commit: fa5883c1-6516-4c07-9124-67308c8aa1af` — 2026-04-07
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 0a6da29..79ca795 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-03-23 00:12 UTC
++> Generated by aicli 2026-03-23 00:26 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -51,4 +51,4 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
+ - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
+ - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
+-- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
+\ No newline at end of file
++- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
+\ No newline at end of file
+
+
+### `commit: fa5883c1-6516-4c07-9124-67308c8aa1af` — 2026-04-07
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index ffcae6a..0e2d1ac 100644
+index ae2b838..142286b 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 15:05 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 16:44 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:12 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:26 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -51,12 +51,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
+ - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
+ - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
+-- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
++- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-06] I would like to be able to move work_item back to work_item or to another items. also merge - merge can happend only to 
- - [2026-04-07] can you update all memory_items (maybe run /memory) to have an uodated data
- - [2026-04-07] I do have some errors loading data - route_work_items line 249 - cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id,)) and line
- - [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
--- [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
+-- [2026-03-22] I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
+ - [2026-03-22] I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
+ - [2026-03-22] please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 
+ - [2026-03-22] Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
+-- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
 \ No newline at end of file
-+- [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
-+- [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
-\ No newline at end of file
-
-
-### `commit` — 2026-04-07
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index ffcae6a..0e2d1ac 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 15:05 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 16:44 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-06] I would like to be able to move work_item back to work_item or to another items. also merge - merge can happend only to 
- - [2026-04-07] can you update all memory_items (maybe run /memory) to have an uodated data
- - [2026-04-07] I do have some errors loading data - route_work_items line 249 - cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id,)) and line
- - [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
--- [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
-\ No newline at end of file
-+- [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
-+- [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
++- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
++- [2026-03-23] It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that st
 \ No newline at end of file
 
-
-## AI Synthesis
-
-**[2026-04-07]** `git_schema` — Confirmed commit table schema: `diff_summary` (TEXT) retained as human-readable git --stat; `diff_details` (JSONB) dropped and removed from mcp/server.py and memory_mirroring.py references. **[2026-04-07]** `memory_architecture` — Finalized 4-layer memory model: Layer 1 (mem_mrr_* raw capture) → Layer 2 (mem_ai_events LLM digests + 1536-dim embeddings) → Layer 3 (mem_ai_work_items, mem_ai_project_facts structured artifacts) → Layer 4 (planner_tags user-managed). **[2026-04-07]** `backend_optimization` — Identified route_work_items bottleneck: _SQL_UNLINKED_WORK_ITEMS (line 249) and merged_into/start_date column alignment (line 288) causing 60s round-trip latency on Railway; individual queries execute in ~0.9s, suggesting N+1 or connection pool issue. **[2026-04-07]** `frontend_refactor` — Targeting _plannerSelectAiSubtype undefined reference error in routers.route_logs; requires proper function scoping and global export of all planner helper functions. **[2026-04-01]** `schema_migration` — Migration 008 successfully dropped diff_summary and source_session_id columns from work item queries; memory_planner.py refactored to use tags['files'] dict instead of deprecated columns. **[2026-04-01]** `ui_drag_drop` — Work item drag-and-drop refinement in progress: fixing hover state propagation for target tag highlights and ensuring persistence across page reloads.
