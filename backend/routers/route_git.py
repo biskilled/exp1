@@ -121,6 +121,43 @@ def _write_commit_log(project_name: str, entry: dict) -> None:
         pass  # never break git operations because of logging
 
 
+# ── Generated-file filter ──────────────────────────────────────────────────────
+
+import re as _re
+_GEN_FILE_PAT = _re.compile(
+    r'^\s*(CLAUDE\.md|\.cursorrules|MEMORY\.md|\.ai/|\.cursor/|\.github/copilot|'
+    r'workspace/.*/_system/|history\.jsonl|.*\.claude/memory)',
+    _re.IGNORECASE,
+)
+
+def _filter_diff_stat(diff_stat: str) -> tuple[str, str]:
+    """Return (code_stat, gen_stat) — split diff --stat by generated vs code files."""
+    code_lines, gen_lines = [], []
+    for line in (diff_stat or "").splitlines():
+        if _GEN_FILE_PAT.match(line):
+            gen_lines.append(line)
+        else:
+            code_lines.append(line)
+    # Keep summary line (last line, has "N files changed") in both
+    if code_lines or gen_lines:
+        summary = (diff_stat or "").splitlines()[-1] if diff_stat else ""
+        if summary and not _re.match(r'^\s*\w', summary.lstrip()):
+            code_lines.append(summary)
+    return "\n".join(code_lines), "\n".join(gen_lines)
+
+
+# ── Commit embedding background task ───────────────────────────────────────────
+
+async def _embed_commit_background(project: str, commit_hash: str) -> None:
+    """Run process_commit() to embed + extract symbols after commit is stored."""
+    try:
+        from memory.memory_embedding import MemoryEmbedding
+        await MemoryEmbedding().process_commit(project, commit_hash)
+        log.info(f"_embed_commit_background: embedded {commit_hash[:8]} for {project}")
+    except Exception as e:
+        log.debug(f"_embed_commit_background error ({commit_hash[:8]}): {e}")
+
+
 # ── Commit→prompt linking background task ─────────────────────────────────────
 
 def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
@@ -1028,15 +1065,19 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
 
     # Immediately link this commit to its triggering prompt in the background
     if commit_hash and background is not None:
+        # Filter generated/memory files from diff_summary so code stats are clean
+        code_stat, _ = _filter_diff_stat(diff_stat or "")
         background.add_task(
             _sync_commit_and_link,
             project_name,
-            commit_hash[:8],
+            commit_hash,        # full 40-char hash (not truncated)
             body.session_id or None,
             commit_message,
             datetime.now(timezone.utc).isoformat(),
-            diff_stat or "",   # stored as diff_summary on mem_mrr_commits
+            code_stat,          # only code file stats stored
         )
+        # Embed the commit (extracts symbols, creates mem_ai_events) in background
+        background.add_task(_embed_commit_background, project_name, commit_hash)
 
     return {
         "committed": True,

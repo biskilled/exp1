@@ -425,7 +425,20 @@ class MemoryEmbedding:
 
         # Per-file diff chunks (raw embed, no llm tag) + back-propagate file stats to mrr
         try:
+            # Prefer project-specific code_dir from DB; fall back to settings.code_dir
             code_dir = settings.code_dir
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT code_dir FROM mng_projects WHERE name=%s AND code_dir IS NOT NULL LIMIT 1",
+                            (project,),
+                        )
+                        prow = cur.fetchone()
+                        if prow and prow[0]:
+                            code_dir = prow[0]
+            except Exception:
+                pass
             if code_dir:
                 result = subprocess.run(
                     ["git", "show", "--format=%B%n---DIFF---", commit_hash_val],
@@ -438,13 +451,15 @@ class MemoryEmbedding:
                         diff_chunks = MemoryEmbedding.smart_chunk_diff(
                             diff_text, commit_hash_val, {"commit_msg": commit_msg}
                         )
-                        # Back-propagate file/language stats from summary chunk to mrr
+                        # Back-propagate file/language/symbol stats from summary chunk to mrr
                         summary_chunk_tags = diff_chunks[0].get("tags", {}) if diff_chunks else {}
                         mrr_stat_update: dict = {}
                         if summary_chunk_tags.get("files"):
                             mrr_stat_update["files"] = summary_chunk_tags["files"]
                         if summary_chunk_tags.get("languages"):
                             mrr_stat_update["languages"] = summary_chunk_tags["languages"]
+                        if summary_chunk_tags.get("symbols"):
+                            mrr_stat_update["symbols"] = summary_chunk_tags["symbols"]
                         if mrr_stat_update:
                             with db.conn() as conn:
                                 with conn.cursor() as cur:

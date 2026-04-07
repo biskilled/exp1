@@ -48,13 +48,13 @@
     "Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication",
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
+    "4-layer memory architecture: Layer 0 (ephemeral session messages) \u2192 Layer 1 (mem_mrr_* raw capture) \u2192 Layer 2 (mem_ai_events LLM digests + embeddings) \u2192 Layer 3 (mem_ai_work_items, mem_ai_project_facts) \u2192 Layer 4 (user-managed planner_tags)",
     "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
     "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
     "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
     "Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly",
-    "Memory synthesis triggered from session data via /memory endpoint \u2192 Claude Haiku processes commits/events \u2192 outputs to mem_ai_events/project_facts tables",
-    "Project facts generated via LLM prompt analyzing session events and commits; stored in mem_ai_project_facts with event_id linkage for traceability"
+    "Memory synthesis triggered from session data via /memory endpoint \u2192 Claude Haiku processes commits/events \u2192 outputs to mem_ai_events/project_facts tables"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -83,7 +83,7 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Schema cleanup: removed diff_summary and source_session_id columns from work item commit queries; verified migration 008 dropped these fields and memory_planner.py now uses tags['files'] dict instead of deprecated columns",
+    "Commit table schema verification: confirmed diff_summary (TEXT) stays as human-readable git --stat output; diff_details (JSONB) was dropped and cleaned from mcp/server.py and memory_mirroring.py",
     "Backend data loading optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation; Railway migrations functional but slow (~60s per round-trip, 0.9s per query)",
     "Work item drag-and-drop UI refinement: fixing hover state propagation for target tag highlights; ensuring dropped work items persist in correct parent and disappear from source after page reload",
     "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope",
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-07T16:48:56Z",
+  "last_memory_run": "2026-04-07T17:13:14Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -131,16 +131,16 @@
       "Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication",
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates",
+      "4-layer memory architecture: Layer 0 (ephemeral session messages) \u2192 Layer 1 (mem_mrr_* raw capture) \u2192 Layer 2 (mem_ai_events LLM digests + embeddings) \u2192 Layer 3 (mem_ai_work_items, mem_ai_project_facts) \u2192 Layer 4 (user-managed planner_tags)",
       "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
       "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
       "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
       "Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly",
-      "Memory synthesis triggered from session data via /memory endpoint \u2192 Claude Haiku processes commits/events \u2192 outputs to mem_ai_events/project_facts tables",
-      "Project facts generated via LLM prompt analyzing session events and commits; stored in mem_ai_project_facts with event_id linkage for traceability"
+      "Memory synthesis triggered from session data via /memory endpoint \u2192 Claude Haiku processes commits/events \u2192 outputs to mem_ai_events/project_facts tables"
     ],
     "in_progress": [
-      "Schema cleanup: removed diff_summary and source_session_id columns from work item commit queries; verified migration 008 dropped these fields and memory_planner.py now uses tags['files'] dict instead of deprecated columns",
+      "Commit table schema verification: confirmed diff_summary (TEXT) stays as human-readable git --stat output; diff_details (JSONB) was dropped and cleaned from mcp/server.py and memory_mirroring.py",
       "Backend data loading optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation; Railway migrations functional but slow (~60s per round-trip, 0.9s per query)",
       "Work item drag-and-drop UI refinement: fixing hover state propagation for target tag highlights; ensuring dropped work items persist in correct parent and disappear from source after page reload",
       "Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope",
@@ -153,16 +153,18 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
-      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries"
+      "database_version": "PostgreSQL 15+",
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL vector storage, and Electron desktop UI to enable semantic project memory synthesis via Claude Haiku. The system uses async DAG workflows, work item management with dual-status tracking, and intelligent chunking to maintain context across collaborative development sessions. Currently in active development with focus on performance optimization, UI refinement for drag-and-drop interactions, and completion of memory synthesis trigger architecture.",
-    "memory_digest": "**[2026-04-07]** `schema_audit` \u2014 Removed deprecated `diff_summary` and `source_session_id` columns from work_items schema; memory_planner.py refactored to use tags['files'] dictionary structure instead. **[2026-04-07]** `performance_investigation` \u2014 Railway backend functional but slow on initial load (~60s round-trip, 0.9s per query); _SQL_UNLINKED_WORK_ITEMS and merged_into/start_date column alignment identified as bottlenecks. **[2026-04-07]** `ui_refinement` \u2014 Drag-and-drop work item behavior refined with proper hover state propagation; fixed _plannerSelectAiSubtype undefined error by ensuring planner helper functions are properly scoped to global scope. **[2026-04-07]** `memory_system` \u2014 /memory endpoint data population in progress; mem_ai_* mirror tables (events, project_facts) require trigger architecture investigation and LLM prompt synthesis flow documentation. **[2026-04-07]** `feature_launch` \u2014 shared-memory feature documented and moved to active phase with acceptance criteria; identified need for detailed API specification and concurrent access testing. **[2026-03-14]** `core_architecture` \u2014 Unified mem_ai_* table schema consolidation completed with event_id linkage for traceability; dual-layer synthesis generating 5 output files (summary, tags, facts, entities, recommendations)."
+    "project_summary": "aicli is a shared AI memory platform providing Claude CLI and Electron desktop interfaces for AI-assisted project management. It captures developer activity (prompts, commits, documents) through a 4-layer memory pipeline (raw capture \u2192 LLM digests \u2192 structured work items/facts \u2192 user-managed planner tags), with PostgreSQL pgvector backend for semantic search, FastAPI REST API, and async DAG workflow execution. Currently addressing backend query performance optimization and frontend UI consistency issues around work item management and tag drag-and-drop interactions.",
+    "memory_digest": "**[2026-04-07]** `git_schema` \u2014 Confirmed commit table schema: `diff_summary` (TEXT) retained as human-readable git --stat; `diff_details` (JSONB) dropped and removed from mcp/server.py and memory_mirroring.py references. **[2026-04-07]** `memory_architecture` \u2014 Finalized 4-layer memory model: Layer 1 (mem_mrr_* raw capture) \u2192 Layer 2 (mem_ai_events LLM digests + 1536-dim embeddings) \u2192 Layer 3 (mem_ai_work_items, mem_ai_project_facts structured artifacts) \u2192 Layer 4 (planner_tags user-managed). **[2026-04-07]** `backend_optimization` \u2014 Identified route_work_items bottleneck: _SQL_UNLINKED_WORK_ITEMS (line 249) and merged_into/start_date column alignment (line 288) causing 60s round-trip latency on Railway; individual queries execute in ~0.9s, suggesting N+1 or connection pool issue. **[2026-04-07]** `frontend_refactor` \u2014 Targeting _plannerSelectAiSubtype undefined reference error in routers.route_logs; requires proper function scoping and global export of all planner helper functions. **[2026-04-01]** `schema_migration` \u2014 Migration 008 successfully dropped diff_summary and source_session_id columns from work item queries; memory_planner.py refactored to use tags['files'] dict instead of deprecated columns. **[2026-04-01]** `ui_drag_drop` \u2014 Work item drag-and-drop refinement in progress: fixing hover state propagation for target tag highlights and ensuring persistence across page reloads."
   }
 }

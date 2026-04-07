@@ -382,6 +382,7 @@ async def embed_commits(
     if not db.is_available():
         raise HTTPException(status_code=503, detail="PostgreSQL not available")
 
+    project_id = db.get_or_create_project_id(project)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
@@ -391,7 +392,7 @@ async def embed_commits(
                          AND (tags->>'llm') IS NULL
                        ORDER BY committed_at DESC NULLS LAST
                        LIMIT %s""",
-                    (project, limit),
+                    (project_id, limit),
                 )
                 hashes = [r[0] for r in cur.fetchall()]
     except Exception as e:
