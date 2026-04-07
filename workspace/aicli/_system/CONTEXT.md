@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-07 16:45 UTC — do not edit manually.
+> Auto-generated 2026-04-07 16:48 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 409
-- **Last active**: 2026-04-07T16:44:38Z
+- **Sessions**: 410
+- **Last active**: 2026-04-07T16:48:30Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -51,7 +51,7 @@
 
 ## In Progress
 
-- Schema cleanup: removed diff_summary and source_session_id columns from work item commit queries; verified migration 008 dropped these fields and memory_planner.py now uses tags['files'] dict instead
+- Schema cleanup: removed diff_summary and source_session_id columns from work item commit queries; verified migration 008 dropped these fields and memory_planner.py now uses tags['files'] dict instead of deprecated columns
 - Backend data loading optimization: route_work_items line 249 (_SQL_UNLINKED_WORK_ITEMS) and line 288 (merged_into/start_date alignment) under investigation; Railway migrations functional but slow (~60s per round-trip, 0.9s per query)
 - Work item drag-and-drop UI refinement: fixing hover state propagation for target tag highlights; ensuring dropped work items persist in correct parent and disappear from source after page reload
 - Frontend reference error resolution: fixing _plannerSelectAiSubtype undefined error in routers.route_logs; ensuring all planner helper functions properly scoped and exported to global scope

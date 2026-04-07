@@ -75,7 +75,7 @@ Everything stored verbatim as received. No AI processing. The audit trail.
 **`tags["symbols"]`** — class/function names extracted from diff (Python, JS, TS)
 **`tags["languages"]`** — list of languages in changed files
 
-**NOTE**: `diff_details` and `diff_summary` columns were **DROPPED** in migration 008. Do not reference them.
+**NOTE**: `diff_details` JSONB was **DROPPED** (migration 008 — applied to Railway 2026-04-07). `diff_summary` TEXT **remains** — stores git `--stat` output written by `route_git.py` on each commit. Richer file stats are also in `tags["files"]`, `tags["languages"]`, `tags["symbols"]`.
 
 **Relevance: 3/5** — commit_msg useful; summary+files/symbols make it 4/5
 

@@ -174,8 +174,7 @@ class MemoryMirroring:
         session_id: Optional[str] = None,
         committed_at: Optional[str] = None,
         tags: Optional[list[str] | dict] = None,
-        # backward-compat: diff_details accepted but ignored (column dropped)
-        diff_details: str = "{}",
+        **_ignored,  # absorb any legacy kwargs (e.g. diff_details)
     ) -> Optional[str]:
         """Insert a commit into mem_mrr_commits. Returns commit_hash or None."""
         if not db.is_available():
