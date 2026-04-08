@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 13:46 UTC by aicli /memory_
+_Generated: 2026-04-08 13:50 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to capture, synthesize, and manage project knowledge across sessions using LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) and semantic search via PostgreSQL pgvector. The system uses a 4-layer memory architecture with mirror tables for raw capture, unified AI digests with embeddings, work items with dual status tracking, and user-managed tags. Currently stabilizing the database schema (mem_mrr_commits_code with 19 columns), addressing DDL runner robustness issues, and optimizing query performance for work item routes (~60s latency).
 
 ## Project Facts
 
@@ -171,89 +167,151 @@ Reviewer: ```json
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-Removed legacy flat context files and reorganized them into feature-scoped directories to improve code organization and maintainability.
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-Removed outdated CLAUDE.md and CONTEXT.md system files from the root directory to clean up stale documentation and reduce clutter in the project structure.
-
-### `session_summary: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-Summary:
-• Added `commit_short_hash` column to database schema
-• `mem_mrr_commits_code` table now includes all 19 columns with `full_symbol` as a generated column
-• Identified silent failure in DDL runner during initial migration - likely caused by timing issues and table locks during the first run
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/workspace/_templates/python_api/project.yaml b/workspace/_templates/python_api/project.yaml
-index 9fff36c..310d1d6 100644
---- a/workspace/_templates/python_api/project.yaml
-+++ b/workspace/_templates/python_api/project.yaml
-@@ -5,3 +5,6 @@ default_provider: claude
- active_workflows:
-   - build_feature
-   - code_review
-+commit_code_extraction:
-+  min_lines: 5
-+  only_on_commits_with_tags: false
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/workspace/_templates/blank/project.yaml b/workspace/_templates/blank/project.yaml
-index 2a79137..2b98de9 100644
---- a/workspace/_templates/blank/project.yaml
-+++ b/workspace/_templates/blank/project.yaml
-@@ -3,3 +3,6 @@ description: "Project created from blank template"
- code_dir: "../../{{PROJECT_NAME}}"
- default_provider: claude
- active_workflows: []
-+commit_code_extraction:
-+  min_lines: 5
-+  only_on_commits_with_tags: false
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
-index ea38661..91f113b 100644
---- a/backend/routers/route_memory.py
-+++ b/backend/routers/route_memory.py
-@@ -375,9 +375,9 @@ async def embed_commits(
- ):
-     """Run process_commit() for commits that have no Haiku digest yet.
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index 819c972..5b1c442 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
--    Selects commits where tags->>'llm' IS NULL (never processed), runs Haiku
--    digest + embedding for each, back-propagates summary and llm tag to
--    mem_mrr_commits. Returns count processed.
-+    Selects commits where exec_llm = FALSE (never processed), runs Haiku
-+    digest + embedding for each, back-propagates summary and sets exec_llm=TRUE
-+    on mem_mrr_commits. Returns count processed.
-     """
-     if not db.is_available():
-         raise HTTPException(status_code=503, detail="PostgreSQL not available")
-@@ -389,7 +389,7 @@ async def embed_commits(
-                 cur.execute(
-                     """SELECT commit_hash FROM mem_mrr_commits
-                        WHERE project_id=%s
--                         AND (tags->>'llm') IS NULL
-+                         AND exec_llm = FALSE
-                        ORDER BY committed_at DESC NULLS LAST
-                        LIMIT %s""",
-                     (project_id, limit),
+ ## Recent Work
+ 
+-- Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows
+-- Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table
+-- Database query performance optimization: route_work_items showing ~60s round-trip latency; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join operations
++- Database schema stabilization: commit_short_hash column added to database; mem_mrr_commits_code now includes all 19 columns with full_symbol generated column properly applied
++- DDL runner robustness: investigating silent failures during initial migration caused by table locks and timing issues; generated columns now applied after base table creation
++- Commit code extraction configuration: added min_lines and only_on_commits_with_tags settings to project.yaml templates (python_api and blank)
++- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join operations
++- Memory endpoint data synchronization: tracing data flow from mirror tables through mem_ai_* tables; verifying update triggers and mechanisms
+ - Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic
+-- Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries
+-- Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state
 
 
-## AI Synthesis
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-**2026-03-14** `schema` — Stabilized mem_mrr_commits_code table with 19 columns including commit_short_hash and full_symbol as generated column; identified that DDL runner silently fails on initial migrations due to table locks and timing—generated columns must be applied post-creation.
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index e12d018..5c91374 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-08 00:28 UTC
++> Generated by aicli 2026-04-08 13:30 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - ui_components: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
+ - storage_primary: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+ - storage_semantic: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+-- db_schema: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
++- db_schema: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - authentication: JWT (python-jose + bcrypt) + DEV_MODE toggle
+ - llm_providers: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+ - workflow_engine: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
+@@ -59,5 +59,5 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+-- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
+-- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+\ No newline at end of file
++- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
+\ No newline at end of file
 
-**2026-03-14** `config` — Added min_lines and only_on_commits_with_tags configuration settings to project.yaml templates (python_api and blank) to control commit code extraction behavior.
 
-**2026-03-14** `performance` — Discovered route_work_items endpoint exhibiting ~60s latency; root cause investigation underway focusing on _SQL_UNLINKED_WORK_ITEMS query indexing and join operation optimization.
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-**2026-03-14** `data-sync` — Tracing memory endpoint data flow from mirror tables (mem_mrr_*) through unified mem_ai_* tables; verifying update triggers and synchronization mechanisms are working correctly.
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index f5b57a0..1a81f2f 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 00:28 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 13:30 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
+ - **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+ - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+-- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
++- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+ - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+ - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
+@@ -59,13 +59,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+-- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
+ - [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
+ - [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
+ - [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
+-- [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
+\ No newline at end of file
++- [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
++- [2026-04-08] I do not see any update at the database
+\ No newline at end of file
 
-**2026-03-14** `ui-bug` — Planner tag categories uploading successfully but individual tags not displaying in category bindings; debugging router mapping and tag query logic in frontend.
 
-**2026-03-10** `architecture` — Finalized 4-layer memory architecture: ephemeral session messages → mem_mrr_* raw capture → mem_ai_events LLM digests with embeddings → mem_ai_work_items/project_facts → user-managed planner_tags with dual status tracking (status_user, status_ai).
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index f5b57a0..1a81f2f 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 00:28 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 13:30 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
+ - **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+ - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+-- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
++- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+ - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+ - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
+@@ -59,13 +59,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+-- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
+ - [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
+ - [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
+ - [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
+-- [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
+\ No newline at end of file
++- [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
++- [2026-04-08] I do not see any update at the database
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+Removed deprecated top-level `_system CLAUDE.md` and `CONTEXT.md` files as part of cleanup effort to eliminate outdated system configuration files.
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+Removed legacy flat context files and reorganized them into feature-scoped directories to improve code organization and maintainability.
