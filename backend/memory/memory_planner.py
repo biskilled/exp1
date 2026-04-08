@@ -1,4 +1,4 @@
-ye"""
+"""
 memory_planner.py — Planner document synthesis for planner_tags.
 
 For a given tag (feature/bug/task), aggregates all linked work items,
@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.database import db
+from core.prompt_loader import prompts as _prompts
 
 log = logging.getLogger(__name__)
 
@@ -55,12 +56,6 @@ _SQL_GET_WI_INTERACTION_STATS = """
            COALESCE(SUM(CHAR_LENGTH(COALESCE(prompt,''))+CHAR_LENGTH(COALESCE(response,''))), 0) AS total_chars
     FROM mem_mrr_prompts
     WHERE project_id = %s AND tags @> jsonb_build_object('work-item', %s::text)
-"""
-
-_SQL_GET_SYSTEM_ROLE = """
-    SELECT content FROM mng_system_roles
-    WHERE client_id = 1 AND name = %s AND is_active = TRUE
-    LIMIT 1
 """
 
 _SQL_UPDATE_TAG = """
@@ -125,17 +120,6 @@ def _parse_json(text: str) -> dict:
         return json.loads(m.group())
     except Exception:
         return {}
-
-
-async def _load_system_role(name: str) -> Optional[str]:
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL_GET_SYSTEM_ROLE, (name,))
-                row = cur.fetchone()
-        return row[0] if row else None
-    except Exception:
-        return None
 
 
 async def _call_llm(system_prompt: str, user_message: str, max_tokens: int = 2000) -> str:
@@ -233,7 +217,7 @@ class MemoryPlanner:
         user_msg = self._build_user_message(tag, wi_data)
 
         # 5. Call Haiku
-        system_prompt = (await _load_system_role("planner_summary")) or _FALLBACK_SYSTEM_PROMPT
+        system_prompt = _prompts.content("planner_summary") or _FALLBACK_SYSTEM_PROMPT
         raw = await _call_llm(system_prompt, user_msg, max_tokens=2000)
         parsed = _parse_json(raw)
 

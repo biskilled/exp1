@@ -20,6 +20,7 @@ from typing import Optional
 
 from core.config import settings
 from core.database import db
+from core.prompt_loader import prompts as _prompts
 
 log = logging.getLogger(__name__)
 
@@ -459,7 +460,7 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
     client_id = db.default_client_id()
     min_lines = guards["min_lines"]
 
-    haiku_system = (
+    haiku_system = _prompts.content("commit_symbol") or (
         "You are a code analyst. Given a changed symbol (class/method/function) and its diff, "
         "write a 1-sentence summary of what changed and why. Be concise."
     )

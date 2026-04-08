@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.database import db
+from core.prompt_loader import prompts as _prompts
 from agents.providers import call_claude
 
 log = logging.getLogger(__name__)
@@ -1307,9 +1308,7 @@ async def _generate_commit_message(
     Returns (commit_message, analysis_dict).
     Falls back to a simple chore message with empty analysis on failure.
     """
-    from pathlib import Path as _Path
-    _sys_prompt_path = _Path(settings.workspace_dir) / "_templates" / "memory" / "prompts" / "system" / "commit_analysis.md"
-    sys_prompt = _sys_prompt_path.read_text().strip() if _sys_prompt_path.exists() else ""
+    sys_prompt = _prompts.content("commit_analysis") or ""
 
     _CONVENTIONAL = ("feat", "fix", "chore", "test", "refactor", "docs", "style", "perf", "ci", "build")
 

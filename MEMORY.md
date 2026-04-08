@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 13:50 UTC by aicli /memory_
+_Generated: 2026-04-08 13:52 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining Python CLI + FastAPI backend + Electron desktop UI, enabling semantic search and workflow automation across multi-project workspaces. Currently stabilizing database schema (commit tracking with mem_mrr_commits_code, 19-column structure), optimizing query performance (route_work_items latency), and resolving module consolidation for embedding pipeline consistency across routers.
 
 ## Project Facts
 
@@ -109,12 +113,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Database schema stabilization: commit_short_hash column added; mem_mrr_commits_code now includes all 19 columns with full_symbol properly applied via post-creation DDL
-- DDL runner robustness: investigating silent failures during initial migration caused by table locks and timing issues; generated columns now applied after base table creation
-- Commit code extraction configuration: min_lines and only_on_commits_with_tags settings added to project.yaml templates (python_api and blank)
-- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join operations
-- Memory endpoint data synchronization: tracing data flow from mirror tables through mem_ai_* tables; verifying update triggers and mechanisms
-- Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic
+- Commit pipeline prompt discovery: tracing all LLM prompts used in commit processing (code extraction, summarization, embedding); located in memory/memory_embedding.py, agents/tools/, and routers/route_snapshots.py
+- Memory endpoint data flow: verifying synchronization from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables; identified import migration from mem_embeddings to memory_embedding module
+- Module restructuring: consolidating embedding/ingestion logic into memory_embedding.py; updating imports across route_snapshots.py, route_search.py, route_prompts.py for consistent module paths
+- Database query performance: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join optimization on mem_ai_events
+- Planner tag visibility: debugging category upload and tag binding visibility in UI; verifying router mapping and category query logic
+- DDL runner robustness: investigating silent failures during initial migration caused by table locks; post-creation DDL for generated columns now handled separately from base table creation
 
 ## Active Features / Bugs / Tasks
 
@@ -167,151 +171,160 @@ Reviewer: ```json
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 819c972..5b1c442 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+diff --git a/backend/routers/route_snapshots.py b/backend/routers/route_snapshots.py
+index e17dbb2..6b9a5ed 100644
+--- a/backend/routers/route_snapshots.py
++++ b/backend/routers/route_snapshots.py
+@@ -123,7 +123,7 @@ async def _call_sonnet(system_prompt: str, user_message: str) -> str:
  
- ## Recent Work
- 
--- Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows
--- Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table
--- Database query performance optimization: route_work_items showing ~60s round-trip latency; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join operations
-+- Database schema stabilization: commit_short_hash column added to database; mem_mrr_commits_code now includes all 19 columns with full_symbol generated column properly applied
-+- DDL runner robustness: investigating silent failures during initial migration caused by table locks and timing issues; generated columns now applied after base table creation
-+- Commit code extraction configuration: added min_lines and only_on_commits_with_tags settings to project.yaml templates (python_api and blank)
-+- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join operations
-+- Memory endpoint data synchronization: tracing data flow from mirror tables through mem_ai_* tables; verifying update triggers and mechanisms
- - Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic
--- Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries
--- Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state
+ async def _embed_text(text: str) -> Optional[list]:
+     try:
+-        from memory.mem_embeddings import get_embedding
++        from memory.memory_embedding import get_embedding
+         return await get_embedding(text)
+     except Exception:
+         return None
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index e12d018..5c91374 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-08 00:28 UTC
-+> Generated by aicli 2026-04-08 13:30 UTC
+diff --git a/backend/routers/route_search.py b/backend/routers/route_search.py
+index dd32175..d049ffd 100644
+--- a/backend/routers/route_search.py
++++ b/backend/routers/route_search.py
+@@ -68,7 +68,7 @@ async def semantic_search(body: SearchRequest, user=Depends(get_optional_user)):
+     if not db.is_available():
+         raise HTTPException(503, "PostgreSQL + pgvector required for semantic search")
  
- # aicli — Shared AI Memory Platform
+-    from memory.mem_embeddings import semantic_search as _search
++    from memory.memory_embedding import semantic_search as _search
+     project = body.project or settings.active_project or "default"
+     results = await _search(
+         project=project,
+@@ -169,7 +169,7 @@ async def ingest(project: str = Query(""), user=Depends(get_optional_user)):
+     p = project or settings.active_project or "default"
  
-@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - ui_components: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
- - storage_primary: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
- - storage_semantic: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
--- db_schema: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-+- db_schema: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
- - authentication: JWT (python-jose + bcrypt) + DEV_MODE toggle
- - llm_providers: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
- - workflow_engine: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
-@@ -59,5 +59,5 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
--- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
--- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-\ No newline at end of file
-+- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
-\ No newline at end of file
+     async def _do_ingest():
+-        from memory.mem_embeddings import ingest_history, ingest_roles
++        from memory.memory_embedding import ingest_history, ingest_roles
+         h = await ingest_history(p)
+         r = await ingest_roles(p)
+         import logging
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index f5b57a0..1a81f2f 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 00:28 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 13:30 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
- - **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
- - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
--- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
- - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
- - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
- - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
-@@ -59,13 +59,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
--- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
- - [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
- - [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
- - [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
--- [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
-\ No newline at end of file
-+- [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
-+- [2026-04-08] I do not see any update at the database
-\ No newline at end of file
+diff --git a/backend/routers/route_prompts.py b/backend/routers/route_prompts.py
+index 2b5356d..46edb58 100644
+--- a/backend/routers/route_prompts.py
++++ b/backend/routers/route_prompts.py
+@@ -63,7 +63,7 @@ async def write_prompt(body: PromptWrite, project: str | None = Query(None)):
+     # Embed role files for semantic search (fire-and-forget)
+     if "roles/" in body.path:
+         try:
+-            from memory.mem_embeddings import embed_and_store as _embed
++            from memory.memory_embedding import embed_and_store as _embed
+             p = project or settings.active_project or "default"
+             asyncio.create_task(_embed(p, "role", body.path, body.content))
+         except Exception:
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-diff --git a/.ai/rules.md b/.ai/rules.md
-index f5b57a0..1a81f2f 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 00:28 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 13:30 UTC
+diff --git a/backend/routers/route_projects.py b/backend/routers/route_projects.py
+index 66db4c0..e3d9357 100644
+--- a/backend/routers/route_projects.py
++++ b/backend/routers/route_projects.py
+@@ -887,7 +887,7 @@ async def update_project_summary(project_name: str, body: dict = Body(...)):
+     (proj_dir / "PROJECT.md").write_text(content)
+     # Embed updated PROJECT.md for semantic search (fire-and-forget)
+     try:
+-        from memory.mem_embeddings import embed_and_store as _embed
++        from memory.memory_embedding import embed_and_store as _embed
+         asyncio.create_task(_embed(project_name, "project_md", "PROJECT.md", content))
+     except Exception:
+         pass
+@@ -1191,7 +1191,7 @@ async def _summarize_session_memory(project: str) -> int:
+                             created += 1
+                             # Embed into pgvector for semantic search
+                             try:
+-                                from memory.mem_embeddings import embed_and_store
++                                from memory.memory_embedding import embed_and_store
+                                 asyncio.create_task(embed_and_store(
+                                     project, "memory_item", str(row[0]), final_summary,
+                                     doc_type="session_summary",
+@@ -1299,7 +1299,7 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
+                 memory_id = str(row[0])
+                 # Embed into pgvector for semantic search
+                 try:
+-                    from memory.mem_embeddings import embed_and_store
++                    from memory.memory_embedding import embed_and_store
+                     asyncio.create_task(embed_and_store(
+                         project, "memory_item", memory_id, final_summary,
+                         doc_type="feature_summary",
+@@ -1994,7 +1994,7 @@ async def generate_memory(project_name: str):
  
- # aicli — Shared AI Memory Platform
- 
-@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
- - **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
- - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
--- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
-+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
- - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
- - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
- - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
-@@ -59,13 +59,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
--- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
- - [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
- - [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
- - [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
--- [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
-\ No newline at end of file
-+- [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
-+- [2026-04-08] I do not see any update at the database
-\ No newline at end of file
+     # ── Fire-and-forget background tasks (incremental — only process new data) ─
+     try:
+-        from memory.mem_embeddings import ingest_history as _ih, ingest_roles as _ir, ingest_commit as _ic
++        from memory.memory_embedding import ingest_history as _ih, ingest_roles as _ir, ingest_commit as _ic
+         # Pass since=last_memory_run so only new history entries are embedded
+         asyncio.create_task(_ih(project_name, since=last_memory_run))
+         asyncio.create_task(_ir(project_name))  # roles: always re-embed (files may change)
+@@ -2276,7 +2276,7 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
+     Only propagates entity tags into embedding metadata (non-destructive).
+     """
+     try:
+-        from memory.mem_embeddings import backfill_entity_tags as _bfe
++        from memory.memory_embedding import backfill_entity_tags as _bfe
+         await _bfe(project)
+     except Exception:
+         pass
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-Removed deprecated top-level `_system CLAUDE.md` and `CONTEXT.md` files as part of cleanup effort to eliminate outdated system configuration files.
+diff --git a/backend/routers/route_chat.py b/backend/routers/route_chat.py
+index 60658f2..5336538 100644
+--- a/backend/routers/route_chat.py
++++ b/backend/routers/route_chat.py
+@@ -24,7 +24,7 @@ from core.database import db
+ from agents.providers.pr_pricing import load_pricing, calculate_cost, can_user_access
+ from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
+ from routers.route_usage import log_usage
+-from memory.mem_sessions import SessionStore
++from memory.memory_sessions import SessionStore
+ 
+ # ── SQL ─────────────────────────────────────────────────────────────────────────
+ 
+@@ -309,7 +309,7 @@ async def _stream_response(
+ 
+         # Fire-and-forget: embed + proactive feature detection
+         try:
+-            from memory.mem_embeddings import embed_and_store as _embed
++            from memory.memory_embedding import embed_and_store as _embed
+             asyncio.create_task(_embed(
+                 project, "history", _ts, f"Q: {message}\nA: {content}",
+                 chunk_index=0, chunk_type="full",
+
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-Removed legacy flat context files and reorganized them into feature-scoped directories to improve code organization and maintainability.
+diff --git a/backend/pipelines/pipeline_graph_runner.py b/backend/pipelines/pipeline_graph_runner.py
+index 0d4c991..642cbe9 100644
+--- a/backend/pipelines/pipeline_graph_runner.py
++++ b/backend/pipelines/pipeline_graph_runner.py
+@@ -943,7 +943,7 @@ def _fire_background(run_id: str, project: str) -> None:
+     """
+     async def _safe_embed():
+         try:
+-            from memory.mem_embeddings import embed_node_outputs
++            from memory.memory_embedding import embed_node_outputs
+             await embed_node_outputs(run_id, project)
+         except Exception as _e:
+             log.debug(f"Background embed failed (non-critical): {_e}")
+
+
+## AI Synthesis
+
+**[2026-04-08]** `claude_cli` — Traced commit pipeline prompts across memory_embedding.py, agents/tools/, and route_snapshots.py; identified full flow from code extraction through LLM summarization and embedding. **[2026-04-08]** `development` — Module refactoring: consolidated embedding logic into memory_embedding.py and updated imports in route_snapshots.py, route_search.py, route_prompts.py for consistency. **[ongoing]** `infrastructure` — Database performance investigation: route_work_items experiencing ~60s latency; indexing optimization needed on _SQL_UNLINKED_WORK_ITEMS join operations. **[ongoing]** `features` — Planner tag visibility debugging: categories upload succeeds but individual tag bindings not displaying; router mapping and tag query logic under review. **[ongoing]** `database` — DDL runner stability: post-creation migration of generated columns (full_symbol) now handled separately from base table creation to prevent silent failures.

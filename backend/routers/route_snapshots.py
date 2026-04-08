@@ -25,6 +25,7 @@ from fastapi import APIRouter, HTTPException
 
 from core.config import settings
 from core.database import db
+from core.prompt_loader import prompts as _prompts
 
 log = logging.getLogger(__name__)
 
@@ -43,12 +44,6 @@ _SQL_GET_MEMORY_EVENTS = """
     FROM mem_ai_events me
     WHERE me.project_id = %s
     ORDER BY me.created_at
-"""
-
-_SQL_GET_SYSTEM_ROLE = """
-    SELECT content FROM mng_system_roles
-    WHERE client_id = 1 AND name = %s AND is_active = TRUE
-    LIMIT 1
 """
 
 _SQL_UPSERT_SNAPSHOT = """
@@ -167,11 +162,7 @@ async def generate_snapshot(project: str, tag_name: str):
             detail=f"No memory events found for tag '{tag_name}'. Run a few sessions first.",
         )
 
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_SQL_GET_SYSTEM_ROLE, ("memory_feature_snapshot",))
-            role_row = cur.fetchone()
-    system_prompt = role_row[0] if role_row else _DEFAULT_SNAPSHOT_PROMPT
+    system_prompt = _prompts.content("feature_snapshot") or _DEFAULT_SNAPSHOT_PROMPT
 
     by_type: dict[str, list[str]] = {}
     event_ids: list[str] = []

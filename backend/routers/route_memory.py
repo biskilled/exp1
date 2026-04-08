@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.database import db
+from core.prompt_loader import prompts as _prompts
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,12 +38,6 @@ _SQL_GET_SESSION_PROMPTS = """
     WHERE project_id=%s AND session_id=%s
       AND prompt IS NOT NULL AND prompt != ''
     ORDER BY created_at
-"""
-
-_SQL_GET_SYSTEM_ROLE = """
-    SELECT content FROM mng_system_roles
-    WHERE client_id=1 AND name=%s AND is_active=TRUE
-    LIMIT 1
 """
 
 _SQL_UPSERT_SESSION_SUMMARY = """
@@ -140,12 +135,7 @@ async def _generate_session_summary(
             conv_lines.append(f"Assistant: {response[:300]}")
     conv_text = "\n".join(conv_lines)
 
-    # Load synthesis prompt from DB
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_SQL_GET_SYSTEM_ROLE, ("session_end_synthesis",))
-            row = cur.fetchone()
-    system_prompt = row[0] if row else (
+    system_prompt = _prompts.content("session_end_synthesis") or (
         "Analyse this development session and produce a structured summary.\n"
         "Return JSON only:\n"
         "{\n"

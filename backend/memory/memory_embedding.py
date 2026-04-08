@@ -38,6 +38,7 @@ from typing import Optional
 
 from core.config import settings
 from core.database import db
+from core.prompt_loader import prompts as _prompts
 from memory.memory_mirroring import MemoryMirroring
 from memory.memory_tagging import MemoryTagging
 
@@ -103,12 +104,6 @@ _SQL_GET_ITEM = """
     SELECT id, item_type, title, raw_text, summary
     FROM mem_mrr_items
     WHERE project_id=%s AND id=%s::uuid
-"""
-
-_SQL_LOAD_PROMPT = """
-    SELECT content FROM mng_system_roles
-    WHERE client_id=1 AND name=%s AND is_active=TRUE
-    LIMIT 1
 """
 
 _SQL_SEARCH_TPL = """
@@ -179,20 +174,6 @@ async def _haiku(system: str, user: str, max_tokens: int = 200) -> str:
     except Exception as e:
         log.debug(f"_haiku error: {e}")
         return ""
-
-
-async def _load_system_role(name: str) -> Optional[str]:
-    """Load a mng_system_roles prompt by name."""
-    if not db.is_available():
-        return None
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL_LOAD_PROMPT, (name,))
-                row = cur.fetchone()
-        return row[0] if row else None
-    except Exception:
-        return None
 
 
 def _parse_haiku_json(raw: str, fallback: str) -> tuple[str, str, int]:
@@ -307,11 +288,7 @@ class MemoryEmbedding:
             for p in prompts
         )
 
-        sys_prompt = await _load_system_role("prompt_batch_digest") or (
-            "Given N sequential prompt/response pairs, extract a digest. "
-            'Return JSON only: {"summary": "1-2 sentence digest", "action_items": "- bullet or empty string"}'
-        )
-        raw = await _haiku(sys_prompt, pairs, max_tokens=250)
+        raw = await _prompts.call("prompt_batch_digest", pairs)
         if not raw:
             return None
         summary_text, action_items, importance = _parse_haiku_json(raw, pairs[:200])
@@ -397,15 +374,11 @@ class MemoryEmbedding:
             log.debug(f"process_commit DB error: {e}")
             return None
 
-        sys_prompt = await _load_system_role("commit_digest") or (
-            "Given a git commit message, produce a digest. "
-            'Return JSON only: {"summary": "1-2 sentence digest of what changed and why", "action_items": ""}'
-        )
         user_content = f"Commit: {commit_hash_val[:8]}\n{commit_msg}"
         if existing_summary:
             user_content += f"\nSummary: {existing_summary}"
 
-        raw = await _haiku(sys_prompt, user_content, max_tokens=200)
+        raw = await _prompts.call("commit_digest", user_content)
         summary_text, action_items, importance = _parse_haiku_json(raw, commit_msg[:300]) if raw else (commit_msg[:300], "", 5)
 
         embedding = await _embed(summary_text)
@@ -533,11 +506,7 @@ class MemoryEmbedding:
 
         if item_type == "meeting" or word_count > 200:
             # Split into sections
-            sys_prompt = await _load_system_role("meeting_sections") or (
-                "Split this text into named sections (key topics). "
-                'Return JSON: [{"title": str, "content": str}]'
-            )
-            sections_raw = await _haiku(sys_prompt, raw_text[:6000], max_tokens=1000)
+            sections_raw = await _prompts.call("meeting_sections", raw_text[:6000])
             try:
                 sections = json.loads(sections_raw)
             except Exception:
@@ -556,11 +525,7 @@ class MemoryEmbedding:
                     first_id = event_id
             result_id = first_id
         else:
-            sys_prompt = await _load_system_role("item_digest") or (
-                "Summarise this document. "
-                'Return JSON only: {"summary": "1-2 sentence digest", "action_items": "- bullet or empty string"}'
-            )
-            raw = await _haiku(sys_prompt, raw_text[:3000], max_tokens=200)
+            raw = await _prompts.call("item_digest", raw_text[:3000])
             item_summary, item_action_items, item_importance = _parse_haiku_json(raw, (summary or raw_text)[:300]) if raw else ((summary or raw_text)[:300], "", 5)
             emb = await _embed(item_summary)
             result_id = _upsert_event(
@@ -573,12 +538,7 @@ class MemoryEmbedding:
             return None
 
         # Relation extraction — lightweight Haiku call to detect tag relationships
-        rel_prompt = await _load_system_role("relation_extraction") or (
-            "Given a text snippet, identify explicit relationships between features/bugs/tasks. "
-            'Return ONLY JSON: {"relations": [{"from": "slug", "relation": "part_of|depends_on|blocks|relates_to|replaces|extracted_from", "to": "slug", "note": "..."}]} '
-            "If none found, return {\"relations\": []}"
-        )
-        rel_raw = await _haiku(rel_prompt, raw_text[:3000], max_tokens=400)
+        rel_raw = await _prompts.call("relation_extraction", raw_text[:3000])
         if rel_raw:
             try:
                 rel_parsed = json.loads(rel_raw)
@@ -631,11 +591,7 @@ class MemoryEmbedding:
             for m in (messages if isinstance(messages, list) else [])
         )[:6000]
 
-        sys_prompt = await _load_system_role("message_chunk_digest") or (
-            "Summarise this message thread chunk. "
-            'Return JSON only: {"summary": "1-2 sentence digest", "action_items": "- bullet or empty string"}'
-        )
-        raw = await _haiku(sys_prompt, text, max_tokens=200)
+        raw = await _prompts.call("message_chunk_digest", text)
         msg_summary, msg_action_items = _parse_haiku_json(raw, text[:300]) if raw else (text[:300], "")
 
         # Fetch MRR tags for this message to merge into event

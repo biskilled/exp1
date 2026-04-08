@@ -1,0 +1,79 @@
+# Internal system prompts — NOT exposed to users, NOT stored in DB.
+# To switch models or tune costs, change `model` or `max_tokens`.
+# Models: haiku (claude-haiku-4-5-20251001) | sonnet (claude-sonnet-4-6)
+
+prompts:
+
+  # ── Commits ────────────────────────────────────────────────────────────────
+  commit_analysis:
+    file: memory/commits/commit_analysis.md
+    model: sonnet       # needs structured JSON + code pattern recognition
+    max_tokens: 800
+
+  commit_digest:
+    file: memory/commits/commit_digest.md
+    model: haiku
+    max_tokens: 200
+
+  commit_symbol:
+    file: memory/commits/commit_symbol.md
+    model: haiku
+    max_tokens: 120
+
+  # ── Memory events ──────────────────────────────────────────────────────────
+  prompt_batch_digest:
+    file: memory/prompt_batch_digest.md
+    model: haiku
+    max_tokens: 250
+
+  item_digest:
+    file: memory/item_digest.md
+    model: haiku
+    max_tokens: 200
+
+  meeting_sections:
+    file: memory/meeting_sections.md
+    model: haiku
+    max_tokens: 1000
+
+  message_chunk_digest:
+    file: memory/message_chunk_digest.md
+    model: haiku
+    max_tokens: 200
+
+  relation_extraction:
+    file: memory/relation_extraction.md
+    model: haiku
+    max_tokens: 400
+
+  session_end_synthesis:
+    file: memory/session_end_synthesis.md
+    model: haiku
+    max_tokens: 600
+
+  # ── Work items ─────────────────────────────────────────────────────────────
+  work_item_extraction:
+    file: memory/work_items/work_item_extraction.md
+    model: haiku
+    max_tokens: 500
+
+  work_item_promotion:
+    file: memory/work_items/work_item_promotion.md
+    model: haiku
+    max_tokens: 300
+
+  # ── Feature / planner ──────────────────────────────────────────────────────
+  feature_snapshot:
+    file: memory/feature_snapshot.md
+    model: haiku
+    max_tokens: 2500
+
+  conflict_detection:
+    file: memory/conflict_detection.md
+    model: haiku
+    max_tokens: 300
+
+  planner_summary:
+    file: memory/planner/planner_summary.md
+    model: haiku
+    max_tokens: 2000

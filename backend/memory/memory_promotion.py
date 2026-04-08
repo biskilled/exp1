@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from core.database import db
+from core.prompt_loader import prompts as _prompts
 
 log = logging.getLogger(__name__)
 
@@ -55,12 +56,6 @@ _SQL_GET_MEMORY_EVENTS = """
     FROM mem_ai_events me
     WHERE me.project_id=%s
     ORDER BY me.created_at DESC LIMIT 50
-"""
-
-_SQL_GET_SYSTEM_ROLE = """
-    SELECT content FROM mng_system_roles
-    WHERE client_id=1 AND name=%s AND is_active=TRUE
-    LIMIT 1
 """
 
 _SQL_UPDATE_TAG_SNAPSHOT = """
@@ -174,17 +169,6 @@ def _parse_json(text: str) -> dict:
         return {}
 
 
-async def _load_system_role(name: str) -> Optional[str]:
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL_GET_SYSTEM_ROLE, (name,))
-                row = cur.fetchone()
-        return row[0] if row else None
-    except Exception:
-        return None
-
-
 async def _call_llm(system_prompt: str, user_message: str, max_tokens: int = 1000) -> str:
     try:
         from data.dl_api_keys import get_key
@@ -247,7 +231,7 @@ class MemoryPromotion:
 
         wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id = row
 
-        system_prompt = await _load_system_role("work_item_promotion") or (
+        system_prompt = _prompts.content("work_item_promotion") or (
             "Given a work item, produce a 2-4 sentence summary capturing what it is, "
             "current status, and any notable progress. "
             "Return JSON only: {\"summary\": \"...\", \"status_ai\": \"active|in_progress|done\"}"
@@ -382,7 +366,7 @@ class MemoryPromotion:
             + "\n\n".join(sections)
         )
 
-        system_prompt = await _load_system_role("feature_snapshot") or (
+        system_prompt = _prompts.content("feature_snapshot") or (
             "Produce a 4-layer feature snapshot as JSON with keys: "
             "requirements (str), action_items (str), "
             "design ({high_level, low_level, patterns_used}), "
@@ -518,7 +502,7 @@ class MemoryPromotion:
     async def _resolve_conflict(
         self, fact_key: str, old_value: str, new_value: str
     ) -> Optional[dict]:
-        system_prompt = await _load_system_role("conflict_detection") or (
+        system_prompt = _prompts.content("conflict_detection") or (
             "You are a project memory conflict resolver. Given two versions of a fact, "
             "decide whether the new value supersedes, merges with, or conflicts with the old. "
             "Return JSON only: "
@@ -566,7 +550,7 @@ class MemoryPromotion:
         if not events:
             return 0
 
-        system_prompt = await _load_system_role("work_item_extraction") or (
+        system_prompt = _prompts.content("work_item_extraction") or (
             "You are a project memory analyst. Given a digest of recent development activity, "
             "identify actionable work items: bugs to fix, features to build, tasks to complete. "
             "Return JSON only:\n"
