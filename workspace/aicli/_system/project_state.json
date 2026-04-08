@@ -17,9 +17,9 @@
     "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
     "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
     "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
-    "mcp": "Stdio MCP server with 12+ tools",
+    "mcp": "Stdio MCP server with 12+ tools for semantic search and work item management",
     "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
-    "database_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
+    "database_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Mirror: mem_mrr_commits, mem_mrr_commits_code; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
     "config_management": "config.py + YAML pipelines + pyproject.toml",
     "db_tables": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
     "llm_provider_adapters": "agents/providers/ with pr_ prefix for pricing and provider implementations",
@@ -50,10 +50,10 @@
     "4-layer memory architecture: ephemeral session messages \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts \u2192 user-managed planner_tags",
     "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
+    "Commit processing: mem_mrr_commits tracks exec_llm=FALSE flag for unprocessed commits; Haiku digest + embedding backpropagates summary and sets exec_llm=TRUE",
     "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
     "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
     "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates",
-    "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
     "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
   ],
   "implemented_features": [
@@ -83,12 +83,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows",
-    "Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table",
+    "Commit code extraction schema finalization: mem_mrr_commits_code table with 19 columns including generated full_symbol column for semantic indexing; DDL migration applied after lock issue resolution",
+    "Embed commits endpoint migration: switching from tags->'llm' IS NULL to exec_llm=FALSE boolean flag for tracking processed commits; backpropagating summary on mem_mrr_commits",
     "Database query performance optimization: route_work_items showing ~60s round-trip latency; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join operations",
-    "Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic",
-    "Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries",
-    "Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state"
+    "Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows",
+    "Project ID resolution in embed_commits: ensuring project parameter uses project_id instead of project string in database queries",
+    "Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-08T11:25:50Z",
+  "last_memory_run": "2026-04-08T13:30:58Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -133,19 +133,19 @@
       "4-layer memory architecture: ephemeral session messages \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts \u2192 user-managed planner_tags",
       "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
+      "Commit processing: mem_mrr_commits tracks exec_llm=FALSE flag for unprocessed commits; Haiku digest + embedding backpropagates summary and sets exec_llm=TRUE",
       "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
       "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
       "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates",
-      "Tag filtering in work item list: ai_category must match tag's category, not work item's own category",
       "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
     ],
     "in_progress": [
-      "Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows",
-      "Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table",
+      "Commit code extraction schema finalization: mem_mrr_commits_code table with 19 columns including generated full_symbol column for semantic indexing; DDL migration applied after lock issue resolution",
+      "Embed commits endpoint migration: switching from tags->'llm' IS NULL to exec_llm=FALSE boolean flag for tracking processed commits; backpropagating summary on mem_mrr_commits",
       "Database query performance optimization: route_work_items showing ~60s round-trip latency; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join operations",
-      "Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic",
-      "Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries",
-      "Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state"
+      "Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows",
+      "Project ID resolution in embed_commits: ensuring project parameter uses project_id instead of project string in database queries",
+      "Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -153,17 +153,18 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Mirror: mem_mrr_commits, mem_mrr_commits_code; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
-      "mcp": "Stdio MCP server with 12+ tools",
+      "mcp": "Stdio MCP server with 12+ tools for semantic search and work item management",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
-      "database_version": "PostgreSQL 15+",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
+      "database_version": "PostgreSQL 15+"
     },
-    "project_summary": "aicli is a shared AI memory platform that integrates Claude/OpenAI LLMs with a PostgreSQL-backed semantic memory system, providing dual-layer memory synthesis, DAG workflow execution, and cross-project knowledge management. The system spans a Python FastAPI backend, Electron desktop UI with Cytoscape workflow visualization, and CLI interface, with current focus on optimizing database performance, debugging tag visibility in the planner system, and ensuring proper data synchronization across the 4-layer memory architecture.",
-    "memory_digest": "**[2026-04-07]** `memory_system` \u2014 Completed memory synthesis runs with Claude Haiku dual-layer processing; updated .ai/rules.md and .cursor/rules/aicli.mdrules to reflect latest architectural context including 4-layer memory architecture and MCP server integration. **[recent]** `database_optimization` \u2014 Identified route_work_items performance bottleneck (~60s latency); investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS join operations and commit table schema clarification. **[recent]** `tag_system` \u2014 Debugging planner tag visibility issue where categories upload successfully but individual tags don't display in category bindings; verifying router mapping logic. **[recent]** `project_resolution` \u2014 Fixing project ID resolution in embed_commits workflow to use project_id instead of project string parameter in database queries. **[recent]** `memory_flow` \u2014 Tracing end-to-end data flow from mirror tables through mem_ai_* unified tables; documenting triggers and update mechanisms for each layer of 4-layer memory architecture. **[recent]** `session_sync` \u2014 Running /memory endpoint to synchronize session data into memory_items and ensure mem_ai_* tables reflect latest project state across all work items and project facts."
+    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 CLI backend with FastAPI, PostgreSQL 15+ with pgvector, and a vanilla JS Electron desktop UI for managing AI-assisted project workflows. It implements a 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 semantic work items) with async DAG workflow execution, multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), and an MCP server for semantic search and work item management. Current focus is stabilizing commit code extraction schema and optimizing database query performance for work item retrieval.",
+    "memory_digest": "**[2026-04-08]** `claude_cli` \u2014 Finalized commit code extraction schema: mem_mrr_commits_code table with 19 columns including generated full_symbol for semantic indexing; resolved DDL migration lock issue where generated column failed silently on first run. **[2026-04-08]** `route_memory.py` \u2014 Migrated embed_commits endpoint from tags->'llm' IS NULL to exec_llm=FALSE boolean flag for tracking processed commits; Haiku digest now backpropagates summary and sets exec_llm=TRUE on mem_mrr_commits. **[2026-03-14]** `PROJECT.md` \u2014 Project facts updated: auth_pattern confirmed as login_as_first_level_hierarchy; memory_management_pattern set to load_once_on_access_update_on_save; mcp_integration focuses on embedding and work item retrieval. **[Recent]** `schema tracking` \u2014 4-layer memory architecture stabilized: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_* LLM digests + embeddings \u2192 work items/project facts \u2192 user planner tags. **[In progress]** Database optimization: route_work_items latency investigation (~60s round-trip); performance tuning on _SQL_UNLINKED_WORK_ITEMS joins and indexing strategy."
   }
 }
