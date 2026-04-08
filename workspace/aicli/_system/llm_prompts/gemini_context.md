@@ -1,5 +1,5 @@
 # Project Context: aicli
-# Generated: 2026-04-07 22:31 UTC
+# Generated: 2026-04-08 13:30 UTC
 
 ## Project Facts
 
@@ -48,6 +48,34 @@ Reviewer: ```json
 - unresolved_issues: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
 
 ## Active Work Items
+
+### #20100 query-commits-by-files-changed
+Category: feature
+Build query capability to search commits by specific files modified using the extracted tags['files'] data.
+
+### #20099 validate-file-tags-extraction
+Category: task
+After backfill completion, verify that tags['files'] correctly captures all modified file paths for each commit.
+
+### #20098 complete-commits-backfill
+Category: task
+Finish backfilling remaining 196 commits in mem_ai_commits table to extract code changes via embedding pipeline.
+
+### #20097 consolidate-tag-merging-logic
+Category: task
+Review and document how tags consolidation from mem_ai_events works across merged sessions to ensure consistency.
+
+### #20096 fix-window-planner-sync-initialization
+Category: bug
+Confirm that window._plannerSync initialization stray call has been fully removed and proper assignment is occurring in 
+
+### #20095 test-content-summary-requirements-accumulation
+Category: task
+Validate that content, summary, and requirements fields properly accumulate across merged sessions without data loss or 
+
+### #20094 verify-source-session-id-tracking
+Category: task
+Audit source_session_id field to ensure it correctly tracks which session created/last modified each work item across me
 
 ### #20093 audit-commit-hook-logging
 Category: task
@@ -122,13 +150,13 @@ Category: bug
 Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
 History 
 
-### #20069 mcp
-Category: bug
-History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
-
 ### #20068 dropbox
 Category: bug
 Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
+
+### #20069 mcp
+Category: bug
+History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
 
 ### #20067 auth
 Category: bug
@@ -142,6 +170,10 @@ History view only shows prompts, not LLM responses. After fixes, only small text
 Category: bug
 aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
 
+### #20062 mcp
+Category: bug
+History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
+
 ### #20061 billing
 Category: bug
 In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
@@ -150,37 +182,33 @@ In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws '
 Category: bug
 Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
 
-### #20062 mcp
+### #20057 auth
 Category: bug
-History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
-
-### #20059 Spurious history events in database
-Category: bug
-History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
+History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
 
 ### #20056 SQL execute syntax error
 Category: bug
 Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
 
-### #20057 auth
-Category: bug
-History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
-
 ### #20060 embeddings
 Category: bug
 llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
 
-### #20054 Column order not applied in mem_ai_events table
+### #20059 Spurious history events in database
 Category: bug
-After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
+History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
+
+### #20053 Copy text functionality missing from history UI
+Category: bug
+Users cannot copy text from the history section of the UI, which limits usability for reviewing and sharing past interac
 
 ### #20052 History UI only shows prompts, not LLM responses
 Category: bug
 The history display is not showing LLM responses, only prompts. Additionally, full prompt and LLM response text is trunc
 
-### #20053 Copy text functionality missing from history UI
+### #20054 Column order not applied in mem_ai_events table
 Category: bug
-Users cannot copy text from the history section of the UI, which limits usability for reviewing and sharing past interac
+After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
 
 ### #20055 Spurious event records in history table
 Category: bug
@@ -442,9 +470,8 @@ graph-workflow
 Category: feature
 shared-memory
 
-## Recent Session (2026-04-07 01:13)
+## Recent Session (2026-04-08 13:30)
 
-• Ran `/memory` command to synchronize and update all memory_item files across the workspace
-• Generated updated system files in workspace/_system/ directory (MEMORY.md, CLAUDE.md, rules.md, context.md, copilot.md)
-• Copied refreshed memory files to code root and configuration directories (.cursor/rules/, .github/)
-• Memory system now has current contextual data for Claude, Cursor, and AI CLI integrations
+• Added `commit_short_hash` column to database schema
+• `mem_mrr_commits_code` table now includes all 19 columns with `full_symbol` as a generated column
+• Identified silent failure in DDL runner during initial migration - likely caused by timing issues and table locks during the first run

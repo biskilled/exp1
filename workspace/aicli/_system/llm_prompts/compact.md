@@ -4,9 +4,9 @@ When working on a specific feature, ask for its snapshot before making decisions
 
 ## Active Features
 
-- audit-commit-hook-logging [task]: Verify the commit hook is correctly logging refined delta metrics and code chang
-- enhance-delta-metrics [feature]: Redesign row delta (+/-) metrics in `mem_ai_commits` to capture meaningful code 
-- remove-diff-details-column [task]: Remove the `diff_details` column from `mem_ai_commits` table as it only stores d
+- query-commits-by-files-changed [feature]: Build query capability to search commits by specific files modified using the ex
+- validate-file-tags-extraction [task]: After backfill completion, verify that tags['files'] correctly captures all modi
+- complete-commits-backfill [task]: Finish backfilling remaining 196 commits in mem_ai_commits table to extract code
 
 ## Last Session
-• Ran `/memory` command to synchronize and update all memory_item files across the workspace. • Generated updated system files in workspace/_system/ directory (MEMORY.md, CLAUDE.md, rules.md, context.md, copilot.md).
+• Added `commit_short_hash` column to database schema. • `mem_mrr_commits_code` table now includes all 19 columns with `full_symbol` as a generated column.

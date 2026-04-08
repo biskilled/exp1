@@ -48,6 +48,13 @@ Reviewer: ```json
 
 ## Active Features
 
+- `#20100 query-commits-by-files-changed` [feature]: Build query capability to search commits by specific files modified using the extracted tags['files'] data.
+- `#20099 validate-file-tags-extraction` [task]: After backfill completion, verify that tags['files'] correctly captures all modified file paths for each commit.
+- `#20098 complete-commits-backfill` [task]: Finish backfilling remaining 196 commits in mem_ai_commits table to extract code changes via embedding pipeline.
+- `#20097 consolidate-tag-merging-logic` [task]: Review and document how tags consolidation from mem_ai_events works across merged sessions to ensure consistency.
+- `#20096 fix-window-planner-sync-initialization` [bug]: Confirm that window._plannerSync initialization stray call has been fully removed and proper assignment is occurring in 
+- `#20095 test-content-summary-requirements-accumulation` [task]: Validate that content, summary, and requirements fields properly accumulate across merged sessions without data loss or 
+- `#20094 verify-source-session-id-tracking` [task]: Audit source_session_id field to ensure it correctly tracks which session created/last modified each work item across me
 - `#20093 audit-commit-hook-logging` [task]: Verify the commit hook is correctly logging refined delta metrics and code change data after implementing the new column
 - `#20092 enhance-delta-metrics` [feature]: Redesign row delta (+/-) metrics in `mem_ai_commits` to capture meaningful code change statistics beyond raw counts, mak
 - `#20091 remove-diff-details-column` [task]: Remove the `diff_details` column from `mem_ai_commits` table as it only stores documentation changes and doesn't capture
@@ -67,21 +74,21 @@ Reviewer: ```json
 - `#20077 sql-parameter-binding-route-work-items-249` [bug]: Fix cur.execute() call on line 249 in route_work_items for unlinked items query—add proper parameter binding to prevent 
 - `#20076 embeddings` [bug]: Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
 History 
-- `#20069 mcp` [bug]: History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
 - `#20068 dropbox` [bug]: Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
+- `#20069 mcp` [bug]: History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
 - `#20067 auth` [bug]: Multiple events from history table don't make sense and appear to be erroneous data that should be removed
 - `#20066 billing` [bug]: History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
 - `#20065 auth` [bug]: aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
+- `#20062 mcp` [bug]: History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
 - `#20061 billing` [bug]: In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
 - `#20063 UI` [bug]: Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
-- `#20062 mcp` [bug]: History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
-- `#20059 Spurious history events in database` [bug]: History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
-- `#20056 SQL execute syntax error` [bug]: Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
 - `#20057 auth` [bug]: History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
+- `#20056 SQL execute syntax error` [bug]: Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
 - `#20060 embeddings` [bug]: llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
-- `#20054 Column order not applied in mem_ai_events table` [bug]: After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
-- `#20052 History UI only shows prompts, not LLM responses` [bug]: The history display is not showing LLM responses, only prompts. Additionally, full prompt and LLM response text is trunc
+- `#20059 Spurious history events in database` [bug]: History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
 - `#20053 Copy text functionality missing from history UI` [bug]: Users cannot copy text from the history section of the UI, which limits usability for reviewing and sharing past interac
+- `#20052 History UI only shows prompts, not LLM responses` [bug]: The history display is not showing LLM responses, only prompts. Additionally, full prompt and LLM response text is trunc
+- `#20054 Column order not applied in mem_ai_events table` [bug]: After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
 - `#20055 Spurious event records in history table` [bug]: The event history table contains many events that don't make sense and appear to be leftover data from previous history 
 - `#20049 Unexpected Historical Events in Database` [bug]: The developer observed numerous events from history in the table that don't make sense and appear to be legacy/erroneous
 - `#20047 UI History Display Truncation` [bug]: Prompts and LLM responses in history are displaying as small text instead of showing the full content. Users cannot see 
@@ -148,9 +155,8 @@ History
 - `graph-workflow` [feature]: graph-workflow
 - `shared-memory` [feature]: shared-memory
 
-## Last Session (2026-04-07 01:13)
+## Last Session (2026-04-08 13:30)
 
-- • Ran `/memory` command to synchronize and update all memory_item files across the workspace
-- • Generated updated system files in workspace/_system/ directory (MEMORY.md, CLAUDE.md, rules.md, context.md, copilot.md)
-- • Copied refreshed memory files to code root and configuration directories (.cursor/rules/, .github/)
-- • Memory system now has current contextual data for Claude, Cursor, and AI CLI integrations
+- • Added `commit_short_hash` column to database schema
+- • `mem_mrr_commits_code` table now includes all 19 columns with `full_symbol` as a generated column
+- • Identified silent failure in DDL runner during initial migration - likely caused by timing issues and table locks during the first run
