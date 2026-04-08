@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-08 16:23 UTC — do not edit manually.
+> Auto-generated 2026-04-08 17:20 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 429
-- **Last active**: 2026-04-08T16:22:47Z
+- **Sessions**: 431
+- **Last active**: 2026-04-08T17:20:08Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -52,12 +52,12 @@
 
 ## In Progress
 
-- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader._prompts.content() instead of direct mng_system_roles queries; eliminates redundant database lookups
-- Commit pipeline prompt discovery: tracing all LLM prompts used in commit processing (code extraction, summarization, embedding) located in memory/memory_embedding.py, agents/tools/, and routers/route_snapshots.py
-- Memory endpoint data flow: verifying synchronization from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables; identified import migration from mem_embeddings to memory_embedding module
-- Module restructuring: consolidating embedding/ingestion logic into memory_embedding.py; updating imports across route_snapshots.py, route_search.py, route_prompts.py for consistent module paths
-- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join optimization on mem_ai_events
-- Planner tag visibility debugging: categories upload but individual tags don't display in UI bindings; verifying router mapping and category query logic
+- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader._prompts.content() instead of direct mng_system_roles queries for performance and consistency
+- Commit pipeline prompt discovery: tracing all LLM prompts in memory_embedding.py, agents/tools/, and route_snapshots.py to establish comprehensive prompt inventory
+- Memory endpoint data flow synchronization: verifying cascade from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream tables; completed import migration to memory_embedding module
+- Module restructuring: consolidating embedding/ingestion logic into memory_embedding.py; updating imports across route_snapshots.py, route_search.py, route_prompts.py for consistency
+- Database query performance optimization: investigating ~60s latency in route_work_items; indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join optimization on mem_ai_events
+- Planner tag visibility debugging: resolving issue where categories upload correctly but individual tags don't display in UI bindings; verifying router mapping and category query logic
 
 ## Key Decisions
 
@@ -75,7 +75,7 @@
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; route_snapshots and route_memory now load prompts from configuration
+- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; eliminates redundant database lookups
 
 ---
 
