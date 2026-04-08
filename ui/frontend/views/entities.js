@@ -2170,6 +2170,14 @@ function _attachTagTableDnd(pane, catName) {
       const h = document.getElementById('planner-dnd-hint');
       if (h) h.style.display = 'none';
       const proj = _plannerState.project;
+      // Optimistic: immediately remove from lower panel
+      const _wiRow = document.querySelector(`#wi-panel-list [data-wi-id="${CSS.escape(wi.id)}"]`);
+      if (_wiRow) {
+        _wiRow.remove();
+        const _cnt = document.getElementById('wi-panel-count');
+        const _rem = document.querySelectorAll('#wi-panel-list [data-wi-id]').length;
+        if (_cnt) _cnt.textContent = _rem ? `(${_rem} unlinked)` : '(all linked ✓)';
+      }
       api.workItems.patch(wi.id, proj, { tag_id: tagId })
         .then(() => {
           toast(`Linked "${wi.ai_name}" → "${tagName}"`, 'success');
@@ -2177,7 +2185,7 @@ function _attachTagTableDnd(pane, catName) {
           // Inject sub-rows directly (no full re-render needed)
           if (catName) _loadTagLinkedWorkItems(proj, catName).catch(() => {});
         })
-        .catch(err => toast(err.message, 'error'));
+        .catch(err => { toast(err.message, 'error'); _loadWiPanel(proj); });
       return;
     }
     if (!_dragTag || !_dragZone) { _dndClearHighlight(); return; }

@@ -1252,6 +1252,16 @@ UPDATE mem_mrr_commits
 """
 
 
+# ─── DDL: schema version tracking ────────────────────────────────────────────
+
+_DDL_SCHEMA_VERSION = """
+CREATE TABLE IF NOT EXISTS mng_schema_version (
+    version    VARCHAR(100) PRIMARY KEY,
+    applied_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+"""
+
+
 # ─── Database class ───────────────────────────────────────────────────────────
 
 class _Database:
@@ -1400,18 +1410,53 @@ class _Database:
         _Database._seed_role_system_links(conn)
         _Database._seed_tag_categories(conn)
 
+    @staticmethod
+    def _migration_applied(conn, version: str) -> bool:
+        """Return True if this migration version is recorded in mng_schema_version."""
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM mng_schema_version WHERE version=%s", (version,))
+                return cur.fetchone() is not None
+        except Exception:
+            return False
+
+    @staticmethod
+    def _record_migration(conn, version: str) -> None:
+        """Mark a migration version as applied."""
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO mng_schema_version (version) VALUES (%s) ON CONFLICT DO NOTHING",
+                (version,),
+            )
+        conn.commit()
+
     def _ensure_shared_schema(self, conn) -> None:
         """Create all tables (mem_mrr_*, mem_ai_*, planner_*, pr_*) and run migrations.
 
-        Runs once per process lifetime.  Migration DO $$ blocks inside each DDL
-        string handle idempotent renames so this is safe to call on every restart.
+        Uses mng_schema_version to skip migrations already applied — prevents the
+        ~80-second Railway startup delay caused by re-running every ALTER TABLE on restart.
+        Bump the version string (e.g. _v2 → _v3) when you add new statements to a block.
         """
         if self._shared_schema_ready:
             return
-        _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "mem_mrr_* + mem_ai_work_items + mem_ai_project_facts + graph tables")
-        _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA, "planner_tags + mem_mrr_* + mem_ai_* tables")
-        _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA_ALTERS, "memory infra column alters")
-        _Database._run_ddl_statements(conn, _DDL_COMMIT_CODE, "mem_mrr_commits_code")
+
+        # Schema version table must exist before we can check versions
+        _Database._run_ddl_statements(conn, _DDL_SCHEMA_VERSION, "schema_version")
+
+        _migrations = [
+            ("pr_tables_v1",             _DDL_PR_TABLES,             "mem_mrr_* + mem_ai_work_items + graph tables"),
+            ("memory_infra_v1",          _DDL_MEMORY_INFRA,          "planner_tags + mem_mrr_* + mem_ai_* tables"),
+            ("memory_infra_alters_v2",   _DDL_MEMORY_INFRA_ALTERS,   "memory infra column alters (migration 016)"),
+            ("commit_code_v1",           _DDL_COMMIT_CODE,            "mem_mrr_commits_code"),
+        ]
+        for version, ddl, label in _migrations:
+            if _Database._migration_applied(conn, version):
+                log.debug(f"⏩ skipping {label} (already applied)")
+            else:
+                _Database._run_ddl_statements(conn, ddl, label)
+                _Database._record_migration(conn, version)
+                log.debug(f"✅ applied {label} (version={version})")
+
         self._shared_schema_ready = True
         log.info("✅ three-layer memory schema ready (mem_mrr_* | planner_* | mem_ai_*)")
     # ── Seeding ────────────────────────────────────────────────────────────────

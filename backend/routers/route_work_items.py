@@ -30,28 +30,39 @@ from data.dl_seq import next_seq
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
 _SQL_LIST_WORK_ITEMS_BASE = (
-    """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+    """WITH pcount AS (
+         SELECT tags->>'work-item' AS wi_id, COUNT(*) AS cnt
+         FROM mem_mrr_prompts
+         WHERE project_id=%s AND tags ? 'work-item'
+         GROUP BY 1
+       ),
+       ccount AS (
+         SELECT tags->>'work-item' AS wi_id, COUNT(*) AS cnt
+         FROM mem_mrr_commits
+         WHERE project_id=%s AND tags ? 'work-item'
+         GROUP BY 1
+       ),
+       mcount AS (
+         SELECT merged_into::text AS wi_id, COUNT(*) AS cnt
+         FROM mem_ai_work_items
+         WHERE project_id=%s AND merged_into IS NOT NULL
+         GROUP BY 1
+       )
+       SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
               w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
               w.requirements, w.code_summary, w.summary,
               w.tags, w.ai_tags, w.tag_id, w.ai_tag_id, w.source_event_id,
               w.merged_into, w.start_date,
               w.created_at, w.updated_at, w.seq_num,
               tc.color, tc.icon,
-              (SELECT COUNT(*) FROM mem_mrr_prompts p
-               WHERE p.project_id=w.project_id AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count,
-              (SELECT COUNT(*) FROM mem_mrr_commits c
-               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS commit_count,
-              (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
-              (SELECT COALESCE(SUM(cc.rows_added), 0)
-               FROM mem_mrr_commits_code cc
-               JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
-               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS rows_added,
-              (SELECT COALESCE(SUM(cc.rows_removed), 0)
-               FROM mem_mrr_commits_code cc
-               JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
-               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS rows_removed
+              COALESCE(pcount.cnt, 0) AS interaction_count,
+              COALESCE(ccount.cnt, 0) AS commit_count,
+              COALESCE(mcount.cnt, 0) AS merge_count
        FROM mem_ai_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
+       LEFT JOIN pcount ON pcount.wi_id = w.id::text
+       LEFT JOIN ccount ON ccount.wi_id = w.id::text
+       LEFT JOIN mcount ON mcount.wi_id = w.id::text
        WHERE {where}
        ORDER BY w.created_at DESC
        LIMIT %s"""
@@ -328,7 +339,8 @@ async def list_work_items(
     sql = _SQL_LIST_WORK_ITEMS_BASE.format(where=" AND ".join(where))
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, params + [limit])
+            # 3 extra p_id params for the pcount/ccount/mcount CTEs
+            cur.execute(sql, [p_id, p_id, p_id] + params + [limit])
             cols = [d[0] for d in cur.description]
             rows = []
             for r in cur.fetchall():
