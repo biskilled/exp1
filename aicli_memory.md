@@ -1,404 +1,616 @@
 # aicli — Memory & Tagging Architecture
 
-_Last updated: 2026-04-07 | Updated for migration 014 + importance scoring + auto-extract pipeline_
+_Last updated: 2026-04-08 | Reflects migration 016, mem_mrr_commits_code, file-based prompt system_
 
 ---
 
 ## 0. Mental Model
 
-aicli memory has **4 active layers** stacked on top of each other.
-**planner_tags** is the user-managed top layer; everything below is LLM/trigger-managed.
+aicli memory is a **4-layer pipeline**. Data flows **down**: every raw event eventually becomes
+a structured work item. `planner_tags` sits above as the user-managed project view.
 
 ```
- ┌──────────────────────────────────────────────────────────────────────┐
- │ Layer 0 — Ephemeral         In-session message list (RAM / JSON)     │
- │ Layer 1 — Raw Capture       Everything stored as-is   (mem_mrr_*)    │
- │ Layer 2 — AI Events         Digested + embedded        (mem_ai_events)│
- │ Layer 3 — Structured        Work Items + Project Facts                │
- │ Layer 4 — User Tags         planner_tags  (USER-MANAGED)              │
- └──────────────────────────────────────────────────────────────────────┘
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │ Layer 0 — Ephemeral     In-session message list (RAM / JSON file)            │
+ │                                                                              │
+ │ Layer 1 — Raw Capture   Everything stored verbatim         (mem_mrr_*)       │
+ │                         ├─ mem_mrr_prompts                                   │
+ │                         ├─ mem_mrr_commits  + mem_mrr_commits_code (new)     │
+ │                         ├─ mem_mrr_items                                     │
+ │                         └─ mem_mrr_messages                                  │
+ │                                                                              │
+ │ Layer 2 — AI Events     Digested + embedded                (mem_ai_events)   │
+ │                                                                              │
+ │ Layer 3 — Structured    AI-detected artifacts              (mem_ai_*)        │
+ │                         ├─ mem_ai_work_items                                 │
+ │                         └─ mem_ai_project_facts                              │
+ │                                                                              │
+ │ Layer 4 — User Tags     planner_tags   ← USER OWNS THIS                     │
+ └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key design principle**:
-- `planner_tags` = **User** owns this. LLM only writes when user clicks "Run Planner" or "Snapshot".
-- Everything below `planner_tags` = **LLM + Triggers** own it. User does not manually edit.
-- `tag_id` on work items = **User** sets via drag-drop only. `ai_tag_id` = LLM suggestion (auto).
+**Ownership boundary**:
+
+| Layer | Owner | Rule |
+|-------|-------|------|
+| 0–3 | LLM + Triggers | Fully automatic. User does not manually edit. |
+| 4 | **User** | User creates/edits tags. LLM writes ONLY on explicit button click. |
+| `work_items.tag_id` | **User** | Drag-drop only. `ai_tag_id` = LLM suggestion (auto). |
+
+**Phase goal**: AI manages all data through Layer 3 (`mem_ai_work_items`). User manages Layer 4
+(`planner_tags`). Future: merge both via `tag_id` linkage.
 
 ---
 
 ## Layer 0 — Ephemeral (Session Messages)
 
-**Responsible**: Trigger (auto, no DB)
 **Storage**: `workspace/{project}/_system/sessions/{session_id}.json`
-**Python class**: `SessionStore` (`backend/memory/mem_sessions.py`)
+**Python**: `SessionStore` in `backend/memory/memory_sessions.py`
+**Trigger**: Created on first prompt; appended on each turn; never written to PostgreSQL.
 
-Not stored in PostgreSQL — file-only, short-lived within a session.
+Used only for LLM context continuity within a single session. Not searchable.
 
 ---
 
 ## Layer 1 — Raw Capture (`mem_mrr_*`)
 
-Everything stored verbatim as received. No AI processing. The audit trail.
+Everything stored verbatim. No AI processing at insert time. The audit trail.
+
+---
 
 ### `mem_mrr_prompts`
 
-**Trigger**: `post_prompt.sh` hook → `POST /memory/{p}/prompts`
+**Trigger**: `post_prompt.sh` hook → `POST /memory/{project}/prompts`
 
-| Column | Responsible | Notes |
-|--------|-------------|-------|
-| `id` UUID | Trigger | PK |
-| `session_id` | Trigger | Groups turns in a session |
-| `source_id` | Trigger | External ID from hook |
-| `prompt` TEXT | Trigger | Raw user input |
-| `response` TEXT | Trigger | Raw AI response |
-| `tags` JSONB | Trigger | `{source, phase, feature, work-item, llm}` — inline tagging |
-| `created_at` | Trigger | Insert timestamp |
+| Column | Written by | Notes |
+|--------|-----------|-------|
+| `id` UUID | Hook | PK |
+| `session_id` | Hook | Groups turns |
+| `source_id` | Hook | External hook timestamp |
+| `prompt` TEXT | Hook | Raw user input |
+| `response` TEXT | Hook | Raw AI response |
+| `tags` JSONB | Hook | `{source, phase, feature, bug, work-item, llm}` |
+| `created_at` | DB | Auto |
 
-**Relevance: 0/5** — raw data, no digest; only useful as source for Layer 2
+**Downstream trigger**: Every ~5 prompts in a session → `process_prompt_batch()` (Layer 2).
 
 ---
 
 ### `mem_mrr_commits`
 
-**Trigger**: `post_commit.sh` hook → `POST /memory/{p}/commits`
+**Trigger**: `post_commit.sh` hook → `POST /git/{project}/commit-push`
 
-| Column | Responsible | Notes |
-|--------|-------------|-------|
-| `commit_hash` | Trigger | PK |
-| `commit_msg` | Trigger | Git commit message |
-| `summary` TEXT | **LLM** (back-propagated) | Haiku digest written by `process_commit()` |
-| `tags` JSONB | Trigger + **LLM** | Initial: `{source, phase, feature}`; LLM adds `files`, `languages`, `symbols` |
-| `session_id` | Trigger | Links to session |
-| `committed_at` | Trigger | Git timestamp |
+After the hook fires, **three sequential background tasks** run automatically:
 
-**`tags["files"]`** — `{filename: rows_changed}` — populated by `smart_chunk_diff()` (code files only; CLAUDE.md/.cursorrules/MEMORY.md excluded)
-**`tags["symbols"]`** — class/function names extracted from diff (Python, JS, TS)
-**`tags["languages"]`** — list of languages in changed files
+| # | Background Task | Output |
+|---|----------------|--------|
+| 1 | `_sync_commit_and_link()` | INSERT into `mem_mrr_commits` + link to session/prompt |
+| 2 | `_embed_commit_background()` → `process_commit()` | Layer 2: mem_ai_events digest + diff chunks |
+| 3 | `_extract_commit_code_background()` → `extract_commit_code()` | Layer 1: mem_mrr_commits_code symbol rows |
 
-**NOTE**: `diff_details` JSONB was **DROPPED** (migration 008 — applied to Railway 2026-04-07). `diff_summary` TEXT **remains** — stores git `--stat` output written by `route_git.py` on each commit. Richer file stats are also in `tags["files"]`, `tags["languages"]`, `tags["symbols"]`.
+#### Columns (after migration 016)
 
-**Relevance: 3/5** — commit_msg useful; summary+files/symbols make it 4/5
+| Column | Written by | Notes |
+|--------|-----------|-------|
+| `commit_hash` VARCHAR(64) | Hook | PK |
+| `commit_short_hash` VARCHAR(8) | DB (generated) | `LEFT(commit_hash,8)` — read-only |
+| `author` TEXT | Hook (git log) | Git author name |
+| `author_email` TEXT | Hook (git log) | Git author email |
+| `commit_msg` TEXT | Hook | Full commit message |
+| `diff_summary` TEXT | Hook | `git diff --stat` output |
+| `summary` TEXT | **LLM** (back-prop) | 1-2 sentence Haiku digest from `commit_digest` prompt |
+| `llm` TEXT | **LLM** (back-prop) | Model used for digest e.g. `claude-haiku-4-5-20251001` |
+| `exec_llm` BOOLEAN | **LLM** (back-prop) | TRUE after `process_commit()` runs |
+| `session_id` | Hook | Links to active session |
+| `prompt_id` UUID | Hook | Links to prompt that triggered the commit |
+| `tags` JSONB | Hook | **User intent only**: `{source, phase, feature, bug, work-item}` |
+| `tags_ai` JSONB | **LLM** (back-prop) | AI metadata: `{languages: [...]}` from diff analysis |
+| `committed_at` | Hook | Git timestamp |
+| `created_at` | DB | Auto |
+
+**Key change (migration 016)**: `tags` is now **clean** — no file stats, no symbol lists, no LLM keys.
+Old technical keys (`files`, `languages`, `symbols`, `rows_changed`, `llm`, `analysis`) were migrated out:
+- `llm` → `llm` column
+- `languages` → `tags_ai["languages"]`
+- `files`, `symbols`, `rows_changed` → **`mem_mrr_commits_code`** table (per-symbol rows)
+
+#### Commit LLM Prompts
+
+Three prompts fire during a commit, each using a different model:
+
+| Step | Prompt | File | Model | Max tokens | When | Returns |
+|------|--------|------|-------|-----------|------|---------|
+| 1. Commit message | `commit_analysis` | `memory/commits/commit_analysis.md` | **Sonnet** | 800 | Before `git commit` (in `_generate_commit_message()`) | `{message, summary, key_classes, key_methods, patterns_used, decisions, test_coverage, dependencies}` |
+| 2. Digest | `commit_digest` | `memory/commits/commit_digest.md` | **Haiku** | 200 | After commit stored (`process_commit()`) | `{summary, action_items, importance}` |
+| 3. Symbol summary | `commit_symbol` | `memory/commits/commit_symbol.md` | **Haiku** | 120 | Per changed symbol (`extract_commit_code()`) | Plain 1-sentence summary |
+
+**Why Sonnet for step 1?** Generating a conventional commit message + full structured analysis from a diff requires deep code understanding. Steps 2 and 3 are simpler digests → Haiku is sufficient and cheaper.
+
+---
+
+### `mem_mrr_commits_code` (new — migration 016)
+
+**Trigger**: Background task 3 above → `extract_commit_code()` in `memory/memory_code_parser.py`
+**Tool**: tree-sitter AST parsing (Python, JS/TS, Go, Rust, Java, Ruby)
+
+One row per changed **symbol** (class / method / function) per file per commit.
+
+| Column | Written by | Notes |
+|--------|-----------|-------|
+| `commit_hash` | FK | References mem_mrr_commits |
+| `file_path` TEXT | tree-sitter | Full file path in repo |
+| `file_ext` TEXT | Parser | `.py`, `.ts`, etc. |
+| `file_language` TEXT | Parser | Detected from extension |
+| `file_change` TEXT | Parser | `added` \| `modified` \| `deleted` \| `renamed` |
+| `symbol_type` TEXT | tree-sitter | `class` \| `method` \| `function` |
+| `class_name` TEXT | tree-sitter | Parent class (NULL for module-level functions) |
+| `method_name` TEXT | tree-sitter | Function/method name |
+| `full_symbol` TEXT | DB (generated) | `class_name.method_name` or just one of them |
+| `symbol_change` TEXT | Parser | `added` \| `modified` \| `deleted` |
+| `rows_added` INT | Parser | Lines added within this symbol's range |
+| `rows_removed` INT | Parser | Lines removed within this symbol's range |
+| `diff_snippet` TEXT | Parser | Diff lines touching this symbol (≤500 chars) |
+| `llm_summary` TEXT | **LLM** | 1-sentence summary from `commit_symbol` prompt (skipped if rows_added+rows_removed < min_lines) |
+| `embedding` VECTOR(1536) | Trigger | OpenAI embed of `llm_summary` |
+
+**YAML guards** (`workspace/{project}/project.yaml`):
+```yaml
+commit_code_extraction:
+  min_lines: 5                      # skip llm_summary if fewer rows changed
+  only_on_commits_with_tags: false  # if true, only extract symbols from tagged commits
+```
+
+**Use case**: Semantic search by symbol name, per-feature code coverage, "what touched `ClassName.method`?"
 
 ---
 
 ### `mem_mrr_items`
 
-**Trigger**: Manual `POST /memory/{p}/items` or CLI import
+**Trigger**: Manual `POST /memory/{project}/items` or CLI import
 
-| Column | Responsible | Notes |
-|--------|-------------|-------|
-| `id` UUID | Trigger | PK |
-| `item_type` | **User** | `requirement`, `decision`, `meeting`, `note` |
-| `title` | **User** | Short title |
-| `raw_text` | **User** | Full document content |
-| `summary` TEXT | **LLM** (back-propagated) | Haiku digest |
+| Column | Written by | Notes |
+|--------|-----------|-------|
+| `item_type` | User | `requirement`, `decision`, `meeting`, `note` |
+| `raw_text` | User | Full document content |
+| `summary` TEXT | **LLM** (back-prop) | Haiku digest |
 | `tags` JSONB | User | Classification |
 
-**Relevance: 4/5** — decisions and requirements are high-value
+**Downstream trigger**: `process_item()` → Layer 2 (item_digest + optional meeting_sections + relation_extraction).
 
 ---
 
 ### `mem_mrr_messages`
 
-**Trigger**: Integration hook → `POST /memory/{p}/messages`
+**Trigger**: Integration hook → `POST /memory/{project}/messages`
 
-| Column | Responsible | Notes |
-|--------|-------------|-------|
-| `platform` | Trigger | `slack`, `teams`, `discord` |
-| `channel` | Trigger | Channel/thread name |
-| `messages` JSONB | Trigger | Array of `{user, text, ts}` |
-| `tags` JSONB | Trigger | Session/feature classification |
+Stores Slack / Teams / Discord thread dumps.
 
-**Relevance: 2/5** — useful when linked to features
+**Downstream trigger**: `process_messages()` → Layer 2 (message_chunk_digest).
 
 ---
 
 ## Layer 2 — AI Events (`mem_ai_events`)
 
-Every Layer 1 source gets digested by Haiku and embedded. Primary semantic search target.
+Every Layer 1 source gets a Haiku digest + OpenAI embedding here.
+This is the **primary semantic search target**.
 
-**Trigger**: `MemoryEmbedding.process_*()` — called after each mirror INSERT
-**Responsible**: LLM (digest + importance) + Trigger (embedding)
+**Python**: `MemoryEmbedding` in `backend/memory/memory_embedding.py`
 
-| Column | Responsible | Notes |
-|--------|-------------|-------|
-| `id` UUID | Trigger | PK |
+| Column | Written by | Notes |
+|--------|-----------|-------|
 | `event_type` | Trigger | `prompt_batch` \| `commit` \| `item` \| `message` \| `session_summary` \| `workflow` |
-| `source_id` | Trigger | FK to mirror row |
-| `session_id` | Trigger | Propagated from mirror |
-| `chunk` INT | Trigger | 0=summary/digest, 1+=detail chunks |
-| `chunk_type` | Trigger | `full`, `summary`, `section`, `diff_file`, `class`, `function` |
-| `content` TEXT | **LLM** | Haiku digest text (chunk=0); raw diff/code text (chunk>0) |
-| `summary` TEXT | **LLM** | Haiku 1-2 sentence summary |
-| `action_items` TEXT | **LLM** | Extracted open action items |
-| `importance` SMALLINT | **LLM** | **0–10** AI-scored (1=trivial, 10=critical architecture) |
+| `source_id` | Trigger | UUID or hash of the Layer 1 row |
+| `chunk` INT | Trigger | `0` = summary/digest; `1+` = detail chunks |
+| `chunk_type` | Trigger | `full`, `summary`, `section`, `diff_file` |
+| `content` TEXT | LLM/Trigger | Haiku digest (chunk=0); raw diff/code (chunk>0) |
+| `summary` TEXT | **LLM** | 1-2 sentence Haiku summary |
+| `action_items` TEXT | **LLM** | Extracted open tasks |
+| `importance` SMALLINT | **LLM** | 0–10 AI-scored |
 | `embedding` VECTOR(1536) | Trigger | OpenAI text-embedding-3-small |
-| `tags` JSONB | Trigger + LLM | Merged from mirror tags + `{llm: model_name}` |
-| `processed_at` | Trigger | Set after `promote_feature_snapshot()` consumes event |
+| `tags` JSONB | Trigger+LLM | Mirror tags merged with `{llm: model}` |
+| `processed_at` | Trigger | Set when `promote_feature_snapshot()` consumes event |
 
-### Importance Score Scale (LLM-assigned)
+### Importance Scale
 
 | Score | Meaning |
 |-------|---------|
-| 1–2 | Trivial / chore (typo, formatting) |
+| 1–2 | Trivial / chore |
 | 3–4 | Minor fix / debug |
 | 5–6 | Feature work, new endpoint |
 | 7–8 | Significant change, new module |
 | 9–10 | Critical / architectural decision |
 
-### How each `event_type` is produced
-
-#### `prompt_batch`
-- **When**: Auto after every ~5 prompts in a session
-- **LLM prompt**: `prompt_batch_digest` → returns `{summary, action_items, importance}`
-- **Auto-triggers**: `extract_work_items_from_events()` in background (asyncio.ensure_future)
-- **Chunks**: chunk=0 = Haiku digest; chunk≥1 = long response paragraphs (raw embed)
-
-#### `commit`
-- **When**: After `POST /memory/{p}/commits` → `process_commit()` called
-- **LLM prompt**: `commit_digest` → returns `{summary, action_items, importance}`
-- **Chunks**: chunk=0 = Haiku digest; chunk≥1 = per-file diff (code files only, generated files filtered)
-- **Tags back-propagated** to `mem_mrr_commits`: `files`, `languages`, `symbols`
-
-#### `item`
-- **When**: After `POST /memory/{p}/items` → `process_item()` called
-- **LLM prompts**: `item_digest` → `{summary, action_items, importance}`; `relation_extraction` for tag relationships
-- **Chunks**: per-section for meetings/large items
-
-#### `session_summary`
-- **When**: `log_session_stop.sh` → `POST /memory/{p}/session-summary`
-- **LLM prompt**: `session_end_synthesis` → `{summary, open_threads, next_steps}`
-- **importance**: typically 7-8 (session-level synthesis)
-
-#### `workflow`
-- **When**: After a 4-agent pipeline run completes
-- **No LLM digest** — raw workflow output embedded directly
-
-### Relevance Scoring Formula
-
-```
-relevance = importance × exp(-0.01 × age_days)
-```
-Foundational facts get 50% floor. Time-decay surfaces recent events first.
-
-**Scores by event_type**:
-- `session_summary`: 5/5 — highest signal
-- `commit` chunk=0: 4/5 — Haiku digest with importance
-- `prompt_batch` chunk=0: 3/5 — batch digest
-- `item` / `message`: 3/5
-- diff_file chunks (chunk>0): 2/5 — raw code, useful for semantic search only
+**Relevance formula**: `importance × exp(-0.01 × age_days)` — foundational facts get 50% floor.
 
 ---
 
-## Layer 3 — Structured Artifacts
+### How each `event_type` is produced
 
-### `mem_ai_work_items` — AI-detected tasks/bugs/features
+#### `prompt_batch`
 
-**Trigger**: `MemoryPromotion.extract_work_items_from_events()` — **auto-triggered** after each prompt batch
-**Responsible**: LLM for all core fields; User for status_user + tag_id only
+**When**: Auto after every ~5 prompts in a session (inside `POST /memory/{project}/prompts`)
+**Prompt**: `prompt_batch_digest` (Haiku, 250 tokens) → `{summary, action_items, importance}`
+**Chunks**: chunk=0 = Haiku digest; chunk≥1 = long response paragraphs (raw embed, no LLM)
+**Auto-triggers next**: `extract_work_items_from_events()` in background (fire-and-forget)
 
-| Column | Responsible | Relevance | Notes |
-|--------|-------------|-----------|-------|
-| `ai_category` | **LLM** | 4/5 | `bug`, `feature`, `task` |
-| `ai_name` | **LLM** | 5/5 | Slug-style, UNIQUE key |
-| `ai_desc` | **LLM** | 5/5 | 1-2 sentence description |
-| `summary` | **LLM** (Planner) | 5/5 | 3-4 sentence status summary (updated by `run_planner()`) |
-| `action_items` | **LLM** (Planner) | 5/5 | Remaining tasks |
-| `acceptance_criteria` | **LLM** (Planner) | 5/5 | Testable QA criteria |
-| `code_summary` | **LLM** | 4/5 | Code context from linked commits |
-| `requirements` | **LLM** | 3/5 | Functional requirements |
-| `status_ai` | **LLM** | 3/5 | AI-suggested: `active`, `in_progress`, `done` |
-| `status_user` | **User** | 4/5 | User-set lifecycle: `active`, `in_progress`, `paused`, `done` |
-| `start_date` | User + Trigger | 3/5 | Auto-set when status_user→in_progress; user-editable |
-| `tag_id` | **User** | 5/5 | Confirmed link to planner_tag (drag-drop ONLY) |
-| `ai_tag_id` | **LLM** | 4/5 | AI-suggested tag (auto-set by `match_work_item_to_tags()`) |
-| `tags` JSONB | Trigger | 2/5 | Stats: `{commit_count, interaction_count}` |
-| `source_event_id` | Trigger | 2/5 | Source mem_ai_events row (prevents re-extraction) |
-| `embedding` VECTOR | Trigger | 4/5 | Semantic work-item search |
-| `seq_num` INT | Trigger | 3/5 | Auto-increment display number |
-| `merged_into` UUID | **User** | 2/5 | Points to canonical work item after merge |
+#### `commit`
 
-**LLM prompt**: `work_item_extraction` → `{items: [{category, name, description}]}`
-**Input**: Event summary + action_items from unprocessed `mem_ai_events`
+**When**: After commit is stored → background task 2 → `process_commit()`
+**Prompt**: `commit_digest` (Haiku, 200 tokens) → `{summary, action_items, importance}`
+**Chunks**: chunk=0 = Haiku digest; chunk≥1 = per-file diff sections (code files only; CLAUDE.md / .cursorrules / MEMORY.md filtered out)
+**Back-propagates**: `summary` → `mem_mrr_commits.summary`; `llm` + `exec_llm=TRUE` → `mem_mrr_commits`; `languages` → `mem_mrr_commits.tags_ai`
 
-**Tag matching pipeline** (auto-run after extract):
-1. Exact name match → `ai_tag_id` set at confidence 1.0
-2. Vector similarity >0.85 → `ai_tag_id` auto-set
-3. Haiku judgment 0.70–0.85 → `ai_tag_id` set if approved
-4. `tag_id` **NEVER** auto-set — user drag-drop only
+#### `item`
+
+**When**: After `POST /memory/{project}/items` → `process_item()`
+**Prompts**:
+- Short items (<200 words): `item_digest` (Haiku, 200 tokens) → `{summary, action_items, importance}`
+- Meeting/large items: `meeting_sections` (Haiku, 1000 tokens) → `[{title, content}]`
+- Always: `relation_extraction` (Haiku, 400 tokens) → `{relations: [{from, relation, to, note}]}`
+
+#### `session_summary`
+
+**When**: `log_session_stop.sh` hook → `POST /memory/{project}/session-summary`
+**Prompt**: `session_end_synthesis` (Haiku, 600 tokens) → `{summary, open_threads, next_steps}`
+**Importance**: typically 7–8 (session-level synthesis = high signal)
+
+#### `message`
+
+**When**: After `POST /memory/{project}/messages` → `process_messages()`
+**Prompt**: `message_chunk_digest` (Haiku, 200 tokens) → plain text summary
+
+#### `workflow`
+
+**When**: After a 4-agent pipeline run completes
+**No LLM digest** — workflow output embedded directly
+
+---
+
+## Layer 3 — Structured Artifacts (`mem_ai_*`)
+
+### `mem_ai_work_items` — AI-detected tasks / bugs / features
+
+**Trigger**: `extract_work_items_from_events()` — **auto-triggered** after every prompt batch
+**Python**: `MemoryPromotion` in `backend/memory/memory_promotion.py`
+
+| Column | Written by | Notes |
+|--------|-----------|-------|
+| `ai_category` | **LLM** | `bug`, `feature`, `task` |
+| `ai_name` | **LLM** | Lowercase-hyphenated slug; UNIQUE key within project+category |
+| `ai_desc` | **LLM** | 1-2 sentence description |
+| `summary` | **LLM** (Planner) | 3-4 sentence status summary — written by `run_planner()` |
+| `action_items` | **LLM** (Planner) | Remaining tasks — written by `run_planner()` |
+| `acceptance_criteria` | **LLM** (Planner) | Testable QA criteria — written by `run_planner()` |
+| `requirements` | **LLM** | Functional requirements (from extraction) |
+| `code_summary` TEXT | **LLM** | Code context distilled from linked commits |
+| `status_ai` | **LLM** | AI suggestion: `active`, `in_progress`, `done` |
+| `status_user` | **User** | User-set lifecycle: `active`, `in_progress`, `paused`, `done` |
+| `start_date` | User+Trigger | Auto-set when `status_user` → `in_progress` |
+| `tag_id` UUID | **User** | Confirmed link to planner_tag (drag-drop ONLY) |
+| `ai_tag_id` UUID | **LLM** | Auto-suggested tag (set by `match_work_item_to_tags()`) |
+| `source_event_id` UUID | Trigger | mem_ai_events row that generated this item (prevents re-extraction) |
+| `embedding` VECTOR | Trigger | Semantic search |
+| `seq_num` INT | DB | Auto-increment display number |
+| `merged_into` UUID | **User** | Points to canonical work item after user merge |
+
+**LLM prompt**: `work_item_extraction` (Haiku, 500 tokens)
+→ `{items: [{category, name, description}]}`
+**Input**: Unprocessed `mem_ai_events` summaries + action_items where no `source_event_id` link exists
+
+#### Tag matching pipeline (auto after extract)
+
+```
+ai_name exact match → ai_tag_id @ confidence 1.0
+       ↓ (no match)
+Vector cosine > 0.85 → ai_tag_id auto-set
+       ↓ (no match)
+Haiku judgment 0.70–0.85 → ai_tag_id set if approved
+       ↓ (no match)
+ai_tag_id = NULL
+
+tag_id NEVER auto-set — user drag-drop only
+```
+
+**Prompt used**: `ai_tag_suggestion` (Haiku) via `MemoryTagging.match_work_item_to_tags()`
 
 ---
 
 ### `mem_ai_project_facts` — Durable project facts
 
-**Trigger**: `MemoryPromotion.detect_fact_conflicts()` during feature snapshots
-**Responsible**: LLM (extraction + conflict resolution) + User (review of flagged)
+**Trigger**: `MemoryPromotion.detect_fact_conflicts()` — called during feature snapshots
+**LLM prompt**: `conflict_detection` (Haiku, 300 tokens) → `{conflict, resolution, merged_value, reasoning}`
 
-| Column | Responsible | Relevance | Notes |
-|--------|-------------|-----------|-------|
-| `fact_key` | **LLM** | 5/5 | Unique identifier e.g. `primary_database` |
-| `fact_value` | **LLM** | 5/5 | Current value e.g. `PostgreSQL 15 + pgvector` |
-| `category` | **LLM** | 4/5 | `stack`, `convention`, `constraint`, `client` |
-| `valid_from` | Trigger | 2/5 | When fact was set |
-| `valid_until` | Trigger | 3/5 | NULL = current; set when superseded |
-| `conflict_status` | LLM + **User** | 4/5 | `ok`, `supersede`, `merge`, `flag` |
-| `embedding` VECTOR | Trigger | 3/5 | Semantic fact search |
-
-**LLM prompt**: `conflict_detection` → `{resolution: supersede|merge|flag, merged_value, reasoning}`
-
-**Relevance: 4/5** — architectural decisions, constraints, stack choices
+| Column | Written by | Notes |
+|--------|-----------|-------|
+| `fact_key` | **LLM** | e.g. `primary_database`, `auth_method` |
+| `fact_value` | **LLM** | e.g. `PostgreSQL 15 + pgvector` |
+| `category` | **LLM** | `stack`, `convention`, `constraint`, `client` |
+| `valid_until` | Trigger | NULL = current fact; set when superseded |
+| `conflict_status` | LLM+User | `ok`, `supersede`, `merge`, `flag` |
+| `embedding` VECTOR | Trigger | Semantic fact search |
 
 ---
 
 ## Layer 4 — User-Managed Tags (`planner_tags`)
 
-**Responsible**: **User** owns all fields. LLM writes ONLY via explicit "Run Planner" or "Snapshot" button.
-**Trigger**: None — no auto-write; only `promote_feature_snapshot()` or `run_planner()` when invoked by user.
+**Owner**: User. No auto-writes.
+LLM writes ONLY when user explicitly clicks "Run Planner" or "Snapshot" in the UI.
 
-| Column | Responsible | Relevance | Notes |
-|--------|-------------|-----------|-------|
-| `id` UUID | User (create) | — | PK |
-| `name` | **User** | 5/5 | Tag name, UNIQUE per project+category |
-| `category_id` | **User** | 5/5 | FK to mng_tags_categories: feature/bug/task |
-| `status` | **User** | 4/5 | `open`, `active`, `done`, `archived` |
-| `priority` SMALLINT | **User** | 3/5 | 1–5 |
-| `short_desc` | **User** | 4/5 | 1-line description |
-| `full_desc` | **User** | 4/5 | Full description |
-| `requirements` | **User** | 5/5 | What the feature must do (user-written) |
-| `acceptance_criteria` | **LLM** (Planner) | 5/5 | Written by `run_planner()` |
-| `due_date` | **User** | 3/5 | Target completion date |
-| `summary` | **LLM** (Planner/Snapshot) | 5/5 | Use case summary — written by `run_planner()` or `promote_feature_snapshot()` |
-| `action_items` | **LLM** (Planner/Snapshot) | 5/5 | Remaining work — written by `run_planner()` |
-| `design` JSONB | **LLM** (Snapshot) | 4/5 | `{high_level, low_level, patterns_used}` from `feature_snapshot` |
-| `code_summary` JSONB | **LLM** (Snapshot) | 4/5 | `{files, key_classes, key_methods}` from `feature_snapshot` |
-| `embedding` VECTOR | Trigger | 4/5 | From summary+action_items; used by tag matching |
+| Column | Written by | Notes |
+|--------|-----------|-------|
+| `name` | **User** | Tag identity, UNIQUE per project+category |
+| `category_id` | **User** | FK to mng_tags_categories: feature/bug/task |
+| `status` | **User** | `open`, `active`, `done`, `archived` |
+| `priority` | **User** | 1–5 |
+| `short_desc`, `full_desc` | **User** | Human descriptions |
+| `requirements` | **User** | What the feature must do (user-written, NOT LLM) |
+| `due_date` | **User** | Target completion date |
+| `acceptance_criteria` | **LLM** (Run Planner) | Written by `run_planner()` |
+| `summary` | **LLM** (Planner/Snapshot) | Use-case summary |
+| `action_items` | **LLM** (Planner/Snapshot) | Remaining work |
+| `design` JSONB | **LLM** (Snapshot) | `{high_level, low_level, patterns_used}` |
+| `code_summary` JSONB | **LLM** (Snapshot) | `{files, key_classes, key_methods, ...}` |
+| `embedding` VECTOR | Trigger | From summary+action_items; used by tag matching |
 
-### LLM prompts that write to planner_tags
+#### LLM writes to planner_tags (explicit user action only)
 
-| Button | Method | Prompt | Writes |
-|--------|--------|--------|--------|
-| "Run Planner" | `run_planner()` | `planner_summary` | `summary`, `action_items`, `acceptance_criteria` |
-| "Snapshot" | `promote_feature_snapshot()` | `feature_snapshot` | `summary`(=requirements), `action_items`, `design`, `code_summary` |
-
-### What's missing vs. work_items (gap analysis)
-
-| planner_tags has | work_items has | Gap |
-|-----------------|----------------|-----|
-| `requirements` (user-written) | `requirements` (LLM-extracted) | ✓ Both have it |
-| `acceptance_criteria` (LLM) | `acceptance_criteria` (LLM) | ✓ Both have it |
-| `summary` (LLM) | `summary` (LLM) | ✓ Both have it |
-| `action_items` (LLM) | `action_items` (LLM) | ✓ Both have it |
-| `design` JSONB (LLM) | ✗ | planner_tags has richer design context |
-| `code_summary` JSONB (LLM) | `code_summary` TEXT (LLM) | planner_tags has structured version |
-| ✗ | `start_date` | Work items track when work started |
-| ✗ | `status_user` + `status_ai` | Work items track dual lifecycle |
-| ✗ | `source_event_id` | Work items trace origin event |
-| ✗ | `ai_tag_id` (AI suggestion) | Work items know suggested tag |
-| `due_date` | ✗ | planner_tags track deadlines |
+| User Action | Method | Prompt | Model | Writes |
+|------------|--------|--------|-------|--------|
+| "Run Planner" button | `MemoryPlanner.run_planner()` | `planner_summary` (Haiku, 2000 tokens) | Haiku | `summary`, `action_items`, `acceptance_criteria`; updates linked work items |
+| "Snapshot" button | `MemoryPromotion.promote_feature_snapshot()` | `feature_snapshot` (Haiku, 2500 tokens) | Haiku | `summary` (=requirements), `action_items`, `design`, `code_summary` |
 
 ---
 
-## Data Flow — Trigger Table
+## All System Prompts
 
-| Event | Trigger | Handler | Target |
-|-------|---------|---------|--------|
-| AI session prompt | `post_prompt.sh` hook | `POST /memory/{p}/prompts` | mem_mrr_prompts |
-| Every ~5 prompts | Auto in route | `process_prompt_batch()` | mem_ai_events (prompt_batch) |
-| After prompt batch | Auto (asyncio.ensure_future) | `extract_work_items_from_events()` | mem_ai_work_items |
-| Work item created | Auto | `match_work_item_to_tags()` | `ai_tag_id` on work item |
-| Git commit | `post_commit.sh` hook | `POST /memory/{p}/commits` | mem_mrr_commits |
-| Commit stored | Auto | `process_commit()` | mem_ai_events (commit+diff chunks) |
-| Session end | `log_session_stop.sh` hook | `POST /memory/{p}/session-summary` | mem_ai_events (session_summary) |
-| Session end | Auto | `write_root_files()` | CLAUDE.md, .cursorrules |
-| User clicks "Snapshot" | Manual (UI button) | `promote_feature_snapshot()` | planner_tags (summary, design, code_summary) |
-| User clicks "Run Planner" | Manual (UI button) | `run_planner()` | planner_tags + work_items + doc file |
-| User drag-drops work item | Manual (UI) | `PATCH /work-items/{id}` | `tag_id` on work item |
+All prompts are **file-based** in `backend/prompts/` — NOT stored in the DB, NOT exposed to users.
+Loaded via `from core.prompt_loader import prompts` (singleton, lazy-loaded).
+Change model or cost by editing `backend/prompts/prompts.yaml`.
 
----
+| Prompt name | File | Model | Max tokens | Trigger | Returns |
+|------------|------|-------|-----------|---------|---------|
+| `commit_analysis` | `memory/commits/commit_analysis.md` | **Sonnet** | 800 | Before `git commit` | `{message, summary, key_classes, key_methods, patterns_used, decisions, test_coverage, dependencies}` |
+| `commit_digest` | `memory/commits/commit_digest.md` | Haiku | 200 | After commit stored | `{summary, action_items, importance}` |
+| `commit_symbol` | `memory/commits/commit_symbol.md` | Haiku | 120 | Per changed symbol | 1-sentence plain text |
+| `prompt_batch_digest` | `memory/prompt_batch_digest.md` | Haiku | 250 | Every ~5 prompts | `{summary, action_items, importance}` |
+| `item_digest` | `memory/item_digest.md` | Haiku | 200 | Item stored (short) | `{summary, action_items, importance}` |
+| `meeting_sections` | `memory/meeting_sections.md` | Haiku | 1000 | Item stored (meeting/large) | `[{title, content}]` |
+| `message_chunk_digest` | `memory/message_chunk_digest.md` | Haiku | 200 | Message stored | Plain text summary |
+| `relation_extraction` | `memory/relation_extraction.md` | Haiku | 400 | Item embed | `{relations: [{from, relation, to, note}]}` |
+| `session_end_synthesis` | `memory/session_end_synthesis.md` | Haiku | 600 | Session end hook | `{summary, open_threads, next_steps}` |
+| `work_item_extraction` | `memory/work_items/work_item_extraction.md` | Haiku | 500 | After prompt batch | `{items: [{category, name, description}]}` |
+| `work_item_promotion` | `memory/work_items/work_item_promotion.md` | Haiku | 300 | Work item pipeline | `{summary, status_ai}` |
+| `conflict_detection` | `memory/conflict_detection.md` | Haiku | 300 | Fact upsert | `{conflict, resolution, merged_value, reasoning}` |
+| `feature_snapshot` | `memory/feature_snapshot.md` | Haiku | 2500 | Snapshot button | `{requirements, action_items, design, code_summary, relations}` |
+| `planner_summary` | `memory/planner/planner_summary.md` | Haiku | 2000 | Run Planner button | `{use_case_summary, done_items, remaining_items, acceptance_criteria, work_item_updates}` |
 
-## All Important Columns — Master Table
-
-| Table | Column | Responsible | Relevance | Used For |
-|-------|--------|-------------|-----------|---------|
-| mem_mrr_prompts | prompt + response | Trigger | 1/5 | Source data for batch digest |
-| mem_mrr_prompts | tags | Trigger | 3/5 | Session/feature/work-item routing |
-| mem_mrr_commits | commit_msg | Trigger | 3/5 | What changed |
-| mem_mrr_commits | summary | LLM | 4/5 | Back-populated Haiku digest |
-| mem_mrr_commits | tags.files | LLM | 4/5 | Which code files changed |
-| mem_mrr_commits | tags.symbols | LLM | 4/5 | Which classes/methods changed |
-| mem_ai_events | summary | LLM | 4/5 | Core searchable content |
-| mem_ai_events | action_items | LLM | 5/5 | Open tasks extracted from session |
-| mem_ai_events | importance | LLM | 5/5 | Relevance weight 0-10 |
-| mem_ai_events | embedding | Trigger | 5/5 | Semantic search via pgvector |
-| mem_ai_events | tags | Trigger+LLM | 3/5 | Event classification + routing |
-| mem_ai_work_items | ai_name + ai_desc | LLM | 5/5 | Work item identity |
-| mem_ai_work_items | summary | LLM | 5/5 | Status digest |
-| mem_ai_work_items | action_items | LLM | 5/5 | What still needs doing |
-| mem_ai_work_items | acceptance_criteria | LLM | 5/5 | How to know it's done |
-| mem_ai_work_items | status_user | User | 4/5 | User-tracked lifecycle |
-| mem_ai_work_items | tag_id | User | 5/5 | Connects to planner_tag (user-set) |
-| mem_ai_work_items | ai_tag_id | LLM | 4/5 | AI-suggested planner_tag |
-| mem_ai_work_items | start_date | User+Trigger | 3/5 | When work started |
-| mem_ai_work_items | code_summary | LLM | 4/5 | Code context from commits |
-| mem_ai_project_facts | fact_key + fact_value | LLM | 5/5 | Durable project knowledge |
-| mem_ai_project_facts | conflict_status | LLM+User | 4/5 | Data integrity |
-| planner_tags | name | User | 5/5 | Tag identity |
-| planner_tags | requirements | User | 5/5 | What the feature must do |
-| planner_tags | summary | LLM (Planner) | 5/5 | Current state / use-case |
-| planner_tags | action_items | LLM (Planner) | 5/5 | Remaining work |
-| planner_tags | acceptance_criteria | LLM (Planner) | 5/5 | QA criteria |
-| planner_tags | design | LLM (Snapshot) | 4/5 | Architecture details |
-| planner_tags | code_summary | LLM (Snapshot) | 4/5 | Structured code reference |
+**To switch a prompt to Sonnet**: edit `prompts.yaml` → `model: sonnet`. No code changes needed.
 
 ---
 
-## Memory System Prompts (mng_system_roles, category='memory')
+## Full Trigger Flow
 
-All editable from the **Roles** tab. Seeded from `workspace/_templates/memory/prompts.yaml`.
+```
+post_prompt.sh hook
+        │
+        ▼
+POST /memory/{p}/prompts
+        │  MemoryMirroring.mirror_prompt()
+        ▼
+mem_mrr_prompts (insert)
+        │
+        │  [every ~5 prompts in session]
+        ▼
+process_prompt_batch()          ← prompt_batch_digest (Haiku)
+        │
+        ▼
+mem_ai_events (event_type='prompt_batch', chunk=0, embedding)
+        │
+        │  [background, fire-and-forget]
+        ▼
+extract_work_items_from_events()  ← work_item_extraction (Haiku)
+        │
+        ▼
+mem_ai_work_items (INSERT/upsert)
+        │
+        │  [background]
+        ▼
+match_work_item_to_tags()         ← ai_tag_suggestion (Haiku, if needed)
+        │
+        ▼
+work_item.ai_tag_id updated (suggestion only — tag_id requires user drag-drop)
 
-| Prompt | Trigger | Returns | Max tokens |
-|--------|---------|---------|-----------|
-| `prompt_batch_digest` | Every ~5 prompts | `{summary, action_items, importance}` JSON | 250 |
-| `commit_digest` | Commit stored | `{summary, action_items, importance}` JSON | 200 |
-| `item_digest` | Item stored | `{summary, action_items, importance}` JSON | 200 |
-| `meeting_sections` | Meeting item | `[{title, content}]` JSON array | 1000 |
-| `message_chunk_digest` | Message stored | `{summary, action_items, importance}` JSON | 200 |
-| `ai_tag_suggestion` | Untagged scan | `{tag, is_new, reasoning}` JSON | — |
-| `relation_extraction` | Item embed | `{relations: [{from, relation, to, note}]}` | 400 |
-| `session_end_synthesis` | Session end | `{summary, open_threads, next_steps}` JSON | 600 |
-| `session_review` | Post-summary | `{score, critique, improved_summary, relations}` | — |
-| `memory_synthesis` | `/memory` run | Free-form MEMORY.md digest | — |
-| `work_item_promotion` | Work item pipeline | `{summary, status_ai}` JSON | 300 |
-| `work_item_extraction` | After prompt batch | `{items: [{category, name, description}]}` JSON | 500 |
-| `conflict_detection` | Fact upsert | `{conflict, resolution, merged_value, reasoning}` | 300 |
-| `feature_snapshot` | Snapshot trigger | Full JSON: requirements, action_items, design, code_summary, relations | 2500 |
-| `planner_summary` | Run Planner button | `{use_case_summary, done_items, remaining_items, acceptance_criteria, work_item_updates}` | 2000 |
+
+─────────────────────────────────────────────────────────
+
+post_commit.sh hook
+        │
+        ▼
+POST /git/{p}/commit-push
+        │  [background task 0: inline]
+        │  _generate_commit_message()   ← commit_analysis (Sonnet)
+        │  → commit message written to git
+        │
+        │  git commit + git push
+        │
+        │  [background task 1]
+        ▼
+_sync_commit_and_link()
+        │  INSERT mem_mrr_commits {commit_hash, author, tags={source,phase,feature,bug,work-item},
+        │                          tags_ai={}, exec_llm=FALSE}
+        │  LINK to session + prompt_id
+        ▼
+mem_mrr_commits (insert)
+        │
+        │  [background task 2]
+        ▼
+process_commit()                  ← commit_digest (Haiku)
+        │
+        ├─ mem_ai_events (event_type='commit', chunk=0 = digest + embedding)
+        ├─ mem_ai_events (chunk≥1 = per-file diff sections, raw embed)
+        │
+        ├─ mem_mrr_commits.summary = digest text (back-propagate)
+        ├─ mem_mrr_commits.llm = haiku_model (back-propagate)
+        ├─ mem_mrr_commits.exec_llm = TRUE (back-propagate)
+        └─ mem_mrr_commits.tags_ai["languages"] = [...] (back-propagate)
+        │
+        │  [background task 3]
+        ▼
+extract_commit_code()             ← commit_symbol (Haiku, per symbol if rows ≥ min_lines)
+        │  tree-sitter AST parse → per-symbol rows
+        ▼
+mem_mrr_commits_code (bulk insert, ON CONFLICT DO NOTHING)
+
+
+─────────────────────────────────────────────────────────
+
+log_session_stop.sh hook
+        │
+        ▼
+POST /memory/{p}/session-summary
+        │
+        ▼
+_generate_session_summary()       ← session_end_synthesis (Haiku)
+        │
+        ▼
+mem_ai_events (event_type='session_summary', summary, open_threads, next_steps)
+        │
+        │  [auto]
+        ▼
+write_root_files()
+        │
+        ▼
+{code_dir}/CLAUDE.md, .cursorrules, .claude/memory/top_events.md (regenerated)
+
+
+─────────────────────────────────────────────────────────
+
+User clicks "Snapshot" in UI
+        │
+        ▼
+POST /projects/{p}/snapshot/{tag_name}
+        │
+        ▼
+promote_feature_snapshot()        ← feature_snapshot (Haiku)
+        │
+        ├─ planner_tags: summary, action_items, design, code_summary, embedding
+        └─ detect_fact_conflicts() ← conflict_detection (Haiku)
+                │
+                ▼
+           mem_ai_project_facts (upsert)
+
+
+─────────────────────────────────────────────────────────
+
+User clicks "Run Planner" in UI
+        │
+        ▼
+POST /projects/{p}/planner/{tag_id}
+        │
+        ▼
+MemoryPlanner.run_planner()       ← planner_summary (Haiku)
+        │
+        ├─ planner_tags: summary, action_items, acceptance_criteria
+        ├─ mem_ai_work_items: action_items, acceptance_criteria, summary (per linked item)
+        └─ workspace/{p}/documents/{cat}/{tag}.md  (written to disk)
+```
 
 ---
 
-## Known Issues & Gaps
+## Tagging — How `tags` JSONB Works
 
-| Issue | Impact | Status |
-|-------|--------|--------|
-| 64 stale `#20xxx` bug work items (pre-migration noise) | Low | Dedup needed |
-| `promote_feature_snapshot()` reads ALL events, not filtered by feature tag | Medium | Fix: filter by `tags->>'feature'=tag_name` |
-| Session-end snapshot not auto-triggered | Medium | Stop hook → session-summary → call promote_feature_snapshot |
-| `code_summary` on work items often empty | Medium | Populate from linked commits' `tags.symbols` |
-| `mem_mrr_commits.diff_summary` queried in old code | Fixed | Removed from memory_planner.py |
-| `source_session_id` referenced in extraction SQL | Fixed | Removed (column dropped in migration 012) |
+Every `mem_mrr_*` table has a `tags JSONB` column. Tags flow from the hook into raw storage, then propagate upward through digests into `mem_ai_events.tags`.
+
+### `mem_mrr_prompts.tags` — set by hook at insert time
+
+```json
+{
+  "source": "claude_cli",        // hook source: claude_cli | cursor | aicli_cli | ui
+  "phase": "development",        // optional: discovery | development | testing | ...
+  "feature": "auth-refactor",    // optional: current feature slug
+  "bug": "login-500-error",      // optional: bug reference
+  "work-item": "uuid-or-slug",   // optional: linked work item
+  "llm": "claude-sonnet-4-6"     // optional: LLM used in session
+}
+```
+
+### `mem_mrr_commits.tags` — user intent only (clean after migration 016)
+
+```json
+{
+  "source": "commit_push",       // always present
+  "phase": "development",        // from active session tags
+  "feature": "auth-refactor",    // from active session tags
+  "bug": "login-500-error",      // from active session tags
+  "work-item": "uuid-or-slug"    // from active session tags
+}
+```
+
+**`tags_ai`** (AI-enriched, separate):
+```json
+{
+  "languages": ["python", "typescript"],  // from smart_chunk_diff()
+  "analysis": { ... }                     // from commit_analysis (Sonnet)
+}
+```
+
+### `mem_ai_events.tags` — merged from mirror + LLM metadata
+
+```json
+{
+  "source": "claude_cli",        // from mirror row
+  "feature": "auth-refactor",    // from mirror row
+  "llm": "claude-haiku-4-5-20251001",  // added by process_*()
+  "event": "prompt_batch",       // added by _upsert_event()
+  "chunk_type": "full"           // added by _upsert_event()
+}
+```
 
 ---
 
 ## Quick Reference: Which Table for What
 
-| Question | Table |
-|----------|-------|
-| All prompts this session | `mem_mrr_prompts` WHERE session_id |
-| What code changed in a commit | `mem_mrr_commits.tags["files"]`, `tags["symbols"]` |
-| Semantic search across all history | `mem_ai_events` (vector cosine) |
-| What is the project tech stack | `mem_ai_project_facts` WHERE category='stack' AND valid_until IS NULL |
-| What features are in development | `mem_ai_work_items` WHERE status_user='in_progress' |
-| Full context for feature X | `planner_tags` WHERE name=X + `mem_ai_work_items` WHERE tag_id=X.id |
+| Question | Table / Query |
+|----------|--------------|
+| All prompts this session | `mem_mrr_prompts WHERE session_id=?` |
+| Which files changed in a commit | `mem_mrr_commits_code WHERE commit_hash=?` (new!) |
+| Which symbols changed in a commit | `mem_mrr_commits_code WHERE commit_hash=? AND symbol_type IN (...)` |
+| Semantic search across all history | `mem_ai_events` (vector cosine via `semantic_search()`) |
+| What work is in progress | `mem_ai_work_items WHERE status_user='in_progress'` |
 | AI-suggested tag for a work item | `mem_ai_work_items.ai_tag_id` |
-| All tags and hierarchy | `planner_tags` |
-| Recent high-importance events | `mem_ai_events` ORDER BY importance×exp(-0.01×age) DESC |
+| Full context for feature X | `planner_tags WHERE name=X` + `mem_ai_work_items WHERE tag_id=X.id` |
+| Recent high-importance events | `mem_ai_events ORDER BY importance*exp(-0.01*age_days) DESC` |
+| What languages were used in commit | `mem_mrr_commits.tags_ai->>'languages'` |
+| Project tech stack | `mem_ai_project_facts WHERE category='stack' AND valid_until IS NULL` |
+
+---
+
+## AI vs. User Ownership — Summary
+
+| Data | AI Writes | User Writes | User Reads |
+|------|-----------|-------------|-----------|
+| `mem_mrr_prompts` | ✗ | via hook | ✓ history |
+| `mem_mrr_commits` | `summary`, `llm`, `exec_llm`, `tags_ai` | via hook: `tags`, `author` | ✓ history |
+| `mem_mrr_commits_code` | ALL (tree-sitter + Haiku) | ✗ | ✓ code intelligence |
+| `mem_ai_events` | ALL | ✗ | ✓ search results |
+| `mem_ai_work_items` | ALL except `status_user`, `tag_id` | `status_user`, `tag_id` | ✓ work board |
+| `mem_ai_project_facts` | ALL (LLM resolves conflicts) | review `flag` items | ✓ knowledge |
+| `planner_tags` | `summary`, `action_items`, `acceptance_criteria`, `design`, `code_summary` (on button click only) | ALL other fields | ✓ project plan |
+
+---
+
+## Phase Plan: Merging work_items ↔ planner_tags
+
+Current state: Two parallel systems exist.
+- `mem_ai_work_items` — AI creates and owns; user can set `status_user` + `tag_id`
+- `planner_tags` — User creates and owns; LLM enriches on demand
+
+**Both work correctly independently**. The merge path:
+
+| Step | Action | Field |
+|------|--------|-------|
+| ✅ Done | AI suggests tag for each work item | `ai_tag_id` (auto, vector search) |
+| ✅ Done | User confirms link via drag-drop | `tag_id` (manual) |
+| Next | Run Planner reads from linked work_items | `planner_tags.id = work_item.tag_id` |
+| Next | Snapshot filters events by `feature` tag | `mem_ai_events.tags->>'feature' = tag_name` |
+| Future | Work item creation auto-creates planner_tag if no match | merge into one flow |

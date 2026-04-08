@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-08T13:52:42Z",
+  "last_memory_run": "2026-04-08T14:35:56Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -153,21 +153,17 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
-      "database": "PostgreSQL 15+ with JSONB UNION batch upsert queries",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "database_version": "PostgreSQL 15+"
     },
-    "project_summary": "aicli is a shared AI memory platform combining Python CLI + FastAPI backend + Electron desktop UI, enabling semantic search and workflow automation across multi-project workspaces. Currently stabilizing database schema (commit tracking with mem_mrr_commits_code, 19-column structure), optimizing query performance (route_work_items latency), and resolving module consolidation for embedding pipeline consistency across routers.",
-    "memory_digest": "**[2026-04-08]** `claude_cli` \u2014 Traced commit pipeline prompts across memory_embedding.py, agents/tools/, and route_snapshots.py; identified full flow from code extraction through LLM summarization and embedding. **[2026-04-08]** `development` \u2014 Module refactoring: consolidated embedding logic into memory_embedding.py and updated imports in route_snapshots.py, route_search.py, route_prompts.py for consistency. **[ongoing]** `infrastructure` \u2014 Database performance investigation: route_work_items experiencing ~60s latency; indexing optimization needed on _SQL_UNLINKED_WORK_ITEMS join operations. **[ongoing]** `features` \u2014 Planner tag visibility debugging: categories upload succeeds but individual tag bindings not displaying; router mapping and tag query logic under review. **[ongoing]** `database` \u2014 DDL runner stability: post-creation migration of generated columns (full_symbol) now handled separately from base table creation to prevent silent failures."
+    "project_summary": "aicli is a shared AI memory platform that combines a Python CLI backend (FastAPI + PostgreSQL + pgvector) with a desktop UI (Electron + Vanilla JS) to capture, synthesize, and search development context. It uses a 4-layer memory architecture (raw captures \u2192 LLM digests \u2192 work items \u2192 tagged knowledge) with Claude-powered synthesis, multi-LLM support, and async DAG workflows. Current focus is on debugging commit pipeline data flow and resolving database synchronization issues between mirror tables and semantic memory layers.",
+    "memory_digest": "**[2026-04-08]** Last session \u2014 User confirmed commit table investigation with affirmative response ('yes please'), indicating readiness to proceed with database schema analysis and commit extraction flow validation.\n\n**[2026-04-07]** Commit table schema \u2014 User raised concerns about mem_ai_commits columns (diff_details, diff_summery visibility); identified need to clarify column naming conventions and extraction flow from pr_tags_map for commits with related_type='commit'.\n\n**[2026-04-07]** Memory file discovery \u2014 User referenced aicli_memory.md under project root as existing memory source; indicates project maintains local memory artifacts separate from database.\n\n**[2026-04-08]** Database update issue \u2014 User reported no visible database updates after operations, suggesting potential synchronization gap between memory endpoint and table persistence or embedding pipeline not triggering correctly.\n\n**[Current focus]** Memory endpoint synchronization: verifying mem_mrr_commits_code \u2192 mem_ai_events flow; commit extraction logic in memory_embedding.py needs prompt tracing for code extraction, summarization, and embedding steps; route_work_items query performance degradation (~60s) requires join optimization investigation."
   }
 }
