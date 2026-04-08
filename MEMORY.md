@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 14:47 UTC by aicli /memory_
+_Generated: 2026-04-08 16:22 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python CLI with a FastAPI backend and Electron desktop UI to capture, analyze, and organize development work via semantic embeddings, multi-layer memory synthesis (ephemeral → raw → digested → work items), and intelligent workflow automation. Currently stabilizing prompt management, optimizing database query performance for work item retrieval, and debugging UI visibility of planner tag categories.
 
 ## Project Facts
 
@@ -172,6 +168,183 @@ Reviewer: ```json
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
+diff --git a/aicli_memory.md b/aicli_memory.md
+index 226a94a..93b57f2 100644
+--- a/aicli_memory.md
++++ b/aicli_memory.md
+@@ -1,404 +1,616 @@
+ # aicli — Memory & Tagging Architecture
+ 
+-_Last updated: 2026-04-07 | Updated for migration 014 + importance scoring + auto-extract pipeline_
++_Last updated: 2026-04-08 | Reflects migration 016, mem_mrr_commits_code, file-based prompt system_
+ 
+ ---
+ 
+ ## 0. Mental Model
+ 
+-aicli memory has **4 active layers** stacked on top of each other.
+-**planner_tags** is the user-managed top layer; everything below is LLM/trigger-managed.
++aicli memory is a **4-layer pipeline**. Data flows **down**: every raw event eventually becomes
++a structured work item. `planner_tags` sits above as the user-managed project view.
+ 
+ ```
+- ┌──────────────────────────────────────────────────────────────────────┐
+- │ Layer 0 — Ephemeral         In-session message list (RAM / JSON)     │
+- │ Layer 1 — Raw Capture       Everything stored as-is   (mem_mrr_*)    │
+- │ Layer 2 — AI Events         Digested + embedded        (mem_ai_events)│
+- │ Layer 3 — Structured        Work Items + Project Facts                │
+- │ Layer 4 — User Tags         planner_tags  (USER-MANAGED)              │
+- └──────────────────────────────────────────────────────────────────────┘
++ ┌──────────────────────────────────────────────────────────────────────────────┐
++ │ Layer 0 — Ephemeral     In-session message list (RAM / JSON file)            │
++ │                                                                              │
++ │ Layer 1 — Raw Capture   Everything stored verbatim         (mem_mrr_*)       │
++ │                         ├─ mem_mrr_prompts                                   │
++ │                         ├─ mem_mrr_commits  + mem_mrr_commits_code (new)     │
++ │                         ├─ mem_mrr_items                                     │
++ │                         └─ mem_mrr_messages                                  │
++ │                                                                              │
++ │ Layer 2 — AI Events     Digested + embedded                (mem_ai_events)   │
++ │                                                                              │
++ │ Layer 3 — Structured    AI-detected artifacts              (mem_ai_*)        │
++ │                         ├─ mem_ai_work_items                                 │
++ │                         └─ mem_ai_project_facts                              │
++ │                                                                              │
++ │ Layer 4 — User Tags     planner_tags   ← USER OWNS THIS                     │
++ └──────────────────────────────────────────────────────────────────────────────┘
+ ```
+ 
+-**Key design principle**:
+-- `planner_tags` = **User** owns this. LLM only writes when user clicks "Run Planner" or "Snapshot".
+-- Everything below `planner_tags` = **LLM + Triggers** own it. User does not manually edit.
+-- `tag_id` on work items = **User** sets via drag-drop only. `ai_tag_id` = LLM suggestion (auto).
++**Ownership boundary**:
++
++| Layer | Owner | Rule |
++|-------|-------|------|
++| 0–3 | LLM + Triggers | Fully automatic. User does not manually edit. |
++| 4 | **User** | User creates/edits tags. LLM writes ONLY on explicit button click. |
++| `work_items.tag_id` | **User** | Drag-drop only. `ai_tag_id` = LLM suggestion (auto). |
++
++**Phase goal**: AI manages all data through Layer 3 (`mem_ai_work_items`). User manages Layer 4
++(`planner_tags`). Future: merge both via `tag_id` linkage.
+ 
+ ---
+ 
+ ## Layer 0 — Ephemeral (Session Messages)
+ 
+-**Responsible**: Trigger (auto, no DB)
+ **Storage**: `workspace/{project}/_system/sessions/{session_id}.json`
+-**Python class**: `SessionStore` (`backend/memory/mem_sessions.py`)
++**Python**: `SessionStore` in `backend/memory/memory_sessions.py`
++**Trigger**: Created on first prompt; appended on each turn; never written to PostgreSQL.
+ 
+-Not stored in PostgreSQL — file-only, short-lived within a session.
++Used only for LLM context continuity within a single session. Not searchable.
+ 
+ ---
+ 
+ ## Layer 1 — Raw Capture (`mem_mrr_*`)
+ 
+-Everything stored verbatim as received. No AI processing. The audit trail.
++Everything stored verbatim. No AI processing at insert time. The audit trail.
++
++---
+ 
+ ### `mem_mrr_prompts`
+ 
+-**Trigger**: `post_prompt.sh` hook → `POST /memory/{p}/prompts`
++**Trigger**: `post_prompt.sh` hook → `POST /memory/{project}/prompts`
+ 
+-| Column | Responsible | Notes |
+-|--------|-------------|-------|
+-| `id` UUID | Trigger | PK |
+-| `session_id` | Trigger | Groups turns in a session |
+-| `source_id` | Trigger | External ID from hook |
+-| `prompt` TEXT | Trigger | Raw user input |
+-| `response` TEXT | Trigger | Raw AI response |
+-| `tags` JSONB | Trigger | `{source, phase, feature, work-item, llm}` — inline tagging |
+-| `created_at` | Trigger | Insert timestamp |
++| Column | Written by | Notes |
++|--------|-----------|-------|
++| `id` UUID | Hook | PK |
++| `session_id` | Hook | Groups turns |
++| `source_id` | Hook | External hook timestamp |
++| `prompt` TEXT | Hook | Raw user input |
++| `response` TEXT | Hook | Raw AI response |
++| `tags` JSONB | Hook | `{source, phase, feature, bug, work-item, llm}` |
++| `created_at` | DB | Auto |
+ 
+-**Relevance: 0/5** — raw data, no digest; only useful as source for Layer 2
++**Downstream trigger**: Every ~5 prompts in a session → `process_prompt_batch()` (Layer 2).
+ 
+ ---
+ 
+ ### `mem_mrr_commits`
+ 
+-**Trigger**: `post_commit.sh` hook → `POST /memory/{p}/commits`
+-
+-| Column | Responsible | Notes |
+-|--------|-------------|-------|
+-| `commit_hash` | Trigger | PK |
+-| `commit_msg` | Trigger | Git commit message |
+-| `summary` TEXT | **LLM** (back-propagated) | Haiku digest written by `process_commit()` |
+-| `tags` JSONB | Trigger + **LLM** | Initial: `{source, phase, feature}`; LLM adds `files`, `languages`, `symbols` |
+-| `session_id` | Trigger | Links to session |
+-| `committed_at` | Trigger | Git timestamp |
++**Trigger**: `post
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 9913d73..c6206cb 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-08 13:52 UTC
++> Generated by aicli 2026-04-08 14:35 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 360b1e5..c4b2bc1 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 13:52 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 14:35 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 360b1e5..c4b2bc1 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 13:52 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 14:35 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+Removed legacy system files CLAUDE.md and CONTEXT.md from the repository root as they are no longer needed. This cleanup eliminates outdated documentation that may have conflicted with or duplicated information in the current documentation structure.
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
 index f5153fc..7951bce 100644
 --- a/workspace/aicli/PROJECT.md
@@ -193,222 +366,3 @@ index f5153fc..7951bce 100644
 +- Planner tag visibility: debugging category upload and tag binding visibility in UI; verifying router mapping and category query logic
 +- DDL runner robustness: investigating silent failures during initial migration caused by table locks; post-creation DDL for generated columns now handled separately from base table creation
 
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/backend/routers/route_snapshots.py b/backend/routers/route_snapshots.py
-index 6b9a5ed..dbdc65d 100644
---- a/backend/routers/route_snapshots.py
-+++ b/backend/routers/route_snapshots.py
-@@ -25,6 +25,7 @@ from fastapi import APIRouter, HTTPException
- 
- from core.config import settings
- from core.database import db
-+from core.prompt_loader import prompts as _prompts
- 
- log = logging.getLogger(__name__)
- 
-@@ -45,12 +46,6 @@ _SQL_GET_MEMORY_EVENTS = """
-     ORDER BY me.created_at
- """
- 
--_SQL_GET_SYSTEM_ROLE = """
--    SELECT content FROM mng_system_roles
--    WHERE client_id = 1 AND name = %s AND is_active = TRUE
--    LIMIT 1
--"""
--
- _SQL_UPSERT_SNAPSHOT = """
-     UPDATE planner_tags SET
-         summary      = %s,
-@@ -167,11 +162,7 @@ async def generate_snapshot(project: str, tag_name: str):
-             detail=f"No memory events found for tag '{tag_name}'. Run a few sessions first.",
-         )
- 
--    with db.conn() as conn:
--        with conn.cursor() as cur:
--            cur.execute(_SQL_GET_SYSTEM_ROLE, ("memory_feature_snapshot",))
--            role_row = cur.fetchone()
--    system_prompt = role_row[0] if role_row else _DEFAULT_SNAPSHOT_PROMPT
-+    system_prompt = _prompts.content("feature_snapshot") or _DEFAULT_SNAPSHOT_PROMPT
- 
-     by_type: dict[str, list[str]] = {}
-     event_ids: list[str] = []
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
-index 91f113b..e06143d 100644
---- a/backend/routers/route_memory.py
-+++ b/backend/routers/route_memory.py
-@@ -25,6 +25,7 @@ from pydantic import BaseModel
- 
- from core.config import settings
- from core.database import db
-+from core.prompt_loader import prompts as _prompts
- 
- log = logging.getLogger(__name__)
- router = APIRouter()
-@@ -39,12 +40,6 @@ _SQL_GET_SESSION_PROMPTS = """
-     ORDER BY created_at
- """
- 
--_SQL_GET_SYSTEM_ROLE = """
--    SELECT content FROM mng_system_roles
--    WHERE client_id=1 AND name=%s AND is_active=TRUE
--    LIMIT 1
--"""
--
- _SQL_UPSERT_SESSION_SUMMARY = """
-     INSERT INTO mem_ai_events
-         (project_id, event_type, source_id, session_id,
-@@ -140,12 +135,7 @@ async def _generate_session_summary(
-             conv_lines.append(f"Assistant: {response[:300]}")
-     conv_text = "\n".join(conv_lines)
- 
--    # Load synthesis prompt from DB
--    with db.conn() as conn:
--        with conn.cursor() as cur:
--            cur.execute(_SQL_GET_SYSTEM_ROLE, ("session_end_synthesis",))
--            row = cur.fetchone()
--    system_prompt = row[0] if row else (
-+    system_prompt = _prompts.content("session_end_synthesis") or (
-         "Analyse this development session and produce a structured summary.\n"
-         "Return JSON only:\n"
-         "{\n"
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/backend/routers/route_git.py b/backend/routers/route_git.py
-index 007fd08..7513630 100644
---- a/backend/routers/route_git.py
-+++ b/backend/routers/route_git.py
-@@ -18,6 +18,7 @@ from pydantic import BaseModel
- 
- from core.config import settings
- from core.database import db
-+from core.prompt_loader import prompts as _prompts
- from agents.providers import call_claude
- 
- log = logging.getLogger(__name__)
-@@ -1307,9 +1308,7 @@ async def _generate_commit_message(
-     Returns (commit_message, analysis_dict).
-     Falls back to a simple chore message with empty analysis on failure.
-     """
--    from pathlib import Path as _Path
--    _sys_prompt_path = _Path(settings.workspace_dir) / "_templates" / "memory" / "prompts" / "system" / "commit_analysis.md"
--    sys_prompt = _sys_prompt_path.read_text().strip() if _sys_prompt_path.exists() else ""
-+    sys_prompt = _prompts.content("commit_analysis") or ""
- 
-     _CONVENTIONAL = ("feat", "fix", "chore", "test", "refactor", "docs", "style", "perf", "ci", "build")
- 
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/backend/prompts/prompts.yaml b/backend/prompts/prompts.yaml
-new file mode 100644
-index 0000000..b59b4f5
---- /dev/null
-+++ b/backend/prompts/prompts.yaml
-@@ -0,0 +1,79 @@
-+# Internal system prompts — NOT exposed to users, NOT stored in DB.
-+# To switch models or tune costs, change `model` or `max_tokens`.
-+# Models: haiku (claude-haiku-4-5-20251001) | sonnet (claude-sonnet-4-6)
-+
-+prompts:
-+
-+  # ── Commits ────────────────────────────────────────────────────────────────
-+  commit_analysis:
-+    file: memory/commits/commit_analysis.md
-+    model: sonnet       # needs structured JSON + code pattern recognition
-+    max_tokens: 800
-+
-+  commit_digest:
-+    file: memory/commits/commit_digest.md
-+    model: haiku
-+    max_tokens: 200
-+
-+  commit_symbol:
-+    file: memory/commits/commit_symbol.md
-+    model: haiku
-+    max_tokens: 120
-+
-+  # ── Memory events ──────────────────────────────────────────────────────────
-+  prompt_batch_digest:
-+    file: memory/prompt_batch_digest.md
-+    model: haiku
-+    max_tokens: 250
-+
-+  item_digest:
-+    file: memory/item_digest.md
-+    model: haiku
-+    max_tokens: 200
-+
-+  meeting_sections:
-+    file: memory/meeting_sections.md
-+    model: haiku
-+    max_tokens: 1000
-+
-+  message_chunk_digest:
-+    file: memory/message_chunk_digest.md
-+    model: haiku
-+    max_tokens: 200
-+
-+  relation_extraction:
-+    file: memory/relation_extraction.md
-+    model: haiku
-+    max_tokens: 400
-+
-+  session_end_synthesis:
-+    file: memory/session_end_synthesis.md
-+    model: haiku
-+    max_tokens: 600
-+
-+  # ── Work items ─────────────────────────────────────────────────────────────
-+  work_item_extraction:
-+    file: memory/work_items/work_item_extraction.md
-+    model: haiku
-+    max_tokens: 500
-+
-+  work_item_promotion:
-+    file: memory/work_items/work_item_promotion.md
-+    model: haiku
-+    max_tokens: 300
-+
-+  # ── Feature / planner ──────────────────────────────────────────────────────
-+  feature_snapshot:
-+    file: memory/feature_snapshot.md
-+    model: haiku
-+    max_tokens: 2500
-+
-+  conflict_detection:
-+    file: memory/conflict_detection.md
-+    model: haiku
-+    max_tokens: 300
-+
-+  planner_summary:
-+    file: memory/planner/planner_summary.md
-+    model: haiku
-+    max_tokens: 2000
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/backend/prompts/memory/work_items/work_item_promotion.md b/backend/prompts/memory/work_items/work_item_promotion.md
-new file mode 100644
-index 0000000..57410a5
---- /dev/null
-+++ b/backend/prompts/memory/work_items/work_item_promotion.md
-@@ -0,0 +1,4 @@
-+Given a work item's name, description, lifecycle status, acceptance criteria, and implementation plan,
-+produce a 2-4 sentence summary capturing: what the item is, current status, and any notable progress.
-+Return JSON only: {"summary": "...", "status": "<lifecycle_status>"}
-+No preamble, no markdown fences.
-
-
-## AI Synthesis
-
-**[2026-03-14]** `core/prompt_loader` — Centralized prompt management system implemented to replace redundant mng_system_roles database queries; reduces latency in memory synthesis and snapshot generation flows. **[2026-03-14]** `route_snapshots.py` — Refactored to use prompt_loader for feature_snapshot prompts; eliminates direct system role queries and improves code maintainability. **[2026-03-14]** `route_memory.py` — Updated session_end_synthesis prompt loading to use centralized prompt cache instead of database lookups. **[in-progress]** `memory_embedding.py` — Module consolidation underway to unify embedding and ingestion logic; import migrations needed across route_snapshots.py, route_search.py, and route_prompts.py. **[in-progress]** `route_work_items` — Performance investigation ongoing; ~60s latency traced to _SQL_UNLINKED_WORK_ITEMS join operations on mem_ai_events; indexing strategy in development. **[in-progress]** `planner_tags_ui` — Category upload working but individual tag bindings not displaying; router mapping and category query logic verification in progress.
