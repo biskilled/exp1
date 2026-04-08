@@ -1409,7 +1409,7 @@ function _renderDrawer() {
                  padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                  resize:vertical;box-sizing:border-box;line-height:1.5"
           onblur="api.tags.update('${v.id}', {short_desc: this.value}).catch(e=>toast(e.message,'error'))"
-        >${_esc(v.short_desc || '')}</textarea>
+        >${_esc(v.description || '')}</textarea>
       </div>
 
       <!-- Requirements -->
@@ -1538,7 +1538,7 @@ function _renderDrawer() {
                     letter-spacing:.06em;margin-bottom:0.35rem">Planner</div>
         <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
           <button id="drawer-planner-btn"
-            onclick="window._plannerRunPlan('${v.id}','${_esc(v.name)}','${_esc(catName)}','${_esc(_plannerState.project)}')"
+            onclick="window._plannerRunPlan('${v.id}','${_esc(v.name)}','${_esc(v.category_name || _plannerState.selectedCatName)}','${_esc(_plannerState.project)}')"
             style="font-size:0.62rem;padding:0.22rem 0.6rem;background:var(--surface2);
                    border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
                    color:var(--text2);font-family:var(--font);outline:none;white-space:nowrap">

@@ -104,7 +104,10 @@ _SQL_LIST_VALUES = """
            t.created_at, t.due_date, t.parent_id::text, t.status AS lifecycle_status,
            t.seq_num,
            0 AS event_count,
-           tc.name AS category_name, tc.color, tc.icon
+           tc.name AS category_name, tc.color, tc.icon,
+           COALESCE(t.requirements,'') AS requirements,
+           COALESCE(t.acceptance_criteria,'') AS acceptance_criteria,
+           COALESCE(t.priority, 3) AS priority
     FROM planner_tags t
     JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
     WHERE {where}

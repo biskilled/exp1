@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 18:43 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 19:01 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -65,8 +65,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-08] yes please
 - [2026-04-08] can you explain where are the  prompts that used for update new commit ?
 - [2026-04-08] Can you explain how commit data statitics are connected to work_items ? Is there is a way to know how many rows/promtps 
 - [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
 - [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
+- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
