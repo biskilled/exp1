@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 22:52 UTC by aicli /memory_
+_Generated: 2026-04-08 23:26 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector embeddings) with an Electron desktop UI (Vanilla JS + xterm.js + Cytoscape.js) for collaborative AI-assisted development. Core features include 4-layer memory synthesis (Claude Haiku dual-layer summarization), semantic search via embeddings, async DAG workflow execution with visual approval panels, MCP server integration for tool access, and billing/usage tracking across multiple LLM providers. Currently stabilizing schema management (canonical db_schema.sql + migration framework), fixing planner tag UI visibility, and optimizing work item query performance.
 
 ## Project Facts
 
@@ -179,400 +175,66 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-diff --git a/backend/core/db_schema.sql b/backend/core/db_schema.sql
-new file mode 100644
-index 0000000..b7c4f67
---- /dev/null
-+++ b/backend/core/db_schema.sql
-@@ -0,0 +1,628 @@
-+-- ============================================================================
-+-- aicli Database Schema — Canonical Latest Version
-+-- Updated: 2026-04-08
-+-- ============================================================================
-+-- This file is the SINGLE SOURCE OF TRUTH for all table structures.
-+-- Rules:
-+--   1. Always use CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS.
-+--   2. Every ALTER TABLE ever applied must be merged into the CREATE TABLE here.
-+--   3. Schema changes update THIS file AND add a migration entry in db_migrations.py.
-+--   4. No raw ALTER TABLE here — fresh installs read this file; migrations handle upgrades.
-+-- ============================================================================
-+
-+CREATE EXTENSION IF NOT EXISTS vector;
-+
-+-- ============================================================================
-+-- SECTION 1: mng_* — Global / Client-scoped Management Tables
-+-- ============================================================================
-+
-+-- mng_schema_version: tracks which migrations have been applied
-+-- Must be created before anything else so migration checks work on first run
-+CREATE TABLE IF NOT EXISTS mng_schema_version (
-+    version    VARCHAR(100) PRIMARY KEY,
-+    applied_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-+);
-+
-+-- mng_clients: top-level tenants (local install always has id=1)
-+CREATE TABLE IF NOT EXISTS mng_clients (
-+    id                SERIAL       PRIMARY KEY,
-+    slug              VARCHAR(50)  UNIQUE NOT NULL,
-+    name              VARCHAR(255) NOT NULL DEFAULT '',
-+    plan              VARCHAR(20)  NOT NULL DEFAULT 'free',
-+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-+    pricing_config    JSONB        DEFAULT NULL,
-+    provider_costs    JSONB        DEFAULT NULL,
-+    provider_balances JSONB        DEFAULT NULL,
-+    server_api_keys   JSONB        DEFAULT NULL
-+);
-+INSERT INTO mng_clients (id, slug, name, plan)
-+VALUES (1, 'local', 'Local Install', 'free')
-+ON CONFLICT (slug) DO NOTHING;
-+
-+-- mng_users: user accounts (per client)
-+CREATE TABLE IF NOT EXISTS mng_users (
-+    id                 VARCHAR(36)    PRIMARY KEY,
-+    client_id          INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-+    email              VARCHAR(255)   UNIQUE NOT NULL,
-+    password_hash      TEXT           NOT NULL,
-+    is_admin           BOOLEAN        NOT NULL DEFAULT FALSE,
-+    is_active          BOOLEAN        NOT NULL DEFAULT TRUE,
-+    created_at         TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-+    last_login         TIMESTAMPTZ,
-+    role               VARCHAR(20)    NOT NULL DEFAULT 'free',
-+    balance_added_usd  NUMERIC(14, 8) NOT NULL DEFAULT 0,
-+    balance_used_usd   NUMERIC(14, 8) NOT NULL DEFAULT 0,
-+    coupons_used       TEXT[]         NOT NULL DEFAULT '{}',
-+    stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT ''
-+);
-+CREATE INDEX IF NOT EXISTS idx_users_email  ON mng_users(email);
-+CREATE INDEX IF NOT EXISTS idx_users_client ON mng_users(client_id);
-+
-+-- mng_usage_logs: per-request LLM usage tracking
-+CREATE TABLE IF NOT EXISTS mng_usage_logs (
-+    id            SERIAL         PRIMARY KEY,
-+    user_id       VARCHAR(36)    REFERENCES mng_users(id) ON DELETE SET NULL,
-+    provider      VARCHAR(50),
-+    model         VARCHAR(100),
-+    input_tokens  INTEGER        NOT NULL DEFAULT 0,
-+    output_tokens INTEGER        NOT NULL DEFAULT 0,
-+    cost_usd      NUMERIC(12, 8) NOT NULL DEFAULT 0,
-+    charged_usd   NUMERIC(12, 8) NOT NULL DEFAULT 0,
-+    source        VARCHAR(50)    NOT NULL DEFAULT 'request',  -- 'request'|'workflow'|'memory'
-+    metadata      JSONB          DEFAULT NULL,
-+    period_start  TIMESTAMPTZ    DEFAULT NULL,
-+    period_end    TIMESTAMPTZ    DEFAULT NULL,
-+    created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
-+);
-+CREATE INDEX IF NOT EXISTS idx_usage_user_id    ON mng_usage_logs(user_id);
-+CREATE INDEX IF NOT EXISTS idx_usage_created_at ON mng_usage_logs(created_at DESC);
-+CREATE INDEX IF NOT EXISTS idx_usage_provider   ON mng_usage_logs(provider);
-+CREATE INDEX IF NOT EXISTS idx_usage_source     ON mng_usage_logs(source);
-+
-+-- mng_transactions: billing credit/debit events
-+CREATE TABLE IF NOT EXISTS mng_transactions (
-+    id            SERIAL         PRIMARY KEY,
-+    user_id       VARCHAR(36)    REFERENCES mng_users(id) ON DELETE SET NULL,
-+    type          VARCHAR(50)    NOT NULL,
-+    amount_usd    NUMERIC(12, 8) NOT NULL DEFAULT 0,
-+    base_cost_usd NUMERIC(12, 8),
-+    description   TEXT           NOT NULL DEFAULT '',
-+    ref           VARCHAR(255)   NOT NULL DEFAULT '',
-+    created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
-+);
-+CREATE INDEX IF NOT EXISTS idx_tx_user_id    ON mng_transactions(user_id);
-+CREATE INDEX IF NOT EXISTS idx_tx_created_at ON mng_transactions(created_at DESC);
-+CREATE INDEX IF NOT EXISTS idx_tx_type       ON mng_transactions(type);
-+
-+-- mng_user_api_keys: per-user encrypted provider API keys
-+CREATE TABLE IF NOT EXISTS mng_user_api_keys (
-+    id         SERIAL      PRIMARY KEY,
-+    user_id    VARCHAR(36) NOT NULL REFERENCES mng_users(id) ON DELETE CASCADE,
-+    provider   VARCHAR(50) NOT NULL,
-+    key_enc    TEXT        NOT NULL,
-+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-+    UNIQUE(user_id, provider)
-+);
-+CREATE INDEX IF NOT EXISTS idx_muak_user ON mng_user_api_keys(user_id);
-+
-+-- mng_coupons: discount codes (per client)
-+CREATE TABLE IF NOT EXISTS mng_coupons (
-+    id          SERIAL         PRIMARY KEY,
-+    client_id   INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-+    code        VARCHAR(50)    NOT NULL,
-+    amount_usd  NUMERIC(10, 4) NOT NULL DEFAULT 0,
-+    max_uses    INT            NOT NULL DEFAULT 1,
-+    used_count  INT            NOT NULL DEFAULT 0,
-+    used_by     JSONB          NOT N
+Fixed tag property drawer display by correcting variable scope error (catName undefined), field name mismatch (short_desc vs description), and added missing cache fields (requirements, acceptance_criteria, priority) to SQL query.
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-diff --git a/backend/core/db_migrations.py b/backend/core/db_migrations.py
-new file mode 100644
-index 0000000..87c58a0
---- /dev/null
-+++ b/backend/core/db_migrations.py
-@@ -0,0 +1,118 @@
-+"""
-+db_migrations.py — Database migration runner for aicli.
-+
-+Migration philosophy
-+────────────────────
-+Each schema change follows a safe rename → recreate → copy pattern:
-+
-+    1. Rename the old table:  ALTER TABLE foo RENAME TO _bak_{version}_foo
-+    2. Create the new table:  the CREATE TABLE from db_schema.sql
-+    3. Copy data:             INSERT INTO foo (cols) SELECT cols FROM _bak_{version}_foo
-+    4. (Optional) Drop backup after verification
-+
-+Benefits vs ALTER TABLE ADD COLUMN:
-+  - Works for column removals, type changes, and renames (not just additions)
-+  - The backup table is a free rollback path
-+  - db_schema.sql always reflects the final target shape
-+
-+FK-dependent tables
-+───────────────────
-+If table B has a FK → table A, and you need to migrate A:
-+    1. Drop the FK constraint from B  (ALTER TABLE B DROP CONSTRAINT fk_name)
-+    2. Run migrate_table() on A
-+    3. Recreate the FK on B          (ALTER TABLE B ADD CONSTRAINT ...)
-+
-+Helper usage example
-+────────────────────
-+    def m018_add_new_column(conn) -> None:
-+        migrate_table(
-+            conn,
-+            old_table   = "mem_ai_work_items",
-+            backup_name = "_bak_018_mem_ai_work_items",
-+            create_sql  = '''
-+                CREATE TABLE mem_ai_work_items (
-+                    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-+                    project_id  INT  NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-+                    new_column  TEXT NOT NULL DEFAULT '',
-+                    -- ... all other columns from db_schema.sql
-+                )
-+            ''',
-+            copy_columns = [
-+                "id", "client_id", "project_id", "ai_category", "ai_name",
-+                # list every column that existed BEFORE this migration
-+                # new columns get their DEFAULT values automatically
-+            ],
-+        )
-+
-+MIGRATIONS list
-+───────────────
-+Each entry: (version: str, up_fn: Callable[[conn], None])
-+Versions must be unique and monotonically increasing.
-+Already-applied versions are skipped (tracked in mng_schema_version).
-+"""
-+from __future__ import annotations
-+
-+import logging
-+from typing import Callable
-+
-+log = logging.getLogger(__name__)
-+
-+
-+# ─────────────────────────────────────────────────────────────────────────────
-+# Migration helper
-+# ─────────────────────────────────────────────────────────────────────────────
-+
-+def migrate_table(
-+    conn,
-+    old_table:    str,
-+    backup_name:  str,
-+    create_sql:   str,
-+    copy_columns: list[str],
-+) -> None:
-+    """
-+    Rename → recreate → copy pattern.
-+
-+    Args:
-+        conn:         psycopg2 connection (autocommit=False, caller controls commit)
-+        old_table:    current table name (e.g. 'mem_ai_work_items')
-+        backup_name:  name for the renamed backup (e.g. '_bak_018_mem_ai_work_items')
-+        create_sql:   full CREATE TABLE statement for the new schema (no IF NOT EXISTS)
-+        copy_columns: columns to copy from backup → new table (omit new columns;
-+                      they get their DEFAULT values)
-+    """
-+    cols = ", ".join(copy_columns)
-+    with conn.cursor() as cur:
-+        log.info(f"migrate_table: renaming {old_table} → {backup_name}")
-+        cur.execute(f"ALTER TABLE {old_table} RENAME TO {backup_name}")
-+        log.info(f"migrate_table: creating new {old_table}")
-+        cur.execute(create_sql)
-+        log.info(f"migrate_table: copying {len(copy_columns)} columns from {backup_name}")
-+        cur.execute(f"INSERT INTO {old_table} ({cols}) SELECT {cols} FROM {backup_name}")
-+    conn.commit()
-+    log.info(f"migrate_table: {old_table} migration complete ({backup_name} kept as backup)")
-+
-+
-+# ─────────────────────────────────────────────────────────────────────────────
-+# Migration registry
-+# ─────────────────────────────────────────────────────────────────────────────
-+# Format: list of (version_string, callable(conn) -> None)
-+# Migrations are applied in list order; already-applied versions are skipped.
-+#
-+# HOW TO ADD A MIGRATION:
-+#   1. Update db_schema.sql with the new table structure
-+#   2. Define a migration function below (name it m{NNN}_description)
-+#   3. Append (version, function) to MIGRATIONS
-+#   4. Bump version suffix if modifying an existing migration block in database.py
-+#
-+# Version naming convention: "m{NNN}_{table_slug}"
-+# Examples: "m018_add_wi_priority", "m019_rename_fact_key"
-+
-+MIGRATIONS: list[tuple[str, Callable]] = [
-+    # All migrations through m017 (ai_tags column) were applied via the legacy
-+    # ALTER TABLE system in database.py and are tracked as:
-+    #   pr_tables_v1, memory_infra_v1, memory_infra_alters_v2,
-+    #   work_items_alters_v1, commit_code_v1
-+    #
-+    # Future migrations go here:
-+    # ("m018_example", m018_example),
-+]
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/backend/core/database.py b/backend/core/database.py
-index 130a6f7..b1e8595 100644
---- a/backend/core/database.py
-+++ b/backend/core/database.py
-@@ -51,1221 +51,10 @@ def _workspace() -> Path:
-     return Path(settings.workspace_dir)
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index d199333..0e53749 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -1409,7 +1409,7 @@ function _renderDrawer() {
+                  padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
+                  resize:vertical;box-sizing:border-box;line-height:1.5"
+           onblur="api.tags.update('${v.id}', {short_desc: this.value}).catch(e=>toast(e.message,'error'))"
+-        >${_esc(v.short_desc || '')}</textarea>
++        >${_esc(v.description || '')}</textarea>
+       </div>
  
- 
--# ─── DDL: mng_clients ────────────────────────────────────────────────────────
--
--_DDL_CLIENTS = """
--CREATE TABLE IF NOT EXISTS mng_clients (
--    id               SERIAL       PRIMARY KEY,
--    slug             VARCHAR(50)  UNIQUE NOT NULL,
--    name             VARCHAR(255) NOT NULL DEFAULT '',
--    plan             VARCHAR(20)  NOT NULL DEFAULT 'free',
--    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
--    pricing_config    JSONB        DEFAULT NULL,
--    provider_costs    JSONB        DEFAULT NULL,
--    provider_balances JSONB        DEFAULT NULL,
--    server_api_keys   JSONB        DEFAULT NULL
--);
--INSERT INTO mng_clients (id, slug, name, plan) VALUES (1, 'local', 'Local Install', 'free')
--    ON CONFLICT (slug) DO NOTHING;
--"""
--
--# ─── DDL: mng_users / usage_logs / transactions ──────────────────────────────
--
--_DDL_CORE = """
--CREATE TABLE IF NOT EXISTS mng_users (
--    id                 VARCHAR(36)    PRIMARY KEY,
--    client_id          INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
--    email              VARCHAR(255)   UNIQUE NOT NULL,
--    password_hash      TEXT           NOT NULL,
--    is_admin           BOOLEAN        NOT NULL DEFAULT FALSE,
--    is_active          BOOLEAN        NOT NULL DEFAULT TRUE,
--    created_at         TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
--    last_login         TIMESTAMPTZ,
--    role               VARCHAR(20)    NOT NULL DEFAULT 'free',
--    balance_added_usd  NUMERIC(14, 8) NOT NULL DEFAULT 0,
--    balance_used_usd   NUMERIC(14, 8) NOT NULL DEFAULT 0,
--    coupons_used       TEXT[]         NOT NULL DEFAULT '{}',
--    stripe_customer_id VARCHAR(100)   NOT NULL DEFAULT ''
--);
--CREATE INDEX IF NOT EXISTS idx_users_email    ON mng_users(email);
--CREATE INDEX IF NOT EXISTS idx_users_client   ON mng_users(client_id);
--
--CREATE TABLE IF NOT EXISTS mng_usage_logs (
--    id            SERIAL         PRIMARY KEY,
--    user_id       VARCHAR(36)    REFERENCES mng_users(id) ON DELETE SET NULL,
--    provider      VARCHAR(50),
--    model         VARCHAR(100),
--    input_tokens  INTEGER        NOT NULL DEFAULT 0,
--    output_tokens INTEGER        NOT NULL DEFAULT 0,
--    cost_usd      NUMERIC(12, 8) NOT NULL DEFAULT 0,
--    charged_usd   NUMERIC(12, 8) NOT NULL DEFAULT 0,
--    created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
--);
--ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS source        VARCHAR(50)    NOT NULL DEFAULT 'request';
--ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS metadata      JSONB          DEFAULT NULL;
--ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS period_start  TIMESTAMPTZ    DEFAULT NULL;
--ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS period_end    TIMESTAMPTZ    DEFAULT NULL;
--CREATE INDEX IF NOT EXISTS idx_usage_user_id    ON mng_usage_logs(user_id);
--CREATE INDEX IF NOT EXISTS idx_usage_created_at ON mng_usage_logs(created_at DESC);
--CREATE INDEX IF NOT EXISTS idx_usage_provider   ON mng_usage_logs(provider);
--CREATE INDEX IF NOT EXISTS idx_usage_source     ON mng_usage_logs(source);
--
--CREATE TABLE IF NOT EXISTS mng_transactions (
--    id            SERIAL         PRIMARY KEY,
--    user_id       VARCHAR(36)    REFERENCES mng_users(id) ON DELETE SET NULL,
--    type          VARCHAR(50)    NOT NULL,
--    amount_usd    NUMERIC(12, 8) NOT NULL DEFAULT 0,
--    base_cost_usd NUMERIC(12, 8),
--    description   TEXT           NOT NULL DEFAULT '',
--    ref           VARCHAR(255)   NOT NULL DEFAULT '',
--    created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
--);
--CREATE INDEX IF NOT EXISTS idx_tx_user_id    ON mng_transactions(user_id);
--CREATE INDEX IF NOT EXISTS idx_tx_created_at ON mng_transactions(created_at DESC);
--CREATE INDEX IF NOT EXISTS idx_tx_type       ON mng_transactions(type);
--"""
--
--# ─── DDL: mng_user_api_keys ──────────────────────────────────────────────────
--
--_DDL_USER_API_KEYS = """
--CREATE TABLE IF NOT EXISTS mng_user_api_keys (
--    id         SERIAL      PRIMARY KEY,
--    user_id    VARCHAR(36) NOT NULL REFERENCES mng_users(id) ON DELETE CASCADE,
--    provider   VARCHAR(50) NOT NULL,
--    key_enc    TEXT        NOT NULL,
--    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
--    UNIQUE(user_id, provider)
--);
--CREATE INDEX IF NOT EXISTS idx_muak_user ON mng_user_api_keys(user_id);
--"""
--
--# ─── DDL: mng_coupons ────────────────────────────────────────────────────────
--
--_DDL_COUPONS = """
--CREATE TABLE IF NOT EXISTS mng_coupons (
--    id          SERIAL         PRIMARY KEY,
--    client_id   INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
--    code        VARCHAR(50)    NOT NULL,
--    amount_usd  NUMERIC(10, 4) NOT NULL DEFAULT 0,
--    max_uses    INT            NOT NULL DEFAULT 1,
--    used_count  INT            NOT NULL DEFAULT 0,
--    used_by     JSONB          NOT NULL DEFAULT '[]',
--    description TEXT           NOT NULL DEFAULT '',
--    expires_at  TIMESTAMPTZ    DEFAULT NULL,
--    created_by  VARCHAR(255)   NOT NULL DEFAULT 'admin',
--    created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
--);
--CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_client_code ON mng_coupons(client_id, code);
--CREATE INDEX IF NOT EXISTS idx_mcp_client ON mng_coupons(client_id);
--"""
--
--# ─── DDL: mng_* entity + session + role tables ───────────────────────────────
--
--_DDL_MNG_TABLES = """
---- mng_projects: one row per project (replaces project TEXT partition key everywhere)
--CREATE TABLE IF NOT EXISTS mng_projects (
--    id                  SERIAL         PRIMARY KEY,
--    client_id           INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
--    name                VARCHAR(255)   NOT NULL,
--    description         TEXT           NOT NULL DEFAULT '',
--    workspace_path      TEXT,
--    code_dir            TEXT,
--    default_p
+       <!-- Requirements -->
+@@ -1538,7 +1538,7 @@ function _renderDrawer() {
+                     letter-spacing:.06em;margin-bottom:0.35rem">Planner</div>
+         <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+           <button id="drawer-planner-btn"
+-            onclick="window._plannerRunPlan('${v.id}','${_esc(v.name)}','${_esc(catName)}','${_esc(_plannerState.project)}')"
++            onclick="window._plannerRunPlan('${v.id}','${_esc(v.name)}','${_esc(v.category_name || _plannerState.selectedCatName)}','${_esc(_plannerState.project)}')"
+             style="font-size:0.62rem;padding:0.22rem 0.6rem;background:var(--surface2);
+                    border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+                    color:var(--text2);font-family:var(--font);outline:none;white-space:nowrap">
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/backend/routers/route_entities.py b/backend/routers/route_entities.py
+index 9522c4c..84f7bd3 100644
+--- a/backend/routers/route_entities.py
++++ b/backend/routers/route_entities.py
+@@ -104,7 +104,10 @@ _SQL_LIST_VALUES = """
+            t.created_at, t.due_date, t.parent_id::text, t.status AS lifecycle_status,
+            t.seq_num,
+            0 AS event_count,
+-           tc.name AS category_name, tc.color, tc.icon
++           tc.name AS category_name, tc.color, tc.icon,
++           COALESCE(t.requirements,'') AS requirements,
++           COALESCE(t.acceptance_criteria,'') AS acceptance_criteria,
++           COALESCE(t.priority, 3) AS priority
+     FROM planner_tags t
+     JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
+     WHERE {where}
+
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index bafb031..6329a63 100644
+index 6329a63..416510b 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-08 18:31 UTC
-+> Generated by aicli 2026-04-08 18:43 UTC
+-> Generated by aicli 2026-04-08 18:43 UTC
++> Generated by aicli 2026-04-08 19:01 UTC
  
  # aicli — Shared AI Memory Platform
  
@@ -581,13 +243,13 @@ index bafb031..6329a63 100644
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 164f73e..ceb4548 100644
+index ceb4548..f1be727 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 18:31 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 18:43 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 18:43 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 19:01 UTC
  
  # aicli — Shared AI Memory Platform
  
@@ -595,27 +257,27 @@ index 164f73e..ceb4548 100644
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-08] I do not see any update at the database
- - [2026-04-08] yes please
+-- [2026-04-08] yes please
  - [2026-04-08] can you explain where are the  prompts that used for update new commit ?
  - [2026-04-08] Can you explain how commit data statitics are connected to work_items ? Is there is a way to know how many rows/promtps 
--- [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
+ - [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
+-- [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
 \ No newline at end of file
-+- [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
 +- [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
++- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
 \ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index 164f73e..ceb4548 100644
+index ceb4548..f1be727 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 18:31 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 18:43 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 18:43 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 19:01 UTC
  
  # aicli — Shared AI Memory Platform
  
@@ -623,17 +285,13 @@ index 164f73e..ceb4548 100644
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-08] I do not see any update at the database
- - [2026-04-08] yes please
+-- [2026-04-08] yes please
  - [2026-04-08] can you explain where are the  prompts that used for update new commit ?
  - [2026-04-08] Can you explain how commit data statitics are connected to work_items ? Is there is a way to know how many rows/promtps 
--- [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
+ - [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
+-- [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
 \ No newline at end of file
-+- [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
 +- [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
++- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
 \ No newline at end of file
 
-
-## AI Synthesis
-
-**[2026-04-08]** `bug-fix` — Fixed critical planner tag UI binding: `catName` reference error in `_renderDrawer()` (parameter scope issue) preventing left sidebar property display; also corrected field name `v.short_desc` → `v.desc` for proper tag metadata rendering. **[2026-04-08]** `refactor` — Established db_schema.sql as canonical single source of truth for all table structures with migration framework (db_migrations.py) using safe rename → recreate → copy pattern; consolidated legacy ALTER TABLE statements into tracked migrations m001-m017. **[2026-04-08]** `in-progress` — Refactoring routes to use centralized core.prompt_loader instead of direct mng_system_roles queries, eliminating redundant database roundtrips for prompt management. **[2026-04-08]** `infra` — Tracing all LLM prompts across commit pipeline (memory_embedding.py, agents/tools, routers) to unify prompt management and cost tracking. **[2026-04-08]** `performance` — Investigating ~60s latency in route_work_items from unlinked work items query; focusing on _SQL_UNLINKED_WORK_ITEMS join optimization and index coverage. **[2026-04-08]** `design` — Confirmed 4-layer memory architecture (session messages → raw mem_mrr → LLM digests in mem_ai → work items → user tags) with session ordering by created_at to prevent tag-update reordering.

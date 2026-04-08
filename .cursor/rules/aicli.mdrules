@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 22:52 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 23:26 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -66,8 +66,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-08] Can you explain how commit data statitics are connected to work_items ? Is there is a way to know how many rows/promtps 
 - [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
 - [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
 - [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
 - [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
+- [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
