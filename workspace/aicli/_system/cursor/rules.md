@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:43 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 00:28 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
 - [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
 - [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
 - [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
 - [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
+- [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma

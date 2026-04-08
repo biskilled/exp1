@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-07 22:43 UTC by aicli /memory_
+_Generated: 2026-04-08 00:28 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform that integrates Claude/OpenAI LLMs with a PostgreSQL-backed semantic memory system, providing dual-layer memory synthesis, DAG workflow execution, and cross-project knowledge management. The system spans a Python FastAPI backend, Electron desktop UI with Cytoscape workflow visualization, and CLI interface, with current focus on optimizing database performance, debugging tag visibility in the planner system, and ensuring proper data synchronization across the 4-layer memory architecture.
 
 ## Project Facts
 
@@ -164,90 +160,131 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit` — 2026-04-07
+### `commit: ffeb4281-920b-4404-a108-37a3b8e54d40` — 2026-04-07
 
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 541ac38..e09e93d 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:39 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:40 UTC
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index ddc699c..b299d93 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -301,9 +301,9 @@ textarea.addEventListener('input', () => {
  
- # aicli — Shared AI Memory Platform
+ ## Recent Work
  
-@@ -54,13 +54,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
- - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
--- 4-layer memory architecture: Layer 0 (ephemeral session messages) → Layer 1 (mem_mrr_* raw capture) → Layer 2 (mem_ai_events LLM digests + embeddings) → Layer 3 (mem_ai_work_items, mem_ai_project_facts) → Layer 4 (user-managed planner_tags)
-+- 4-layer memory architecture: ephemeral session messages → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items, mem_ai_project_facts → user-managed planner_tags
- - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
- - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
- - Tag filtering in work item list: ai_category must match tag's category, not work item's own category
- - Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
--- Memory synthesis triggered from session data via /memory endpoint → Claude Haiku processes commits/events → outputs to mem_ai_events/project_facts tables
-+- Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
- 
- ## Recent Context (last 5 changes)
- 
+-- PostgreSQL schema cleanup: drop unused graph tables; consolidate workflows vs flows distinction; align database schema with node-graph execution model for multi-agent workflows
+-- Balance persistence and admin dashboard: fix balance refresh on top-right corner; ensure admin sees total balance aggregated across all users; per-user balance visibility in user dashboard
+-- Hooks integration and history tracking: populate commit_log.jsonl from all tools (claude cli, aicli, cursor); capture both prompts and responses in history.jsonl; verify auto-commit on claude cli works
+-- Mandatory metadata tagging system: force claude-cli and cursor to attach minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across conversation
+-- PostgreSQL pgvector implementation: create semantic embedding schema for project metadata (tasks, features, bugs); add relational tagging table linking commit_id to lifecycle_stage/feature_area; validate approach improves cross-tool project comprehension
+-- Code consolidation: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; consolidate history folder vs _system folder usage; merge QUICKSTART.md and README.md
++- PostgreSQL pgvector schema creation and validation: set up new PostgreSQL instance with pgvector extension; create users, usage_logs, billing_logs, workflows tables; drop unused graph tables; validate relational data and vector embedding capability
++- Mandatory metadata tagging system: force claude-cli and cursor to attach minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across conversation; create relational tagging table linking commit_id to lifecycle_stage/feature_area/bug
++- Unified commit_log.jsonl population: ensure all logs (prompts, responses, errors) from claude cli hooks, aicli commits, and cursor hooks write to shared commit_log.jsonl; verify history.jsonl captures both prompts and responses
++- Balance persistence and refresh logic: fix top-right corner balance refresh; ensure admin dashboard aggregates total balance across all users and all API keys; per-user balance visibility in user dashboard and API key management screen
++- Hook integration debugging: verify claude cli hooks are auto-committing to git; ensure aicli tracks history properly; consolidate history folder vs _system folder usage to eliminate duplication
++- Code consolidation and cleanup: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; merge QUICKSTART.md and README.md documentation
 
 
-### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 18adae5..541ac38 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:38 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:39 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit` — 2026-04-07
-
-Updated documentation files to reflect changes made during a CLI session, ensuring system context and memory information are current and accurate.
-
-### `commit` — 2026-04-07
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 18adae5..541ac38 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:38 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:39 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
+### `commit: ffeb4281-920b-4404-a108-37a3b8e54d40` — 2026-04-07
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index b5b1abd..e0e3735 100644
+index 9828587..00687b3 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-07 17:12 UTC
-+> Generated by aicli 2026-04-07 22:38 UTC
+-> Generated by aicli 2026-03-08 23:52 UTC
++> Generated by aicli 2026-03-09 00:31 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -13,11 +13,11 @@ _Last updated: 2026-03-08_
+ - backend: FastAPI + python-jose + bcrypt + SQLAlchemy
+ - frontend: Vanilla JS + Electron with xterm.js + Monaco editor
+ - storage: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV
+-- database: PostgreSQL with pgvector + SQLAlchemy ORM
++- database: PostgreSQL 15+ with pgvector extension + SQLAlchemy ORM
+ - authentication: JWT (python-jose) + bcrypt + dev_mode toggle
+ - planned: GraphQL, node graph UI, pgvector semantic embeddings, unified provider logging
+ - orm: SQLAlchemy
+-- tables: users, user_usage, usage_logs, billing_logs, workflows, runs (graph tables dropped)
++- tables: users, user_usage, usage_logs, billing_logs, workflows, relational_tags
+ - vector_search: pgvector for semantic embeddings and entity relationships
+ - workflow_execution: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
+ - vector_db: pgvector for semantic embeddings and entity relationships
+
+
+### `commit: ffeb4281-920b-4404-a108-37a3b8e54d40` — 2026-04-07
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index be8265d..14529c8 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 23:52 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 00:31 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -13,11 +13,11 @@ _Last updated: 2026-03-08_
+ - **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
+ - **frontend**: Vanilla JS + Electron with xterm.js + Monaco editor
+ - **storage**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV
+-- **database**: PostgreSQL with pgvector + SQLAlchemy ORM
++- **database**: PostgreSQL 15+ with pgvector extension + SQLAlchemy ORM
+ - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
+ - **planned**: GraphQL, node graph UI, pgvector semantic embeddings, unified provider logging
+ - **orm**: SQLAlchemy
+-- **tables**: users, user_usage, usage_logs, billing_logs, workflows, runs (graph tables dropped)
++- **tables**: users, user_usage, usage_logs, billing_logs, workflows, relational_tags
+ - **vector_search**: pgvector for semantic embeddings and entity relationships
+ - **workflow_execution**: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
+ - **vector_db**: pgvector for semantic embeddings and entity relationships
+@@ -42,8 +42,8 @@ _Last updated: 2026-03-08_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-03-08] <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm</tool-use-id> <stat
+ - [2026-03-08] I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the current solution is goo
+ - [2026-03-08] I will create postgresql with pgvector. it is a new instanse (so required to create all users table as well). before you
+ - [2026-03-08] dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys for each prompt ? for
+-- [2026-03-08] dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name 
+\ No newline at end of file
++- [2026-03-08] dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name 
++- [2026-03-09] can you check if the new postgreurl is working and good for pgvector and for relational data ?
+\ No newline at end of file
+
+
+### `commit: 14a417f0-1796-4f7e-a57c-5c6a6c7a3723` — 2026-04-08
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index b304777..30f08bc 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:42 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:43 UTC
  
  # aicli — Shared AI Memory Platform
  
 
 
-### `commit` — 2026-04-07
+### `commit: 14a417f0-1796-4f7e-a57c-5c6a6c7a3723` — 2026-04-08
 
-Updated documentation for memory and project management based on insights from a Claude discussion session to reflect current best practices and findings.
+diff --git a/.ai/rules.md b/.ai/rules.md
+index b304777..30f08bc 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:42 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:43 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
 
-## AI Synthesis
 
-**[2026-04-07]** `memory_system` — Completed memory synthesis runs with Claude Haiku dual-layer processing; updated .ai/rules.md and .cursor/rules/aicli.mdrules to reflect latest architectural context including 4-layer memory architecture and MCP server integration. **[recent]** `database_optimization` — Identified route_work_items performance bottleneck (~60s latency); investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS join operations and commit table schema clarification. **[recent]** `tag_system` — Debugging planner tag visibility issue where categories upload successfully but individual tags don't display in category bindings; verifying router mapping logic. **[recent]** `project_resolution` — Fixing project ID resolution in embed_commits workflow to use project_id instead of project string parameter in database queries. **[recent]** `memory_flow` — Tracing end-to-end data flow from mirror tables through mem_ai_* unified tables; documenting triggers and update mechanisms for each layer of 4-layer memory architecture. **[recent]** `session_sync` — Running /memory endpoint to synchronize session data into memory_items and ensure mem_ai_* tables reflect latest project state across all work items and project facts.
+### `commit: 14a417f0-1796-4f7e-a57c-5c6a6c7a3723` — 2026-04-08
+
+Updated system prompts and memory configuration based on CLI session 14a417f0, incorporating any new requirements or changes identified during that interactive session.

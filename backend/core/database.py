@@ -362,17 +362,23 @@ CREATE INDEX IF NOT EXISTS        idx_mmrr_p_tags    ON mem_mrr_prompts USING gi
 
 -- Mirroring: commits — commit_hash is the natural primary key (git hash)
 CREATE TABLE IF NOT EXISTS mem_mrr_commits (
-    commit_hash  VARCHAR(64)    PRIMARY KEY,
-    client_id    INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project_id   INT            NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-    commit_msg   TEXT           NOT NULL DEFAULT '',
-    summary      TEXT           NOT NULL DEFAULT '',
-    diff_summary TEXT           NOT NULL DEFAULT '',
-    session_id   VARCHAR(255),
-    prompt_id    UUID           REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
-    tags         JSONB          NOT NULL DEFAULT '{}',
-    committed_at TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+    commit_hash        VARCHAR(64)    PRIMARY KEY,
+    commit_short_hash  VARCHAR(8)     GENERATED ALWAYS AS (LEFT(commit_hash,8)) STORED,
+    client_id          INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project_id         INT            NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    commit_msg         TEXT           NOT NULL DEFAULT '',
+    author             TEXT           NOT NULL DEFAULT '',
+    author_email       TEXT           NOT NULL DEFAULT '',
+    summary            TEXT           NOT NULL DEFAULT '',
+    diff_summary       TEXT           NOT NULL DEFAULT '',
+    llm                TEXT,
+    exec_llm           BOOLEAN        NOT NULL DEFAULT FALSE,
+    session_id         VARCHAR(255),
+    prompt_id          UUID           REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
+    tags               JSONB          NOT NULL DEFAULT '{}',
+    tags_ai            JSONB          NOT NULL DEFAULT '{}',
+    committed_at       TIMESTAMPTZ,
+    created_at         TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid      ON mem_mrr_commits(project_id);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm     ON mem_mrr_commits(committed_at DESC);
@@ -546,6 +552,45 @@ CREATE TABLE IF NOT EXISTS pr_seq_counters (
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS seq_num INT;
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL;
 
+"""
+
+
+# ─── DDL: mem_mrr_commits_code — per-symbol code stats for each commit ────────
+
+_DDL_COMMIT_CODE = """
+CREATE TABLE IF NOT EXISTS mem_mrr_commits_code (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id       INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project_id      INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    commit_hash     VARCHAR(64) NOT NULL REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE,
+    file_path       TEXT        NOT NULL,
+    file_ext        TEXT        NOT NULL DEFAULT '',
+    file_language   TEXT        NOT NULL DEFAULT '',
+    file_change     TEXT        NOT NULL CHECK (file_change IN ('added','modified','deleted','renamed')),
+    symbol_type     TEXT        NOT NULL CHECK (symbol_type IN ('class','method','function','import')),
+    class_name      TEXT,
+    method_name     TEXT,
+    full_symbol     TEXT GENERATED ALWAYS AS (
+                        CASE WHEN class_name IS NOT NULL AND method_name IS NOT NULL
+                                 THEN class_name || '.' || method_name
+                             WHEN class_name IS NOT NULL THEN class_name
+                             ELSE method_name END
+                    ) STORED,
+    symbol_change   TEXT        NOT NULL CHECK (symbol_change IN ('added','modified','deleted')),
+    rows_added      INT         NOT NULL DEFAULT 0,
+    rows_removed    INT         NOT NULL DEFAULT 0,
+    diff_snippet    TEXT,
+    llm_summary     TEXT,
+    embedding       VECTOR(1536),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mmc_code_unique
+    ON mem_mrr_commits_code (commit_hash, file_path, symbol_type,
+                              COALESCE(class_name,''), COALESCE(method_name,''));
+CREATE INDEX IF NOT EXISTS idx_mmc_code_pid    ON mem_mrr_commits_code(project_id);
+CREATE INDEX IF NOT EXISTS idx_mmc_code_hash   ON mem_mrr_commits_code(commit_hash);
+CREATE INDEX IF NOT EXISTS idx_mmc_code_sym    ON mem_mrr_commits_code(full_symbol) WHERE full_symbol IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmc_code_embed  ON mem_mrr_commits_code USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL;
 """
 
 
@@ -1191,6 +1236,19 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_merged ON mem_ai_work_items(merged_into
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS start_date TIMESTAMPTZ;
 -- ── 015_work_item_ai_tags ────────────────────────────────────────────────────
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS ai_tags JSONB NOT NULL DEFAULT '{}';
+-- ── 016_commits_refactor ─────────────────────────────────────────────────────
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS commit_short_hash VARCHAR(8) GENERATED ALWAYS AS (LEFT(commit_hash,8)) STORED;
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS author        TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS author_email  TEXT NOT NULL DEFAULT '';
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS llm           TEXT;
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS exec_llm      BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS tags_ai       JSONB NOT NULL DEFAULT '{}';
+-- Migrate llm from tags → dedicated column; set exec_llm flag
+UPDATE mem_mrr_commits SET llm = tags->>'llm', exec_llm = TRUE WHERE tags->>'llm' IS NOT NULL;
+-- Strip technical keys from tags (keep: source, phase, feature, bug, work-item)
+UPDATE mem_mrr_commits
+   SET tags = tags - 'files' - 'languages' - 'symbols' - 'rows_changed' - 'llm'
+                   - 'analysis' - 'commit_hash' - 'changed_files';
 """
 
 
@@ -1354,6 +1412,7 @@ class _Database:
         _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "mem_mrr_* + mem_ai_work_items + mem_ai_project_facts + graph tables")
         _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA, "planner_tags + mem_mrr_* + mem_ai_* tables")
         _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA_ALTERS, "memory infra column alters")
+        _Database._run_ddl_statements(conn, _DDL_COMMIT_CODE, "mem_mrr_commits_code")
         self._shared_schema_ready = True
         log.info("✅ three-layer memory schema ready (mem_mrr_* | planner_* | mem_ai_*)")
     # ── Seeding ────────────────────────────────────────────────────────────────

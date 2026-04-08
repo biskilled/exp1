@@ -5,3 +5,6 @@ default_provider: claude
 active_workflows:
   - build_feature
   - code_review
+commit_code_extraction:
+  min_lines: 5
+  only_on_commits_with_tags: false

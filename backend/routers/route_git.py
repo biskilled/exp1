@@ -26,15 +26,22 @@ log = logging.getLogger(__name__)
 
 _SQL_UPSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
-            (project_id, commit_hash, session_id, commit_msg, diff_summary, committed_at, tags)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (project_id, commit_hash, session_id, commit_msg, diff_summary,
+             author, author_email, committed_at, tags, tags_ai)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
                 commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
                 diff_summary = COALESCE(EXCLUDED.diff_summary, mem_mrr_commits.diff_summary),
+                author       = CASE WHEN EXCLUDED.author != '' THEN EXCLUDED.author
+                                    ELSE mem_mrr_commits.author END,
+                author_email = CASE WHEN EXCLUDED.author_email != '' THEN EXCLUDED.author_email
+                                    ELSE mem_mrr_commits.author_email END,
                 committed_at = COALESCE(EXCLUDED.committed_at, mem_mrr_commits.committed_at),
-                tags         = CASE WHEN EXCLUDED.tags != \'{}\' THEN EXCLUDED.tags
-                                    ELSE mem_mrr_commits.tags END
+                tags         = CASE WHEN EXCLUDED.tags != '{}' THEN EXCLUDED.tags
+                                    ELSE mem_mrr_commits.tags END,
+                tags_ai      = CASE WHEN EXCLUDED.tags_ai != '{}' THEN EXCLUDED.tags_ai
+                                    ELSE mem_mrr_commits.tags_ai END
 """
 
 # Link commit → most-recent prompt in the same session that occurred before the commit.
@@ -158,11 +165,25 @@ async def _embed_commit_background(project: str, commit_hash: str) -> None:
         log.debug(f"_embed_commit_background error ({commit_hash[:8]}): {e}")
 
 
+def _extract_commit_code_background(project: str, commit_hash: str) -> None:
+    """Run tree-sitter symbol extraction and insert rows into mem_mrr_commits_code."""
+    import asyncio
+    loop = asyncio.new_event_loop()
+    try:
+        from memory.memory_code_parser import extract_commit_code
+        loop.run_until_complete(extract_commit_code(project, commit_hash))
+    except Exception as e:
+        log.debug(f"_extract_commit_code_background error ({commit_hash[:8]}): {e}")
+    finally:
+        loop.close()
+
+
 # ── Commit→prompt linking background task ─────────────────────────────────────
 
 def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
                           commit_msg: str, committed_at: str,
-                          diff_summary: str = "", analysis: dict | None = None) -> None:
+                          diff_summary: str = "", analysis: dict | None = None,
+                          author: str = "", author_email: str = "") -> None:
     """Upsert the new commit into mem_mrr_commits and link it to its triggering prompt.
 
     Linking uses mem_mrr_commits.prompt_id (UUID FK to mem_mrr_prompts) — the most recent
@@ -190,15 +211,19 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
 
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # 1. Upsert the commit (includes diff_summary + tags)
+                # 1. Upsert the commit
+                # tags: user-intent only (source, phase, feature, bug, work-item)
                 tags_dict.setdefault("source", "commit_push")
+                # analysis goes to tags_ai (AI-generated metadata), not tags
+                tags_ai_dict: dict = {}
                 if analysis:
-                    tags_dict["analysis"] = analysis
+                    tags_ai_dict["analysis"] = analysis
                 cur.execute(
                     _SQL_UPSERT_COMMIT,
                     (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
+                     author, author_email,
                      committed_at or datetime.now(timezone.utc),
-                     json.dumps(tags_dict)),
+                     json.dumps(tags_dict), json.dumps(tags_ai_dict)),
                 )
 
                 # 2. Link commit → last prompt in the session (via prompt_id FK)
@@ -1002,6 +1027,17 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
 
     _, commit_hash, _ = _git(["rev-parse", "HEAD"], code_dir)
 
+    # Capture author info from the just-created commit
+    commit_author = ""
+    commit_author_email = ""
+    try:
+        _, author_info, _ = _git(["log", "--format=%an\t%ae", "-1", "HEAD"], code_dir)
+        parts = author_info.split("\t", 1)
+        commit_author = parts[0].strip() if parts else ""
+        commit_author_email = parts[1].strip() if len(parts) > 1 else ""
+    except Exception:
+        pass
+
     # Determine push target: explicit > project.yaml git_branch > current local branch > "main"
     push_target = body.branch.strip()
     if not push_target:
@@ -1082,10 +1118,14 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
             commit_message,
             datetime.now(timezone.utc).isoformat(),
             code_stat,          # only code file stats stored
-            commit_analysis,    # structured LLM analysis (may be {})
+            commit_analysis,    # structured LLM analysis → stored in tags_ai
+            commit_author,
+            commit_author_email,
         )
-        # Embed the commit (extracts symbols, creates mem_ai_events) in background
+        # Embed the commit (creates mem_ai_events) in background
         background.add_task(_embed_commit_background, project_name, commit_hash)
+        # Tree-sitter symbol extraction → mem_mrr_commits_code in background
+        background.add_task(_extract_commit_code_background, project_name, commit_hash)
 
     return {
         "committed": True,

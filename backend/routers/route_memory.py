@@ -375,9 +375,9 @@ async def embed_commits(
 ):
     """Run process_commit() for commits that have no Haiku digest yet.
 
-    Selects commits where tags->>'llm' IS NULL (never processed), runs Haiku
-    digest + embedding for each, back-propagates summary and llm tag to
-    mem_mrr_commits. Returns count processed.
+    Selects commits where exec_llm = FALSE (never processed), runs Haiku
+    digest + embedding for each, back-propagates summary and sets exec_llm=TRUE
+    on mem_mrr_commits. Returns count processed.
     """
     if not db.is_available():
         raise HTTPException(status_code=503, detail="PostgreSQL not available")
@@ -389,7 +389,7 @@ async def embed_commits(
                 cur.execute(
                     """SELECT commit_hash FROM mem_mrr_commits
                        WHERE project_id=%s
-                         AND (tags->>'llm') IS NULL
+                         AND exec_llm = FALSE
                        ORDER BY committed_at DESC NULLS LAST
                        LIMIT %s""",
                     (project_id, limit),

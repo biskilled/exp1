@@ -36,6 +36,15 @@ _SQL_GET_LINKED_COMMITS = """
     ORDER BY committed_at
 """
 
+_SQL_AGGREGATE_CODE = """
+    SELECT file_path, file_ext, file_language,
+           SUM(rows_added)::int   AS rows_added,
+           SUM(rows_removed)::int AS rows_removed
+    FROM mem_mrr_commits_code
+    WHERE commit_hash = ANY(%s)
+    GROUP BY file_path, file_ext, file_language
+"""
+
 _SQL_MERGE_AI_TAGS = """
     UPDATE mem_ai_work_items
     SET ai_tags = ai_tags || %s::jsonb, updated_at = NOW()
@@ -62,37 +71,74 @@ class MemoryExtraction:
     def aggregate_commits(commits: list[dict]) -> dict:
         """Aggregate file/line stats across all commits linked to a work item.
 
+        Queries mem_mrr_commits_code for structured per-symbol stats when available;
+        falls back to parsing tags["files"] / tags["rows_changed"] for older commits.
+
         Returns a dict with all_files, test_files, source_files, total_added,
         total_removed, and commit_count.
         """
-        all_files: set[str] = set()
-        test_files_seen: set[str] = set()
-        total_added = 0
-        total_removed = 0
+        commit_hashes = [c["commit_hash"] for c in commits if c.get("commit_hash")]
+
+        # Try mem_mrr_commits_code first (populated by tree-sitter parser)
+        if commit_hashes and db.is_available():
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(_SQL_AGGREGATE_CODE, (commit_hashes,))
+                        rows = cur.fetchall()
+                if rows:
+                    all_files: set[str] = set()
+                    test_files_seen: set[str] = set()
+                    total_added = 0
+                    total_removed = 0
+                    for file_path, _ext, _lang, ra, rr in rows:
+                        all_files.add(file_path)
+                        total_added += ra or 0
+                        total_removed += rr or 0
+                        if ".test." in file_path or ".spec." in file_path or "/test" in file_path or "tests/" in file_path:
+                            test_files_seen.add(file_path)
+                    test_files = sorted(test_files_seen)
+                    source_files = sorted(all_files - test_files_seen)
+                    return {
+                        "all_files":     sorted(all_files),
+                        "test_files":    test_files,
+                        "source_files":  source_files,
+                        "total_added":   total_added,
+                        "total_removed": total_removed,
+                        "commit_count":  len(commits),
+                    }
+            except Exception as e:
+                log.debug(f"aggregate_commits code table query failed, falling back: {e}")
+
+        # Fallback: parse tags["files"] / tags["rows_changed"] (pre-016 commits)
+        all_files_fb: set[str] = set()
+        test_files_seen_fb: set[str] = set()
+        total_added_fb = 0
+        total_removed_fb = 0
 
         for c in commits:
             tags = c.get("tags") or {}
             files = tags.get("files") or {}
             names = list(files.keys()) if isinstance(files, dict) else list(files)
-            all_files.update(names)
+            all_files_fb.update(names)
 
             rc = tags.get("rows_changed") or {}
-            total_added   += rc.get("added", 0)
-            total_removed += rc.get("removed", 0)
+            total_added_fb   += rc.get("added", 0)
+            total_removed_fb += rc.get("removed", 0)
 
             for f in names:
                 if ".test." in f or ".spec." in f or "/test" in f or "tests/" in f:
-                    test_files_seen.add(f)
+                    test_files_seen_fb.add(f)
 
-        test_files   = sorted(test_files_seen)
-        source_files = sorted(all_files - test_files_seen)
+        test_files_fb   = sorted(test_files_seen_fb)
+        source_files_fb = sorted(all_files_fb - test_files_seen_fb)
 
         return {
-            "all_files":    sorted(all_files),
-            "test_files":   test_files,
-            "source_files": source_files,
-            "total_added":  total_added,
-            "total_removed": total_removed,
+            "all_files":    sorted(all_files_fb),
+            "test_files":   test_files_fb,
+            "source_files": source_files_fb,
+            "total_added":  total_added_fb,
+            "total_removed": total_removed_fb,
             "commit_count": len(commits),
         }
 

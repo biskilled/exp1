@@ -91,6 +91,14 @@ _SQL_UPDATE_COMMIT_SUMMARY = """
     WHERE commit_hash = %s AND (summary IS NULL OR summary = '')
 """
 
+_SQL_SET_EXEC_LLM = """
+    UPDATE mem_mrr_commits SET llm=%s, exec_llm=TRUE WHERE commit_hash=%s
+"""
+
+_SQL_SET_TAGS_AI = """
+    UPDATE mem_mrr_commits SET tags_ai = tags_ai || %s::jsonb WHERE commit_hash = %s
+"""
+
 _SQL_GET_ITEM = """
     SELECT id, item_type, title, raw_text, summary
     FROM mem_mrr_items
@@ -413,17 +421,17 @@ class MemoryEmbedding:
             summary=summary_text, action_items=action_items, tags=digest_tags, importance=importance,
         )
 
-        # Back-propagate summary + llm tag to mem_mrr_commits (visible in history UI)
+        # Back-propagate summary to mem_mrr_commits and set exec_llm flag
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(_SQL_UPDATE_COMMIT_SUMMARY, (summary_text, commit_hash_val))
-                    cur.execute(_SQL_UPDATE_COMMIT_TAGS,
-                                (json.dumps({"llm": settings.haiku_model}), commit_hash_val))
+                    cur.execute(_SQL_SET_EXEC_LLM, (settings.haiku_model, commit_hash_val))
         except Exception as e:
-            log.debug(f"process_commit tag update error: {e}")
+            log.debug(f"process_commit column update error: {e}")
 
-        # Per-file diff chunks (raw embed, no llm tag) + back-propagate file stats to mrr
+        # Per-file diff chunks (raw embed) — file/language/symbol stats now live in
+        # mem_mrr_commits_code (populated by memory_code_parser.extract_commit_code)
         try:
             # Prefer project-specific code_dir from DB; fall back to settings.code_dir
             code_dir = settings.code_dir
@@ -451,20 +459,20 @@ class MemoryEmbedding:
                         diff_chunks = MemoryEmbedding.smart_chunk_diff(
                             diff_text, commit_hash_val, {"commit_msg": commit_msg}
                         )
-                        # Back-propagate file/language/symbol stats from summary chunk to mrr
-                        summary_chunk_tags = diff_chunks[0].get("tags", {}) if diff_chunks else {}
-                        mrr_stat_update: dict = {}
-                        if summary_chunk_tags.get("files"):
-                            mrr_stat_update["files"] = summary_chunk_tags["files"]
-                        if summary_chunk_tags.get("languages"):
-                            mrr_stat_update["languages"] = summary_chunk_tags["languages"]
-                        if summary_chunk_tags.get("symbols"):
-                            mrr_stat_update["symbols"] = summary_chunk_tags["symbols"]
-                        if mrr_stat_update:
-                            with db.conn() as conn:
-                                with conn.cursor() as cur:
-                                    cur.execute(_SQL_UPDATE_COMMIT_TAGS,
-                                                (json.dumps(mrr_stat_update), commit_hash_val))
+                        # Store suggested AI tags from first chunk into tags_ai
+                        if diff_chunks:
+                            first_chunk_tags = diff_chunks[0].get("tags", {})
+                            ai_tags: dict = {}
+                            if first_chunk_tags.get("languages"):
+                                ai_tags["languages"] = first_chunk_tags["languages"]
+                            if ai_tags:
+                                try:
+                                    with db.conn() as conn:
+                                        with conn.cursor() as cur:
+                                            cur.execute(_SQL_SET_TAGS_AI,
+                                                        (json.dumps(ai_tags), commit_hash_val))
+                                except Exception:
+                                    pass
                         # Skip chunk[0] (summary) — Haiku digest is already chunk=0
                         for i, dc in enumerate(diff_chunks[1:], start=1):
                             dc_content = dc.get("content", "")
