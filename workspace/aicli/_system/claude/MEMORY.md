@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 18:31 UTC by aicli /memory_
+_Generated: 2026-04-08 18:43 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -174,6 +174,203 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+Established the complete linkage chain connecting prompts → commits → events → work items, with automatic event-to-work-item association via user tags or AI tag inference, and implemented optimizations to query performance (CTEs + LEFT JOINs) and UI responsiveness (optimistic removal).
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index df965ab..d199333 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -2170,6 +2170,14 @@ function _attachTagTableDnd(pane, catName) {
+       const h = document.getElementById('planner-dnd-hint');
+       if (h) h.style.display = 'none';
+       const proj = _plannerState.project;
++      // Optimistic: immediately remove from lower panel
++      const _wiRow = document.querySelector(`#wi-panel-list [data-wi-id="${CSS.escape(wi.id)}"]`);
++      if (_wiRow) {
++        _wiRow.remove();
++        const _cnt = document.getElementById('wi-panel-count');
++        const _rem = document.querySelectorAll('#wi-panel-list [data-wi-id]').length;
++        if (_cnt) _cnt.textContent = _rem ? `(${_rem} unlinked)` : '(all linked ✓)';
++      }
+       api.workItems.patch(wi.id, proj, { tag_id: tagId })
+         .then(() => {
+           toast(`Linked "${wi.ai_name}" → "${tagName}"`, 'success');
+@@ -2177,7 +2185,7 @@ function _attachTagTableDnd(pane, catName) {
+           // Inject sub-rows directly (no full re-render needed)
+           if (catName) _loadTagLinkedWorkItems(proj, catName).catch(() => {});
+         })
+-        .catch(err => toast(err.message, 'error'));
++        .catch(err => { toast(err.message, 'error'); _loadWiPanel(proj); });
+       return;
+     }
+     if (!_dragTag || !_dragZone) { _dndClearHighlight(); return; }
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
+index 3206da2..ca87dfb 100644
+--- a/backend/routers/route_work_items.py
++++ b/backend/routers/route_work_items.py
+@@ -30,28 +30,39 @@ from data.dl_seq import next_seq
+ # ── SQL ──────────────────────────────────────────────────────────────────────
+ 
+ _SQL_LIST_WORK_ITEMS_BASE = (
+-    """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
++    """WITH pcount AS (
++         SELECT tags->>'work-item' AS wi_id, COUNT(*) AS cnt
++         FROM mem_mrr_prompts
++         WHERE project_id=%s AND tags ? 'work-item'
++         GROUP BY 1
++       ),
++       ccount AS (
++         SELECT tags->>'work-item' AS wi_id, COUNT(*) AS cnt
++         FROM mem_mrr_commits
++         WHERE project_id=%s AND tags ? 'work-item'
++         GROUP BY 1
++       ),
++       mcount AS (
++         SELECT merged_into::text AS wi_id, COUNT(*) AS cnt
++         FROM mem_ai_work_items
++         WHERE project_id=%s AND merged_into IS NOT NULL
++         GROUP BY 1
++       )
++       SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+               w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
+               w.requirements, w.code_summary, w.summary,
+               w.tags, w.ai_tags, w.tag_id, w.ai_tag_id, w.source_event_id,
+               w.merged_into, w.start_date,
+               w.created_at, w.updated_at, w.seq_num,
+               tc.color, tc.icon,
+-              (SELECT COUNT(*) FROM mem_mrr_prompts p
+-               WHERE p.project_id=w.project_id AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count,
+-              (SELECT COUNT(*) FROM mem_mrr_commits c
+-               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS commit_count,
+-              (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
+-              (SELECT COALESCE(SUM(cc.rows_added), 0)
+-               FROM mem_mrr_commits_code cc
+-               JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
+-               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS rows_added,
+-              (SELECT COALESCE(SUM(cc.rows_removed), 0)
+-               FROM mem_mrr_commits_code cc
+-               JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
+-               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS rows_removed
++              COALESCE(pcount.cnt, 0) AS interaction_count,
++              COALESCE(ccount.cnt, 0) AS commit_count,
++              COALESCE(mcount.cnt, 0) AS merge_count
+        FROM mem_ai_work_items w
+        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
++       LEFT JOIN pcount ON pcount.wi_id = w.id::text
++       LEFT JOIN ccount ON ccount.wi_id = w.id::text
++       LEFT JOIN mcount ON mcount.wi_id = w.id::text
+        WHERE {where}
+        ORDER BY w.created_at DESC
+        LIMIT %s"""
+@@ -328,7 +339,8 @@ async def list_work_items(
+     sql = _SQL_LIST_WORK_ITEMS_BASE.format(where=" AND ".join(where))
+     with db.conn() as conn:
+         with conn.cursor() as cur:
+-            cur.execute(sql, params + [limit])
++            # 3 extra p_id params for the pcount/ccount/mcount CTEs
++            cur.execute(sql, [p_id, p_id, p_id] + params + [limit])
+             cols = [d[0] for d in cur.description]
+             rows = []
+             for r in cur.fetchall():
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/backend/core/database.py b/backend/core/database.py
+index 7a2c822..ad82dfd 100644
+--- a/backend/core/database.py
++++ b/backend/core/database.py
+@@ -1252,6 +1252,16 @@ UPDATE mem_mrr_commits
+ """
+ 
+ 
++# ─── DDL: schema version tracking ────────────────────────────────────────────
++
++_DDL_SCHEMA_VERSION = """
++CREATE TABLE IF NOT EXISTS mng_schema_version (
++    version    VARCHAR(100) PRIMARY KEY,
++    applied_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
++);
++"""
++
++
+ # ─── Database class ───────────────────────────────────────────────────────────
+ 
+ class _Database:
+@@ -1400,18 +1410,53 @@ class _Database:
+         _Database._seed_role_system_links(conn)
+         _Database._seed_tag_categories(conn)
+ 
++    @staticmethod
++    def _migration_applied(conn, version: str) -> bool:
++        """Return True if this migration version is recorded in mng_schema_version."""
++        try:
++            with conn.cursor() as cur:
++                cur.execute("SELECT 1 FROM mng_schema_version WHERE version=%s", (version,))
++                return cur.fetchone() is not None
++        except Exception:
++            return False
++
++    @staticmethod
++    def _record_migration(conn, version: str) -> None:
++        """Mark a migration version as applied."""
++        with conn.cursor() as cur:
++            cur.execute(
++                "INSERT INTO mng_schema_version (version) VALUES (%s) ON CONFLICT DO NOTHING",
++                (version,),
++            )
++        conn.commit()
++
+     def _ensure_shared_schema(self, conn) -> None:
+         """Create all tables (mem_mrr_*, mem_ai_*, planner_*, pr_*) and run migrations.
+ 
+-        Runs once per process lifetime.  Migration DO $$ blocks inside each DDL
+-        string handle idempotent renames so this is safe to call on every restart.
++        Uses mng_schema_version to skip migrations already applied — prevents the
++        ~80-second Railway startup delay caused by re-running every ALTER TABLE on restart.
++        Bump the version string (e.g. _v2 → _v3) when you add new statements to a block.
+         """
+         if self._shared_schema_ready:
+             return
+-        _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "mem_mrr_* + mem_ai_work_items + mem_ai_project_facts + graph tables")
+-        _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA, "planner_tags + mem_mrr_* + mem_ai_* tables")
+-        _Database._run_ddl_statements(conn, _DDL_MEMORY_INFRA_ALTERS, "memory infra column alters")
+-        _Database._run_ddl_statements(conn, _DDL_COMMIT_CODE, "mem_mrr_commits_code")
++
++        # Schema version table must exist before we can check versions
++        _Database._run_ddl_statements(conn, _DDL_SCHEMA_VERSION, "schema_version")
++
++        _migrations = [
++            ("pr_tables_v1",             _DDL_PR_TABLES,             "mem_mrr_* + mem_ai_work_items + graph tables"),
++            ("memory_infra_v1",          _DDL_MEMORY_INFRA,          "planner_tags + mem_mrr_* + mem_ai_* tables"),
++            ("memory_infra_alters_v2",   _DDL_MEMORY_INFRA_ALTERS,   "memory infra column alters (migration 016)"),
++            ("commit_code_v1",           _DDL_COMMIT_CODE,            "mem_mrr_commits_code"),
++        ]
++        for version, ddl, label in _migrations:
++            if _Database._migration_applied(conn, version):
++                log.debug(f"⏩ skipping {label} (already applied)")
++            else:
++                _Database._run_ddl_statements(conn, ddl, label)
++                _Database._record_migration(conn, version)
++                log.debug(f"✅ applied {label} (version={version})")
++
+         self._shared_schema_ready = True
+         log.info("✅ three-layer memory schema ready (mem_mrr_* | planner_* | mem_ai_*)")
+     # ── Seeding ────────────────────────────────────────────────────────────────
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+Removed legacy flat _system documentation files in favor of organized structured subdirectories for better documentation organization and maintainability.
+
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
 diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
@@ -277,95 +474,4 @@ index 6093022..3206da2 100644
  # ── Semantic search ───────────────────────────────────────────────────────────
  
  @router.get("/search")
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 33a518a..2525e65 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-08 16:22 UTC
-+> Generated by aicli 2026-04-08 17:20 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -61,4 +61,4 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
--- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; route_snapshots and route_memory now load prompts from configuration
-\ No newline at end of file
-+- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
-\ No newline at end of file
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index b26856b..9305460 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 16:22 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 17:20 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
--- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; route_snapshots and route_memory now load prompts from configuration
-+- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
- 
- ## Recent Context (last 5 changes)
- 
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index b26856b..9305460 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 16:22 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 17:20 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
--- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; route_snapshots and route_memory now load prompts from configuration
-+- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
- 
- ## Recent Context (last 5 changes)
- 
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-Removed outdated auto-generated system context files from aicli project to clean up codebase and reduce clutter.
-
-### `commit` — 2026-04-08
-
-diff --git a/workspace/aicli/project.yaml b/workspace/aicli/project.yaml
-index 198132e..6275e50 100644
---- a/workspace/aicli/project.yaml
-+++ b/workspace/aicli/project.yaml
-@@ -12,3 +12,7 @@ git_username: biskilled
- github_client_id: Ov23ligfv0f2DBdvRdim
- github_repo: https://github.com/biskilled/exp1.git
- name: aicli
-+commit_code_extraction:
-+  min_lines: 5              # per-symbol llm_summary threshold
-+  min_diff_lines: 5         # skip all LLM calls for commits with fewer total changed lines
-+  only_on_commits_with_tags: false
 
