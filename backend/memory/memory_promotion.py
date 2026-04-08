@@ -96,21 +96,33 @@ _SQL_MARK_EVENTS_PROCESSED = """
     WHERE id=ANY(%s::uuid[]) AND processed_at IS NULL
 """
 
-# Find events not yet used as source for any work item extraction
+# Find events not yet processed for work item extraction.
+# processed_at is set after extract_work_items_from_events() handles the event —
+# this prevents reprocessing while still allowing events to update existing work items.
 _SQL_GET_UNEXTRACTED_EVENTS = """
     SELECT me.id, me.event_type, me.session_id, me.summary, me.action_items,
            me.created_at, me.tags
     FROM mem_ai_events me
     WHERE me.project_id=%s
-      AND me.event_type IN ('prompt_batch', 'session_summary')
+      AND me.event_type IN ('prompt_batch', 'session_summary', 'commit')
       AND me.summary IS NOT NULL AND me.summary != ''
-      AND NOT EXISTS (
-          SELECT 1 FROM mem_ai_work_items wi
-          WHERE wi.project_id=me.project_id
-            AND wi.source_event_id = me.id
-      )
+      AND me.processed_at IS NULL
     ORDER BY me.created_at DESC
     LIMIT %s
+"""
+
+_SQL_MARK_EVENT_EXTRACTED = """
+    UPDATE mem_ai_events SET processed_at = NOW()
+    WHERE id = %s::uuid AND processed_at IS NULL
+"""
+
+_SQL_UPDATE_EVENT_AI_TAGS = """
+    UPDATE mem_ai_events
+    SET tags = tags || jsonb_build_object(
+        'ai_phase',   %s::text,
+        'ai_feature', %s::text
+    )
+    WHERE id = %s::uuid
 """
 
 _SQL_INSERT_EXTRACTED_WORK_ITEM = """
@@ -563,21 +575,69 @@ class MemoryPromotion:
         )
 
         created = 0
+        updated = 0
         for ev_id, event_type, session_id, summary, action_items, created_at, tags in events:
             content_parts = [p for p in [summary, action_items] if p and p.strip()]
             content = "\n\n".join(content_parts)[:3000]
             if not content.strip():
+                # Still mark as processed to avoid retrying empty events
+                try:
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(_SQL_MARK_EVENT_EXTRACTED, (str(ev_id),))
+                except Exception:
+                    pass
                 continue
 
-            event_label = "session summary" if event_type == "session_summary" else "prompt batch"
-            user_msg = f"Event type: {event_label}\nDate: {str(created_at)[:10]}\n\n{content}"
+            event_tags = tags or {}
+            has_user_tags = bool(event_tags.get("feature") or event_tags.get("phase"))
 
-            raw = await _call_llm(system_prompt, user_msg, max_tokens=500)
+            event_label = {
+                "session_summary": "session summary",
+                "commit": "commit",
+            }.get(event_type, "prompt batch")
+            user_msg = (
+                f"Event type: {event_label}\n"
+                f"Date: {str(created_at)[:10]}\n"
+                + (f"Session tags: {event_tags.get('phase', '')} / {event_tags.get('feature', '')}\n"
+                   if has_user_tags else "")
+                + f"\n{content}"
+            )
+
+            raw = await _call_llm(system_prompt, user_msg, max_tokens=600)
+
+            # Mark event as processed regardless of LLM result
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(_SQL_MARK_EVENT_EXTRACTED, (str(ev_id),))
+            except Exception:
+                pass
+
             if not raw:
                 continue
 
             parsed = _parse_json(raw)
-            items = parsed.get("items", []) if parsed else []
+            if not parsed:
+                continue
+
+            # Apply AI-suggested tags to event if no user tags
+            if not has_user_tags:
+                suggested = parsed.get("suggested_tags") or {}
+                ai_phase   = (suggested.get("phase") or "").strip() or None
+                ai_feature = (suggested.get("feature") or "").strip() or None
+                if ai_phase or ai_feature:
+                    try:
+                        with db.conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    _SQL_UPDATE_EVENT_AI_TAGS,
+                                    (ai_phase, ai_feature, str(ev_id)),
+                                )
+                    except Exception as e:
+                        log.debug(f"event ai_tags update error: {e}")
+
+            items = parsed.get("items", [])
             if not items:
                 continue
 
@@ -595,10 +655,16 @@ class MemoryPromotion:
                                 (project_id, category, name, description,
                                  str(ev_id), project_id),
                             )
-                            if cur.fetchone():
+                            row = cur.fetchone()
+                            if row:
                                 created += 1
+                            else:
+                                updated += 1  # ON CONFLICT DO UPDATE hit an existing item
                 except Exception as e:
                     log.debug(f"extract_work_items insert error: {e}")
 
-        log.info(f"extract_work_items_from_events: created {created} items for '{project}'")
+        log.info(
+            f"extract_work_items_from_events: created={created} updated={updated} "
+            f"events={len(events)} for '{project}'"
+        )
         return created

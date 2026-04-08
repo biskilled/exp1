@@ -364,7 +364,26 @@ class MemoryEmbedding:
                         )
                         chunk_idx += 1
 
-        # Auto-trigger work item extraction in background (fire-and-forget)
+        # Process any commits in this session that haven't been digested yet.
+        # This ensures commit events exist before work item extraction runs.
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT commit_hash FROM mem_mrr_commits "
+                        "WHERE project_id=%s AND session_id=%s AND exec_llm=FALSE",
+                        (_pb_project_id, session_id),
+                    )
+                    pending_commits = [r[0] for r in cur.fetchall()]
+            for _ch in pending_commits:
+                await self.process_commit(project, _ch)
+            if pending_commits:
+                log.info(f"process_prompt_batch: digested {len(pending_commits)} pending commits for session {session_id[:8]}")
+        except Exception as _e:
+            log.debug(f"process_prompt_batch: pending commit processing error: {_e}")
+
+        # Auto-trigger work item extraction in background (fire-and-forget).
+        # Runs after commits are processed so commit events are included.
         try:
             import asyncio
             from memory.memory_promotion import MemoryPromotion

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 17:20 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 17:53 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -65,8 +65,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
 - [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
 - [2026-04-08] I do not see any update at the database
 - [2026-04-08] yes please
 - [2026-04-08] can you explain where are the  prompts that used for update new commit ?
+- [2026-04-08] Can you explain how commit data statitics are connected to work_items ? Is there is a way to know how many rows/promtps 

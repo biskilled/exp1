@@ -1,17 +1,13 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 17:20 UTC by aicli /memory_
+_Generated: 2026-04-08 17:53 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL vector database, and Electron desktop UI to capture, synthesize, and retrieve development context across commits, code, and work items. The system uses Claude for memory synthesis, supports multiple LLM providers, and implements a 4-layer memory architecture (ephemeral → raw capture → LLM digests → work items → user planner). Current focus is optimizing prompt management via centralized loader, debugging planner tag visibility, and resolving query performance bottlenecks in work item retrieval.
 
 ## Project Facts
 
 - **auth_pattern**: login_as_first_level_hierarchy
 - **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
-- **code_extraction_configuration**: min_lines: 5, only_on_commits_with_tags: false in project.yaml templates
+- **code_extraction_configuration**: min_lines: 5 (per-symbol threshold), min_diff_lines: 5 (commit-level threshold), only_on_commits_with_tags: false
 - **commit_processing_flag**: exec_llm boolean column replaces tags->>'llm' NULL check
 - **commit_tracking_schema**: mem_mrr_commits_code table with 19 columns including commit_short_hash and full_symbol as generated column
 - **data_model_hierarchy**: clients_contain_multiple_users
@@ -20,12 +16,14 @@ aicli is a shared AI memory platform combining a Python FastAPI backend, Postgre
 - **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
 - **deployment_target**: Claude CLI and LLM platforms
 - **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
+- **known_bug_active**: planner_tag_visibility: categories upload but individual tags don't display in UI bindings
 - **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
 - **memory_management_pattern**: load_once_on_access_update_on_save
 - **memory_system_update_status**: updated_with_latest_context_and_session_tags
 - **pending_implementation**: memory_items_and_project_facts_table_population
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
+- **performance_issue_active**: route_work_items latency ~60s; investigating _SQL_UNLINKED_WORK_ITEMS indexing and mem_ai_events join optimization
 - **performance_optimization**: redundant_SQL_calls_eliminated
 - **pipeline/auth**: Acceptance criteria:
 # PM Analysis: Email Verification Feature
@@ -42,9 +40,15 @@ Reviewer: ```json
   "score": 4,
   "issues": [
     "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
+- **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
 - **rel:commit_processing:exec_llm_flag**: replaces
 - **rel:memory_system:session_tags**: implements
+- **rel:prompt_loader:mng_system_roles**: replaces
+- **rel:route_memory:prompt_loader**: depends_on
 - **rel:route_memory:sql_parameter_binding**: depends_on
+- **rel:route_prompts:memory_embedding**: depends_on
+- **rel:route_search:memory_embedding**: depends_on
+- **rel:route_snapshots:prompt_loader**: depends_on
 - **rel:route_work_items:sql_parameter_binding**: depends_on
 - **route_work_items_sql_errors**: line_249_cur_execute_missing_parameter_binding_line_288_incomplete_column_selection_in_merged_query
 - **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
@@ -170,303 +174,83 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+### `commit` — 2026-04-08
 
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 7951bce..5810212 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
--- Commit pipeline prompt discovery: tracing all LLM prompts used in commit processing (code extraction, summarization, embedding); located in memory/memory_embedding.py, agents/tools/, and routers/route_snapshots.py
-+- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader._prompts.content() instead of direct mng_system_roles queries; eliminates redundant database lookups
-+- Commit pipeline prompt discovery: tracing all LLM prompts used in commit processing (code extraction, summarization, embedding) located in memory/memory_embedding.py, agents/tools/, and routers/route_snapshots.py
- - Memory endpoint data flow: verifying synchronization from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables; identified import migration from mem_embeddings to memory_embedding module
- - Module restructuring: consolidating embedding/ingestion logic into memory_embedding.py; updating imports across route_snapshots.py, route_search.py, route_prompts.py for consistent module paths
--- Database query performance: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join optimization on mem_ai_events
--- Planner tag visibility: debugging category upload and tag binding visibility in UI; verifying router mapping and category query logic
--- DDL runner robustness: investigating silent failures during initial migration caused by table locks; post-creation DDL for generated columns now handled separately from base table creation
-+- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join optimization on mem_ai_events
-+- Planner tag visibility debugging: categories upload but individual tags don't display in UI bindings; verifying router mapping and category query logic
+diff --git a/workspace/aicli/project.yaml b/workspace/aicli/project.yaml
+index 198132e..6275e50 100644
+--- a/workspace/aicli/project.yaml
++++ b/workspace/aicli/project.yaml
+@@ -12,3 +12,7 @@ git_username: biskilled
+ github_client_id: Ov23ligfv0f2DBdvRdim
+ github_repo: https://github.com/biskilled/exp1.git
+ name: aicli
++commit_code_extraction:
++  min_lines: 5              # per-symbol llm_summary threshold
++  min_diff_lines: 5         # skip all LLM calls for commits with fewer total changed lines
++  only_on_commits_with_tags: false
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+### `commit` — 2026-04-08
 
-diff --git a/workspace/_templates/python_api/project.yaml b/workspace/_templates/python_api/project.yaml
-index 310d1d6..771a0fe 100644
---- a/workspace/_templates/python_api/project.yaml
-+++ b/workspace/_templates/python_api/project.yaml
-@@ -6,5 +6,6 @@ active_workflows:
-   - build_feature
-   - code_review
- commit_code_extraction:
--  min_lines: 5
-+  min_lines: 5              # per-symbol llm_summary threshold (rows_added+rows_removed)
-+  min_diff_lines: 5         # commit-level threshold: skip all LLM calls if diff < this
-   only_on_commits_with_tags: false
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/workspace/_templates/blank/project.yaml b/workspace/_templates/blank/project.yaml
-index 2b98de9..2156a73 100644
---- a/workspace/_templates/blank/project.yaml
-+++ b/workspace/_templates/blank/project.yaml
-@@ -4,5 +4,6 @@ code_dir: "../../{{PROJECT_NAME}}"
- default_provider: claude
- active_workflows: []
- commit_code_extraction:
--  min_lines: 5
-+  min_lines: 5              # per-symbol llm_summary threshold (rows_added+rows_removed)
-+  min_diff_lines: 5         # commit-level threshold: skip all LLM calls if diff < this
-   only_on_commits_with_tags: false
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index 0060070..5732597 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -14,5 +14,5 @@ httpx>=0.27.0
+ pyyaml>=6.0
+ python-dotenv>=1.0.0
+ mcp>=1.0.0
+-tree-sitter>=0.23.0
+-tree-sitter-languages>=1.10.0
++tree-sitter==0.21.3
++tree-sitter-languages==1.10.2
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+### `commit` — 2026-04-08
 
-diff --git a/backend/routers/route_git.py b/backend/routers/route_git.py
-index 7513630..dd18344 100644
---- a/backend/routers/route_git.py
-+++ b/backend/routers/route_git.py
-@@ -1006,17 +1006,42 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
-     _, staged_diff, _ = _git(["diff", "--cached"], code_dir)
-     staged_diff = (staged_diff or "")[:8000]
+Removed obsolete auto-generated system files and documentation to clean up the repository structure and reduce maintenance burden.
+
+### `commit` — 2026-04-08
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index a8a1dd5..33a518a 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-08 14:47 UTC
++> Generated by aicli 2026-04-08 16:22 UTC
  
-+    # Count meaningful diff lines (added + removed, excluding file headers)
-+    _diff_line_count = sum(
-+        1 for ln in staged_diff.splitlines()
-+        if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))
-+    )
-+
-+    # Read min_diff_lines from project.yaml (default 5)
-+    _min_diff_lines = 5
-+    try:
-+        _pcfg = yaml.safe_load((_proj_dir(project_name) / "project.yaml").read_text()) or {}
-+        _min_diff_lines = int(_pcfg.get("commit_code_extraction", {}).get("min_diff_lines", 5))
-+    except Exception:
-+        pass
-+
-     # Resolve API key: body field takes priority, then request header
-     api_key = body.api_key or request.headers.get("X-Anthropic-Key") or None
+ # aicli — Shared AI Memory Platform
  
-     # Generate commit message (+ optional structured analysis)
--    commit_message, commit_analysis = await _generate_commit_message(
--        hint=body.message_hint,
--        diff_stat=diff_stat,
--        changed_files=changed,
--        staged_diff=staged_diff,
--        api_key=api_key,
--    )
-+    # Skip LLM for tiny commits (below min_diff_lines threshold)
-+    if _diff_line_count < _min_diff_lines:
-+        if body.message_hint:
-+            commit_message = body.message_hint[:72]
-+        elif len(changed) == 1:
-+            commit_message = f"chore: update {changed[0]}"
-+        else:
-+            commit_message = f"chore: update {len(changed)} files"
-+        commit_analysis = {}
-+        log.debug(f"Skipping LLM commit analysis: diff_lines={_diff_line_count} < min={_min_diff_lines}")
-+    else:
-+        commit_message, commit_analysis = await _generate_commit_message(
-+            hint=body.message_hint,
-+            diff_stat=diff_stat,
-+            changed_files=changed,
-+            staged_diff=staged_diff,
-+            api_key=api_key,
-+        )
- 
-     # Stage all changed files
-     _git(["add", "--"] + changed, code_dir)
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+### `commit` — 2026-04-08
 
-diff --git a/backend/routers/route_chat.py b/backend/routers/route_chat.py
-index 5336538..5f3f09a 100644
---- a/backend/routers/route_chat.py
-+++ b/backend/routers/route_chat.py
-@@ -75,12 +75,12 @@ _SQL_INSERT_GRAPH_RUN = """
-     VALUES (%s, %s, %s, 'running', %s)
- """
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 3d58661..b26856b 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 14:47 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 16:22 UTC
  
--_SQL_UPDATE_COMMIT_PHASE = """
-+_SQL_UPDATE_COMMIT_TAGS = """
-     UPDATE mem_mrr_commits
--    SET tags = CASE
--        WHEN %s IS NOT NULL THEN (tags - 'phase') || jsonb_build_object('phase', %s)
--        ELSE tags - 'phase'
--    END
-+    SET tags = (tags - 'phase' - 'feature' - 'bug')
-+        || CASE WHEN %s::text IS NOT NULL THEN jsonb_build_object('phase',   %s::text) ELSE '{}'::jsonb END
-+        || CASE WHEN %s::text IS NOT NULL THEN jsonb_build_object('feature', %s::text) ELSE '{}'::jsonb END
-+        || CASE WHEN %s::text IS NOT NULL THEN jsonb_build_object('bug',     %s::text) ELSE '{}'::jsonb END
-     WHERE project_id=%s AND session_id=%s
- """
+ # aicli — Shared AI Memory Platform
  
-@@ -778,11 +778,17 @@ class SessionTagsPatch(BaseModel):
-     bug_ref: Optional[str] = None
- 
- 
--def _backfill_session_phase(project: str, session_id: str, phase: Optional[str]) -> None:
--    """Retroactively set phase on all history.jsonl entries + DB rows for a session.
-+def _backfill_session_tags(
-+    project: str, session_id: str,
-+    phase: Optional[str] = None,
-+    feature: Optional[str] = None,
-+    bug_ref: Optional[str] = None,
-+) -> None:
-+    """Retroactively set phase/feature/bug tags on all history.jsonl entries + DB commits.
- 
--    Called whenever a session's phase tag is changed so that all prompts and commits
--    linked to that session become filterable by the new phase.
-+    Called whenever any session tag is changed via PATCH /sessions/{id}/tags so that
-+    all prompts and commits linked to that session become filterable by the new tags.
-+    Only keys explicitly passed (not None) are updated; None-valued keys are removed.
-     """
-     # 1. Rewrite matching entries in history.jsonl
-     hist_path = Path(settings.workspace_dir) / project / "_system" / "history.jsonl"
-@@ -796,7 +802,9 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
-                 try:
-                     entry = json.loads(line)
-                     if entry.get("session_id") == session_id:
--                        entry["phase"] = phase
-+                        if phase   is not None: entry["phase"]   = phase   or None
-+                        if feature is not None: entry["feature"] = feature or None
-+                        if bug_ref is not None: entry["bug_ref"] = bug_ref or None
-                     updated.append(json.dumps(entry, ensure_ascii=False))
-                 except Exception:
-                     updated.append(line)
-@@ -804,7 +812,7 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
-         except Exception:
-             pass  # read-only filesystem or concurrent write — best-effort
- 
--    # 2. Update commits table tags[] (phase column dropped — tags[] used instead)
-+    # 2. Update mem_mrr_commits.tags for all commits in this session
-     if db.is_available():
-         import logging as _log
-         _logger = _log.getLogger(__name__)
-@@ -812,14 +820,17 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
-             project_id = db.get_or_create_project_id(project)
-             with db.conn() as conn:
-                 with conn.cursor() as cur:
--                    cur.execute(_SQL_UPDATE_COMMIT_PHASE, (phase, phase, project_id, session_id))
-+                    cur.execute(
-+                        _SQL_UPDATE_COMMIT_TAGS,
-+                        (phase, phase, feature, feature, bug_ref, bug_ref, project_id, session_id),
-+                    )
-                     c_rows = cur.rowcount
-             _logger.info(
--                f"backfill_session_phase: project={project} session={session_id[:8]} "
--                f"phase={phase!r} → commits={c_rows}"
-+                f"backfill_session_tags: project={project} session={session_id[:8]} "
-+                f"phase={phase!r} feature={feature!r} bug={bug_ref!r} → commits={c_rows}"
-             )
-         except Exception as exc:
--            _logger.warning(f"backfill_session_phase DB failed: {exc}")
-+            _logger.warning(f"backfill_session_tags DB failed: {exc}")
- 
- 
- @router.patch("/sessions/{session_id}/tags")
-@@ -847,8 +858,9 @@ async def patch_session_tags(
-         if body.bug_ref is not None: tags["bug_ref"] = body.bug_ref or None
-         # Do NOT update updated_at — tag edits shouldn't change session sort order
-         store._save(session)
--        if body.phase is not None:
--            _backfill_session_phase(p, session_id, body.phase or None)
-+        if body.phase is not None or body.feature is not None or body.bug_ref is not None:
-+            _backfill_session_tags(p, session_id,
-+                                   phase=body.phase, feature=body.feature, bug_ref=body.bug_ref)
-         return {"ok": True, "tags": tags}
- 
-     # CLI / workflow session — persist in session_phases.json
-@@ -863,6 +875,7 @@ async def patch_session_tags(
-     if body.feature is not None: entry["feature"] = body.feature or None
-     if body.bug_ref is not None: entry["bug_ref"] = body.bug_ref or None
-     phases_path.write_text(json.dumps(existing, indent=2))
--    if body.phase is not None:
--        _backfill_session_phase(p, session_id, body.phase or None)
-+    if body.phase is not None or body.feature is not None or body.bug_ref is not None:
-+        _backfill_session_tags(p, session_id,
-+                               phase=body.phase, feature=body.feature, bug_ref=body.bug_ref)
-     return {"ok": True, "tags": entry}
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+### `commit` — 2026-04-08
 
-diff --git a/backend/memory/memory_embedding.py b/backend/memory/memory_embedding.py
-index becb413..fd7a46b 100644
---- a/backend/memory/memory_embedding.py
-+++ b/backend/memory/memory_embedding.py
-@@ -75,7 +75,7 @@ _SQL_UPSERT_EVENT = """
- """
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 3d58661..b26856b 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 14:47 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 16:22 UTC
  
- _SQL_GET_COMMIT = """
--    SELECT commit_hash, commit_msg, summary, tags, session_id
-+    SELECT commit_hash, commit_msg, summary, tags, session_id, diff_summary
-     FROM mem_mrr_commits
-     WHERE project_id=%s AND commit_hash=%s
- """
-@@ -255,6 +255,33 @@ def _upsert_event(
-         return None
+ # aicli — Shared AI Memory Platform
  
- 
-+def _read_commit_min_diff_lines(project: str) -> int:
-+    """Read commit_code_extraction.min_diff_lines from project.yaml (default 5)."""
-+    try:
-+        import yaml as _yaml
-+        from pathlib import Path as _Path
-+        proj_yaml = _Path(settings.workspace_dir) / project / "project.yaml"
-+        if proj_yaml.exists():
-+            cfg = _yaml.safe_load(proj_yaml.read_text()) or {}
-+            return int(cfg.get("commit_code_extraction", {}).get("min_diff_lines", 5))
-+    except Exception:
-+        pass
-+    return 5
-+
-+
-+def _count_diff_stat_lines(diff_summary: str) -> int:
-+    """Parse total changed lines from git --stat output.
-+
-+    e.g. '3 files changed, 10 insertions(+), 5 deletions(-)' → 15
-+    Returns 0 if summary is missing/unparseable.
-+    """
-+    import re as _re
-+    total = 0
-+    for count, _ in _re.findall(r"(\d+) (insertion|deletion)", diff_summary):
-+        total += int(count)
-+    return total
-+
-+
- class MemoryEmbedding:
-     """Embeds and stores content in mem_ai_events; provides semantic search."""
- 
-@@ -368,12 +395,20 @@ class MemoryEmbedding:
-             if not row:
-                 return None
- 
--            commit_hash_val, commit_msg, existing_summary, mrr_tags, session_id = row
-+            commit_hash_val, commit_msg, existing_summary, mrr_tags, session_id, diff_summary = row
-             mrr_tags = mrr_tags or {}
-         except Exception as e:
-             log.debug(f"process_commit DB error: {e}")
-             return None
- 
-+        # Guard: skip LLM if diff is below min_diff_lines threshold
-+        _min_diff = _read_commit_min_diff_lines(project)
-+        _diff_lines = _count_diff_stat_lines(diff_summary or "")
-+        if _diff_lines > 0 and _diff_lines < _min_diff:
-+            log.debug(f"process_commit: skipping LLM for {commit_hash[:8]} "
-+                      f"(diff_lines={_diff_lines} < min={_min_diff})")
-+            return None
-+
-         user_content = f"Commit: {commit_hash_val[:8]}\n{commit_msg}"
-         if existing_summary:
-             user_content += f"\nSummary: {existing_summary}"
 
-
-## AI Synthesis
-
-**[2026-03-14]** `route_snapshots.py` — Consolidated prompt management by refactoring route_snapshots.py and route_memory.py to use core.prompt_loader._prompts.content() instead of direct mng_system_roles queries, eliminating redundant database lookups. **[2026-03-14]** `memory_embedding.py` — Traced all LLM prompts in commit processing pipeline (code extraction, summarization, embedding) across memory_embedding.py, agents/tools/, and routers; identified import migration from mem_embeddings module. **[2026-03-14]** `memory endpoint` — Verified data flow synchronization from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables to ensure complete event propagation. **[2026-03-14]** `memory_embedding.py` — Consolidated embedding/ingestion logic into unified memory_embedding.py module; updated imports across route_snapshots.py, route_search.py, and route_prompts.py for consistent module paths. **[2026-03-14]** `route_work_items.py` — Identified 60s latency bottleneck in route_work_items; root cause traced to _SQL_UNLINKED_WORK_ITEMS query and suboptimal joins on mem_ai_events; indexing and query optimization in progress. **[2026-03-14]** `planner_tags` — Debugged category upload flow where categories persist in database but individual tag bindings fail to display in UI; router mapping and entity_values query logic under investigation.
