@@ -38,10 +38,18 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.created_at, w.updated_at, w.seq_num,
               tc.color, tc.icon,
               (SELECT COUNT(*) FROM mem_mrr_prompts p
-               WHERE p.client_id=1 AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count,
+               WHERE p.project_id=w.project_id AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count,
               (SELECT COUNT(*) FROM mem_mrr_commits c
                WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS commit_count,
-              (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count
+              (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
+              (SELECT COALESCE(SUM(cc.rows_added), 0)
+               FROM mem_mrr_commits_code cc
+               JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
+               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS rows_added,
+              (SELECT COALESCE(SUM(cc.rows_removed), 0)
+               FROM mem_mrr_commits_code cc
+               JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
+               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS rows_removed
        FROM mem_ai_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
        WHERE {where}
@@ -110,6 +118,39 @@ _SQL_GET_INTERACTIONS = (
        WHERE i.tags @> jsonb_build_object('work-item', %s::text) AND i.project_id=%s
        ORDER BY i.created_at DESC LIMIT %s"""
 )
+
+_SQL_WORK_ITEM_STATS = """
+    SELECT
+        (SELECT COUNT(*) FROM mem_mrr_prompts p
+         WHERE p.project_id=%s AND p.tags @> jsonb_build_object('work-item', %s)) AS prompt_count,
+        (SELECT COUNT(*) FROM mem_mrr_commits c
+         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)) AS commit_count,
+        (SELECT COUNT(DISTINCT cc.file_path)
+         FROM mem_mrr_commits_code cc
+         JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
+         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)) AS files_changed,
+        (SELECT COALESCE(SUM(cc.rows_added), 0)
+         FROM mem_mrr_commits_code cc
+         JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
+         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)) AS rows_added,
+        (SELECT COALESCE(SUM(cc.rows_removed), 0)
+         FROM mem_mrr_commits_code cc
+         JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
+         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)) AS rows_removed,
+        (SELECT COUNT(DISTINCT cc.full_symbol)
+         FROM mem_mrr_commits_code cc
+         JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
+         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)
+           AND cc.full_symbol IS NOT NULL) AS symbols_changed,
+        (SELECT jsonb_object_agg(lang, cnt) FROM (
+            SELECT cc.file_language AS lang, COUNT(*) AS cnt
+            FROM mem_mrr_commits_code cc
+            JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
+            WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)
+              AND cc.file_language != ''
+            GROUP BY cc.file_language
+         ) t) AS languages
+"""
 
 _SQL_GET_FACTS = (
     """SELECT id, fact_key, fact_value, valid_from
@@ -628,6 +669,35 @@ async def get_work_item_commits(
                     row["committed_at"] = row["committed_at"].isoformat()
                 rows.append(row)
     return {"commits": rows, "work_item_id": item_id, "project": p}
+
+
+# ── Per-work-item statistics ──────────────────────────────────────────────────
+
+@router.get("/{item_id}/stats")
+async def get_work_item_stats(
+    item_id: str,
+    project: str | None = Query(None),
+):
+    """Return aggregated stats for a work item: prompt count, commit count,
+    files/rows changed, symbols touched, and languages breakdown.
+
+    All stats are derived from mem_mrr_commits and mem_mrr_commits_code rows
+    tagged with 'work-item': item_id.
+    """
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+    # Each placeholder pair (project_id, item_id) repeated 7 times for 7 subqueries
+    params = (p_id, item_id) * 7
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_WORK_ITEM_STATS, params)
+            cols = [d[0] for d in cur.description]
+            row = cur.fetchone()
+    if not row:
+        return {"work_item_id": item_id, "project": p, "stats": {}}
+    stats = dict(zip(cols, row))
+    return {"work_item_id": item_id, "project": p, "stats": stats}
 
 
 # ── Semantic search ───────────────────────────────────────────────────────────

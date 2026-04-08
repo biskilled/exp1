@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 17:19 UTC by aicli /memory_
+_Generated: 2026-04-08 17:20 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL+pgvector semantic storage, a Python 3.12 CLI (prompt_toolkit + rich), and an Electron desktop UI (Vanilla JS + xterm.js + Monaco + Cytoscape). It implements a 4-layer memory architecture (sessions → raw capture → LLM digests → work items/facts → user tags) with async DAG workflow execution, multi-provider LLM support (Claude/OpenAI/DeepSeek), and dual deployment (Railway cloud + Electron desktop). Current focus is prompt loader consolidation, memory endpoint synchronization, and performance optimization for work item queries.
+aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL vector database, and Electron desktop UI to capture, synthesize, and retrieve development context across commits, code, and work items. The system uses Claude for memory synthesis, supports multiple LLM providers, and implements a 4-layer memory architecture (ephemeral → raw capture → LLM digests → work items → user planner). Current focus is optimizing prompt management via centralized loader, debugging planner tag visibility, and resolving query performance bottlenecks in work item retrieval.
 
 ## Project Facts
 
@@ -110,16 +110,16 @@ Reviewer: ```json
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; eliminates redundant database lookups
+- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
 
 ## In Progress
 
-- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader._prompts.content() instead of direct mng_system_roles queries for performance and consistency
-- Commit pipeline prompt discovery: tracing all LLM prompts in memory_embedding.py, agents/tools/, and route_snapshots.py to establish comprehensive prompt inventory
-- Memory endpoint data flow synchronization: verifying cascade from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream tables; completed import migration to memory_embedding module
-- Module restructuring: consolidating embedding/ingestion logic into memory_embedding.py; updating imports across route_snapshots.py, route_search.py, route_prompts.py for consistency
-- Database query performance optimization: investigating ~60s latency in route_work_items; indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join optimization on mem_ai_events
-- Planner tag visibility debugging: resolving issue where categories upload correctly but individual tags don't display in UI bindings; verifying router mapping and category query logic
+- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader._prompts.content() instead of direct mng_system_roles queries; eliminates redundant database lookups
+- Commit pipeline prompt discovery: tracing all LLM prompts used in commit processing (code extraction, summarization, embedding) located in memory/memory_embedding.py, agents/tools/, and routers/route_snapshots.py
+- Memory endpoint data flow: verifying synchronization from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables; identified import migration from mem_embeddings to memory_embedding module
+- Module restructuring: consolidating embedding/ingestion logic into memory_embedding.py; updating imports across route_snapshots.py, route_search.py, route_prompts.py for consistent module paths
+- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join optimization on mem_ai_events
+- Planner tag visibility debugging: categories upload but individual tags don't display in UI bindings; verifying router mapping and category query logic
 
 ## Active Features / Bugs / Tasks
 
@@ -469,4 +469,4 @@ index becb413..fd7a46b 100644
 
 ## AI Synthesis
 
-**[2026-03-14]** `core.prompt_loader` — Replaced mng_system_roles database queries with centralized prompt_loader._prompts.content() to eliminate redundant lookups; refactoring route_snapshots.py and route_memory.py to use new pattern. **[2026-03-14]** `memory_embedding.py` — Consolidated embedding/ingestion logic and completed module restructuring; established import consistency across route_snapshots.py, route_search.py, and route_prompts.py. **[2026-03-14]** `mem_mrr_commits_code` — Verified 4-layer memory architecture data flow from mirror tables through mem_ai_events to downstream mem_ai_work_items/project_facts; confirmed full_symbol as generated column and 19-column schema. **[2026-03-14]** `commit_code_extraction config` — Added min_diff_lines threshold (5) for commit-level skip logic; per-symbol llm_summary now conditional on min_lines threshold. **[2026-03-14]** `route_work_items` — Identified ~60s latency in _SQL_UNLINKED_WORK_ITEMS join; investigation underway for indexing strategy on mem_ai_events. **[2026-03-14]** `planner_tags visibility` — Debugging category upload success but individual tag non-display in UI bindings; router mapping and category query logic verification in progress.
+**[2026-03-14]** `route_snapshots.py` — Consolidated prompt management by refactoring route_snapshots.py and route_memory.py to use core.prompt_loader._prompts.content() instead of direct mng_system_roles queries, eliminating redundant database lookups. **[2026-03-14]** `memory_embedding.py` — Traced all LLM prompts in commit processing pipeline (code extraction, summarization, embedding) across memory_embedding.py, agents/tools/, and routers; identified import migration from mem_embeddings module. **[2026-03-14]** `memory endpoint` — Verified data flow synchronization from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables to ensure complete event propagation. **[2026-03-14]** `memory_embedding.py` — Consolidated embedding/ingestion logic into unified memory_embedding.py module; updated imports across route_snapshots.py, route_search.py, and route_prompts.py for consistent module paths. **[2026-03-14]** `route_work_items.py` — Identified 60s latency bottleneck in route_work_items; root cause traced to _SQL_UNLINKED_WORK_ITEMS query and suboptimal joins on mem_ai_events; indexing and query optimization in progress. **[2026-03-14]** `planner_tags` — Debugged category upload flow where categories persist in database but individual tag bindings fail to display in UI; router mapping and entity_values query logic under investigation.

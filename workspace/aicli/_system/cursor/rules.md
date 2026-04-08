@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 17:19 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 17:20 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; eliminates redundant database lookups
+- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
 
 ## Recent Context (last 5 changes)
 
