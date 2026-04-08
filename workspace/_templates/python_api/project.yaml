@@ -6,5 +6,6 @@ active_workflows:
   - build_feature
   - code_review
 commit_code_extraction:
-  min_lines: 5
+  min_lines: 5              # per-symbol llm_summary threshold (rows_added+rows_removed)
+  min_diff_lines: 5         # commit-level threshold: skip all LLM calls if diff < this
   only_on_commits_with_tags: false

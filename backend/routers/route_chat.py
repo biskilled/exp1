@@ -75,12 +75,12 @@ _SQL_INSERT_GRAPH_RUN = """
     VALUES (%s, %s, %s, 'running', %s)
 """
 
-_SQL_UPDATE_COMMIT_PHASE = """
+_SQL_UPDATE_COMMIT_TAGS = """
     UPDATE mem_mrr_commits
-    SET tags = CASE
-        WHEN %s IS NOT NULL THEN (tags - 'phase') || jsonb_build_object('phase', %s)
-        ELSE tags - 'phase'
-    END
+    SET tags = (tags - 'phase' - 'feature' - 'bug')
+        || CASE WHEN %s::text IS NOT NULL THEN jsonb_build_object('phase',   %s::text) ELSE '{}'::jsonb END
+        || CASE WHEN %s::text IS NOT NULL THEN jsonb_build_object('feature', %s::text) ELSE '{}'::jsonb END
+        || CASE WHEN %s::text IS NOT NULL THEN jsonb_build_object('bug',     %s::text) ELSE '{}'::jsonb END
     WHERE project_id=%s AND session_id=%s
 """
 
@@ -778,11 +778,17 @@ class SessionTagsPatch(BaseModel):
     bug_ref: Optional[str] = None
 
 
-def _backfill_session_phase(project: str, session_id: str, phase: Optional[str]) -> None:
-    """Retroactively set phase on all history.jsonl entries + DB rows for a session.
+def _backfill_session_tags(
+    project: str, session_id: str,
+    phase: Optional[str] = None,
+    feature: Optional[str] = None,
+    bug_ref: Optional[str] = None,
+) -> None:
+    """Retroactively set phase/feature/bug tags on all history.jsonl entries + DB commits.
 
-    Called whenever a session's phase tag is changed so that all prompts and commits
-    linked to that session become filterable by the new phase.
+    Called whenever any session tag is changed via PATCH /sessions/{id}/tags so that
+    all prompts and commits linked to that session become filterable by the new tags.
+    Only keys explicitly passed (not None) are updated; None-valued keys are removed.
     """
     # 1. Rewrite matching entries in history.jsonl
     hist_path = Path(settings.workspace_dir) / project / "_system" / "history.jsonl"
@@ -796,7 +802,9 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
                 try:
                     entry = json.loads(line)
                     if entry.get("session_id") == session_id:
-                        entry["phase"] = phase
+                        if phase   is not None: entry["phase"]   = phase   or None
+                        if feature is not None: entry["feature"] = feature or None
+                        if bug_ref is not None: entry["bug_ref"] = bug_ref or None
                     updated.append(json.dumps(entry, ensure_ascii=False))
                 except Exception:
                     updated.append(line)
@@ -804,7 +812,7 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
         except Exception:
             pass  # read-only filesystem or concurrent write — best-effort
 
-    # 2. Update commits table tags[] (phase column dropped — tags[] used instead)
+    # 2. Update mem_mrr_commits.tags for all commits in this session
     if db.is_available():
         import logging as _log
         _logger = _log.getLogger(__name__)
@@ -812,14 +820,17 @@ def _backfill_session_phase(project: str, session_id: str, phase: Optional[str])
             project_id = db.get_or_create_project_id(project)
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_UPDATE_COMMIT_PHASE, (phase, phase, project_id, session_id))
+                    cur.execute(
+                        _SQL_UPDATE_COMMIT_TAGS,
+                        (phase, phase, feature, feature, bug_ref, bug_ref, project_id, session_id),
+                    )
                     c_rows = cur.rowcount
             _logger.info(
-                f"backfill_session_phase: project={project} session={session_id[:8]} "
-                f"phase={phase!r} → commits={c_rows}"
+                f"backfill_session_tags: project={project} session={session_id[:8]} "
+                f"phase={phase!r} feature={feature!r} bug={bug_ref!r} → commits={c_rows}"
             )
         except Exception as exc:
-            _logger.warning(f"backfill_session_phase DB failed: {exc}")
+            _logger.warning(f"backfill_session_tags DB failed: {exc}")
 
 
 @router.patch("/sessions/{session_id}/tags")
@@ -847,8 +858,9 @@ async def patch_session_tags(
         if body.bug_ref is not None: tags["bug_ref"] = body.bug_ref or None
         # Do NOT update updated_at — tag edits shouldn't change session sort order
         store._save(session)
-        if body.phase is not None:
-            _backfill_session_phase(p, session_id, body.phase or None)
+        if body.phase is not None or body.feature is not None or body.bug_ref is not None:
+            _backfill_session_tags(p, session_id,
+                                   phase=body.phase, feature=body.feature, bug_ref=body.bug_ref)
         return {"ok": True, "tags": tags}
 
     # CLI / workflow session — persist in session_phases.json
@@ -863,6 +875,7 @@ async def patch_session_tags(
     if body.feature is not None: entry["feature"] = body.feature or None
     if body.bug_ref is not None: entry["bug_ref"] = body.bug_ref or None
     phases_path.write_text(json.dumps(existing, indent=2))
-    if body.phase is not None:
-        _backfill_session_phase(p, session_id, body.phase or None)
+    if body.phase is not None or body.feature is not None or body.bug_ref is not None:
+        _backfill_session_tags(p, session_id,
+                               phase=body.phase, feature=body.feature, bug_ref=body.bug_ref)
     return {"ok": True, "tags": entry}

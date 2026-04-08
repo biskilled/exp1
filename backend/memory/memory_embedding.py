@@ -75,7 +75,7 @@ _SQL_UPSERT_EVENT = """
 """
 
 _SQL_GET_COMMIT = """
-    SELECT commit_hash, commit_msg, summary, tags, session_id
+    SELECT commit_hash, commit_msg, summary, tags, session_id, diff_summary
     FROM mem_mrr_commits
     WHERE project_id=%s AND commit_hash=%s
 """
@@ -255,6 +255,33 @@ def _upsert_event(
         return None
 
 
+def _read_commit_min_diff_lines(project: str) -> int:
+    """Read commit_code_extraction.min_diff_lines from project.yaml (default 5)."""
+    try:
+        import yaml as _yaml
+        from pathlib import Path as _Path
+        proj_yaml = _Path(settings.workspace_dir) / project / "project.yaml"
+        if proj_yaml.exists():
+            cfg = _yaml.safe_load(proj_yaml.read_text()) or {}
+            return int(cfg.get("commit_code_extraction", {}).get("min_diff_lines", 5))
+    except Exception:
+        pass
+    return 5
+
+
+def _count_diff_stat_lines(diff_summary: str) -> int:
+    """Parse total changed lines from git --stat output.
+
+    e.g. '3 files changed, 10 insertions(+), 5 deletions(-)' → 15
+    Returns 0 if summary is missing/unparseable.
+    """
+    import re as _re
+    total = 0
+    for count, _ in _re.findall(r"(\d+) (insertion|deletion)", diff_summary):
+        total += int(count)
+    return total
+
+
 class MemoryEmbedding:
     """Embeds and stores content in mem_ai_events; provides semantic search."""
 
@@ -368,10 +395,18 @@ class MemoryEmbedding:
             if not row:
                 return None
 
-            commit_hash_val, commit_msg, existing_summary, mrr_tags, session_id = row
+            commit_hash_val, commit_msg, existing_summary, mrr_tags, session_id, diff_summary = row
             mrr_tags = mrr_tags or {}
         except Exception as e:
             log.debug(f"process_commit DB error: {e}")
+            return None
+
+        # Guard: skip LLM if diff is below min_diff_lines threshold
+        _min_diff = _read_commit_min_diff_lines(project)
+        _diff_lines = _count_diff_stat_lines(diff_summary or "")
+        if _diff_lines > 0 and _diff_lines < _min_diff:
+            log.debug(f"process_commit: skipping LLM for {commit_hash[:8]} "
+                      f"(diff_lines={_diff_lines} < min={_min_diff})")
             return None
 
         user_content = f"Commit: {commit_hash_val[:8]}\n{commit_msg}"

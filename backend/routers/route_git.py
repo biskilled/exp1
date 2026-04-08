@@ -1006,17 +1006,42 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
     _, staged_diff, _ = _git(["diff", "--cached"], code_dir)
     staged_diff = (staged_diff or "")[:8000]
 
+    # Count meaningful diff lines (added + removed, excluding file headers)
+    _diff_line_count = sum(
+        1 for ln in staged_diff.splitlines()
+        if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))
+    )
+
+    # Read min_diff_lines from project.yaml (default 5)
+    _min_diff_lines = 5
+    try:
+        _pcfg = yaml.safe_load((_proj_dir(project_name) / "project.yaml").read_text()) or {}
+        _min_diff_lines = int(_pcfg.get("commit_code_extraction", {}).get("min_diff_lines", 5))
+    except Exception:
+        pass
+
     # Resolve API key: body field takes priority, then request header
     api_key = body.api_key or request.headers.get("X-Anthropic-Key") or None
 
     # Generate commit message (+ optional structured analysis)
-    commit_message, commit_analysis = await _generate_commit_message(
-        hint=body.message_hint,
-        diff_stat=diff_stat,
-        changed_files=changed,
-        staged_diff=staged_diff,
-        api_key=api_key,
-    )
+    # Skip LLM for tiny commits (below min_diff_lines threshold)
+    if _diff_line_count < _min_diff_lines:
+        if body.message_hint:
+            commit_message = body.message_hint[:72]
+        elif len(changed) == 1:
+            commit_message = f"chore: update {changed[0]}"
+        else:
+            commit_message = f"chore: update {len(changed)} files"
+        commit_analysis = {}
+        log.debug(f"Skipping LLM commit analysis: diff_lines={_diff_line_count} < min={_min_diff_lines}")
+    else:
+        commit_message, commit_analysis = await _generate_commit_message(
+            hint=body.message_hint,
+            diff_stat=diff_stat,
+            changed_files=changed,
+            staged_diff=staged_diff,
+            api_key=api_key,
+        )
 
     # Stage all changed files
     _git(["add", "--"] + changed, code_dir)
