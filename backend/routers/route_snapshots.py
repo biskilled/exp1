@@ -123,7 +123,7 @@ async def _call_sonnet(system_prompt: str, user_message: str) -> str:
 
 async def _embed_text(text: str) -> Optional[list]:
     try:
-        from memory.mem_embeddings import get_embedding
+        from memory.memory_embedding import get_embedding
         return await get_embedding(text)
     except Exception:
         return None

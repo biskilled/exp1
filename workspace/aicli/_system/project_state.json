@@ -19,7 +19,7 @@
     "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
     "mcp": "Stdio MCP server with 12+ tools",
     "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
-    "database_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
+    "database_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
     "config_management": "config.py + YAML pipelines + pyproject.toml",
     "db_tables": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
     "llm_provider_adapters": "agents/providers/ with pr_ prefix for pricing and provider implementations",
@@ -50,11 +50,11 @@
     "4-layer memory architecture: ephemeral session messages \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts \u2192 user-managed planner_tags",
     "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-    "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
+    "Commit deduplication by hash with UNION consolidation; mem_mrr_commits_code includes 19 columns with full_symbol as generated column",
     "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
     "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates",
     "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-    "Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures"
+    "Mirror table pattern (mem_mrr_*) captures raw events; generated columns require explicit post-creation migration to avoid DDL runner silent failures"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -83,9 +83,9 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Database schema stabilization: commit_short_hash column added to database; mem_mrr_commits_code now includes all 19 columns with full_symbol generated column properly applied",
+    "Database schema stabilization: commit_short_hash column added; mem_mrr_commits_code now includes all 19 columns with full_symbol properly applied via post-creation DDL",
     "DDL runner robustness: investigating silent failures during initial migration caused by table locks and timing issues; generated columns now applied after base table creation",
-    "Commit code extraction configuration: added min_lines and only_on_commits_with_tags settings to project.yaml templates (python_api and blank)",
+    "Commit code extraction configuration: min_lines and only_on_commits_with_tags settings added to project.yaml templates (python_api and blank)",
     "Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join operations",
     "Memory endpoint data synchronization: tracing data flow from mirror tables through mem_ai_* tables; verifying update triggers and mechanisms",
     "Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic"
@@ -120,7 +120,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-08T13:31:52Z",
+  "last_memory_run": "2026-04-08T13:46:59Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -133,16 +133,16 @@
       "4-layer memory architecture: ephemeral session messages \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts \u2192 user-managed planner_tags",
       "Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI",
-      "Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display",
+      "Commit deduplication by hash with UNION consolidation; mem_mrr_commits_code includes 19 columns with full_symbol as generated column",
       "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
       "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates",
       "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures"
+      "Mirror table pattern (mem_mrr_*) captures raw events; generated columns require explicit post-creation migration to avoid DDL runner silent failures"
     ],
     "in_progress": [
-      "Database schema stabilization: commit_short_hash column added to database; mem_mrr_commits_code now includes all 19 columns with full_symbol generated column properly applied",
+      "Database schema stabilization: commit_short_hash column added; mem_mrr_commits_code now includes all 19 columns with full_symbol properly applied via post-creation DDL",
       "DDL runner robustness: investigating silent failures during initial migration caused by table locks and timing issues; generated columns now applied after base table creation",
-      "Commit code extraction configuration: added min_lines and only_on_commits_with_tags settings to project.yaml templates (python_api and blank)",
+      "Commit code extraction configuration: min_lines and only_on_commits_with_tags settings added to project.yaml templates (python_api and blank)",
       "Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join operations",
       "Memory endpoint data synchronization: tracing data flow from mirror tables through mem_ai_* tables; verifying update triggers and mechanisms",
       "Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic"
@@ -153,19 +153,20 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "db_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm",
+      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment_local": "bash start_backend.sh + npm run dev",
       "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "database_version": "PostgreSQL 15+",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "database_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL semantic storage with pgvector, and an Electron desktop UI (Vanilla JS + xterm.js + Cytoscape.js). It provides Claude/OpenAI/DeepSeek integration for AI-assisted project management via async DAG workflows, memory synthesis, and work item tracking with 4-layer memory architecture (session \u2192 raw capture \u2192 AI digests \u2192 user-managed planning). Currently stabilizing database schema (mirror table patterns, generated columns), optimizing query performance (60s latency in work item routes), and debugging tag visibility in the planner UI.",
-    "memory_digest": "**[2026-04-08]** `claude_cli` \u2014 Resolved database schema issue: `commit_short_hash` column added and `mem_mrr_commits_code` now includes all 19 columns with `full_symbol` as a properly-applied generated column. Identified silent failure in DDL runner during initial migration caused by table lock timing; generated columns now applied post-base-table-creation to prevent race conditions. **[2026-04]** `project_config` \u2014 Added commit code extraction configuration to project templates: `min_lines` and `only_on_commits_with_tags` settings added to blank and python_api templates. **[2026-04]** `performance` \u2014 Identified 60s latency in route_work_items endpoint; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS join operations. **[2026-04]** `in_progress` \u2014 Tracing memory flow from mirror tables (mem_mrr_*) through unified mem_ai_* tables; verifying update triggers and data synchronization mechanisms via /memory endpoint. **[2026-04]** `debugging` \u2014 Planner tag visibility issue: categories upload correctly but individual tags not displaying in category bindings; verifying router query logic and tag filtering."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI, FastAPI backend, and Electron desktop UI to capture, synthesize, and manage project knowledge across sessions using LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) and semantic search via PostgreSQL pgvector. The system uses a 4-layer memory architecture with mirror tables for raw capture, unified AI digests with embeddings, work items with dual status tracking, and user-managed tags. Currently stabilizing the database schema (mem_mrr_commits_code with 19 columns), addressing DDL runner robustness issues, and optimizing query performance for work item routes (~60s latency).",
+    "memory_digest": "**2026-03-14** `schema` \u2014 Stabilized mem_mrr_commits_code table with 19 columns including commit_short_hash and full_symbol as generated column; identified that DDL runner silently fails on initial migrations due to table locks and timing\u2014generated columns must be applied post-creation.\n\n**2026-03-14** `config` \u2014 Added min_lines and only_on_commits_with_tags configuration settings to project.yaml templates (python_api and blank) to control commit code extraction behavior.\n\n**2026-03-14** `performance` \u2014 Discovered route_work_items endpoint exhibiting ~60s latency; root cause investigation underway focusing on _SQL_UNLINKED_WORK_ITEMS query indexing and join operation optimization.\n\n**2026-03-14** `data-sync` \u2014 Tracing memory endpoint data flow from mirror tables (mem_mrr_*) through unified mem_ai_* tables; verifying update triggers and synchronization mechanisms are working correctly.\n\n**2026-03-14** `ui-bug` \u2014 Planner tag categories uploading successfully but individual tags not displaying in category bindings; debugging router mapping and tag query logic in frontend.\n\n**2026-03-10** `architecture` \u2014 Finalized 4-layer memory architecture: ephemeral session messages \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests with embeddings \u2192 mem_ai_work_items/project_facts \u2192 user-managed planner_tags with dual status tracking (status_user, status_ai)."
   }
 }

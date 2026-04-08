@@ -24,7 +24,7 @@ from core.database import db
 from agents.providers.pr_pricing import load_pricing, calculate_cost, can_user_access
 from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
 from routers.route_usage import log_usage
-from memory.mem_sessions import SessionStore
+from memory.memory_sessions import SessionStore
 
 # ── SQL ─────────────────────────────────────────────────────────────────────────
 
@@ -309,7 +309,7 @@ async def _stream_response(
 
         # Fire-and-forget: embed + proactive feature detection
         try:
-            from memory.mem_embeddings import embed_and_store as _embed
+            from memory.memory_embedding import embed_and_store as _embed
             asyncio.create_task(_embed(
                 project, "history", _ts, f"Q: {message}\nA: {content}",
                 chunk_index=0, chunk_type="full",

@@ -943,7 +943,7 @@ def _fire_background(run_id: str, project: str) -> None:
     """
     async def _safe_embed():
         try:
-            from memory.mem_embeddings import embed_node_outputs
+            from memory.memory_embedding import embed_node_outputs
             await embed_node_outputs(run_id, project)
         except Exception as _e:
             log.debug(f"Background embed failed (non-critical): {_e}")

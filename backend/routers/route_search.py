@@ -68,7 +68,7 @@ async def semantic_search(body: SearchRequest, user=Depends(get_optional_user)):
     if not db.is_available():
         raise HTTPException(503, "PostgreSQL + pgvector required for semantic search")
 
-    from memory.mem_embeddings import semantic_search as _search
+    from memory.memory_embedding import semantic_search as _search
     project = body.project or settings.active_project or "default"
     results = await _search(
         project=project,
@@ -169,7 +169,7 @@ async def ingest(project: str = Query(""), user=Depends(get_optional_user)):
     p = project or settings.active_project or "default"
 
     async def _do_ingest():
-        from memory.mem_embeddings import ingest_history, ingest_roles
+        from memory.memory_embedding import ingest_history, ingest_roles
         h = await ingest_history(p)
         r = await ingest_roles(p)
         import logging
