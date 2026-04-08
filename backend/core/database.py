@@ -555,6 +555,12 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq ON mem_ai_work_items(project_id, se
 """
 
 
+# ─── DDL: work_items column additions (migration 017) ────────────────────────
+
+_DDL_WORK_ITEMS_ALTERS = """
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS ai_tags JSONB NOT NULL DEFAULT '{}';
+"""
+
 # ─── DDL: mem_mrr_commits_code — per-symbol code stats for each commit ────────
 
 _DDL_COMMIT_CODE = """
@@ -1447,6 +1453,7 @@ class _Database:
             ("pr_tables_v1",             _DDL_PR_TABLES,             "mem_mrr_* + mem_ai_work_items + graph tables"),
             ("memory_infra_v1",          _DDL_MEMORY_INFRA,          "planner_tags + mem_mrr_* + mem_ai_* tables"),
             ("memory_infra_alters_v2",   _DDL_MEMORY_INFRA_ALTERS,   "memory infra column alters (migration 016)"),
+            ("work_items_alters_v1",     _DDL_WORK_ITEMS_ALTERS,     "mem_ai_work_items ai_tags column (migration 017)"),
             ("commit_code_v1",           _DDL_COMMIT_CODE,            "mem_mrr_commits_code"),
         ]
         for version, ddl, label in _migrations:

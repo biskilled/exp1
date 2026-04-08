@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 17:53 UTC by aicli /memory_
+_Generated: 2026-04-08 18:31 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -174,6 +174,186 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
+index 6093022..3206da2 100644
+--- a/backend/routers/route_work_items.py
++++ b/backend/routers/route_work_items.py
+@@ -38,10 +38,18 @@ _SQL_LIST_WORK_ITEMS_BASE = (
+               w.created_at, w.updated_at, w.seq_num,
+               tc.color, tc.icon,
+               (SELECT COUNT(*) FROM mem_mrr_prompts p
+-               WHERE p.client_id=1 AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count,
++               WHERE p.project_id=w.project_id AND p.tags @> jsonb_build_object('work-item', w.id::text)) AS interaction_count,
+               (SELECT COUNT(*) FROM mem_mrr_commits c
+                WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS commit_count,
+-              (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count
++              (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
++              (SELECT COALESCE(SUM(cc.rows_added), 0)
++               FROM mem_mrr_commits_code cc
++               JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
++               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS rows_added,
++              (SELECT COALESCE(SUM(cc.rows_removed), 0)
++               FROM mem_mrr_commits_code cc
++               JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
++               WHERE c.project_id=w.project_id AND c.tags @> jsonb_build_object('work-item', w.id::text)) AS rows_removed
+        FROM mem_ai_work_items w
+        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
+        WHERE {where}
+@@ -111,6 +119,39 @@ _SQL_GET_INTERACTIONS = (
+        ORDER BY i.created_at DESC LIMIT %s"""
+ )
+ 
++_SQL_WORK_ITEM_STATS = """
++    SELECT
++        (SELECT COUNT(*) FROM mem_mrr_prompts p
++         WHERE p.project_id=%s AND p.tags @> jsonb_build_object('work-item', %s)) AS prompt_count,
++        (SELECT COUNT(*) FROM mem_mrr_commits c
++         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)) AS commit_count,
++        (SELECT COUNT(DISTINCT cc.file_path)
++         FROM mem_mrr_commits_code cc
++         JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
++         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)) AS files_changed,
++        (SELECT COALESCE(SUM(cc.rows_added), 0)
++         FROM mem_mrr_commits_code cc
++         JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
++         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)) AS rows_added,
++        (SELECT COALESCE(SUM(cc.rows_removed), 0)
++         FROM mem_mrr_commits_code cc
++         JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
++         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)) AS rows_removed,
++        (SELECT COUNT(DISTINCT cc.full_symbol)
++         FROM mem_mrr_commits_code cc
++         JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
++         WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)
++           AND cc.full_symbol IS NOT NULL) AS symbols_changed,
++        (SELECT jsonb_object_agg(lang, cnt) FROM (
++            SELECT cc.file_language AS lang, COUNT(*) AS cnt
++            FROM mem_mrr_commits_code cc
++            JOIN mem_mrr_commits c ON c.commit_hash = cc.commit_hash
++            WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s)
++              AND cc.file_language != ''
++            GROUP BY cc.file_language
++         ) t) AS languages
++"""
++
+ _SQL_GET_FACTS = (
+     """SELECT id, fact_key, fact_value, valid_from
+        FROM mem_ai_project_facts
+@@ -630,6 +671,35 @@ async def get_work_item_commits(
+     return {"commits": rows, "work_item_id": item_id, "project": p}
+ 
+ 
++# ── Per-work-item statistics ──────────────────────────────────────────────────
++
++@router.get("/{item_id}/stats")
++async def get_work_item_stats(
++    item_id: str,
++    project: str | None = Query(None),
++):
++    """Return aggregated stats for a work item: prompt count, commit count,
++    files/rows changed, symbols touched, and languages breakdown.
++
++    All stats are derived from mem_mrr_commits and mem_mrr_commits_code rows
++    tagged with 'work-item': item_id.
++    """
++    _require_db()
++    p = _project(project)
++    p_id = db.get_or_create_project_id(p)
++    # Each placeholder pair (project_id, item_id) repeated 7 times for 7 subqueries
++    params = (p_id, item_id) * 7
++    with db.conn() as conn:
++        with conn.cursor() as cur:
++            cur.execute(_SQL_WORK_ITEM_STATS, params)
++            cols = [d[0] for d in cur.description]
++            row = cur.fetchone()
++    if not row:
++        return {"work_item_id": item_id, "project": p, "stats": {}}
++    stats = dict(zip(cols, row))
++    return {"work_item_id": item_id, "project": p, "stats": stats}
++
++
+ # ── Semantic search ───────────────────────────────────────────────────────────
+ 
+ @router.get("/search")
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 33a518a..2525e65 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-08 16:22 UTC
++> Generated by aicli 2026-04-08 17:20 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -61,4 +61,4 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+-- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; route_snapshots and route_memory now load prompts from configuration
+\ No newline at end of file
++- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index b26856b..9305460 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 16:22 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 17:20 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+-- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; route_snapshots and route_memory now load prompts from configuration
++- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
+ 
+ ## Recent Context (last 5 changes)
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index b26856b..9305460 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 16:22 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 17:20 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+-- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; route_snapshots and route_memory now load prompts from configuration
++- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
+ 
+ ## Recent Context (last 5 changes)
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+Removed outdated auto-generated system context files from aicli project to clean up codebase and reduce clutter.
+
 ### `commit` — 2026-04-08
 
 diff --git a/workspace/aicli/project.yaml b/workspace/aicli/project.yaml
@@ -188,69 +368,4 @@ index 198132e..6275e50 100644
 +  min_lines: 5              # per-symbol llm_summary threshold
 +  min_diff_lines: 5         # skip all LLM calls for commits with fewer total changed lines
 +  only_on_commits_with_tags: false
-
-
-### `commit` — 2026-04-08
-
-diff --git a/backend/requirements.txt b/backend/requirements.txt
-index 0060070..5732597 100644
---- a/backend/requirements.txt
-+++ b/backend/requirements.txt
-@@ -14,5 +14,5 @@ httpx>=0.27.0
- pyyaml>=6.0
- python-dotenv>=1.0.0
- mcp>=1.0.0
--tree-sitter>=0.23.0
--tree-sitter-languages>=1.10.0
-+tree-sitter==0.21.3
-+tree-sitter-languages==1.10.2
-
-
-### `commit` — 2026-04-08
-
-Removed obsolete auto-generated system files and documentation to clean up the repository structure and reduce maintenance burden.
-
-### `commit` — 2026-04-08
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index a8a1dd5..33a518a 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-08 14:47 UTC
-+> Generated by aicli 2026-04-08 16:22 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit` — 2026-04-08
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 3d58661..b26856b 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 14:47 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 16:22 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit` — 2026-04-08
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 3d58661..b26856b 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 14:47 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 16:22 UTC
- 
- # aicli — Shared AI Memory Platform
- 
 
