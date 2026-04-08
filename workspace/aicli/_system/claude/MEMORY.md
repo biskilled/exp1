@@ -5,7 +5,7 @@ _Generated: 2026-04-08 13:30 UTC by aicli /memory_
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python 3.12 CLI backend with FastAPI, PostgreSQL 15+ with pgvector, and a vanilla JS Electron desktop UI for managing AI-assisted project workflows. It implements a 4-layer memory architecture (ephemeral → raw capture → LLM digests → semantic work items) with async DAG workflow execution, multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), and an MCP server for semantic search and work item management. Current focus is stabilizing commit code extraction schema and optimizing database query performance for work item retrieval.
+aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL semantic storage with pgvector, and an Electron desktop UI (Vanilla JS + xterm.js + Cytoscape.js). It provides Claude/OpenAI/DeepSeek integration for AI-assisted project management via async DAG workflows, memory synthesis, and work item tracking with 4-layer memory architecture (session → raw capture → AI digests → user-managed planning). Currently stabilizing database schema (mirror table patterns, generated columns), optimizing query performance (60s latency in work item routes), and debugging tag visibility in the planner UI.
 
 ## Project Facts
 
@@ -59,16 +59,16 @@ Reviewer: ```json
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
 - **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
-- **mcp**: Stdio MCP server with 12+ tools for semantic search and work item management
+- **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb); local bash/npm
-- **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Mirror: mem_mrr_commits, mem_mrr_commits_code; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
@@ -100,20 +100,20 @@ Reviewer: ```json
 - 4-layer memory architecture: ephemeral session messages → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts → user-managed planner_tags
 - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
-- Commit processing: mem_mrr_commits tracks exec_llm=FALSE flag for unprocessed commits; Haiku digest + embedding backpropagates summary and sets exec_llm=TRUE
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
 
 ## In Progress
 
-- Commit code extraction schema finalization: mem_mrr_commits_code table with 19 columns including generated full_symbol column for semantic indexing; DDL migration applied after lock issue resolution
-- Embed commits endpoint migration: switching from tags->'llm' IS NULL to exec_llm=FALSE boolean flag for tracking processed commits; backpropagating summary on mem_mrr_commits
-- Database query performance optimization: route_work_items showing ~60s round-trip latency; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join operations
-- Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows
-- Project ID resolution in embed_commits: ensuring project parameter uses project_id instead of project string in database queries
-- Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table
+- Database schema stabilization: commit_short_hash column added to database; mem_mrr_commits_code now includes all 19 columns with full_symbol generated column properly applied
+- DDL runner robustness: investigating silent failures during initial migration caused by table locks and timing issues; generated columns now applied after base table creation
+- Commit code extraction configuration: added min_lines and only_on_commits_with_tags settings to project.yaml templates (python_api and blank)
+- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join operations
+- Memory endpoint data synchronization: tracing data flow from mirror tables through mem_ai_* tables; verifying update triggers and mechanisms
+- Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic
 
 ## Active Features / Bugs / Tasks
 
@@ -163,6 +163,13 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `session_summary: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+Summary:
+• Added `commit_short_hash` column to database schema
+• `mem_mrr_commits_code` table now includes all 19 columns with `full_symbol` as a generated column
+• Identified silent failure in DDL runner during initial migration - likely caused by timing issues and table locks during the first run
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
@@ -353,120 +360,6 @@ index 330ea2d..0060070 100644
 +tree-sitter-languages>=1.10.0
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/backend/memory/memory_extraction.py b/backend/memory/memory_extraction.py
-index 682040e..6699493 100644
---- a/backend/memory/memory_extraction.py
-+++ b/backend/memory/memory_extraction.py
-@@ -36,6 +36,15 @@ _SQL_GET_LINKED_COMMITS = """
-     ORDER BY committed_at
- """
- 
-+_SQL_AGGREGATE_CODE = """
-+    SELECT file_path, file_ext, file_language,
-+           SUM(rows_added)::int   AS rows_added,
-+           SUM(rows_removed)::int AS rows_removed
-+    FROM mem_mrr_commits_code
-+    WHERE commit_hash = ANY(%s)
-+    GROUP BY file_path, file_ext, file_language
-+"""
-+
- _SQL_MERGE_AI_TAGS = """
-     UPDATE mem_ai_work_items
-     SET ai_tags = ai_tags || %s::jsonb, updated_at = NOW()
-@@ -62,37 +71,74 @@ class MemoryExtraction:
-     def aggregate_commits(commits: list[dict]) -> dict:
-         """Aggregate file/line stats across all commits linked to a work item.
- 
-+        Queries mem_mrr_commits_code for structured per-symbol stats when available;
-+        falls back to parsing tags["files"] / tags["rows_changed"] for older commits.
-+
-         Returns a dict with all_files, test_files, source_files, total_added,
-         total_removed, and commit_count.
-         """
--        all_files: set[str] = set()
--        test_files_seen: set[str] = set()
--        total_added = 0
--        total_removed = 0
-+        commit_hashes = [c["commit_hash"] for c in commits if c.get("commit_hash")]
-+
-+        # Try mem_mrr_commits_code first (populated by tree-sitter parser)
-+        if commit_hashes and db.is_available():
-+            try:
-+                with db.conn() as conn:
-+                    with conn.cursor() as cur:
-+                        cur.execute(_SQL_AGGREGATE_CODE, (commit_hashes,))
-+                        rows = cur.fetchall()
-+                if rows:
-+                    all_files: set[str] = set()
-+                    test_files_seen: set[str] = set()
-+                    total_added = 0
-+                    total_removed = 0
-+                    for file_path, _ext, _lang, ra, rr in rows:
-+                        all_files.add(file_path)
-+                        total_added += ra or 0
-+                        total_removed += rr or 0
-+                        if ".test." in file_path or ".spec." in file_path or "/test" in file_path or "tests/" in file_path:
-+                            test_files_seen.add(file_path)
-+                    test_files = sorted(test_files_seen)
-+                    source_files = sorted(all_files - test_files_seen)
-+                    return {
-+                        "all_files":     sorted(all_files),
-+                        "test_files":    test_files,
-+                        "source_files":  source_files,
-+                        "total_added":   total_added,
-+                        "total_removed": total_removed,
-+                        "commit_count":  len(commits),
-+                    }
-+            except Exception as e:
-+                log.debug(f"aggregate_commits code table query failed, falling back: {e}")
-+
-+        # Fallback: parse tags["files"] / tags["rows_changed"] (pre-016 commits)
-+        all_files_fb: set[str] = set()
-+        test_files_seen_fb: set[str] = set()
-+        total_added_fb = 0
-+        total_removed_fb = 0
- 
-         for c in commits:
-             tags = c.get("tags") or {}
-             files = tags.get("files") or {}
-             names = list(files.keys()) if isinstance(files, dict) else list(files)
--            all_files.update(names)
-+            all_files_fb.update(names)
- 
-             rc = tags.get("rows_changed") or {}
--            total_added   += rc.get("added", 0)
--            total_removed += rc.get("removed", 0)
-+            total_added_fb   += rc.get("added", 0)
-+            total_removed_fb += rc.get("removed", 0)
- 
-             for f in names:
-                 if ".test." in f or ".spec." in f or "/test" in f or "tests/" in f:
--                    test_files_seen.add(f)
-+                    test_files_seen_fb.add(f)
- 
--        test_files   = sorted(test_files_seen)
--        source_files = sorted(all_files - test_files_seen)
-+        test_files_fb   = sorted(test_files_seen_fb)
-+        source_files_fb = sorted(all_files_fb - test_files_seen_fb)
- 
-         return {
--            "all_files":    sorted(all_files),
--            "test_files":   test_files,
--            "source_files": source_files,
--            "total_added":  total_added,
--            "total_removed": total_removed,
-+            "all_files":    sorted(all_files_fb),
-+            "test_files":   test_files_fb,
-+            "source_files": source_files_fb,
-+            "total_added":  total_added_fb,
-+            "total_removed": total_removed_fb,
-             "commit_count": len(commits),
-         }
- 
-
-
 ## AI Synthesis
 
-**[2026-04-08]** `claude_cli` — Finalized commit code extraction schema: mem_mrr_commits_code table with 19 columns including generated full_symbol for semantic indexing; resolved DDL migration lock issue where generated column failed silently on first run. **[2026-04-08]** `route_memory.py` — Migrated embed_commits endpoint from tags->'llm' IS NULL to exec_llm=FALSE boolean flag for tracking processed commits; Haiku digest now backpropagates summary and sets exec_llm=TRUE on mem_mrr_commits. **[2026-03-14]** `PROJECT.md` — Project facts updated: auth_pattern confirmed as login_as_first_level_hierarchy; memory_management_pattern set to load_once_on_access_update_on_save; mcp_integration focuses on embedding and work item retrieval. **[Recent]** `schema tracking` — 4-layer memory architecture stabilized: ephemeral session → mem_mrr_* raw capture → mem_ai_* LLM digests + embeddings → work items/project facts → user planner tags. **[In progress]** Database optimization: route_work_items latency investigation (~60s round-trip); performance tuning on _SQL_UNLINKED_WORK_ITEMS joins and indexing strategy.
+**[2026-04-08]** `claude_cli` — Resolved database schema issue: `commit_short_hash` column added and `mem_mrr_commits_code` now includes all 19 columns with `full_symbol` as a properly-applied generated column. Identified silent failure in DDL runner during initial migration caused by table lock timing; generated columns now applied post-base-table-creation to prevent race conditions. **[2026-04]** `project_config` — Added commit code extraction configuration to project templates: `min_lines` and `only_on_commits_with_tags` settings added to blank and python_api templates. **[2026-04]** `performance` — Identified 60s latency in route_work_items endpoint; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS join operations. **[2026-04]** `in_progress` — Tracing memory flow from mirror tables (mem_mrr_*) through unified mem_ai_* tables; verifying update triggers and data synchronization mechanisms via /memory endpoint. **[2026-04]** `debugging` — Planner tag visibility issue: categories upload correctly but individual tags not displaying in category bindings; verifying router query logic and tag filtering.

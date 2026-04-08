@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows
-- Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table
-- Database query performance optimization: route_work_items showing ~60s round-trip latency; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join operations
+- Database schema stabilization: commit_short_hash column added to database; mem_mrr_commits_code now includes all 19 columns with full_symbol generated column properly applied
+- DDL runner robustness: investigating silent failures during initial migration caused by table locks and timing issues; generated columns now applied after base table creation
+- Commit code extraction configuration: added min_lines and only_on_commits_with_tags settings to project.yaml templates (python_api and blank)
+- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join operations
+- Memory endpoint data synchronization: tracing data flow from mirror tables through mem_ai_* tables; verifying update triggers and mechanisms
 - Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic
-- Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries
-- Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state

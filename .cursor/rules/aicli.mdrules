@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 00:28 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 13:30 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
 - **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
@@ -59,13 +59,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
-- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
 - [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
 - [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
 - [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
 - [2026-04-07] Where simple extraction flow can be something like that:  pr_tags_map   WHERE related_type = 'commit'   AND tag_id = sma
+- [2026-04-08] I do not see any update at the database

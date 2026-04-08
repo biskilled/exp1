@@ -36,11 +36,11 @@ You are a senior Python software architect with deep expertise in:
 - 4-layer memory architecture: ephemeral session messages → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts → user-managed planner_tags
 - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
-- Commit processing: mem_mrr_commits tracks exec_llm=FALSE flag for unprocessed commits; Haiku digest + embedding backpropagates summary and sets exec_llm=TRUE
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
 
 ---
 

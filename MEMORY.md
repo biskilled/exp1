@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 00:28 UTC by aicli /memory_
+_Generated: 2026-04-08 13:30 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL semantic storage with pgvector, and an Electron desktop UI (Vanilla JS + xterm.js + Cytoscape.js). It provides Claude/OpenAI/DeepSeek integration for AI-assisted project management via async DAG workflows, memory synthesis, and work item tracking with 4-layer memory architecture (session → raw capture → AI digests → user-managed planning). Currently stabilizing database schema (mirror table patterns, generated columns), optimizing query performance (60s latency in work item routes), and debugging tag visibility in the planner UI.
 
 ## Project Facts
 
@@ -55,7 +59,7 @@ Reviewer: ```json
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
 - **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
@@ -99,17 +103,17 @@ Reviewer: ```json
 - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
-- Tag filtering in work item list: ai_category must match tag's category, not work item's own category
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Mirror table pattern (mem_mrr_*) captures raw events; generated columns (full_symbol) require explicit migration timing to avoid DDL runner silent failures
 
 ## In Progress
 
-- Commit table schema clarification: investigating mem_ai_commits columns (diff_summary, diff_details) and their usage in event linkage and embedding workflows
-- Memory flow documentation: tracing data flow from mirror tables through mem_ai_* tables; identifying triggers and update mechanisms for each mirror table
-- Database query performance optimization: route_work_items showing ~60s round-trip latency; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS and join operations
+- Database schema stabilization: commit_short_hash column added to database; mem_mrr_commits_code now includes all 19 columns with full_symbol generated column properly applied
+- DDL runner robustness: investigating silent failures during initial migration caused by table locks and timing issues; generated columns now applied after base table creation
+- Commit code extraction configuration: added min_lines and only_on_commits_with_tags settings to project.yaml templates (python_api and blank)
+- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join operations
+- Memory endpoint data synchronization: tracing data flow from mirror tables through mem_ai_* tables; verifying update triggers and mechanisms
 - Planner tag visibility debugging: categories uploaded but individual tags not displaying in category bindings; verifying router mapping and tag query logic
-- Project ID resolution in embed_commits: fixing project parameter to use project_id instead of project string in database queries
-- Memory endpoint data synchronization: running /memory to sync session data into memory_items and ensure mem_ai_* tables reflect latest project state
 
 ## Active Features / Bugs / Tasks
 
@@ -160,131 +164,202 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit: ffeb4281-920b-4404-a108-37a3b8e54d40` — 2026-04-07
+### `session_summary: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index ddc699c..b299d93 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -301,9 +301,9 @@ textarea.addEventListener('input', () => {
+Summary:
+• Added `commit_short_hash` column to database schema
+• `mem_mrr_commits_code` table now includes all 19 columns with `full_symbol` as a generated column
+• Identified silent failure in DDL runner during initial migration - likely caused by timing issues and table locks during the first run
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/workspace/_templates/python_api/project.yaml b/workspace/_templates/python_api/project.yaml
+index 9fff36c..310d1d6 100644
+--- a/workspace/_templates/python_api/project.yaml
++++ b/workspace/_templates/python_api/project.yaml
+@@ -5,3 +5,6 @@ default_provider: claude
+ active_workflows:
+   - build_feature
+   - code_review
++commit_code_extraction:
++  min_lines: 5
++  only_on_commits_with_tags: false
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/workspace/_templates/blank/project.yaml b/workspace/_templates/blank/project.yaml
+index 2a79137..2b98de9 100644
+--- a/workspace/_templates/blank/project.yaml
++++ b/workspace/_templates/blank/project.yaml
+@@ -3,3 +3,6 @@ description: "Project created from blank template"
+ code_dir: "../../{{PROJECT_NAME}}"
+ default_provider: claude
+ active_workflows: []
++commit_code_extraction:
++  min_lines: 5
++  only_on_commits_with_tags: false
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
+index ea38661..91f113b 100644
+--- a/backend/routers/route_memory.py
++++ b/backend/routers/route_memory.py
+@@ -375,9 +375,9 @@ async def embed_commits(
+ ):
+     """Run process_commit() for commits that have no Haiku digest yet.
  
- ## Recent Work
+-    Selects commits where tags->>'llm' IS NULL (never processed), runs Haiku
+-    digest + embedding for each, back-propagates summary and llm tag to
+-    mem_mrr_commits. Returns count processed.
++    Selects commits where exec_llm = FALSE (never processed), runs Haiku
++    digest + embedding for each, back-propagates summary and sets exec_llm=TRUE
++    on mem_mrr_commits. Returns count processed.
+     """
+     if not db.is_available():
+         raise HTTPException(status_code=503, detail="PostgreSQL not available")
+@@ -389,7 +389,7 @@ async def embed_commits(
+                 cur.execute(
+                     """SELECT commit_hash FROM mem_mrr_commits
+                        WHERE project_id=%s
+-                         AND (tags->>'llm') IS NULL
++                         AND exec_llm = FALSE
+                        ORDER BY committed_at DESC NULLS LAST
+                        LIMIT %s""",
+                     (project_id, limit),
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/backend/routers/route_git.py b/backend/routers/route_git.py
+index c3a990c..007fd08 100644
+--- a/backend/routers/route_git.py
++++ b/backend/routers/route_git.py
+@@ -26,15 +26,22 @@ log = logging.getLogger(__name__)
  
--- PostgreSQL schema cleanup: drop unused graph tables; consolidate workflows vs flows distinction; align database schema with node-graph execution model for multi-agent workflows
--- Balance persistence and admin dashboard: fix balance refresh on top-right corner; ensure admin sees total balance aggregated across all users; per-user balance visibility in user dashboard
--- Hooks integration and history tracking: populate commit_log.jsonl from all tools (claude cli, aicli, cursor); capture both prompts and responses in history.jsonl; verify auto-commit on claude cli works
--- Mandatory metadata tagging system: force claude-cli and cursor to attach minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across conversation
--- PostgreSQL pgvector implementation: create semantic embedding schema for project metadata (tasks, features, bugs); add relational tagging table linking commit_id to lifecycle_stage/feature_area; validate approach improves cross-tool project comprehension
--- Code consolidation: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; consolidate history folder vs _system folder usage; merge QUICKSTART.md and README.md
-+- PostgreSQL pgvector schema creation and validation: set up new PostgreSQL instance with pgvector extension; create users, usage_logs, billing_logs, workflows tables; drop unused graph tables; validate relational data and vector embedding capability
-+- Mandatory metadata tagging system: force claude-cli and cursor to attach minimum metadata keys (project, lifecycle_stage, feature_area) to every prompt; ensure tags persist across conversation; create relational tagging table linking commit_id to lifecycle_stage/feature_area/bug
-+- Unified commit_log.jsonl population: ensure all logs (prompts, responses, errors) from claude cli hooks, aicli commits, and cursor hooks write to shared commit_log.jsonl; verify history.jsonl captures both prompts and responses
-+- Balance persistence and refresh logic: fix top-right corner balance refresh; ensure admin dashboard aggregates total balance across all users and all API keys; per-user balance visibility in user dashboard and API key management screen
-+- Hook integration debugging: verify claude cli hooks are auto-committing to git; ensure aicli tracks history properly; consolidate history folder vs _system folder usage to eliminate duplication
-+- Code consolidation and cleanup: remove hardcoded cost_tracker pricing; clarify dev_runtime_state.json vs project_state.json necessity; merge QUICKSTART.md and README.md documentation
-
-
-### `commit: ffeb4281-920b-4404-a108-37a3b8e54d40` — 2026-04-07
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 9828587..00687b3 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-03-08 23:52 UTC
-+> Generated by aicli 2026-03-09 00:31 UTC
+ _SQL_UPSERT_COMMIT = """
+     INSERT INTO mem_mrr_commits
+-            (project_id, commit_hash, session_id, commit_msg, diff_summary, committed_at, tags)
+-        VALUES (%s, %s, %s, %s, %s, %s, %s)
++            (project_id, commit_hash, session_id, commit_msg, diff_summary,
++             author, author_email, committed_at, tags, tags_ai)
++        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+         ON CONFLICT (commit_hash) DO UPDATE
+             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
+                 commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
+                 diff_summary = COALESCE(EXCLUDED.diff_summary, mem_mrr_commits.diff_summary),
++                author       = CASE WHEN EXCLUDED.author != '' THEN EXCLUDED.author
++                                    ELSE mem_mrr_commits.author END,
++                author_email = CASE WHEN EXCLUDED.author_email != '' THEN EXCLUDED.author_email
++                                    ELSE mem_mrr_commits.author_email END,
+                 committed_at = COALESCE(EXCLUDED.committed_at, mem_mrr_commits.committed_at),
+-                tags         = CASE WHEN EXCLUDED.tags != \'{}\' THEN EXCLUDED.tags
+-                                    ELSE mem_mrr_commits.tags END
++                tags         = CASE WHEN EXCLUDED.tags != '{}' THEN EXCLUDED.tags
++                                    ELSE mem_mrr_commits.tags END,
++                tags_ai      = CASE WHEN EXCLUDED.tags_ai != '{}' THEN EXCLUDED.tags_ai
++                                    ELSE mem_mrr_commits.tags_ai END
+ """
  
- # aicli — Shared AI Memory Platform
+ # Link commit → most-recent prompt in the same session that occurred before the commit.
+@@ -158,11 +165,25 @@ async def _embed_commit_background(project: str, commit_hash: str) -> None:
+         log.debug(f"_embed_commit_background error ({commit_hash[:8]}): {e}")
  
-@@ -13,11 +13,11 @@ _Last updated: 2026-03-08_
- - backend: FastAPI + python-jose + bcrypt + SQLAlchemy
- - frontend: Vanilla JS + Electron with xterm.js + Monaco editor
- - storage: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV
--- database: PostgreSQL with pgvector + SQLAlchemy ORM
-+- database: PostgreSQL 15+ with pgvector extension + SQLAlchemy ORM
- - authentication: JWT (python-jose) + bcrypt + dev_mode toggle
- - planned: GraphQL, node graph UI, pgvector semantic embeddings, unified provider logging
- - orm: SQLAlchemy
--- tables: users, user_usage, usage_logs, billing_logs, workflows, runs (graph tables dropped)
-+- tables: users, user_usage, usage_logs, billing_logs, workflows, relational_tags
- - vector_search: pgvector for semantic embeddings and entity relationships
- - workflow_execution: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
- - vector_db: pgvector for semantic embeddings and entity relationships
-
-
-### `commit: ffeb4281-920b-4404-a108-37a3b8e54d40` — 2026-04-07
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index be8265d..14529c8 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-08 23:52 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-09 00:31 UTC
  
- # aicli — Shared AI Memory Platform
++def _extract_commit_code_background(project: str, commit_hash: str) -> None:
++    """Run tree-sitter symbol extraction and insert rows into mem_mrr_commits_code."""
++    import asyncio
++    loop = asyncio.new_event_loop()
++    try:
++        from memory.memory_code_parser import extract_commit_code
++        loop.run_until_complete(extract_commit_code(project, commit_hash))
++    except Exception as e:
++        log.debug(f"_extract_commit_code_background error ({commit_hash[:8]}): {e}")
++    finally:
++        loop.close()
++
++
+ # ── Commit→prompt linking background task ─────────────────────────────────────
  
-@@ -13,11 +13,11 @@ _Last updated: 2026-03-08_
- - **backend**: FastAPI + python-jose + bcrypt + SQLAlchemy
- - **frontend**: Vanilla JS + Electron with xterm.js + Monaco editor
- - **storage**: JSONL (history.jsonl, commit_log.jsonl), JSON, CSV
--- **database**: PostgreSQL with pgvector + SQLAlchemy ORM
-+- **database**: PostgreSQL 15+ with pgvector extension + SQLAlchemy ORM
- - **authentication**: JWT (python-jose) + bcrypt + dev_mode toggle
- - **planned**: GraphQL, node graph UI, pgvector semantic embeddings, unified provider logging
- - **orm**: SQLAlchemy
--- **tables**: users, user_usage, usage_logs, billing_logs, workflows, runs (graph tables dropped)
-+- **tables**: users, user_usage, usage_logs, billing_logs, workflows, relational_tags
- - **vector_search**: pgvector for semantic embeddings and entity relationships
- - **workflow_execution**: Node-based multi-agent model with YAML config transitioning to UI-managed node graphs
- - **vector_db**: pgvector for semantic embeddings and entity relationships
-@@ -42,8 +42,8 @@ _Last updated: 2026-03-08_
+ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
+                           commit_msg: str, committed_at: str,
+-                          diff_summary: str = "", analysis: dict | None = None) -> None:
++                          diff_summary: str = "", analysis: dict | None = None,
++                          author: str = "", author_email: str = "") -> None:
+     """Upsert the new commit into mem_mrr_commits and link it to its triggering prompt.
  
- ## Recent Context (last 5 changes)
+     Linking uses mem_mrr_commits.prompt_id (UUID FK to mem_mrr_prompts) — the most recent
+@@ -190,15 +211,19 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
  
--- [2026-03-08] <task-notification> <task-id>ade5c631fc46f568b</task-id> <tool-use-id>toolu_01Pe5xp62Rc7Y1JiE5TMtMtm</tool-use-id> <stat
- - [2026-03-08] I would to do rethinking for my AI knowledge layer or AI engineering memory as I am not sure the current solution is goo
- - [2026-03-08] I will create postgresql with pgvector. it is a new instanse (so required to create all users table as well). before you
- - [2026-03-08] dont start yet. Is is possible to force cloude-cli (or cursror) to have some minimm meta data keys for each prompt ? for
--- [2026-03-08] dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name 
-\ No newline at end of file
-+- [2026-03-08] dont start yet. I would like to add this functionaltiy - tagging will be by aicli. known tag such as repo, project name 
-+- [2026-03-09] can you check if the new postgreurl is working and good for pgvector and for relational data ?
-\ No newline at end of file
-
-
-### `commit: 14a417f0-1796-4f7e-a57c-5c6a6c7a3723` — 2026-04-08
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index b304777..30f08bc 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:42 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:43 UTC
+         with db.conn() as conn:
+             with conn.cursor() as cur:
+-                # 1. Upsert the commit (includes diff_summary + tags)
++                # 1. Upsert the commit
++                # tags: user-intent only (source, phase, feature, bug, work-item)
+                 tags_dict.setdefault("source", "commit_push")
++                # analysis goes to tags_ai (AI-generated metadata), not tags
++                tags_ai_dict: dict = {}
+                 if analysis:
+-                    tags_dict["analysis"] = analysis
++                    tags_ai_dict["analysis"] = analysis
+                 cur.execute(
+                     _SQL_UPSERT_COMMIT,
+                     (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
++                     author, author_email,
+                      committed_at or datetime.now(timezone.utc),
+-                     json.dumps(tags_dict)),
++                     json.dumps(tags_dict), json.dumps(tags_ai_dict)),
+                 )
  
- # aicli — Shared AI Memory Platform
+                 # 2. Link commit → last prompt in the session (via prompt_id FK)
+@@ -1002,6 +1027,17 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
  
-
-
-### `commit: 14a417f0-1796-4f7e-a57c-5c6a6c7a3723` — 2026-04-08
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index b304777..30f08bc 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:42 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:43 UTC
+     _, commit_hash, _ = _git(["rev-parse", "HEAD"], code_dir)
  
- # aicli — Shared AI Memory Platform
- 
++    # Capture author info from the just-created commit
++    commit_author = ""
++    commit_author_email = ""
++    try:
++        _, author_info, _ = _git(["log", "--format=%an\t%ae", "-1", "HEAD"], code_dir)
++        parts = author_info.split("\t", 1)
++        commit_author = parts[0].strip() if parts else ""
++        commit_author_email = parts[1].strip() if len(parts) > 1 else ""
++    except Exception:
++        pass
++
+     # Determine push target: explicit > project.yaml git_branch > current local branch > "main"
+     push_target = body.branch.strip()
+     if not push_target:
+@@ -1082,10 +1118,14 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
+             commit_message,
+             datetime.now(timezone.utc).isoformat(),
+             code_stat,          # only code file stats stored
+-            commit_analysis,    # structured LLM analysis (may be {})
++            commit_analysis,    # structured LLM analysis → stored in tags_ai
++            commit_author,
++            commit_author_email,
+         )
+-        # Embed the commit (extracts symbols, creates mem_ai_events) in background
++        # Embed the commit (creates mem_ai_events) in background
+         background.add_task(_embed_commit_background, project_name, commit_hash)
++        # Tree-sitter symbol extraction 
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index 330ea2d..0060070 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -14,3 +14,5 @@ httpx>=0.27.0
+ pyyaml>=6.0
+ python-dotenv>=1.0.0
+ mcp>=1.0.0
++tree-sitter>=0.23.0
++tree-sitter-languages>=1.10.0
 
 
-### `commit: 14a417f0-1796-4f7e-a57c-5c6a6c7a3723` — 2026-04-08
+## AI Synthesis
 
-Updated system prompts and memory configuration based on CLI session 14a417f0, incorporating any new requirements or changes identified during that interactive session.
+**[2026-04-08]** `claude_cli` — Resolved database schema issue: `commit_short_hash` column added and `mem_mrr_commits_code` now includes all 19 columns with `full_symbol` as a properly-applied generated column. Identified silent failure in DDL runner during initial migration caused by table lock timing; generated columns now applied post-base-table-creation to prevent race conditions. **[2026-04]** `project_config` — Added commit code extraction configuration to project templates: `min_lines` and `only_on_commits_with_tags` settings added to blank and python_api templates. **[2026-04]** `performance` — Identified 60s latency in route_work_items endpoint; investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS join operations. **[2026-04]** `in_progress` — Tracing memory flow from mirror tables (mem_mrr_*) through unified mem_ai_* tables; verifying update triggers and data synchronization mechanisms via /memory endpoint. **[2026-04]** `debugging` — Planner tag visibility issue: categories upload correctly but individual tags not displaying in category bindings; verifying router query logic and tag filtering.
