@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-08 22:28 UTC — do not edit manually.
+> Auto-generated 2026-04-08 22:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 436
-- **Last active**: 2026-04-08T19:01:56Z
+- **Sessions**: 437
+- **Last active**: 2026-04-08T22:52:25Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -49,15 +49,16 @@
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
+- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (safe rename/recreate/copy pattern)
 
 ## In Progress
 
-- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader._prompts.content() instead of direct mng_system_roles queries; eliminates redundant database lookups
-- Commit pipeline prompt discovery: tracing all LLM prompts used in commit processing (code extraction, summarization, embedding) located in memory/memory_embedding.py, agents/tools/, and routers/route_snapshots.py
-- Memory endpoint data flow: verifying synchronization from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables; identified import migration from mem_embeddings to memory_embedding module
-- Module restructuring: consolidating embedding/ingestion logic into memory_embedding.py; updating imports across route_snapshots.py, route_search.py, route_prompts.py for consistent module paths
-- Database query performance optimization: route_work_items showing ~60s latency; investigating indexing for _SQL_UNLINKED_WORK_ITEMS and join optimization on mem_ai_events
-- Planner tag visibility debugging: categories upload but individual tags don't display in UI bindings; verifying router mapping and category query logic
+- Planner tag UI binding fix: resolved `catName` ReferenceError in _renderDrawer() (scope issue) and corrected field mismatch v.short_desc → v.desc for proper tag property display on left sidebar
+- Database schema canonicalization: consolidated all DDL into db_schema.sql as single source of truth with migration framework in db_migrations.py (rename → recreate → copy pattern); legacy ALTER TABLE statements now tracked as migrations m001-m017
+- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries to eliminate redundant database lookups
+- Commit pipeline prompt discovery: tracing all LLM prompts in memory_embedding.py, agents/tools/, and routers for unified prompt management and cost tracking
+- Memory endpoint data flow verification: synchronizing mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables with consistent module imports
+- Database query performance: investigating ~60s latency in route_work_items query (_SQL_UNLINKED_WORK_ITEMS join optimization and indexing)
 
 ## Key Decisions
 
@@ -75,7 +76,7 @@
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
+- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes load prompts from configuration
 
 ---
 
