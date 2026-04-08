@@ -403,6 +403,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     seq_num             INT,
     source_event_id     UUID,
     start_date          TIMESTAMPTZ,
+    ai_tags             JSONB        NOT NULL DEFAULT '{}',
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     embedding           VECTOR(1536),
@@ -1188,6 +1189,8 @@ ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS merged_into UUID REFERENC
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_merged ON mem_ai_work_items(merged_into) WHERE merged_into IS NOT NULL;
 -- ── 014_planner_doc ──────────────────────────────────────────────────────────
 ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS start_date TIMESTAMPTZ;
+-- ── 015_work_item_ai_tags ────────────────────────────────────────────────────
+ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS ai_tags JSONB NOT NULL DEFAULT '{}';
 """
 
 

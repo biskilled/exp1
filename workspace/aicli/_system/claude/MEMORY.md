@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-07 22:42 UTC by aicli /memory_
+_Generated: 2026-04-07 22:43 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL (pgvector) semantic storage and an Electron desktop UI for Claude, OpenAI, DeepSeek, Gemini, and Grok integration. It implements a 4-layer memory architecture (ephemeral sessions → raw events → LLM-digested events → structured work items → user planner tags) with async DAG workflow execution, smart code chunking, and MCP-based tool integration. Currently addressing database performance optimization, tag visibility issues, and memory synchronization across project states.
+aicli is a shared AI memory platform that integrates Claude/OpenAI LLMs with a PostgreSQL-backed semantic memory system, providing dual-layer memory synthesis, DAG workflow execution, and cross-project knowledge management. The system spans a Python FastAPI backend, Electron desktop UI with Cytoscape workflow visualization, and CLI interface, with current focus on optimizing database performance, debugging tag visibility in the planner system, and ensuring proper data synchronization across the 4-layer memory architecture.
 
 ## Project Facts
 
@@ -164,6 +164,71 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit` — 2026-04-07
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 541ac38..e09e93d 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:39 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:40 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -54,13 +54,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+-- 4-layer memory architecture: Layer 0 (ephemeral session messages) → Layer 1 (mem_mrr_* raw capture) → Layer 2 (mem_ai_events LLM digests + embeddings) → Layer 3 (mem_ai_work_items, mem_ai_project_facts) → Layer 4 (user-managed planner_tags)
++- 4-layer memory architecture: ephemeral session messages → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items, mem_ai_project_facts → user-managed planner_tags
+ - Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with per-prompt inline display
+ - Tag filtering in work item list: ai_category must match tag's category, not work item's own category
+ - Session-level UI consolidation: Planner tab unified for all tag management with category/status/properties; suggested tags marked distinctly
+-- Memory synthesis triggered from session data via /memory endpoint → Claude Haiku processes commits/events → outputs to mem_ai_events/project_facts tables
++- Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ 
+ ## Recent Context (last 5 changes)
+ 
+
+
+### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 18adae5..541ac38 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:38 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:39 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit` — 2026-04-07
+
+Updated documentation files to reflect changes made during a CLI session, ensuring system context and memory information are current and accurate.
+
+### `commit` — 2026-04-07
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 18adae5..541ac38 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:38 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:39 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
 ### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
@@ -183,119 +248,6 @@ index b5b1abd..e0e3735 100644
 
 Updated documentation for memory and project management based on insights from a Claude discussion session to reflect current best practices and findings.
 
-### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 0d6ba29..18adae5 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 17:12 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:38 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
- - [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
- - [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
- - [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
--- [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
-\ No newline at end of file
-+- [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
-+- [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
-\ No newline at end of file
-
-
-### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
-
-diff --git a/workspace/aicli/documents/feature/shared-memory.md b/workspace/aicli/documents/feature/shared-memory.md
-index 32a9f27..731106b 100644
---- a/workspace/aicli/documents/feature/shared-memory.md
-+++ b/workspace/aicli/documents/feature/shared-memory.md
-@@ -2,30 +2,30 @@
- _Last updated: 2026-04-07 · Project: aicli_
- 
- ## Use Case Summary
--Implement shared memory functionality to enable safe inter-process/inter-thread communication. Currently in early planning stages with requirements and technical specifications defined but no implementation or commit history yet.
-+Implement shared memory functionality to enable safe inter-process/inter-thread communication with proper synchronization and thread-safety guarantees. Currently in early planning stages with requirements and technical specifications defined but no implementation or commits yet.
- 
- ## Work Items (1)
- 
- ### #None memory · active
- _Prompts: 0 · ~0 words · 0 commits · Started: —_
- 
--This work item tracks the implementation of shared memory functionality. Currently in early planning with no committed implementation. Requires detailed specification of memory management, synchronization primitives, and API design before development can begin. Will need comprehensive testing across concurrent access patterns.
-+Implements shared memory functionality for inter-process/inter-thread communication. Currently in early planning phase with no implementation or commits. Requires detailed API specification, synchronization mechanism design, and comprehensive testing across concurrent access patterns before development can commence.
- 
--**Remaining:** Define detailed requirements for shared memory API
--Design synchronization and safety mechanisms
-+**Remaining:** Define detailed shared memory API specifications
-+Design and specify synchronization primitives (mutexes, semaphores, etc.)
- Implement core shared memory module
--Write unit and integration tests
--Document API and usage patterns
-+Build comprehensive unit and integration test suite
-+Document API design patterns and usage examples
- 
- 
- ---
- 
- ## What Was Done
--- Identified core acceptance criteria for shared memory initialization and concurrent access
-+- Defined overall requirements and acceptance criteria for shared memory feature
- 
- ## What Remains
- - Define detailed functional requirements and API specifications for shared memory interface
--- Design synchronization mechanisms and thread-safety guarantees
-+- Design synchronization mechanisms (mutexes, semaphores) and thread-safety guarantees
- - Implement core shared memory module with memory allocation/deallocation
- - Develop unit and integration tests covering concurrent access scenarios
- - Create comprehensive API documentation and usage examples
-@@ -43,4 +43,4 @@ Document API and usage patterns
- | — | — | — |
- 
- ---
--_Auto-generated by aicli Planner · 2026-04-07 16:43 UTC_
-+_Auto-generated by aicli Planner · 2026-04-07 22:20 UTC_
-
-
-### `commit: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-07
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 0d6ba29..18adae5 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 17:12 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-07 22:38 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -64,8 +64,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
- - [2026-04-07] Can you use aiCli_memeory to describe the followng : how flow works from mirror. each mirrr table - what is the trigeer,
- - [2026-04-07] In addtion to your reccomendation, I would like to check the following -  mem_ai_coomits -  what is diff_details is used
- - [2026-04-07] dont you have any moemry, did you see the previous file you din - aicli_memoy.md under the project root ?
--- [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
-\ No newline at end of file
-+- [2026-04-07] I still see the columns in commit table - diif_summery and diff_details . is it suppose to be ?
-+- [2026-04-07] I would like to understand the commit table - do you have my previous comment? mem_ai_coomits -  diff_details - all I se
-\ No newline at end of file
-
-
-### `commit` — 2026-04-07
-
-Removed aicli system context and Claude memory files as part of cleanup. These files were no longer needed as part of the project structure.
-
 ## AI Synthesis
 
-**[2026-04-07]** User session — Investigated mem_ai_commits table structure and schema conventions; clarified diff_summary and diff_details columns and their role in event linking and semantic embedding workflows. **[2026-04-07]** Code review — Documented memory flow from mirror tables through unified mem_ai_* tables; identified triggers and consolidation mechanisms for each table type. **[2026-04-07]** Performance analysis — Identified 60s round-trip latency in route_work_items queries; determined _SQL_UNLINKED_WORK_ITEMS and join strategy as optimization targets. **[2026-04-07]** Tag system debugging — Tags uploading to categories but not displaying in individual tag lists; router mapping and tag query logic under review. **[2026-04-07]** Project ID resolution — Fixed embed_commits to use project_id parameter instead of project string in database queries. **[2026-04-07]** Memory sync — Executed /memory endpoint to synchronize session data into memory_items and align mem_ai_* tables with latest project state. **[2026-04-07]** Documentation update — Generated updated copilot-instructions.md and aicli.mdrules reflecting current session context and architectural decisions. **[Prior]** 4-layer memory architecture finalized with ephemeral → raw capture → LLM digests → work items → planner tags pipeline. **[Prior]** Dual status tracking (status_user/status_ai) and code_summary field for work items implemented for semantic search. **[Prior]** Smart chunking strategy (per-class/function/section/file) deployed with manual relation support via CLI/admin UI.
+**[2026-04-07]** `memory_system` — Completed memory synthesis runs with Claude Haiku dual-layer processing; updated .ai/rules.md and .cursor/rules/aicli.mdrules to reflect latest architectural context including 4-layer memory architecture and MCP server integration. **[recent]** `database_optimization` — Identified route_work_items performance bottleneck (~60s latency); investigating indexing strategy for _SQL_UNLINKED_WORK_ITEMS join operations and commit table schema clarification. **[recent]** `tag_system` — Debugging planner tag visibility issue where categories upload successfully but individual tags don't display in category bindings; verifying router mapping logic. **[recent]** `project_resolution` — Fixing project ID resolution in embed_commits workflow to use project_id instead of project string parameter in database queries. **[recent]** `memory_flow` — Tracing end-to-end data flow from mirror tables through mem_ai_* unified tables; documenting triggers and update mechanisms for each layer of 4-layer memory architecture. **[recent]** `session_sync` — Running /memory endpoint to synchronize session data into memory_items and ensure mem_ai_* tables reflect latest project state across all work items and project facts.

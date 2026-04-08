@@ -912,6 +912,8 @@ class MemoryEmbedding:
         files_tag = {s["name"]: s["added"] + s["removed"] for s in code_stats}
         languages_list = sorted({s["language"] for s in code_stats if s["language"]})
         all_symbols = list({sym for s in code_stats for sym in s.get("symbols", [])})
+        total_added   = sum(s["added"]   for s in code_stats)
+        total_removed = sum(s["removed"] for s in code_stats)
 
         summary_tags: dict = {**meta, "commit_hash": commit_hash, "changed_files": code_files}
         if files_tag:
@@ -920,6 +922,8 @@ class MemoryEmbedding:
             summary_tags["languages"] = languages_list
         if all_symbols:
             summary_tags["symbols"] = all_symbols[:30]
+        if total_added or total_removed:
+            summary_tags["rows_changed"] = {"added": total_added, "removed": total_removed}
 
         if all_symbols:
             summary_parts.append(f"Symbols changed: {', '.join(all_symbols[:15])}")

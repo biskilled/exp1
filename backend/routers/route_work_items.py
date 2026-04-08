@@ -33,7 +33,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
     """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
               w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
               w.requirements, w.code_summary, w.summary,
-              w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
+              w.tags, w.ai_tags, w.tag_id, w.ai_tag_id, w.source_event_id,
               w.merged_into, w.start_date,
               w.created_at, w.updated_at, w.seq_num,
               tc.color, tc.icon,
@@ -51,7 +51,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 
 _SQL_UNLINKED_WORK_ITEMS = """
     SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-           w.status_user, w.status_ai, w.requirements, w.summary, w.tags,
+           w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
            w.start_date, w.created_at, w.seq_num,
            pt.name AS ai_tag_name,
            (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count
@@ -228,6 +228,7 @@ class WorkItemPatch(BaseModel):
     code_summary:        Optional[str] = None
     summary:             Optional[str] = None
     tags:                Optional[dict] = None
+    ai_tags:             Optional[dict] = None
     tag_id:              Optional[str] = None
     ai_tag_id:           Optional[str] = None
     merged_into:         Optional[str] = None
@@ -301,6 +302,8 @@ async def list_work_items(
                     row["ai_tag_id"] = str(row["ai_tag_id"])
                 if row.get("tags") is None:
                     row["tags"] = {}
+                if row.get("ai_tags") is None:
+                    row["ai_tags"] = {}
                 rows.append(row)
     return {"work_items": rows, "project": p, "total": len(rows)}
 
@@ -364,6 +367,9 @@ async def patch_work_item(
     if body.tags                is not None:
         import json as _json
         fields.append("tags=%s"); params.append(_json.dumps(body.tags))
+    if body.ai_tags             is not None:
+        import json as _json
+        fields.append("ai_tags = ai_tags || %s::jsonb"); params.append(_json.dumps(body.ai_tags))
     if body.tag_id              is not None:
         fields.append("tag_id=%s")
         params.append(body.tag_id if body.tag_id else None)
@@ -426,6 +432,16 @@ async def delete_work_item(item_id: str, project: str | None = Query(None)):
             if not cur.fetchone():
                 raise HTTPException(404, "Work item not found")
     return {"ok": True}
+
+
+@router.post("/{item_id}/extract")
+async def extract_work_item_code(item_id: str, project: str | None = Query(None)):
+    """Aggregate commits linked to this work item + LLM extraction → populate ai_tags."""
+    _require_db()
+    p = _project(project)
+    from memory.memory_extraction import MemoryExtraction
+    result = await MemoryExtraction().extract_work_item_code_summary(p, item_id)
+    return result
 
 
 # ── Lookup by sequential number ───────────────────────────────────────────────

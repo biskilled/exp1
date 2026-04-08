@@ -391,6 +391,7 @@ api.workItems = {
     if (scope) q.set('scope', scope);
     return _get(`/work-items/memory-items?${q}`);
   },
+  extract:      (id, proj) => _post(`/work-items/${enc(id)}/extract?project=${enc(proj)}`),
 };
 
 // ── Agent Roles API ───────────────────────────────────────────────────────────

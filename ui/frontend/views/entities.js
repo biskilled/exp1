@@ -171,6 +171,35 @@ export function renderEntities(container) {
     setTimeout(() => window._documentsOpenFile?.(docPath, project), 250);
   };
   window._plannerOpenWorkItemDrawer = (id, cat, proj) => _openWorkItemDrawer(id, cat, proj, null, '#4a90e2', '📋');
+
+  window._extractWorkItemCode = async (id, project) => {
+    const btn = document.getElementById(`wi-extract-btn-${id}`);
+    const statusEl = document.getElementById(`wi-extract-status-${id}`);
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+      const r = await api.workItems.extract(id, project);
+      const agg = r.aggregated || {};
+      const msg = `${agg.commit_count || 0} commits · ${(agg.all_files || []).length} files`;
+      toast(`Extracted · ${msg}`, 'success');
+      if (statusEl) statusEl.textContent = msg;
+      // Refresh ai_tags display
+      const aiTagsEl = document.getElementById(`wi-ai-tags-${id}`);
+      if (aiTagsEl) {
+        const cs = r.code_summary || {};
+        const tc = r.test_coverage || {};
+        const parts = [];
+        if (cs.key_classes?.length)  parts.push(`Classes: ${cs.key_classes.join(', ')}`);
+        if (cs.key_methods?.length)  parts.push(`Methods: ${cs.key_methods.join(', ')}`);
+        if (tc.missing?.length)      parts.push(`<span style="color:#e67e22">Missing tests: ${tc.missing.join(', ')}</span>`);
+        if (parts.length) {
+          aiTagsEl.innerHTML = `<div style="font-size:0.52rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:0.2rem;color:var(--muted)">Code Intelligence</div>`
+            + parts.map(p => `<div style="font-size:0.6rem;color:var(--muted)">${p}</div>`).join('');
+        }
+      }
+    } catch (e) { toast('Extract error: ' + e.message, 'error'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = '&#11041; Extract Code'; } }
+  };
+
   window._wiBotDragStart = (e, id, name, cat) => {
     _dragWiData = { id, ai_name: name, ai_category: cat };
     e.dataTransfer.effectAllowed = 'link';
@@ -875,6 +904,27 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <span>&#8859; ${wi.commit_count||0} commits</span>
           <span id="wi-stat-files-${id}"></span>
         </div>
+
+        <!-- Extract Code button -->
+        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+          <button id="wi-extract-btn-${id}"
+            onclick="window._extractWorkItemCode('${id}','${project}')"
+            style="font-size:0.62rem;padding:0.22rem 0.6rem;background:var(--surface2);
+                   border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+                   color:var(--text2);font-family:var(--font);outline:none">
+            &#11041; Extract Code
+          </button>
+          <span id="wi-extract-status-${id}" style="font-size:0.57rem;color:var(--muted)"></span>
+        </div>
+
+        <!-- ai_tags display (populated after extract) -->
+        ${wi.ai_tags && wi.ai_tags.code_summary ? `
+        <div id="wi-ai-tags-${id}" style="font-size:0.6rem;color:var(--muted)">
+          <div style="font-size:0.52rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:0.2rem">Code Intelligence</div>
+          ${wi.ai_tags.code_summary.key_classes?.length ? `<div>Classes: ${_esc(wi.ai_tags.code_summary.key_classes.join(', '))}</div>` : ''}
+          ${wi.ai_tags.code_summary.key_methods?.length ? `<div>Methods: ${_esc(wi.ai_tags.code_summary.key_methods.join(', '))}</div>` : ''}
+          ${wi.ai_tags.test_coverage?.missing?.length ? `<div style="color:#e67e22">Missing tests: ${_esc(wi.ai_tags.test_coverage.missing.join(', '))}</div>` : ''}
+        </div>` : `<div id="wi-ai-tags-${id}"></div>`}
 
         <!-- Start date -->
         <div>

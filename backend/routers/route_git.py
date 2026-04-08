@@ -162,7 +162,7 @@ async def _embed_commit_background(project: str, commit_hash: str) -> None:
 
 def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
                           commit_msg: str, committed_at: str,
-                          diff_summary: str = "") -> None:
+                          diff_summary: str = "", analysis: dict | None = None) -> None:
     """Upsert the new commit into mem_mrr_commits and link it to its triggering prompt.
 
     Linking uses mem_mrr_commits.prompt_id (UUID FK to mem_mrr_prompts) — the most recent
@@ -192,6 +192,8 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
             with conn.cursor() as cur:
                 # 1. Upsert the commit (includes diff_summary + tags)
                 tags_dict.setdefault("source", "commit_push")
+                if analysis:
+                    tags_dict["analysis"] = analysis
                 cur.execute(
                     _SQL_UPSERT_COMMIT,
                     (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
@@ -974,14 +976,19 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
     if not diff_stat:
         _, diff_stat, _ = _git(["diff", "--stat", "--cached"], code_dir)
 
+    # Capture staged diff for structured commit analysis (capped for LLM token budget)
+    _, staged_diff, _ = _git(["diff", "--cached"], code_dir)
+    staged_diff = (staged_diff or "")[:8000]
+
     # Resolve API key: body field takes priority, then request header
     api_key = body.api_key or request.headers.get("X-Anthropic-Key") or None
 
-    # Generate commit message
-    commit_message = await _generate_commit_message(
+    # Generate commit message (+ optional structured analysis)
+    commit_message, commit_analysis = await _generate_commit_message(
         hint=body.message_hint,
         diff_stat=diff_stat,
         changed_files=changed,
+        staged_diff=staged_diff,
         api_key=api_key,
     )
 
@@ -1075,6 +1082,7 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
             commit_message,
             datetime.now(timezone.utc).isoformat(),
             code_stat,          # only code file stats stored
+            commit_analysis,    # structured LLM analysis (may be {})
         )
         # Embed the commit (extracts symbols, creates mem_ai_events) in background
         background.add_task(_embed_commit_background, project_name, commit_hash)
@@ -1251,9 +1259,46 @@ async def push_all(project_name: str):
 
 
 async def _generate_commit_message(
-    hint: str, diff_stat: str, changed_files: list[str], api_key: str | None = None
-) -> str:
-    """Ask Claude to write a concise commit message from the diff context."""
+    hint: str, diff_stat: str, changed_files: list[str],
+    staged_diff: str = "", api_key: str | None = None
+) -> tuple[str, dict]:
+    """Ask Claude to write a commit message and extract structured analysis from the diff.
+
+    Returns (commit_message, analysis_dict).
+    Falls back to a simple chore message with empty analysis on failure.
+    """
+    from pathlib import Path as _Path
+    _sys_prompt_path = _Path(settings.workspace_dir) / "_templates" / "memory" / "prompts" / "system" / "commit_analysis.md"
+    sys_prompt = _sys_prompt_path.read_text().strip() if _sys_prompt_path.exists() else ""
+
+    _CONVENTIONAL = ("feat", "fix", "chore", "test", "refactor", "docs", "style", "perf", "ci", "build")
+
+    # Try structured JSON extraction when we have a diff and a system prompt
+    if sys_prompt and staged_diff:
+        user_msg_parts = [f"Changed files: {', '.join(changed_files[:15])}"]
+        if hint:
+            user_msg_parts.append(f"Developer context: {hint[:200]}")
+        user_msg_parts.append(f"Diff:\n{staged_diff[:8000]}")
+
+        try:
+            import re as _re
+            result = await call_claude(
+                messages=[{"role": "user", "content": "\n\n".join(user_msg_parts)}],
+                system=sys_prompt,
+                api_key=api_key,
+            )
+            raw = result.get("content", "").strip()
+            cleaned = _re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
+            parsed = json.loads(cleaned)
+            msg = (parsed.get("message") or "").strip().split("\n")[0].strip('"\'')
+            # Validate conventional prefix
+            if msg and any(msg.startswith(p + ":") or msg.startswith(p + "(") for p in _CONVENTIONAL):
+                analysis = {k: v for k, v in parsed.items() if k != "message"}
+                return msg[:72], analysis
+        except Exception:
+            pass
+
+    # Fallback: simple single-line message without structured analysis
     context_parts = [f"Changed files: {', '.join(changed_files[:15])}"]
     if diff_stat:
         context_parts.append(f"Diff summary:\n{diff_stat[:600]}")
@@ -1274,11 +1319,11 @@ async def _generate_commit_message(
         )
         msg = result.get("content", "").strip().split("\n")[0].strip('"\'')
         if msg and len(msg) > 5:
-            return msg[:72]
+            return msg[:72], {}
     except Exception:
         pass
 
-    # Fallback — no LLM available
+    # Last resort fallback — no LLM available
     if len(changed_files) == 1:
-        return f"chore: update {changed_files[0]}"
-    return f"chore: update {len(changed_files)} files"
+        return f"chore: update {changed_files[0]}", {}
+    return f"chore: update {len(changed_files)} files", {}
