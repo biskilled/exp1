@@ -365,6 +365,7 @@ api.workItems = {
     if (opts.name)     q.set('name',     opts.name);
     return _get(`/work-items?${q}`);
   },
+  get:          (id, project) => _get(`/work-items/${enc(id)}?project=${enc(project || '')}`),
   unlinked:     (project) => _get(`/work-items/unlinked?project=${enc(project || '')}`),
   create:       (project, body) => _post(`/work-items?project=${enc(project)}`, body),
   patch:        (id, project, body) => fetch(

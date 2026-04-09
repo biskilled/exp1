@@ -482,6 +482,33 @@ async def patch_work_item(
     return {"ok": True, "id": item_id, "status_user": result[1]}
 
 
+@router.get("/{item_id}")
+async def get_work_item(item_id: str, project: str | None = Query(None)):
+    """Fetch a single work item by UUID."""
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_GET_WORK_ITEM, (p_id, item_id))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(404, "Work item not found")
+            cols = [d[0] for d in cur.description]
+            item = dict(zip(cols, row))
+            item["id"] = str(item["id"])
+            for dt_field in ("created_at", "updated_at"):
+                if item.get(dt_field):
+                    item[dt_field] = item[dt_field].isoformat()
+            if item.get("tag_id"):
+                item["tag_id"] = str(item["tag_id"])
+            if item.get("ai_tag_id"):
+                item["ai_tag_id"] = str(item["ai_tag_id"])
+            if item.get("tags") is None:
+                item["tags"] = {}
+    return item
+
+
 @router.delete("/{item_id}")
 async def delete_work_item(item_id: str, project: str | None = Query(None)):
     """Delete a work item."""

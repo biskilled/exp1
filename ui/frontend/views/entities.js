@@ -481,12 +481,12 @@ function _renderWiPanel(items, project) {
     const active = window._wiPanelSort.field === f;
     const arrow  = active ? (window._wiPanelSort.dir === 'asc' ? '↑' : '↓') : '↕';
     return `<th onclick="window._wiPanelResort('${f}')"
-      style="text-align:right;padding:4px 8px;cursor:pointer;user-select:none;white-space:nowrap;
-             font-size:0.62rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
+      style="text-align:right;padding:5px 10px;cursor:pointer;user-select:none;white-space:nowrap;
+             font-size:0.68rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
              color:${active?'var(--accent)':'var(--muted)'};background:var(--surface2);
              border-bottom:2px solid ${active?'var(--accent)':'var(--border)'};border-left:1px solid var(--border);
              position:sticky;top:0;z-index:1">
-      ${label}&nbsp;<span style="opacity:${active?1:.35};font-size:0.55rem">${arrow}</span>
+      ${label}&nbsp;<span style="opacity:${active?1:.35};font-size:0.62rem">${arrow}</span>
     </th>`;
   }
 
@@ -540,22 +540,22 @@ function _renderWiPanel(items, project) {
     const desc = (wi.ai_desc || '').replace(/\n/g,' ');
     const descClip = desc.length > 70 ? desc.slice(0,70)+'…' : desc;
     const tagSuggestion = wi.ai_tag_name
-      ? `<div style="display:flex;align-items:center;gap:3px;padding-left:18px;margin-top:1px">
-           <span style="font-size:0.5rem;color:var(--muted);flex-shrink:0">✦</span>
-           <span style="font-size:0.55rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-                        flex:1" title="AI suggested: ${_esc(wi.ai_tag_name)}">${_esc(wi.ai_tag_name)}</span>
-           <button title="Approve this suggestion"
+      ? `<div style="display:inline-flex;align-items:center;gap:4px;padding-left:18px;margin-top:2px">
+           <span style="font-size:0.58rem;color:var(--muted);flex-shrink:0">✦</span>
+           <span style="font-size:0.68rem;color:var(--muted);white-space:nowrap"
+                 title="AI suggested: ${_esc(wi.ai_tag_name)}">${_esc(wi.ai_tag_name)}</span>
+           <button title="Approve"
              onclick="event.stopPropagation();window._wiPanelApproveTag('${_esc(wi.id)}','${_esc(project)}')"
              style="background:none;border:1px solid var(--accent);color:var(--accent);cursor:pointer;
-                    font-size:0.5rem;padding:0 4px;border-radius:4px;line-height:1.5;flex-shrink:0"
+                    font-size:0.6rem;padding:0 5px;border-radius:4px;line-height:1.6;flex-shrink:0"
              onmouseenter="this.style.background='var(--accent)';this.style.color='#fff'"
              onmouseleave="this.style.background='none';this.style.color='var(--accent)'">✓</button>
            <button title="Remove suggestion"
              onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
-             style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.6rem;
-                    padding:0 2px;line-height:1;flex-shrink:0;opacity:.5"
-             onmouseenter="this.style.opacity=1;this.style.color='#e74c3c'"
-             onmouseleave="this.style.opacity='.5';this.style.color='var(--muted)'">×</button>
+             style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:0.85rem;
+                    font-weight:700;padding:0 2px;line-height:1;flex-shrink:0"
+             onmouseenter="this.style.opacity='.7'"
+             onmouseleave="this.style.opacity='1'">×</button>
          </div>`
       : '';
     return `<tr draggable="true"
@@ -567,42 +567,42 @@ function _renderWiPanel(items, project) {
         style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
         onmouseenter="this.style.background='var(--surface2)'"
         onmouseleave="this.style.background=''">
-      <td style="padding:3px 6px;min-width:0">
-        <div style="display:flex;align-items:baseline;gap:3px">
-          <button title="Remove this item"
+      <td style="padding:4px 8px;min-width:0">
+        <div style="display:flex;align-items:center;gap:4px">
+          <button title="Delete this item"
             onclick="event.stopPropagation();window._wiPanelDelete('${_esc(wi.id)}','${_esc(project)}')"
-            style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.75rem;
-                   padding:0 2px;line-height:1;flex-shrink:0;opacity:.45;margin-right:1px"
-            onmouseenter="this.style.opacity=1;this.style.color='#e74c3c'"
-            onmouseleave="this.style.opacity='.45';this.style.color='var(--muted)'">×</button>
-          <span style="flex-shrink:0;font-size:0.7rem">${icon}</span>
-          ${wi.seq_num ? `<span style="font-size:0.48rem;color:var(--muted);flex-shrink:0">#${wi.seq_num}</span>` : ''}
-          <span style="font-size:0.63rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;
+            style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:0.9rem;
+                   font-weight:700;padding:0 3px;line-height:1;flex-shrink:0"
+            onmouseenter="this.style.opacity='.7'"
+            onmouseleave="this.style.opacity='1'">×</button>
+          <span style="flex-shrink:0;font-size:0.8rem">${icon}</span>
+          ${wi.seq_num ? `<span style="font-size:0.6rem;color:var(--muted);flex-shrink:0">#${wi.seq_num}</span>` : ''}
+          <span style="font-size:0.72rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;
                        white-space:nowrap" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
-          <span style="font-size:0.48rem;color:${sc};background:${sc}22;
-                       padding:0 0.25rem;border-radius:6px;flex-shrink:0;white-space:nowrap">${wi.status_user||'active'}</span>
+          <span style="font-size:0.58rem;color:${sc};background:${sc}22;
+                       padding:0 0.3rem;border-radius:6px;flex-shrink:0;white-space:nowrap">${wi.status_user||'active'}</span>
         </div>
-        ${descClip ? `<div style="font-size:0.57rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
-                                  white-space:nowrap;padding-left:18px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
+        ${descClip ? `<div style="font-size:0.65rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+                                  white-space:nowrap;padding-left:22px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
         ${tagSuggestion}
       </td>
-      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.65rem;
+      <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;
                  color:var(--text2);font-variant-numeric:tabular-nums;
-                 border-left:1px solid var(--border);width:56px">${wi.prompt_count||0}</td>
-      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.65rem;
+                 border-left:1px solid var(--border);width:60px">${wi.prompt_count||0}</td>
+      <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;
                  color:var(--text2);font-variant-numeric:tabular-nums;
-                 border-left:1px solid var(--border);width:56px">${wi.commit_count||0}</td>
-      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.6rem;
+                 border-left:1px solid var(--border);width:60px">${wi.commit_count||0}</td>
+      <td style="padding:4px 12px 4px 8px;text-align:right;white-space:nowrap;font-size:0.68rem;
                  color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;
-                 border-left:1px solid var(--border);width:80px">${fmtDate(wi.updated_at||wi.created_at)}</td>
+                 border-left:1px solid var(--border);width:96px">${fmtDate(wi.updated_at||wi.created_at)}</td>
     </tr>`;
   }).join('');
 
   list.innerHTML = `
     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <colgroup><col><col style="width:56px"><col style="width:56px"><col style="width:80px"></colgroup>
+      <colgroup><col><col style="width:60px"><col style="width:60px"><col style="width:96px"></colgroup>
       <thead><tr>
-        <th style="text-align:left;padding:4px 8px;font-size:0.62rem;font-weight:600;
+        <th style="text-align:left;padding:5px 8px;font-size:0.68rem;font-weight:600;
                    letter-spacing:.03em;text-transform:uppercase;
                    color:var(--muted);background:var(--surface2);
                    border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>
@@ -994,13 +994,14 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
   inner.innerHTML = `<div style="padding:1rem;color:var(--muted);font-size:0.72rem">Loading…</div>`;
 
   try {
-    // Fetch all work items (no category filter) so we can find the item regardless of ai_category
-    // and compute sibling list for merge
-    const data = await api.workItems.list({ project });
-    const wi   = (data.work_items || []).find(w => w.id === id);
-    if (!wi) { inner.innerHTML = '<div style="padding:1rem;color:var(--muted)">Not found</div>'; return; }
+    // Fetch the specific work item directly (avoids limit issues with large lists)
+    const [wi, sibData] = await Promise.all([
+      api.workItems.get(id, project),
+      api.workItems.list({ project, limit: 200 }),
+    ]);
+    if (!wi || wi.error) { inner.innerHTML = '<div style="padding:1rem;color:var(--muted)">Not found</div>'; return; }
     // Siblings = other non-done work items in the same context (same tag, or both unlinked)
-    const siblings = (data.work_items || []).filter(w =>
+    const siblings = (sibData.work_items || []).filter(w =>
       w.id !== id && w.status_user !== 'done' &&
       (wi.tag_id ? w.tag_id === wi.tag_id : !w.tag_id)
     );
