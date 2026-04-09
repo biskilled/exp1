@@ -628,6 +628,22 @@ function _renderWiPanel(items, project) {
       </div>`;
     }
 
+    // Secondary AI suggestion (phase/doc_type) — shown when present
+    let secRow = '';
+    const sec = wi.ai_tags && wi.ai_tags.secondary;
+    if (sec) {
+      const LBL_AI_S = LBL_BASE + ';color:#8e44ad;border:1px solid #8e44ad66;background:#8e44ad12';
+      const secLabel = sec.tag_id
+        ? ((sec.category || 'phase') + ':' + (sec.tag_name || ''))
+        : ((sec.suggested_category || 'phase') + ':' + (sec.suggested_new || ''));
+      if (secLabel && secLabel !== ':' && !secLabel.endsWith(':')) {
+        secRow = `<div style="display:flex;align-items:center;gap:4px;margin-top:2px;flex-wrap:wrap">
+          <span style="${LBL_AI_S}">AI</span>
+          <span style="font-size:0.60rem;color:var(--muted);white-space:nowrap">${_esc(secLabel)}</span>
+        </div>`;
+      }
+    }
+
     // User row — always shown
     const userRow = userTagsList.length
       ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:3px;margin-top:2px">
@@ -667,6 +683,7 @@ function _renderWiPanel(items, project) {
         ${desc ? `<div style="font-size:0.63rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
                               white-space:nowrap;margin-top:1px" title="${_esc(desc)}">${_esc(desc)}</div>` : ''}
         ${aiRow}
+        ${secRow}
         ${userRow}
       </td>
       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;

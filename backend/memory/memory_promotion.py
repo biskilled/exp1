@@ -28,26 +28,10 @@ async def _match_new_work_item(project: str, work_item_id: str) -> None:
     """Queue AI tag matching for a newly extracted work item."""
     try:
         from memory.memory_tagging import MemoryTagging
-        import json as _json
+        from routers.route_work_items import _persist_matches
         matches = await MemoryTagging().match_work_item_to_tags(project, work_item_id)
-        if not matches:
-            return
-        best = matches[0]
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                if best.get("tag_id") and best.get("confidence", 0) > 0.70:
-                    cur.execute(
-                        "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid, updated_at=NOW() WHERE id=%s::uuid",
-                        (best["tag_id"], work_item_id),
-                    )
-                elif best.get("suggested_new"):
-                    cur.execute(
-                        "UPDATE mem_ai_work_items SET ai_tags=ai_tags||%s::jsonb, updated_at=NOW() WHERE id=%s::uuid",
-                        (_json.dumps({
-                            "suggested_new": best["suggested_new"],
-                            "suggested_category": best.get("suggested_category") or "task",
-                        }), work_item_id),
-                    )
+        if matches:
+            _persist_matches(work_item_id, matches)
     except Exception as e:
         log.debug(f"_match_new_work_item error: {e}")
 

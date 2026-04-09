@@ -82,27 +82,41 @@ _SQL_UNLINKED_WORK_ITEMS = """
            ptc.name  AS ai_tag_category,
            ptc.color AS ai_tag_color,
            (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
-           -- Count prompt_batch events in the same session as the source event
+           -- Prompt count: session-based OR direct work_item_id link
            COALESCE((
-               SELECT COUNT(*)
-               FROM mem_ai_events e2
-               WHERE e2.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
-                 AND e2.project_id = w.project_id
-                 AND e2.event_type = 'prompt_batch'
+               SELECT COUNT(*) FROM (
+                   SELECT id FROM mem_ai_events
+                   WHERE project_id = w.project_id
+                     AND event_type = 'prompt_batch'
+                     AND session_id IS NOT NULL
+                     AND session_id = (SELECT session_id FROM mem_ai_events
+                                       WHERE id = w.source_event_id AND session_id IS NOT NULL)
+                   UNION
+                   SELECT id FROM mem_ai_events
+                   WHERE project_id = w.project_id AND work_item_id = w.id
+                     AND event_type = 'prompt_batch'
+               ) _p
            ), 0) AS prompt_count,
-           -- Count commits in the same session as the source event
+           -- Commit count: session-based OR direct back-link
            COALESCE((
-               SELECT COUNT(*)
-               FROM mem_mrr_commits mc
-               WHERE mc.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
-                 AND mc.project_id = w.project_id
+               SELECT COUNT(*) FROM mem_mrr_commits mc
+               WHERE mc.project_id = w.project_id
+                 AND mc.session_id IS NOT NULL
+                 AND mc.session_id = (SELECT session_id FROM mem_ai_events
+                                      WHERE id = w.source_event_id AND session_id IS NOT NULL)
            ), 0) AS commit_count,
-           -- Total events in the same session
+           -- Total events: session-based OR direct work_item_id link
            COALESCE((
-               SELECT COUNT(*)
-               FROM mem_ai_events e3
-               WHERE e3.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
-                 AND e3.project_id = w.project_id
+               SELECT COUNT(*) FROM (
+                   SELECT id FROM mem_ai_events
+                   WHERE project_id = w.project_id
+                     AND session_id IS NOT NULL
+                     AND session_id = (SELECT session_id FROM mem_ai_events
+                                       WHERE id = w.source_event_id AND session_id IS NOT NULL)
+                   UNION
+                   SELECT id FROM mem_ai_events
+                   WHERE project_id = w.project_id AND work_item_id = w.id
+               ) _e
            ), 0) AS event_count,
            -- User tags: planner tags referenced in events from the same session
            (SELECT COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb)
@@ -122,7 +136,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
     LEFT JOIN planner_tags pt   ON pt.id  = w.ai_tag_id
     LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
     WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
-    ORDER BY w.created_at DESC
+    ORDER BY w.created_at DESC, w.id DESC
 """
 
 _SQL_INSERT_WORK_ITEM = (
@@ -276,32 +290,67 @@ async def _embed_work_item(
 
 
 async def _run_matching(project: str, work_item_id: str) -> None:
-    """Background task: match a work item to planner tags; persist best match or new suggestion."""
+    """Background task: match a work item to planner tags; persist primary + secondary suggestions."""
     try:
         from memory.memory_tagging import MemoryTagging
         matches = await MemoryTagging().match_work_item_to_tags(project, work_item_id)
         if not matches:
             return
-        best = matches[0]
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                if best.get("tag_id") and best.get("confidence", 0) > 0.70:
-                    # Existing tag match — set ai_tag_id
-                    cur.execute(
-                        "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid, updated_at=NOW() WHERE id=%s::uuid",
-                        (best["tag_id"], work_item_id),
-                    )
-                elif best.get("suggested_new"):
-                    # New tag suggestion — store name + category in ai_tags JSONB
-                    cur.execute(
-                        "UPDATE mem_ai_work_items SET ai_tags=ai_tags||%s::jsonb, updated_at=NOW() WHERE id=%s::uuid",
-                        (json.dumps({
-                            "suggested_new": best["suggested_new"],
-                            "suggested_category": best.get("suggested_category") or "task",
-                        }), work_item_id),
-                    )
+        _persist_matches(work_item_id, matches)
     except Exception:
         pass  # non-critical background task
+
+
+def _persist_matches(work_item_id: str, matches: list) -> None:
+    """Persist primary and secondary tag suggestions to mem_ai_work_items."""
+    primary   = next((m for m in matches if m.get('is_primary', True)), None)
+    secondary = next((m for m in matches if not m.get('is_primary', True)), None)
+    if not primary:
+        return
+
+    ai_tags_patch: dict = {}
+    ai_tag_id_val = None
+
+    if primary.get("tag_id") and primary.get("confidence", 0) >= 0.70:
+        ai_tag_id_val = primary["tag_id"]
+    elif primary.get("suggested_new"):
+        ai_tags_patch["suggested_new"]      = primary["suggested_new"]
+        ai_tags_patch["suggested_category"] = primary.get("suggested_category") or "task"
+
+    if secondary:
+        if secondary.get("tag_id"):
+            ai_tags_patch["secondary"] = {
+                "tag_id":   secondary["tag_id"],
+                "tag_name": secondary.get("tag_name") or "",
+                "category": secondary.get("suggested_category") or "phase",
+            }
+        elif secondary.get("suggested_new"):
+            ai_tags_patch["secondary"] = {
+                "suggested_new":      secondary["suggested_new"],
+                "suggested_category": secondary.get("suggested_category") or "phase",
+            }
+
+    if not ai_tag_id_val and not ai_tags_patch:
+        return
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            if ai_tag_id_val and ai_tags_patch:
+                cur.execute(
+                    "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid, ai_tags=ai_tags||%s::jsonb,"
+                    " updated_at=NOW() WHERE id=%s::uuid",
+                    (ai_tag_id_val, json.dumps(ai_tags_patch), work_item_id),
+                )
+            elif ai_tag_id_val:
+                cur.execute(
+                    "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid, updated_at=NOW() WHERE id=%s::uuid",
+                    (ai_tag_id_val, work_item_id),
+                )
+            else:
+                cur.execute(
+                    "UPDATE mem_ai_work_items SET ai_tags=ai_tags||%s::jsonb, updated_at=NOW() WHERE id=%s::uuid",
+                    (json.dumps(ai_tags_patch), work_item_id),
+                )
 
 
 async def _backlink_tag_to_events(project_id: int, work_item_id: str, tag_id: str) -> None:

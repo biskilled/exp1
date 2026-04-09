@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-09 03:12 UTC by aicli /memory_
+_Generated: 2026-04-09 09:56 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL pgvector storage and an Electron desktop UI, designed to capture, synthesize, and manage AI-assisted development work through sessions, events, and semantic memory. Currently focused on fixing work item AI suggestion display and refactoring aggregation logic to correctly surface tags through session-based event linking rather than direct work item associations.
 
 ## Project Facts
 
@@ -114,7 +118,7 @@ Reviewer: ```json
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extension
+- **database**: PostgreSQL 15+
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
@@ -148,12 +152,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Work item tag display restoration: investigating disappearing tags from work item rows; verifying JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events
-- Work item description column layout: fixing desc column being cut mid-row; updating colgroup widths and removing table-layout:fixed constraint to display full-length descriptions
-- AI tag suggestion column rendering: ensuring ai_tag_suggestion chip displays correctly with approve (✓) and remove (×) buttons; refactored to simplified chip markup
-- User tags aggregation refinement: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items via jsonb_agg; verifying tag_id matching
-- AI suggestion category-aware matching: confirmed matching pipeline now prioritizes task/bug/feature categories, enables Level 4 fallback for new suggestions, includes 0.60 confidence threshold
-- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across tag interaction modes
+- Work item UI refresh button: replacing 'new work item' creation with refresh/reload functionality to fetch latest work items and update AI suggestions without requiring manual entry
+- AI suggestion display fix: debugging why ai_tag_suggestion column shows empty (EXISTS) instead of actual suggested tags; investigating embedding pipeline trigger and suggestion query logic
+- Work item tag aggregation: refining user_tags extraction from mem_ai_events by session_id and project_id instead of work_item_id to correctly surface feature/bug_ref/bug tags
+- Work item counts accuracy: verifying prompt_count and commit_count calculations use session-based matching (same session as source_event_id) rather than direct work_item_id links
+- Source event ID usage: confirming source_event_id field in mem_ai_work_items serves as anchor for session-based aggregation queries without requiring explicit SELECT visibility
+- First event linkage guarantee: ensuring mem_ai_events.work_item_id updates only link to first work item (WHERE work_item_id IS NULL) to prevent overwrites on subsequent promotions
 
 ## Active Features / Bugs / Tasks
 
@@ -204,275 +208,225 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
-diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index 84aff7c..a56099a 100644
---- a/ui/frontend/views/entities.js
-+++ b/ui/frontend/views/entities.js
-@@ -540,14 +540,13 @@ function _renderWiPanel(items, project) {
-     } catch(e) { toast('Remove failed: ' + e.message, 'error'); }
-   };
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index 6bb2f3a..3911881 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
--  window._wiPanelCreateTag = async (id, tagName, proj) => {
--    if (!confirm(`Create new tag "${tagName}" and link this work item?`)) return;
-+  window._wiPanelCreateTag = async (id, tagName, categoryName, proj) => {
-+    const catLabel = categoryName || 'task';
-+    if (!confirm(`Create new ${catLabel} tag "${tagName}" and link this work item?`)) return;
-     try {
--      const wi = _wiPanelItems[id];
--      const cat = wi ? wi.ai_category : 'task';
--      // Find or create the category id
-+      // Resolve category id from name
-       const cats = await api.tags.categories.list(proj);
--      const catObj = cats.find(c => c.name === cat) || cats.find(c => c.name === 'task') || cats[0];
-+      const catObj = cats.find(c => c.name === catLabel) || cats.find(c => c.name === 'task') || cats[0];
-       const newTag = await api.tags.create({ name: tagName, project: proj, category_id: catObj?.id });
-       await api.workItems.patch(id, proj, { tag_id: newTag.id });
-       delete _wiPanelItems[id];
-@@ -555,7 +554,7 @@ function _renderWiPanel(items, project) {
-       _renderWiPanel(remaining, proj);
-       const cnt = document.getElementById('wi-panel-count');
-       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
--      toast(`Created tag "${tagName}" and linked`, 'success');
-+      toast(`Created ${catLabel} tag "${tagName}" and linked`, 'success');
-     } catch(e) { toast('Create failed: ' + e.message, 'error'); }
-   };
+ ## Recent Work
  
-@@ -573,8 +572,10 @@ function _renderWiPanel(items, project) {
-     const aiTagLabel = wi.ai_tag_name
-       ? (wi.ai_tag_category ? wi.ai_tag_category + ':' + wi.ai_tag_name : wi.ai_tag_name)
-       : '';
--    // AI(NEW) — stored in ai_tags.suggested_new (set by backend when no existing tag fits)
-+    // AI(NEW) — stored in ai_tags.suggested_new + suggested_category
-     const aiNew = (wi.ai_tags && wi.ai_tags.suggested_new) ? wi.ai_tags.suggested_new : '';
-+    const aiNewCat = (wi.ai_tags && wi.ai_tags.suggested_category) ? wi.ai_tags.suggested_category : 'task';
-+    const aiNewLabel = aiNew ? (aiNewCat + ':' + aiNew) : '';
-     const userTagsList = Array.isArray(wi.user_tags) ? wi.user_tags : [];
- 
-     // AI row — always shown; show EXISTS first, then NEW if no exists match
-@@ -597,8 +598,8 @@ function _renderWiPanel(items, project) {
-         <span style="${LBL_AI_N}">AI(NEW)</span>
-         <span style="font-size:0.65rem;font-weight:500;padding:1px 6px;border-radius:4px;
-                      color:#e74c3c;border:1px solid #e74c3c;background:#e74c3c1a;
--                     white-space:nowrap">${_esc(aiNew)}</span>
--        <button onclick="event.stopPropagation();window._wiPanelCreateTag('${_esc(wi.id)}','${_esc(aiNew)}','${_esc(project)}')"
-+                     white-space:nowrap">${_esc(aiNewLabel)}</span>
-+        <button onclick="event.stopPropagation();window._wiPanelCreateTag('${_esc(wi.id)}','${_esc(aiNew)}','${_esc(aiNewCat)}','${_esc(project)}')"
-           title="Create this tag" style="background:none;border:1px solid #e74c3c;color:#e74c3c;
-                  cursor:pointer;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>
-         <button onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
+-- Work item panel column layout fix: restored table-layout:fixed to prevent Name column from expanding and pushing right columns off-screen; adjusted colgroup widths
+-- Work item tag section labeling: added persistent **AI:** and **User:** row labels to disambiguate tag types; User section shows '—' when no user tags exist
+-- Work item detail loading: debugging click handlers on work item rows to ensure details panel opens when row is clicked (separate from button handlers)
+-- AI tag suggestion display refinement: ensuring ai_tag_category:ai_tag_name format displays correctly with #4a90e2 default color when ai_tag_color is null
+-- User tags aggregation from events: verifying jsonb_agg correctly collects feature/bug_ref/bug tags from mem_ai_events linked to work item
+-- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across all tag interaction modes
++- Work item tag display restoration: investigating disappearing tags from work item rows; verifying JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events
++- Work item description column layout: fixing desc column being cut mid-row; updating colgroup widths and removing table-layout:fixed constraint to display full-length descriptions
++- AI tag suggestion column rendering: ensuring ai_tag_suggestion chip displays correctly with approve (✓) and remove (×) buttons; refactored to simplified chip markup
++- User tags aggregation refinement: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items via jsonb_agg; verifying tag_id matching
++- AI suggestion category-aware matching: confirmed matching pipeline now prioritizes task/bug/feature categories, enables Level 4 fallback for new suggestions, includes 0.60 confidence threshold
++- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across tag interaction modes
 
 
-### `commit` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
-index 2b18ef1..5b21629 100644
+index 5b21629..37776e9 100644
 --- a/backend/routers/route_work_items.py
 +++ b/backend/routers/route_work_items.py
-@@ -103,7 +103,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
+@@ -82,11 +82,22 @@ _SQL_UNLINKED_WORK_ITEMS = """
+            ptc.name  AS ai_tag_category,
+            ptc.color AS ai_tag_color,
+            (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
+-           COALESCE((SELECT COUNT(*) FROM mem_ai_events
+-                     WHERE work_item_id = w.id AND event_type = 'prompt_batch'), 0) AS prompt_count,
+-           COALESCE((SELECT COUNT(*) FROM mem_mrr_commits c
+-                     JOIN mem_ai_events e ON e.id = c.event_id
+-                     WHERE e.work_item_id = w.id), 0) AS commit_count,
++           -- Count prompt_batch events in the same session as the source event
++           COALESCE((
++               SELECT COUNT(*)
++               FROM mem_ai_events e2
++               WHERE e2.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
++                 AND e2.project_id = w.project_id
++                 AND e2.event_type = 'prompt_batch'
++           ), 0) AS prompt_count,
++           -- Count commits in the same session as the source event
++           COALESCE((
++               SELECT COUNT(*)
++               FROM mem_mrr_commits mc
++               WHERE mc.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
++                 AND mc.project_id = w.project_id
++           ), 0) AS commit_count,
++           -- User tags: planner tags referenced in events from the same session
+            (SELECT COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb)
+             FROM mem_ai_events ev
+             JOIN planner_tags ut ON ut.project_id = w.project_id
+@@ -95,7 +106,8 @@ _SQL_UNLINKED_WORK_ITEMS = """
+                      ev.tags->>'bug_ref',
+                      ev.tags->>'bug'
+                  )
+-            WHERE ev.work_item_id = w.id
++            WHERE ev.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
++              AND ev.project_id = w.project_id
+               AND (ev.tags->>'feature' IS NOT NULL OR ev.tags->>'bug_ref' IS NOT NULL
+                    OR ev.tags->>'bug' IS NOT NULL)
+            ) AS user_tags
+@@ -103,7 +115,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
      LEFT JOIN planner_tags pt   ON pt.id  = w.ai_tag_id
      LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
      WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
--    ORDER BY w.updated_at DESC
-+    ORDER BY w.seq_num DESC
+-    ORDER BY w.seq_num DESC
++    ORDER BY w.created_at DESC
  """
  
  _SQL_INSERT_WORK_ITEM = (
-@@ -273,10 +273,13 @@ async def _run_matching(project: str, work_item_id: str) -> None:
-                         (best["tag_id"], work_item_id),
-                     )
-                 elif best.get("suggested_new"):
--                    # New tag suggestion — store in ai_tags JSONB
-+                    # New tag suggestion — store name + category in ai_tags JSONB
-                     cur.execute(
-                         "UPDATE mem_ai_work_items SET ai_tags=ai_tags||%s::jsonb, updated_at=NOW() WHERE id=%s::uuid",
--                        (json.dumps({"suggested_new": best["suggested_new"]}), work_item_id),
-+                        (json.dumps({
-+                            "suggested_new": best["suggested_new"],
-+                            "suggested_category": best.get("suggested_category") or "task",
-+                        }), work_item_id),
-                     )
-     except Exception:
-         pass  # non-critical background task
 
 
-### `commit` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
-diff --git a/backend/memory/memory_tagging.py b/backend/memory/memory_tagging.py
-index d6c249c..b8507ff 100644
---- a/backend/memory/memory_tagging.py
-+++ b/backend/memory/memory_tagging.py
-@@ -323,20 +323,25 @@ class MemoryTagging:
-                     return None
-                 return {'id': str(row[0]), 'name': row[1], 'category_id': row[2]}
+diff --git a/backend/memory/memory_promotion.py b/backend/memory/memory_promotion.py
+index 4a39098..f5a548a 100644
+--- a/backend/memory/memory_promotion.py
++++ b/backend/memory/memory_promotion.py
+@@ -657,15 +657,16 @@ class MemoryPromotion:
+                             )
+                             row = cur.fetchone()
+                             if row:
+-                                created += 1
+-                                # Link event to its newly created work item
+                                 wi_id = str(row[0])
++                                created += 1
++                                # Link event → first work item only (don't overwrite if already set)
+                                 cur.execute(
+-                                    "UPDATE mem_ai_events SET work_item_id=%s::uuid WHERE id=%s::uuid",
++                                    "UPDATE mem_ai_events SET work_item_id=%s::uuid"
++                                    " WHERE id=%s::uuid AND work_item_id IS NULL",
+                                     (wi_id, str(ev_id)),
+                                 )
+                             else:
+-                                updated += 1  # ON CONFLICT DO UPDATE hit an existing item
++                                updated += 1  # ON CONFLICT DO NOTHING hit an existing item
+                 except Exception as e:
+                     log.debug(f"extract_work_items insert error: {e}")
  
--    def _load_all_tags(self, project: str, limit: int = 40) -> list[dict]:
--        """Load all active planner tags (no embedding required) for Haiku-fallback matching."""
-+    def _load_all_tags(self, project: str, limit: int = 50) -> list[dict]:
-+        """Load all active planner tags with category name, prioritising task/bug/feature."""
-         project_id = db.get_or_create_project_id(project)
-         with db.conn() as conn:
-             with conn.cursor() as cur:
-                 cur.execute("""
--                    SELECT id, name, category_id, short_desc
--                    FROM planner_tags
--                    WHERE project_id = %s AND status != 'archived'
--                    ORDER BY created_at DESC LIMIT %s
-+                    SELECT t.id, t.name, t.category_id, t.short_desc, tc.name AS category_name
-+                    FROM planner_tags t
-+                    LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-+                    WHERE t.project_id = %s AND t.status != 'archived'
-+                    ORDER BY
-+                        CASE WHEN tc.name IN ('task','bug','feature') THEN 0 ELSE 1 END,
-+                        t.created_at DESC
-+                    LIMIT %s
-                 """, (project_id, limit))
-                 rows = cur.fetchall()
-                 return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
--                         'short_desc': r[3] or '', 'score': 0.0} for r in rows]
-+                         'short_desc': r[3] or '', 'category_name': r[4] or '',
-+                         'score': 0.0} for r in rows]
- 
-     def _vector_search_tags(self, project: str, embedding: list, limit: int = 15) -> list[dict]:
-         project_id = db.get_or_create_project_id(project)
-@@ -363,30 +368,39 @@ class MemoryTagging:
-         return resp.data[0].embedding
- 
-     async def _claude_judge_candidates(self, wi: dict, candidates: list[dict]) -> list[dict]:
--        """Use Claude Haiku to find the best matching tag for a work item."""
-+        """Use Claude Haiku to find the best matching tag for a work item.
-+
-+        Candidates show their category. Haiku must prioritise task/bug/feature categories.
-+        When no existing tag fits it suggests a new one in the most appropriate category.
-+        """
-         cand_text = '\n'.join(
--            f"- {c['name']} | {c.get('short_desc','')}" for c in candidates
-+            f"- [{c.get('category_name','?')}] {c['name']} | {c.get('short_desc','')}"
-+            for c in candidates
-         )
-         prompt = (
-             f"WORK ITEM: {wi['name']} — {wi.get('description','')}\n\n"
--            f"AVAILABLE TAGS:\n{cand_text}\n\n"
--            "Pick the SINGLE best matching tag for this work item.\n"
--            "If a tag fits (confidence ≥ 0.70), return it with relation 'exact' or 'similar'.\n"
--            "If NO existing tag fits, suggest a short new tag name (kebab-case, ≤3 words) as suggested_new.\n"
--            'Respond ONLY in JSON:\n'
--            '  Match exists:  {"tag_name":"existing-tag","relation":"exact|similar","confidence":0.0-1.0,"suggested_new":null}\n'
--            '  No match:      {"tag_name":null,"relation":"none","confidence":0.0,"suggested_new":"new-tag-name"}'
-+            f"AVAILABLE TAGS (format: [category] name | description):\n{cand_text}\n\n"
-+            "Rules:\n"
-+            "1. Prefer matching to a tag in the 'task', 'bug', or 'feature' category.\n"
-+            "2. If no task/bug/feature tag fits, match to phase, doc_type, or other category.\n"
-+            "3. If no existing tag fits (confidence < 0.70), suggest a short new tag name "
-+            "(kebab-case, ≤3 words) AND pick the best category: 'task', 'bug', or 'feature'.\n"
-+            "Respond ONLY in JSON (pick ONE):\n"
-+            '  Match:    {"tag_name":"existing-name","category":"existing-category",'
-+            '"relation":"exact|similar","confidence":0.0-1.0,"suggested_new":null,"suggested_category":null}\n'
-+            '  New tag:  {"tag_name":null,"category":null,"relation":"none","confidence":0.0,'
-+            '"suggested_new":"new-tag-name","suggested_category":"task|bug|feature"}'
-         )
-         system = (
-             "You are a technical project memory assistant. "
--            "Match AI-generated work items to project feature/task tags. "
-+            "Match AI-generated work items to project feature/task/bug tags. "
-             "Respond ONLY in valid JSON — no markdown, no explanation."
-         )
- 
-         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-         msg = await client.messages.create(
-             model='claude-haiku-4-5-20251001',
--            max_tokens=128,
-+            max_tokens=150,
-             system=system,
-             messages=[{'role': 'user', 'content': prompt}]
-         )
-@@ -411,13 +425,15 @@ class MemoryTagging:
-                         'relation': m.get('relation', 'none'),
-                         'confidence': float(m.get('confidence', 0.75)),
-                         'suggested_new': None,
-+                        'suggested_category': None,
-                     })
-             elif suggested_new:
--                # No existing tag match — suggest a new tag name
-+                # No existing tag match — suggest a new tag in the right category
-                 results.append({
-                     'tag_id': None,
-                     'relation': 'new',
-                     'confidence': 0.60,
-                     'suggested_new': suggested_new,
-+                    'suggested_category': m.get('suggested_category') or 'task',
-                 })
-         return results
 
 
-### `commit` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index ba45f6e..310aa25 100644
+index 310aa25..dd75ee9 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-09 02:21 UTC
-+> Generated by aicli 2026-04-09 02:45 UTC
+-> Generated by aicli 2026-04-09 02:45 UTC
++> Generated by aicli 2026-04-09 02:59 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -59,8 +59,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
+-- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/remove/delete buttons with labeled tag sections
+-- Work item panel layout: table-layout:fixed restored to prevent Name column expansion; AI/User tag sections always displayed with labels and '—' placeholder for empty user tags
+-- Date format frontend: YY/MM/DD-HH:MM format in work item panel and system displays
+-- ai_tag_color_default: #4a90e2 replaces var(--accent) when ai_tag_color not set; tag label format is 'category:name' when both present, name-only fallback
+-- Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+\ No newline at end of file
++- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
++- Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
++- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
++- Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
++- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
+\ No newline at end of file
 
 
-### `commit` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index d4af2c8..506209a 100644
+index 506209a..875d39a 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:21 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:45 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:45 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:59 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -59,16 +59,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
+-- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/remove/delete buttons with labeled tag sections
+-- Work item panel layout: table-layout:fixed restored to prevent Name column expansion; AI/User tag sections always displayed with labels and '—' placeholder for empty user tags
+-- Date format frontend: YY/MM/DD-HH:MM format in work item panel and system displays
+-- ai_tag_color_default: #4a90e2 replaces var(--accent) when ai_tag_color not set; tag label format is 'category:name' when both present, name-only fallback
++- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
++- Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
++- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
++- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-09] I cannot see the sujjestion. is it on each row in work_items ?
- - [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
+-- [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
  - [2026-04-09] I do see there is one ai_tags which is good. but ai_tags suppose to be feature, bug or task with the name . for example 
  - [2026-04-09] I dont see any tags at the rows now (not ai and not users). also I do that desc is cut the the middle of the row instead
--- [2026-04-09] I cannot see the last column now. all I see is the first column name (commits.. ) I would like to add label in order to 
+ - [2026-04-09] I cannot see the last column now. all I see is the first column name (commits.. ) I would like to add label in order to 
+-- [2026-04-09] Can you add some padding on the left side of the table as last column UPDATED, I do see ony yy:mm:dd-HH:.. instead of th
 \ No newline at end of file
-+- [2026-04-09] I cannot see the last column now. all I see is the first column name (commits.. ) I would like to add label in order to 
 +- [2026-04-09] Can you add some padding on the left side of the table as last column UPDATED, I do see ony yy:mm:dd-HH:.. instead of th
++- [2026-04-09] I would like to update the ai_sujjestion - it suppose to sujjest one tag from catgories (task, bug or feature) and can s
 \ No newline at end of file
 
 
-### `commit` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index d4af2c8..506209a 100644
+index 506209a..875d39a 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:21 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:45 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:45 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:59 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -59,16 +59,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
+-- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/remove/delete buttons with labeled tag sections
+-- Work item panel layout: table-layout:fixed restored to prevent Name column expansion; AI/User tag sections always displayed with labels and '—' placeholder for empty user tags
+-- Date format frontend: YY/MM/DD-HH:MM format in work item panel and system displays
+-- ai_tag_color_default: #4a90e2 replaces var(--accent) when ai_tag_color not set; tag label format is 'category:name' when both present, name-only fallback
++- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
++- Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
++- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
++- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-09] I cannot see the sujjestion. is it on each row in work_items ?
- - [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
+-- [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
  - [2026-04-09] I do see there is one ai_tags which is good. but ai_tags suppose to be feature, bug or task with the name . for example 
  - [2026-04-09] I dont see any tags at the rows now (not ai and not users). also I do that desc is cut the the middle of the row instead
--- [2026-04-09] I cannot see the last column now. all I see is the first column name (commits.. ) I would like to add label in order to 
+ - [2026-04-09] I cannot see the last column now. all I see is the first column name (commits.. ) I would like to add label in order to 
+-- [2026-04-09] Can you add some padding on the left side of the table as last column UPDATED, I do see ony yy:mm:dd-HH:.. instead of th
 \ No newline at end of file
-+- [2026-04-09] I cannot see the last column now. all I see is the first column name (commits.. ) I would like to add label in order to 
 +- [2026-04-09] Can you add some padding on the left side of the table as last column UPDATED, I do see ony yy:mm:dd-HH:.. instead of th
++- [2026-04-09] I would like to update the ai_sujjestion - it suppose to sujjest one tag from catgories (task, bug or feature) and can s
 \ No newline at end of file
 
+
+## AI Synthesis
+
+**[2026-04-09]** `claude_cli` — User reported AI tag suggestions showing as empty (EXISTS) in work item panel instead of actual tag values; identified that new work item creation from UI is non-functional, suggesting refresh button would be more practical for updating AI suggestions. **[2026-04]** `memory_promotion.py` — Fixed source event linkage by adding WHERE clause (work_item_id IS NULL) to prevent overwriting first work item assignment on subsequent promotions; changed ON CONFLICT behavior to DO NOTHING. **[2026-04]** `route_work_items.py` — Refactored work item aggregation queries to use session-based matching: prompt_count and commit_count now calculated via session_id from source_event_id instead of direct work_item_id links; user_tags extraction similarly scoped to session + project to surface connected feature/bug_ref/bug tags. **[Prior]** — Established AI suggestion matching pipeline with category-aware prioritization (task/bug/feature) and Level 4 fallback for new suggestions; set 0.60 confidence threshold for embedding matches. **[Prior]** — Standardized tag display format to 'category:name' when both present with #4a90e2 default color fallback; implemented multi-column work item panel with sticky headers and sortable rows.

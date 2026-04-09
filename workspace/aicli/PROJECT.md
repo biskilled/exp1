@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item tag display restoration: investigating disappearing tags from work item rows; verifying JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events
-- Work item description column layout: fixing desc column being cut mid-row; updating colgroup widths and removing table-layout:fixed constraint to display full-length descriptions
-- AI tag suggestion column rendering: ensuring ai_tag_suggestion chip displays correctly with approve (✓) and remove (×) buttons; refactored to simplified chip markup
-- User tags aggregation refinement: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items via jsonb_agg; verifying tag_id matching
-- AI suggestion category-aware matching: confirmed matching pipeline now prioritizes task/bug/feature categories, enables Level 4 fallback for new suggestions, includes 0.60 confidence threshold
-- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across tag interaction modes
+- Work item UI refresh button: replacing 'new work item' creation with refresh/reload functionality to fetch latest work items and update AI suggestions without requiring manual entry
+- AI suggestion display fix: debugging why ai_tag_suggestion column shows empty (EXISTS) instead of actual suggested tags; investigating embedding pipeline trigger and suggestion query logic
+- Work item tag aggregation: refining user_tags extraction from mem_ai_events by session_id and project_id instead of work_item_id to correctly surface feature/bug_ref/bug tags
+- Work item counts accuracy: verifying prompt_count and commit_count calculations use session-based matching (same session as source_event_id) rather than direct work_item_id links
+- Source event ID usage: confirming source_event_id field in mem_ai_work_items serves as anchor for session-based aggregation queries without requiring explicit SELECT visibility
+- First event linkage guarantee: ensuring mem_ai_events.work_item_id updates only link to first work item (WHERE work_item_id IS NULL) to prevent overwrites on subsequent promotions

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-09 09:36 UTC — do not edit manually.
+> Auto-generated 2026-04-09 09:57 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 455
-- **Last active**: 2026-04-09T03:12:42Z
+- **Sessions**: 456
+- **Last active**: 2026-04-09T09:56:47Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -38,7 +38,7 @@
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extension
+- **database**: PostgreSQL 15+
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
@@ -54,12 +54,12 @@
 
 ## In Progress
 
-- Work item tag display restoration: investigating disappearing tags from work item rows; verifying JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events
-- Work item description column layout: fixing desc column being cut mid-row; updating colgroup widths and removing table-layout:fixed constraint to display full-length descriptions
-- AI tag suggestion column rendering: ensuring ai_tag_suggestion chip displays correctly with approve (✓) and remove (×) buttons; refactored to simplified chip markup
-- User tags aggregation refinement: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items via jsonb_agg; verifying tag_id matching
-- AI suggestion category-aware matching: confirmed matching pipeline now prioritizes task/bug/feature categories, enables Level 4 fallback for new suggestions, includes 0.60 confidence threshold
-- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across tag interaction modes
+- Work item UI refresh button: replacing 'new work item' creation with refresh/reload functionality to fetch latest work items and update AI suggestions without requiring manual entry
+- AI suggestion display fix: debugging why ai_tag_suggestion column shows empty (EXISTS) instead of actual suggested tags; investigating embedding pipeline trigger and suggestion query logic
+- Work item tag aggregation: refining user_tags extraction from mem_ai_events by session_id and project_id instead of work_item_id to correctly surface feature/bug_ref/bug tags
+- Work item counts accuracy: verifying prompt_count and commit_count calculations use session-based matching (same session as source_event_id) rather than direct work_item_id links
+- Source event ID usage: confirming source_event_id field in mem_ai_work_items serves as anchor for session-based aggregation queries without requiring explicit SELECT visibility
+- First event linkage guarantee: ensuring mem_ai_events.work_item_id updates only link to first work item (WHERE work_item_id IS NULL) to prevent overwrites on subsequent promotions
 
 ## Key Decisions
 

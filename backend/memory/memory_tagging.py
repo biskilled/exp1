@@ -368,10 +368,10 @@ class MemoryTagging:
         return resp.data[0].embedding
 
     async def _claude_judge_candidates(self, wi: dict, candidates: list[dict]) -> list[dict]:
-        """Use Claude Haiku to find the best matching tag for a work item.
+        """Use Claude Haiku to match a work item to tags.
 
-        Candidates show their category. Haiku must prioritise task/bug/feature categories.
-        When no existing tag fits it suggests a new one in the most appropriate category.
+        Returns primary (task/bug/feature, always set) + optional secondary (phase/doc_type).
+        Primary is ALWAYS populated — either an existing match or a suggested new tag name.
         """
         cand_text = '\n'.join(
             f"- [{c.get('category_name','?')}] {c['name']} | {c.get('short_desc','')}"
@@ -380,32 +380,33 @@ class MemoryTagging:
         prompt = (
             f"WORK ITEM: {wi['name']} — {wi.get('description','')}\n\n"
             f"AVAILABLE TAGS (format: [category] name | description):\n{cand_text}\n\n"
-            "Rules:\n"
-            "1. Prefer matching to a tag in the 'task', 'bug', or 'feature' category.\n"
-            "2. If no task/bug/feature tag fits, match to phase, doc_type, or other category.\n"
-            "3. If no existing tag fits (confidence < 0.70), suggest a short new tag name "
-            "(kebab-case, ≤3 words) AND pick the best category: 'task', 'bug', or 'feature'.\n"
-            "Respond ONLY in JSON (pick ONE):\n"
-            '  Match:    {"tag_name":"existing-name","category":"existing-category",'
-            '"relation":"exact|similar","confidence":0.0-1.0,"suggested_new":null,"suggested_category":null}\n'
-            '  New tag:  {"tag_name":null,"category":null,"relation":"none","confidence":0.0,'
-            '"suggested_new":"new-tag-name","suggested_category":"task|bug|feature"}'
+            "RULES:\n"
+            "1. PRIMARY must be from 'task', 'bug', or 'feature' category.\n"
+            "   - If an existing tag matches (confidence ≥ 0.70): set primary.tag_name.\n"
+            "   - Otherwise ALWAYS set primary.suggested_new (kebab-case, ≤3 words). NEVER leave both null.\n"
+            "2. SECONDARY (optional): pick one tag from 'phase', 'doc_type', or other non-primary category "
+            "if clearly relevant. Set to null if not sure.\n"
+            "Respond ONLY in JSON:\n"
+            '{"primary":{"tag_name":"name-or-null","category":"task|bug|feature","relation":"exact|similar|none",'
+            '"confidence":0.0-1.0,"suggested_new":"new-name-or-null","suggested_category":"task|bug|feature"},'
+            '"secondary":{"tag_name":"name-or-null","category":"phase|doc_type","relation":"exact|similar",'
+            '"confidence":0.0-1.0,"suggested_new":"new-name-or-null","suggested_category":"phase|doc_type"}}'
+            '\nsecondary can be null if not applicable.'
         )
         system = (
             "You are a technical project memory assistant. "
-            "Match AI-generated work items to project feature/task/bug tags. "
+            "Match work items to project tags. Always provide a primary suggestion. "
             "Respond ONLY in valid JSON — no markdown, no explanation."
         )
 
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         msg = await client.messages.create(
             model='claude-haiku-4-5-20251001',
-            max_tokens=150,
+            max_tokens=220,
             system=system,
             messages=[{'role': 'user', 'content': prompt}]
         )
         text = msg.content[0].text.strip()
-        # Strip markdown code fences if present
         if text.startswith('```'):
             text = text.split('```')[1]
             if text.startswith('json'):
@@ -413,27 +414,53 @@ class MemoryTagging:
             text = text.strip()
         data = json.loads(text)
         name_to_id = {c['name']: c['id'] for c in candidates}
-        matches = data if isinstance(data, list) else [data]
         results = []
-        for m in matches:
-            suggested_new = m.get('suggested_new') or ''
-            if m.get('tag_name'):
-                tid = name_to_id.get(m['tag_name'])
-                if tid and m.get('relation', 'none') != 'none':
-                    results.append({
-                        'tag_id': tid,
-                        'relation': m.get('relation', 'none'),
-                        'confidence': float(m.get('confidence', 0.75)),
-                        'suggested_new': None,
-                        'suggested_category': None,
-                    })
-            elif suggested_new:
-                # No existing tag match — suggest a new tag in the right category
-                results.append({
-                    'tag_id': None,
-                    'relation': 'new',
-                    'confidence': 0.60,
-                    'suggested_new': suggested_new,
-                    'suggested_category': m.get('suggested_category') or 'task',
-                })
+
+        def _parse_entry(m: dict, is_primary: bool) -> dict | None:
+            if not m:
+                return None
+            tag_name     = (m.get('tag_name') or '').strip()
+            suggested_new = (m.get('suggested_new') or '').strip()
+            relation      = m.get('relation', 'none')
+            confidence    = float(m.get('confidence', 0.0))
+            category      = m.get('suggested_category') or m.get('category') or ('task' if is_primary else 'phase')
+
+            if tag_name and relation not in ('none', ''):
+                tid = name_to_id.get(tag_name)
+                if tid and confidence >= 0.70:
+                    return {'tag_id': tid, 'tag_name': tag_name, 'relation': relation, 'confidence': confidence,
+                            'suggested_new': None, 'suggested_category': None, 'is_primary': is_primary}
+            if suggested_new:
+                return {'tag_id': None, 'relation': 'new', 'confidence': 0.60,
+                        'suggested_new': suggested_new, 'suggested_category': category,
+                        'is_primary': is_primary}
+            # Primary must always have something — derive from work item name if Haiku failed
+            if is_primary:
+                fallback = wi['name'].replace('_', '-')[:40]
+                return {'tag_id': None, 'relation': 'new', 'confidence': 0.50,
+                        'suggested_new': fallback, 'suggested_category': 'task',
+                        'is_primary': True}
+            return None
+
+        # Handle both old flat format and new primary/secondary format
+        if isinstance(data, dict) and ('primary' in data or 'secondary' in data):
+            p = _parse_entry(data.get('primary') or {}, is_primary=True)
+            if p:
+                results.append(p)
+            s = _parse_entry(data.get('secondary') or {}, is_primary=False)
+            if s:
+                results.append(s)
+        else:
+            # Legacy flat format
+            entries = data if isinstance(data, list) else [data]
+            for i, m in enumerate(entries[:2]):
+                e = _parse_entry(m, is_primary=(i == 0))
+                if e:
+                    results.append(e)
+
+        # Guarantee at least one result (primary fallback)
+        if not results:
+            results.append({'tag_id': None, 'relation': 'new', 'confidence': 0.50,
+                            'suggested_new': wi['name'].replace('_', '-')[:40],
+                            'suggested_category': 'task', 'is_primary': True})
         return results
