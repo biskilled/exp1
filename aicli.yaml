@@ -23,6 +23,14 @@ memory_enabled: true
 memory_top_k: 5
 
 # ------------------------------------------------------------------
+# SESSION TAGGING
+# ------------------------------------------------------------------
+session:
+  tag_reminder_interval: 8   # print "still on X?" reminder every N prompts (0 = off)
+  # valid_tag_keys are enforced in the hook — keys not in this list are rejected
+  valid_tag_keys: [phase, feature, bug, task, component, doc_type, design, decision, meeting, customer]
+
+# ------------------------------------------------------------------
 # MEMORY BATCH SYSTEM
 # ------------------------------------------------------------------
 memory:

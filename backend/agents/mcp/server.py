@@ -223,8 +223,10 @@ async def list_tools() -> list[mcp_types.Tool]:
         mcp_types.Tool(
             name="set_session_tags",
             description=(
-                "Update the active session tags (phase, feature, bug_ref). "
-                "Call this when you understand the current task to ensure proper tracking."
+                "Update the active session tags. Call this when you understand the current task "
+                "to ensure prompts and commits are correctly tagged. "
+                "phase is required. feature and bug_ref are optional. "
+                "extra accepts any key:value pairs from: task, component, doc_type, design, decision, meeting, customer."
             ),
             inputSchema={
                 "type": "object",
@@ -232,12 +234,17 @@ async def list_tools() -> list[mcp_types.Tool]:
                     "phase": {
                         "type": "string",
                         "enum": _PHASES,
-                        "description": "Project phase",
+                        "description": "Project phase (required)",
                     },
-                    "feature": {"type": "string", "description": "Feature name being worked on"},
-                    "bug_ref": {"type": "string", "description": "Bug reference if fixing a bug"},
+                    "feature": {"type": "string", "description": "Feature slug being worked on (e.g. work-items-ui)"},
+                    "bug_ref": {"type": "string", "description": "Bug slug if fixing a bug (e.g. login-500)"},
+                    "extra": {
+                        "type": "object",
+                        "description": "Additional tags: {task, component, doc_type, design, decision, meeting, customer}",
+                    },
                     "project": {"type": "string"},
                 },
+                "required": ["phase"],
             },
         ),
         mcp_types.Tool(

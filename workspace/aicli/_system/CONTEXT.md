@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-09 12:14 UTC — do not edit manually.
+> Auto-generated 2026-04-09 12:20 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 461
-- **Last active**: 2026-04-09T12:13:51Z
+- **Sessions**: 462
+- **Last active**: 2026-04-09T12:20:13Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -55,11 +55,11 @@
 ## In Progress
 
 - Work item refresh workflow: replaced 'new work item' button with ↻ refresh button triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions
-- Event count aggregation: added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session
+- Event count aggregation: added event_count column (renamed to 'Digests') to work item panel calculated via session-based COUNT(*) from mem_ai_events matching prompt_batch and session_summary types only
 - AI tag backlinking implementation: _backlink_tag_to_events() propagates planner tag assignments back to all events in source session, mapping category→tag_key (bug/phase/feature)
-- Work item panel UI refinement: adjusted colgroup widths (52px per count column), fixed table overflow issues showing only first column, added proper padding/spacing
-- AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh workflow
+- Work item panel UI refinement: adjusted colgroup widths (52px per count column), fixed table overflow issues, added proper padding/spacing, updated event_count header label to 'Digests'
 - Session-based tag propagation: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking, ensuring tag consistency across event-to-work-item relationships
+- Interactive tag suggestion feature: user request for mechanism to force-add tags during long sessions and periodically (every 5-10 prompts) validate prompt relevance to tagged context
 
 ## Key Decisions
 
@@ -77,7 +77,7 @@
 - Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
-- AI tag display: category:name format when both present, falls back to name-only; default color #4a90e2 applied when ai_tag_color not set
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
 
 ---
 

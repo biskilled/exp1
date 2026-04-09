@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 12:13 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 12:20 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -63,12 +63,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
-- AI tag display: category:name format when both present, falls back to name-only; default color #4a90e2 applied when ai_tag_color not set
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-09] Can you explain how do I see work_item #20006 as the one that was last updated ? the last prompt was about ui, ai tags..
 - [2026-04-09] Can you recheck that ai_tags as I do see new work_item, bit cannot see any sujjeste AI - all i see is mepy AI(EXISTS).. 
 - [2026-04-09] Where are all the rpompts for ai_tags and work_item are ?
 - [2026-04-09] I do see same work item working on mention document summery and update ai memory. all internal work such update internal
 - [2026-04-09] Can you share the quesry you are suing the get all promotps, commit, event per work_item . I want to check that for work
+- [2026-04-09] before you desing. is it possible to add some mechanism to our converstion. for example force adding tags and every 5-10

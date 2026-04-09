@@ -57,7 +57,7 @@
     "Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session",
     "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
     "Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop",
-    "AI tag display: category:name format when both present, falls back to name-only; default color #4a90e2 applied when ai_tag_color not set"
+    "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -87,11 +87,11 @@
   ],
   "in_progress": [
     "Work item refresh workflow: replaced 'new work item' button with \u21bb refresh button triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions",
-    "Event count aggregation: added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session",
+    "Event count aggregation: added event_count column (renamed to 'Digests') to work item panel calculated via session-based COUNT(*) from mem_ai_events matching prompt_batch and session_summary types only",
     "AI tag backlinking implementation: _backlink_tag_to_events() propagates planner tag assignments back to all events in source session, mapping category\u2192tag_key (bug/phase/feature)",
-    "Work item panel UI refinement: adjusted colgroup widths (52px per count column), fixed table overflow issues showing only first column, added proper padding/spacing",
-    "AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh workflow",
-    "Session-based tag propagation: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking, ensuring tag consistency across event-to-work-item relationships"
+    "Work item panel UI refinement: adjusted colgroup widths (52px per count column), fixed table overflow issues, added proper padding/spacing, updated event_count header label to 'Digests'",
+    "Session-based tag propagation: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking, ensuring tag consistency across event-to-work-item relationships",
+    "Interactive tag suggestion feature: user request for mechanism to force-add tags during long sessions and periodically (every 5-10 prompts) validate prompt relevance to tagged context"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -123,7 +123,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-09T12:14:19Z",
+  "last_memory_run": "2026-04-09T12:20:39Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -140,15 +140,15 @@
       "Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session",
       "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
       "Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop",
-      "AI tag display: category:name format when both present, falls back to name-only; default color #4a90e2 applied when ai_tag_color not set"
+      "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation"
     ],
     "in_progress": [
       "Work item refresh workflow: replaced 'new work item' button with \u21bb refresh button triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions",
-      "Event count aggregation: added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session",
+      "Event count aggregation: added event_count column (renamed to 'Digests') to work item panel calculated via session-based COUNT(*) from mem_ai_events matching prompt_batch and session_summary types only",
       "AI tag backlinking implementation: _backlink_tag_to_events() propagates planner tag assignments back to all events in source session, mapping category\u2192tag_key (bug/phase/feature)",
-      "Work item panel UI refinement: adjusted colgroup widths (52px per count column), fixed table overflow issues showing only first column, added proper padding/spacing",
-      "AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh workflow",
-      "Session-based tag propagation: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking, ensuring tag consistency across event-to-work-item relationships"
+      "Work item panel UI refinement: adjusted colgroup widths (52px per count column), fixed table overflow issues, added proper padding/spacing, updated event_count header label to 'Digests'",
+      "Session-based tag propagation: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking, ensuring tag consistency across event-to-work-item relationships",
+      "Interactive tag suggestion feature: user request for mechanism to force-add tags during long sessions and periodically (every 5-10 prompts) validate prompt relevance to tagged context"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -159,15 +159,10 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "database": "PostgreSQL 15+ with pgvector extensions",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
-      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)"
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL vector search, an Electron desktop UI with Monaco editor and workflow visualization, and integrations with multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok). The platform captures development work through a 4-layer memory architecture, synthesizes insights via Claude Haiku dual-layer processing, and provides work item tracking with AI-suggested categorization (task/bug/feature) backed by semantic search and session-based event aggregation. Current focus is refining AI tag suggestions, implementing tag backlinking to preserve consistency across work item relationships, and fixing UI display issues for the work item panel.",
-    "memory_digest": "**[2026-04-09]** UI/Tag System \u2014 Work item panel UI refined with proper column widths (52px), table overflow fixes, and padding adjustments to display date format YY/MM/DD-HH:MM correctly in UPDATED column. **[2026-04-09]** AI Tag Suggestions \u2014 Implemented AI suggestion system category-aware matching for task/bug/feature prioritization with 0.60-0.70 confidence thresholds; suggests new work item as Level 4 fallback when no matches found. **[2026-04-09]** Tag Backlinking \u2014 Deployed _backlink_tag_to_events() to propagate planner tag assignments back to all events in source session, ensuring category\u2192tag_key mapping (bug/phase/feature) consistency. **[2026-04-09]** Work Item Refresh \u2014 Replaced static 'new work item' button with dynamic \u21bb refresh trigger calling /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions. **[2026-04-09]** Event Count Aggregation \u2014 Added event_count column to work item panel with session-based COUNT(*) from mem_ai_events matching source_event_id. **[2026-04-09]** Debugging \u2014 Investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population during work item panel refresh workflow."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI + FastAPI backend with PostgreSQL/pgvector storage and an Electron desktop UI for collaborative project memory. It captures session-based events, synthesizes them via Claude into work items and project facts, enables semantic search through embeddings, and provides workflow automation via DAG execution. Currently focused on refining work item aggregation, tag management workflows, and interactive suggestion mechanisms for long-running sessions.",
+    "memory_digest": "**[2026-04-09]** `claude_cli` \u2014 User requested interactive tag forcing and periodic validation (every 5-10 prompts) during long sessions to keep prompts aligned with tag context; clarified session lifecycle: same session_id throughout CLI session, new session_id only on fresh `claude` invocation.\n\n**[recent]** `ui/entities.js` \u2014 Renamed 'Events' column header to 'Digests' in work item panel to better reflect actual content (prompt_batch + session_summary only).\n\n**[recent]** `route_work_items.py` \u2014 Refined event_count aggregation to filter event_type IN ('prompt_batch', 'session_summary'), excluding per-commit and diff_file noise from digest counts; applied filter to both session-based and direct work_item_id link queries.\n\n**[stable]** `memory_synthesis` \u2014 Claude Haiku dual-layer generates 5 output files with LLM response summarization, timestamp tracking, and auto-tag suggestions with deduplication.\n\n**[stable]** `tag_backlinking` \u2014 PATCH /work-items with tag_id triggers _backlink_tag_to_events() to propagate assignments across all events in source session, maintaining tag consistency.\n\n**[stable]** `work_item_extraction` \u2014 Consolidated AI tag matching logic into centralized prompts and added explicit exclusion rules to eliminate 139+ noise work items (sync-memory-*, update-memory-*, cleanup-*)."
   }
 }
