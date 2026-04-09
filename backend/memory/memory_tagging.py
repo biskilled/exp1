@@ -323,20 +323,25 @@ class MemoryTagging:
                     return None
                 return {'id': str(row[0]), 'name': row[1], 'category_id': row[2]}
 
-    def _load_all_tags(self, project: str, limit: int = 40) -> list[dict]:
-        """Load all active planner tags (no embedding required) for Haiku-fallback matching."""
+    def _load_all_tags(self, project: str, limit: int = 50) -> list[dict]:
+        """Load all active planner tags with category name, prioritising task/bug/feature."""
         project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT id, name, category_id, short_desc
-                    FROM planner_tags
-                    WHERE project_id = %s AND status != 'archived'
-                    ORDER BY created_at DESC LIMIT %s
+                    SELECT t.id, t.name, t.category_id, t.short_desc, tc.name AS category_name
+                    FROM planner_tags t
+                    LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
+                    WHERE t.project_id = %s AND t.status != 'archived'
+                    ORDER BY
+                        CASE WHEN tc.name IN ('task','bug','feature') THEN 0 ELSE 1 END,
+                        t.created_at DESC
+                    LIMIT %s
                 """, (project_id, limit))
                 rows = cur.fetchall()
                 return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
-                         'short_desc': r[3] or '', 'score': 0.0} for r in rows]
+                         'short_desc': r[3] or '', 'category_name': r[4] or '',
+                         'score': 0.0} for r in rows]
 
     def _vector_search_tags(self, project: str, embedding: list, limit: int = 15) -> list[dict]:
         project_id = db.get_or_create_project_id(project)
@@ -363,30 +368,39 @@ class MemoryTagging:
         return resp.data[0].embedding
 
     async def _claude_judge_candidates(self, wi: dict, candidates: list[dict]) -> list[dict]:
-        """Use Claude Haiku to find the best matching tag for a work item."""
+        """Use Claude Haiku to find the best matching tag for a work item.
+
+        Candidates show their category. Haiku must prioritise task/bug/feature categories.
+        When no existing tag fits it suggests a new one in the most appropriate category.
+        """
         cand_text = '\n'.join(
-            f"- {c['name']} | {c.get('short_desc','')}" for c in candidates
+            f"- [{c.get('category_name','?')}] {c['name']} | {c.get('short_desc','')}"
+            for c in candidates
         )
         prompt = (
             f"WORK ITEM: {wi['name']} — {wi.get('description','')}\n\n"
-            f"AVAILABLE TAGS:\n{cand_text}\n\n"
-            "Pick the SINGLE best matching tag for this work item.\n"
-            "If a tag fits (confidence ≥ 0.70), return it with relation 'exact' or 'similar'.\n"
-            "If NO existing tag fits, suggest a short new tag name (kebab-case, ≤3 words) as suggested_new.\n"
-            'Respond ONLY in JSON:\n'
-            '  Match exists:  {"tag_name":"existing-tag","relation":"exact|similar","confidence":0.0-1.0,"suggested_new":null}\n'
-            '  No match:      {"tag_name":null,"relation":"none","confidence":0.0,"suggested_new":"new-tag-name"}'
+            f"AVAILABLE TAGS (format: [category] name | description):\n{cand_text}\n\n"
+            "Rules:\n"
+            "1. Prefer matching to a tag in the 'task', 'bug', or 'feature' category.\n"
+            "2. If no task/bug/feature tag fits, match to phase, doc_type, or other category.\n"
+            "3. If no existing tag fits (confidence < 0.70), suggest a short new tag name "
+            "(kebab-case, ≤3 words) AND pick the best category: 'task', 'bug', or 'feature'.\n"
+            "Respond ONLY in JSON (pick ONE):\n"
+            '  Match:    {"tag_name":"existing-name","category":"existing-category",'
+            '"relation":"exact|similar","confidence":0.0-1.0,"suggested_new":null,"suggested_category":null}\n'
+            '  New tag:  {"tag_name":null,"category":null,"relation":"none","confidence":0.0,'
+            '"suggested_new":"new-tag-name","suggested_category":"task|bug|feature"}'
         )
         system = (
             "You are a technical project memory assistant. "
-            "Match AI-generated work items to project feature/task tags. "
+            "Match AI-generated work items to project feature/task/bug tags. "
             "Respond ONLY in valid JSON — no markdown, no explanation."
         )
 
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         msg = await client.messages.create(
             model='claude-haiku-4-5-20251001',
-            max_tokens=128,
+            max_tokens=150,
             system=system,
             messages=[{'role': 'user', 'content': prompt}]
         )
@@ -411,13 +425,15 @@ class MemoryTagging:
                         'relation': m.get('relation', 'none'),
                         'confidence': float(m.get('confidence', 0.75)),
                         'suggested_new': None,
+                        'suggested_category': None,
                     })
             elif suggested_new:
-                # No existing tag match — suggest a new tag name
+                # No existing tag match — suggest a new tag in the right category
                 results.append({
                     'tag_id': None,
                     'relation': 'new',
                     'confidence': 0.60,
                     'suggested_new': suggested_new,
+                    'suggested_category': m.get('suggested_category') or 'task',
                 })
         return results

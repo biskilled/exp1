@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:21 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:45 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-09] I cannot see the sujjestion. is it on each row in work_items ?
 - [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
 - [2026-04-09] I do see there is one ai_tags which is good. but ai_tags suppose to be feature, bug or task with the name . for example 
 - [2026-04-09] I dont see any tags at the rows now (not ai and not users). also I do that desc is cut the the middle of the row instead
 - [2026-04-09] I cannot see the last column now. all I see is the first column name (commits.. ) I would like to add label in order to 
+- [2026-04-09] Can you add some padding on the left side of the table as last column UPDATED, I do see ony yy:mm:dd-HH:.. instead of th

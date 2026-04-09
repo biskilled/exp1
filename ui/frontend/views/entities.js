@@ -540,14 +540,13 @@ function _renderWiPanel(items, project) {
     } catch(e) { toast('Remove failed: ' + e.message, 'error'); }
   };
 
-  window._wiPanelCreateTag = async (id, tagName, proj) => {
-    if (!confirm(`Create new tag "${tagName}" and link this work item?`)) return;
+  window._wiPanelCreateTag = async (id, tagName, categoryName, proj) => {
+    const catLabel = categoryName || 'task';
+    if (!confirm(`Create new ${catLabel} tag "${tagName}" and link this work item?`)) return;
     try {
-      const wi = _wiPanelItems[id];
-      const cat = wi ? wi.ai_category : 'task';
-      // Find or create the category id
+      // Resolve category id from name
       const cats = await api.tags.categories.list(proj);
-      const catObj = cats.find(c => c.name === cat) || cats.find(c => c.name === 'task') || cats[0];
+      const catObj = cats.find(c => c.name === catLabel) || cats.find(c => c.name === 'task') || cats[0];
       const newTag = await api.tags.create({ name: tagName, project: proj, category_id: catObj?.id });
       await api.workItems.patch(id, proj, { tag_id: newTag.id });
       delete _wiPanelItems[id];
@@ -555,7 +554,7 @@ function _renderWiPanel(items, project) {
       _renderWiPanel(remaining, proj);
       const cnt = document.getElementById('wi-panel-count');
       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
-      toast(`Created tag "${tagName}" and linked`, 'success');
+      toast(`Created ${catLabel} tag "${tagName}" and linked`, 'success');
     } catch(e) { toast('Create failed: ' + e.message, 'error'); }
   };
 
@@ -573,8 +572,10 @@ function _renderWiPanel(items, project) {
     const aiTagLabel = wi.ai_tag_name
       ? (wi.ai_tag_category ? wi.ai_tag_category + ':' + wi.ai_tag_name : wi.ai_tag_name)
       : '';
-    // AI(NEW) — stored in ai_tags.suggested_new (set by backend when no existing tag fits)
+    // AI(NEW) — stored in ai_tags.suggested_new + suggested_category
     const aiNew = (wi.ai_tags && wi.ai_tags.suggested_new) ? wi.ai_tags.suggested_new : '';
+    const aiNewCat = (wi.ai_tags && wi.ai_tags.suggested_category) ? wi.ai_tags.suggested_category : 'task';
+    const aiNewLabel = aiNew ? (aiNewCat + ':' + aiNew) : '';
     const userTagsList = Array.isArray(wi.user_tags) ? wi.user_tags : [];
 
     // AI row — always shown; show EXISTS first, then NEW if no exists match
@@ -597,8 +598,8 @@ function _renderWiPanel(items, project) {
         <span style="${LBL_AI_N}">AI(NEW)</span>
         <span style="font-size:0.65rem;font-weight:500;padding:1px 6px;border-radius:4px;
                      color:#e74c3c;border:1px solid #e74c3c;background:#e74c3c1a;
-                     white-space:nowrap">${_esc(aiNew)}</span>
-        <button onclick="event.stopPropagation();window._wiPanelCreateTag('${_esc(wi.id)}','${_esc(aiNew)}','${_esc(project)}')"
+                     white-space:nowrap">${_esc(aiNewLabel)}</span>
+        <button onclick="event.stopPropagation();window._wiPanelCreateTag('${_esc(wi.id)}','${_esc(aiNew)}','${_esc(aiNewCat)}','${_esc(project)}')"
           title="Create this tag" style="background:none;border:1px solid #e74c3c;color:#e74c3c;
                  cursor:pointer;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>
         <button onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"

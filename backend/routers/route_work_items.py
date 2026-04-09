@@ -103,7 +103,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
     LEFT JOIN planner_tags pt   ON pt.id  = w.ai_tag_id
     LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
     WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
-    ORDER BY w.updated_at DESC
+    ORDER BY w.seq_num DESC
 """
 
 _SQL_INSERT_WORK_ITEM = (
@@ -273,10 +273,13 @@ async def _run_matching(project: str, work_item_id: str) -> None:
                         (best["tag_id"], work_item_id),
                     )
                 elif best.get("suggested_new"):
-                    # New tag suggestion — store in ai_tags JSONB
+                    # New tag suggestion — store name + category in ai_tags JSONB
                     cur.execute(
                         "UPDATE mem_ai_work_items SET ai_tags=ai_tags||%s::jsonb, updated_at=NOW() WHERE id=%s::uuid",
-                        (json.dumps({"suggested_new": best["suggested_new"]}), work_item_id),
+                        (json.dumps({
+                            "suggested_new": best["suggested_new"],
+                            "suggested_category": best.get("suggested_category") or "task",
+                        }), work_item_id),
                     )
     except Exception:
         pass  # non-critical background task
