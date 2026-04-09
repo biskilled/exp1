@@ -484,7 +484,8 @@ function _renderWiPanel(items, project) {
       style="text-align:right;padding:4px 8px;cursor:pointer;user-select:none;white-space:nowrap;
              font-size:0.62rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
              color:${active?'var(--accent)':'var(--muted)'};background:var(--surface2);
-             border-bottom:2px solid ${active?'var(--accent)':'var(--border)'};border-left:1px solid var(--border)">
+             border-bottom:2px solid ${active?'var(--accent)':'var(--border)'};border-left:1px solid var(--border);
+             position:sticky;top:0;z-index:1">
       ${label}&nbsp;<span style="opacity:${active?1:.35};font-size:0.55rem">${arrow}</span>
     </th>`;
   }
@@ -511,14 +512,52 @@ function _renderWiPanel(items, project) {
     } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
   };
 
+  window._wiPanelApproveTag = async (id, proj) => {
+    const wi = _wiPanelItems[id];
+    if (!wi || !wi.ai_tag_id) return;
+    try {
+      await api.workItems.patch(id, proj, { tag_id: wi.ai_tag_id });
+      delete _wiPanelItems[id];  // now linked → remove from unlinked panel
+      const remaining = Object.values(_wiPanelItems);
+      _renderWiPanel(remaining, proj);
+      const cnt = document.getElementById('wi-panel-count');
+      if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
+      toast(`Linked to "${wi.ai_tag_name}"`, 'success');
+    } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
+  };
+
+  window._wiPanelRemoveTag = async (id, proj) => {
+    try {
+      await api.workItems.patch(id, proj, { ai_tag_id: '' });
+      if (_wiPanelItems[id]) { _wiPanelItems[id].ai_tag_id = null; _wiPanelItems[id].ai_tag_name = null; }
+      _renderWiPanel(Object.values(_wiPanelItems), proj);
+    } catch(e) { toast('Remove failed: ' + e.message, 'error'); }
+  };
+
   const rows = sorted.map(wi => {
     const icon = CAT_ICON[wi.ai_category] || '📋';
     const sc   = STATUS_C[wi.status_user] || '#888';
     const desc = (wi.ai_desc || '').replace(/\n/g,' ');
     const descClip = desc.length > 70 ? desc.slice(0,70)+'…' : desc;
-    const linked = wi.tag_id
-      ? `<span style="font-size:0.48rem;color:var(--accent);flex-shrink:0">✓</span>`
-      : (wi.ai_tag_id ? `<span style="font-size:0.48rem;color:var(--muted);flex-shrink:0;opacity:.7">✦</span>` : '');
+    const tagSuggestion = wi.ai_tag_name
+      ? `<div style="display:flex;align-items:center;gap:3px;padding-left:18px;margin-top:1px">
+           <span style="font-size:0.5rem;color:var(--muted);flex-shrink:0">✦</span>
+           <span style="font-size:0.55rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+                        flex:1" title="AI suggested: ${_esc(wi.ai_tag_name)}">${_esc(wi.ai_tag_name)}</span>
+           <button title="Approve this suggestion"
+             onclick="event.stopPropagation();window._wiPanelApproveTag('${_esc(wi.id)}','${_esc(project)}')"
+             style="background:none;border:1px solid var(--accent);color:var(--accent);cursor:pointer;
+                    font-size:0.5rem;padding:0 4px;border-radius:4px;line-height:1.5;flex-shrink:0"
+             onmouseenter="this.style.background='var(--accent)';this.style.color='#fff'"
+             onmouseleave="this.style.background='none';this.style.color='var(--accent)'">✓</button>
+           <button title="Remove suggestion"
+             onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
+             style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.6rem;
+                    padding:0 2px;line-height:1;flex-shrink:0;opacity:.5"
+             onmouseenter="this.style.opacity=1;this.style.color='#e74c3c'"
+             onmouseleave="this.style.opacity='.5';this.style.color='var(--muted)'">×</button>
+         </div>`
+      : '';
     return `<tr draggable="true"
         data-wi-id="${_esc(wi.id)}"
         data-wi-name="${_esc(wi.ai_name)}"
@@ -542,10 +581,10 @@ function _renderWiPanel(items, project) {
                        white-space:nowrap" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
           <span style="font-size:0.48rem;color:${sc};background:${sc}22;
                        padding:0 0.25rem;border-radius:6px;flex-shrink:0;white-space:nowrap">${wi.status_user||'active'}</span>
-          ${linked}
         </div>
         ${descClip ? `<div style="font-size:0.57rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
                                   white-space:nowrap;padding-left:18px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
+        ${tagSuggestion}
       </td>
       <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.65rem;
                  color:var(--text2);font-variant-numeric:tabular-nums;

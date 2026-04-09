@@ -28,7 +28,7 @@
     "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables",
     "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
     "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
-    "database": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+    "database": "PostgreSQL 15+ with pgvector",
     "node_modules_build": "npm 8+ with Electron-builder; Vite dev server",
     "database_version": "PostgreSQL 15+",
     "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
@@ -56,7 +56,7 @@
     "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
     "Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename\u2192recreate\u2192copy pattern (migrations m001-m019)",
     "Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes",
-    "Work item UI: multi-column sortable table with proper header styling, wider columns (56px\u201380px), date formatting (YY/MM/DD-HH:MM), and status color badges"
+    "Work item UI: sticky header on scroll, multi-column sortable table with YY/MM/DD-HH:MM date formatting, status color badges, and AI tag suggestions per row"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -85,12 +85,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Work item date formatting: changed from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability in table display",
-    "Work item table column width refinement: increased from 38px to 56px for prompt/commit counts, 80px for date column to accommodate new format",
-    "Tag filtering in work items UI: investigating why non-work-item tags (Shared-memory, billing, etc.) appear in work items panel and implementing proper scope filtering",
-    "Work item deletion implementation: completed wiring of DELETE /work-items/{id} endpoint with confirm dialog, cache clearing, and panel re-rendering",
-    "Header styling standardization: applied uppercase text-transform, letter-spacing, active/inactive state indicators with accent colors across all table headers",
-    "Database query performance optimization: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency"
+    "Work item table sticky header: implementing fixed header that persists when user scrolls down in work_items panel",
+    "Work item UI date formatting: standardized to YY/MM/DD-HH:MM format across all date columns with improved column widths (56px\u201380px)",
+    "Tag filtering in work items UI: investigating and implementing proper scope filtering for non-work-item tags (Shared-memory, billing) appearing incorrectly in work items panel",
+    "AI tag suggestion display: adding ai_tag_suggestion column to work item table rows to surface LLM-generated tag recommendations",
+    "Memory embedding pipeline refresh: executing /memory endpoint to sync all recent prompts and work items, verifying event-to-work-item linkage accuracy",
+    "Work item deletion implementation: completed DELETE /work-items/{id} endpoint with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -122,7 +122,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-09T00:57:03Z",
+  "last_memory_run": "2026-04-09T01:14:15Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -139,15 +139,15 @@
       "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename\u2192recreate\u2192copy pattern (migrations m001-m019)",
       "Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes",
-      "Work item UI: multi-column sortable table with proper header styling, wider columns (56px\u201380px), date formatting (YY/MM/DD-HH:MM), and status color badges"
+      "Work item UI: sticky header on scroll, multi-column sortable table with YY/MM/DD-HH:MM date formatting, status color badges, and AI tag suggestions per row"
     ],
     "in_progress": [
-      "Work item date formatting: changed from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability in table display",
-      "Work item table column width refinement: increased from 38px to 56px for prompt/commit counts, 80px for date column to accommodate new format",
-      "Tag filtering in work items UI: investigating why non-work-item tags (Shared-memory, billing, etc.) appear in work items panel and implementing proper scope filtering",
-      "Work item deletion implementation: completed wiring of DELETE /work-items/{id} endpoint with confirm dialog, cache clearing, and panel re-rendering",
-      "Header styling standardization: applied uppercase text-transform, letter-spacing, active/inactive state indicators with accent colors across all table headers",
-      "Database query performance optimization: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency"
+      "Work item table sticky header: implementing fixed header that persists when user scrolls down in work_items panel",
+      "Work item UI date formatting: standardized to YY/MM/DD-HH:MM format across all date columns with improved column widths (56px\u201380px)",
+      "Tag filtering in work items UI: investigating and implementing proper scope filtering for non-work-item tags (Shared-memory, billing) appearing incorrectly in work items panel",
+      "AI tag suggestion display: adding ai_tag_suggestion column to work item table rows to surface LLM-generated tag recommendations",
+      "Memory embedding pipeline refresh: executing /memory endpoint to sync all recent prompts and work items, verifying event-to-work-item linkage accuracy",
+      "Work item deletion implementation: completed DELETE /work-items/{id} endpoint with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -155,22 +155,17 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database_version": "PostgreSQL 15+",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "prompt_management": "core.prompt_loader module with centralized prompt caching",
-      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "database": "PostgreSQL 15+ with pgvector",
+      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAPI + PostgreSQL with pgvector embeddings) and an Electron desktop UI (Vanilla JS + Cytoscape visualization). The system captures development events, commits, and interactions across projects, synthesizes them via Claude Haiku into structured work items and project facts, and provides semantic search via MCP tools and workflow automation via YAML-configured DAG pipelines. Currently focused on refining the work items UI (date formatting, column layout, tag scoping) and optimizing database query performance through FK indexing.",
-    "memory_digest": "**[2026-04-09]** `claude_cli` \u2014 Completed work item deletion feature with `DELETE /work-items/{id}` endpoint, confirm dialog, and UI cache invalidation. Fixed date display format from YYMMDDHHSS to YY/MM/DD-HH:MM for improved readability. **[2026-04-09]** `claude_cli` \u2014 Refined work item table UI: increased column widths (38px\u219256px for counts, 80px for date), improved header styling with uppercase text-transform, letter-spacing, and accent color indicators for active sort fields. **[2026-04-09]** `claude_cli` \u2014 Added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to unlinked work items query; updated_at timestamp tracking for sort optimization. **[2026-04-09]** `claude_cli` \u2014 Identified tag filtering bug: non-work-item tags (Shared-memory, billing, etc.) incorrectly display in work items panel; requires scope-based tag filtering implementation. **[prior]** \u2014 Established Claude Haiku dual-layer memory synthesis architecture generating 5 output files with auto-tag suggestions, timestamp tracking, and LLM response summarization. **[prior]** \u2014 Implemented async DAG workflow executor with Cytoscape.js visualization, 2-pane approval panel, and per-node retry/continue logic."
+    "project_summary": "aicli is a shared AI memory platform integrating a FastAPI backend, PostgreSQL semantic database, Electron desktop UI, and multi-LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok). It captures development events, commits, and prompts into a unified memory architecture with 4-layer processing (ephemeral \u2192 raw \u2192 digested \u2192 work items), enabling semantic search and workflow automation. Currently focusing on work item UI refinement\u2014sticky headers, better date formatting, tag filtering, and AI-generated tag suggestions per row.",
+    "memory_digest": "**[2026-04-09]** `ui/work-items` \u2014 Implemented work item table with YY/MM/DD-HH:MM date formatting, increased column widths (56px\u201380px) for better clarity, and added header styling with active-field indicators. **[2026-04-09]** `ui/headers` \u2014 Standardized header styling across sortable table with uppercase text-transform, letter-spacing, and active/inactive state indicators. **[2026-04-09]** `backend/deletion` \u2014 Completed DELETE /work-items/{id} endpoint wiring with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering. **[2026-04-09]** `database/performance` \u2014 Identified schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency in unlinked work items JOIN. **[2026-04-09]** `ui/filtering` \u2014 Investigated tag filtering scope issue where non-work-item tags (Shared-memory, billing) appear in work items panel; planning proper scope-based filtering. **[2026-04-09]** `ui/features` \u2014 Requested sticky header on work items table scroll, AI tag suggestion display per row, and /memory endpoint execution to validate event-to-work-item linkage. **[current]** `requirements` \u2014 User requests: sticky header during scroll, YY/MM/DD-HH:MM date format, tag scope filtering, and AI tag suggestions visible in work item rows."
   }
 }

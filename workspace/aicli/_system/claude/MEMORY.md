@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-09 00:56 UTC by aicli /memory_
+_Generated: 2026-04-09 01:13 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAPI + PostgreSQL with pgvector embeddings) and an Electron desktop UI (Vanilla JS + Cytoscape visualization). The system captures development events, commits, and interactions across projects, synthesizes them via Claude Haiku into structured work items and project facts, and provides semantic search via MCP tools and workflow automation via YAML-configured DAG pipelines. Currently focused on refining the work items UI (date formatting, column layout, tag scoping) and optimizing database query performance through FK indexing.
+aicli is a shared AI memory platform integrating a FastAPI backend, PostgreSQL semantic database, Electron desktop UI, and multi-LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok). It captures development events, commits, and prompts into a unified memory architecture with 4-layer processing (ephemeral → raw → digested → work items), enabling semantic search and workflow automation. Currently focusing on work item UI refinement—sticky headers, better date formatting, tag filtering, and AI-generated tag suggestions per row.
 
 ## Project Facts
 
@@ -16,15 +16,19 @@ aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAP
 - **commit_tracking_schema**: mem_mrr_commits_code table with 19 columns including commit_short_hash and full_symbol as generated column
 - **data_model_hierarchy**: clients_contain_multiple_users
 - **data_persistence_issue**: tags_disappear_on_session_switch
+- **date_format_frontend**: YY/MM/DD-HH:MM format in work item panel
 - **db_engine**: PostgreSQL with SQL parameter binding
+- **db_schema_management**: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
-- **deployment_target**: Claude CLI and LLM platforms
+- **deployment_target**: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
+- **frontend_ui_pattern**: inline event handlers with event.stopPropagation(), CSS opacity/color hover states, escaped string interpolation in onclick
 - **known_bug_active**: planner_tag_visibility: categories upload but individual tags don't display in UI bindings
 - **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
 - **memory_management_pattern**: load_once_on_access_update_on_save
 - **memory_system_update_status**: updated_with_latest_context_and_session_tags
+- **pending_feature**: tags display under work_items in shared memory context
 - **pending_implementation**: memory_items_and_project_facts_table_population
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
 - **performance_issue_active**: route_work_items latency ~60s; investigating _SQL_UNLINKED_WORK_ITEMS indexing and mem_ai_events join optimization
@@ -44,6 +48,7 @@ Reviewer: ```json
   "score": 4,
   "issues": [
     "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
+- **prompt_architecture**: core.prompt_loader for centralization; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
 - **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
 - **rel:commit_processing:exec_llm_flag**: replaces
 - **rel:memory_system:session_tags**: implements
@@ -54,6 +59,9 @@ Reviewer: ```json
 - **rel:route_search:memory_embedding**: depends_on
 - **rel:route_snapshots:prompt_loader**: depends_on
 - **rel:route_work_items:sql_parameter_binding**: depends_on
+- **rel:ui_notifications:error_handling**: related_to
+- **rel:work_item_deletion:api_endpoint**: depends_on
+- **rel:work_item_panel:state_management**: implements
 - **route_work_items_sql_errors**: line_249_cur_execute_missing_parameter_binding_line_288_incomplete_column_selection_in_merged_query
 - **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
 - **stale_code_removed**: git_supervisor_module_deleted_automated_git_workflow_no_longer_used
@@ -61,8 +69,14 @@ Reviewer: ```json
 - **tagging_system_hierarchy**: nested_hierarchy_beyond_2_levels_approved
 - **ui_action_menu_pattern**: 3_dot_menu_for_action_visibility
 - **ui_library**: 3_dot_menu_pattern
+- **ui_toast_notification**: toast() function displays error messages with 'error' severity level
 - **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
 - **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
+- **work_item_deletion_pattern**: client-side confirmation dialog, async api.workItems.delete(), local state cleanup, re-render panel
+- **work_item_display_fields**: ai_category icon mapping, status_user color mapping, seq_num sequence number, id identifier
+- **work_item_panel_state_management**: _wiPanelItems object stores work items, window._wiPanelDelete and window._wiPanelRefresh are global handlers
+- **work_item_ui_column_widths**: 56px–80px for multi-column sortable table headers
+- **work_item_ui_pattern**: multi-column sortable table with proper header styling, status color badges
 
 ## Tech Stack
 
@@ -90,7 +104,7 @@ Reviewer: ```json
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **database**: PostgreSQL 15+ with pgvector
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
@@ -119,16 +133,16 @@ Reviewer: ```json
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: multi-column sortable table with proper header styling, wider columns (56px–80px), date formatting (YY/MM/DD-HH:MM), and status color badges
+- Work item UI: sticky header on scroll, multi-column sortable table with YY/MM/DD-HH:MM date formatting, status color badges, and AI tag suggestions per row
 
 ## In Progress
 
-- Work item date formatting: changed from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability in table display
-- Work item table column width refinement: increased from 38px to 56px for prompt/commit counts, 80px for date column to accommodate new format
-- Tag filtering in work items UI: investigating why non-work-item tags (Shared-memory, billing, etc.) appear in work items panel and implementing proper scope filtering
-- Work item deletion implementation: completed wiring of DELETE /work-items/{id} endpoint with confirm dialog, cache clearing, and panel re-rendering
-- Header styling standardization: applied uppercase text-transform, letter-spacing, active/inactive state indicators with accent colors across all table headers
-- Database query performance optimization: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency
+- Work item table sticky header: implementing fixed header that persists when user scrolls down in work_items panel
+- Work item UI date formatting: standardized to YY/MM/DD-HH:MM format across all date columns with improved column widths (56px–80px)
+- Tag filtering in work items UI: investigating and implementing proper scope filtering for non-work-item tags (Shared-memory, billing) appearing incorrectly in work items panel
+- AI tag suggestion display: adding ai_tag_suggestion column to work item table rows to surface LLM-generated tag recommendations
+- Memory embedding pipeline refresh: executing /memory endpoint to sync all recent prompts and work items, verifying event-to-work-item linkage accuracy
+- Work item deletion implementation: completed DELETE /work-items/{id} endpoint with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering
 
 ## Active Features / Bugs / Tasks
 
@@ -179,148 +193,147 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-Fixed UI display issues by implementing hard refresh, restarting backend for SQL changes, and improving header clarity with wider columns (38px→wider), better padding, and visual separation.
-
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
-diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index 4b7d08b..556d186 100644
---- a/ui/frontend/views/entities.js
-+++ b/ui/frontend/views/entities.js
-@@ -478,12 +478,13 @@ function _renderWiPanel(items, project) {
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index cdbfe0b..a797ef4 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
-   function hdr(f, label) {
-     const active = window._wiPanelSort.field === f;
--    const arrow  = active ? (window._wiPanelSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
-+    const arrow  = active ? (window._wiPanelSort.dir === 'asc' ? '↑' : '↓') : '↕';
-     return `<th onclick="window._wiPanelResort('${f}')"
--      style="text-align:right;padding:2px 6px;cursor:pointer;user-select:none;white-space:nowrap;
--             font-size:0.6rem;font-weight:${active?'600':'400'};
--             color:${active?'var(--text)':'var(--muted)'};border-bottom:1px solid var(--border)">
--      ${label}${arrow}
-+      style="text-align:right;padding:4px 8px;cursor:pointer;user-select:none;white-space:nowrap;
-+             font-size:0.62rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
-+             color:${active?'var(--accent)':'var(--muted)'};background:var(--surface2);
-+             border-bottom:2px solid ${active?'var(--accent)':'var(--border)'};border-left:1px solid var(--border)">
-+      ${label}&nbsp;<span style="opacity:${active?1:.35};font-size:0.55rem">${arrow}</span>
-     </th>`;
-   }
+ ## Recent Work
  
-@@ -527,21 +528,26 @@ function _renderWiPanel(items, project) {
-         ${descClip ? `<div style="font-size:0.57rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
-                                   white-space:nowrap;padding-left:18px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
-       </td>
--      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.6rem;
--                 color:var(--text2);font-variant-numeric:tabular-nums;width:38px">${wi.prompt_count||0}</td>
--      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.6rem;
--                 color:var(--text2);font-variant-numeric:tabular-nums;width:38px">${wi.commit_count||0}</td>
--      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.57rem;
--                 color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;width:72px">${fmtDate(wi.updated_at||wi.created_at)}</td>
-+      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.65rem;
-+                 color:var(--text2);font-variant-numeric:tabular-nums;
-+                 border-left:1px solid var(--border);width:56px">${wi.prompt_count||0}</td>
-+      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.65rem;
-+                 color:var(--text2);font-variant-numeric:tabular-nums;
-+                 border-left:1px solid var(--border);width:56px">${wi.commit_count||0}</td>
-+      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.6rem;
-+                 color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;
-+                 border-left:1px solid var(--border);width:80px">${fmtDate(wi.updated_at||wi.created_at)}</td>
-     </tr>`;
-   }).join('');
- 
-   list.innerHTML = `
-     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
--      <colgroup><col><col style="width:38px"><col style="width:38px"><col style="width:72px"></colgroup>
-+      <colgroup><col><col style="width:56px"><col style="width:56px"><col style="width:80px"></colgroup>
-       <thead><tr>
--        <th style="text-align:left;padding:2px 6px;font-size:0.6rem;font-weight:400;
--                   color:var(--muted);border-bottom:1px solid var(--border)">Name / Description</th>
-+        <th style="text-align:left;padding:4px 8px;font-size:0.62rem;font-weight:600;
-+                   letter-spacing:.03em;text-transform:uppercase;
-+                   color:var(--muted);background:var(--surface2);
-+                   border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>
-         ${hdr('prompt_count','Prompts')}
-         ${hdr('commit_count','Commits')}
-         ${hdr('updated_at','Updated')}
+-- Work item table UI refinement: implemented multi-column sortable display with separate sort state (field/direction); added date formatter (fmtDate), header styling with active indicators, improved column widths and visual separation
+-- Work item counting optimization: added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to _SQL_UNLINKED_WORK_ITEMS query; added updated_at timestamp tracking
+-- Table header clarity: increased column width from 38px, added background/border styling to headers, implemented dynamic active-field indicator arrows (↑/↓), fixed text contrast for muted vs active states
+-- Database query performance: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve ~60s latency in unlinked work items JOIN
+-- Memory embedding pipeline: synchronized LLM prompt tracing across memory_embedding.py, agents/tools/, and routers/ with consistent module imports
+-- Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries
++- Work item date formatting: changed from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability in table display
++- Work item table column width refinement: increased from 38px to 56px for prompt/commit counts, 80px for date column to accommodate new format
++- Tag filtering in work items UI: investigating why non-work-item tags (Shared-memory, billing, etc.) appear in work items panel and implementing proper scope filtering
++- Work item deletion implementation: completed wiring of DELETE /work-items/{id} endpoint with confirm dialog, cache clearing, and panel re-rendering
++- Header styling standardization: applied uppercase text-transform, letter-spacing, active/inactive state indicators with accent colors across all table headers
++- Database query performance optimization: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index b70d3d6..94cd853 100644
+index 7300e07..2b56fbf 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-09 00:35 UTC
-+> Generated by aicli 2026-04-09 00:43 UTC
+-> Generated by aicli 2026-04-09 00:48 UTC
++> Generated by aicli 2026-04-09 00:56 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -62,4 +62,4 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
+ - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
+-- Work item UI: multi-column sortable table with proper header styling, wider columns (38px→60+px), date formatting (YYMMDDHHSS), and status color badges
+\ No newline at end of file
++- Work item UI: multi-column sortable table with proper header styling, wider columns (56px–80px), date formatting (YY/MM/DD-HH:MM), and status color badges
+\ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index dc368db..915a767 100644
+index d15e55a..1556845 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:35 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:43 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:48 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:56 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -66,8 +66,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -62,12 +62,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
+ - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
+-- Work item UI: multi-column sortable table with proper header styling, wider columns (38px→60+px), date formatting (YYMMDDHHSS), and status color badges
++- Work item UI: multi-column sortable table with proper header styling, wider columns (56px–80px), date formatting (YY/MM/DD-HH:MM), and status color badges
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
- - [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
- - [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
+-- [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
  - [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
--- [2026-04-09] I do not see any change at the ui.
+ - [2026-04-09] I do not see any change at the ui.
+ - [2026-04-09] Where did you add that ? is it in Work item tab (lower screen) in Planner ?
+-- [2026-04-09] Now iot works but it is very close to each other (ui commit is on prompts) . can you make the header more clear
 \ No newline at end of file
-+- [2026-04-09] I do not see any change at the ui.
-+- [2026-04-09] Where did you add that ? is it in Work item tab (lower screen) in Planner ?
++- [2026-04-09] Now iot works but it is very close to each other (ui commit is on prompts) . can you make the header more clear
++- [2026-04-09] The data is not cleared can you change that to yy/mm/dd-hh:mm ? also I do see tags under work_items (Shared-memory, bill
 \ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index dc368db..915a767 100644
+index d15e55a..1556845 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:35 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:43 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:48 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:56 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -66,8 +66,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -62,12 +62,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
+ - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
+-- Work item UI: multi-column sortable table with proper header styling, wider columns (38px→60+px), date formatting (YYMMDDHHSS), and status color badges
++- Work item UI: multi-column sortable table with proper header styling, wider columns (56px–80px), date formatting (YY/MM/DD-HH:MM), and status color badges
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
- - [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
- - [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
+-- [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
  - [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
--- [2026-04-09] I do not see any change at the ui.
+ - [2026-04-09] I do not see any change at the ui.
+ - [2026-04-09] Where did you add that ? is it in Work item tab (lower screen) in Planner ?
+-- [2026-04-09] Now iot works but it is very close to each other (ui commit is on prompts) . can you make the header more clear
 \ No newline at end of file
-+- [2026-04-09] I do not see any change at the ui.
-+- [2026-04-09] Where did you add that ? is it in Work item tab (lower screen) in Planner ?
++- [2026-04-09] Now iot works but it is very close to each other (ui commit is on prompts) . can you make the header more clear
++- [2026-04-09] The data is not cleared can you change that to yy/mm/dd-hh:mm ? also I do see tags under work_items (Shared-memory, bill
 \ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
-Removed deprecated _system root documentation that was no longer needed after session 9315de75.
+Removed stale auto-generated context and system prompt files that were no longer needed. This is a cleanup operation to reduce repository clutter.
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index a66b7b2..cdbfe0b 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+ 
+ ## Recent Work
+ 
+-- Work item table UI refinement: implemented multi-column sortable display (name, prompts, commits, last-updated date); fixed draggable attribute binding to match _attachWorkItemDnd expectations
+-- Work item counting query optimization: refactored _SQL_LIST_WORK_ITEMS_BASE to count events (event_count, prompt_count) and commits via mem_ai_events FK instead of legacy mem_mrr_* tag queries; fixed interaction_count → prompt_count field mismatch
+-- Database schema canonicalization: consolidated DDL into db_schema.sql with migration framework db_migrations.py (m001-m019 tracked); single source of truth for all table definitions
+-- Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries; eliminates redundant DB lookups
+-- Database query performance optimization: investigating ~60s latency in route_work_items _SQL_UNLINKED_WORK_ITEMS JOIN; need index strategy on work_item_id and event_id FK columns
+-- Memory embedding pipeline: tracing all LLM prompts in memory_embedding.py, agents/tools/, and routers; synchronizing mirror tables through mem_ai_events with consistent module imports
++- Work item table UI refinement: implemented multi-column sortable display with separate sort state (field/direction); added date formatter (fmtDate), header styling with active indicators, improved column widths and visual separation
++- Work item counting optimization: added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to _SQL_UNLINKED_WORK_ITEMS query; added updated_at timestamp tracking
++- Table header clarity: increased column width from 38px, added background/border styling to headers, implemented dynamic active-field indicator arrows (↑/↓), fixed text contrast for muted vs active states
++- Database query performance: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve ~60s latency in unlinked work items JOIN
++- Memory embedding pipeline: synchronized LLM prompt tracing across memory_embedding.py, agents/tools/, and routers/ with consistent module imports
++- Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries
+
 
 ## AI Synthesis
 
-**[2026-04-09]** `claude_cli` — Completed work item deletion feature with `DELETE /work-items/{id}` endpoint, confirm dialog, and UI cache invalidation. Fixed date display format from YYMMDDHHSS to YY/MM/DD-HH:MM for improved readability. **[2026-04-09]** `claude_cli` — Refined work item table UI: increased column widths (38px→56px for counts, 80px for date), improved header styling with uppercase text-transform, letter-spacing, and accent color indicators for active sort fields. **[2026-04-09]** `claude_cli` — Added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to unlinked work items query; updated_at timestamp tracking for sort optimization. **[2026-04-09]** `claude_cli` — Identified tag filtering bug: non-work-item tags (Shared-memory, billing, etc.) incorrectly display in work items panel; requires scope-based tag filtering implementation. **[prior]** — Established Claude Haiku dual-layer memory synthesis architecture generating 5 output files with auto-tag suggestions, timestamp tracking, and LLM response summarization. **[prior]** — Implemented async DAG workflow executor with Cytoscape.js visualization, 2-pane approval panel, and per-node retry/continue logic.
+**[2026-04-09]** `ui/work-items` — Implemented work item table with YY/MM/DD-HH:MM date formatting, increased column widths (56px–80px) for better clarity, and added header styling with active-field indicators. **[2026-04-09]** `ui/headers` — Standardized header styling across sortable table with uppercase text-transform, letter-spacing, and active/inactive state indicators. **[2026-04-09]** `backend/deletion` — Completed DELETE /work-items/{id} endpoint wiring with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering. **[2026-04-09]** `database/performance` — Identified schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency in unlinked work items JOIN. **[2026-04-09]** `ui/filtering` — Investigated tag filtering scope issue where non-work-item tags (Shared-memory, billing) appear in work items panel; planning proper scope-based filtering. **[2026-04-09]** `ui/features` — Requested sticky header on work items table scroll, AI tag suggestion display per row, and /memory endpoint execution to validate event-to-work-item linkage. **[current]** `requirements` — User requests: sticky header during scroll, YY/MM/DD-HH:MM date format, tag scope filtering, and AI tag suggestions visible in work item rows.
