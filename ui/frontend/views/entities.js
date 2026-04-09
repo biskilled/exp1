@@ -479,8 +479,9 @@ function _renderWiPanel(items, project) {
   const { field, dir } = window._wiPanelSort;
   const mul = dir === 'asc' ? 1 : -1;
   const sorted = [...items].sort((a, b) => {
-    if (field === 'prompt_count')  return mul * ((a.prompt_count||0)  - (b.prompt_count||0));
-    if (field === 'commit_count')  return mul * ((a.commit_count||0)  - (b.commit_count||0));
+    if (field === 'event_count')  return mul * ((a.event_count||0)  - (b.event_count||0));
+    if (field === 'commit_count') return mul * ((a.commit_count||0) - (b.commit_count||0));
+    if (field === 'seq_num')      return mul * ((a.seq_num||0)      - (b.seq_num||0));
     return mul * (new Date(a.updated_at||a.created_at||0) - new Date(b.updated_at||b.created_at||0));
   });
 
@@ -558,6 +559,32 @@ function _renderWiPanel(items, project) {
     } catch(e) { toast('Remove failed: ' + e.message, 'error'); }
   };
 
+  // Secondary AI suggestion: approve = link tag_id directly (removes from unlinked list)
+  window._wiSecApprove = async (id, proj, tagId) => {
+    try {
+      await api.workItems.patch(id, proj, { tag_id: tagId });
+      delete _wiPanelItems[id];
+      const remaining = Object.values(_wiPanelItems);
+      _renderWiPanel(remaining, proj);
+      const cnt = document.getElementById('wi-panel-count');
+      if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
+      toast('Linked via secondary suggestion', 'success');
+    } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
+  };
+
+  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only
+  window._wiSecDismiss = async (id, proj) => {
+    try {
+      const current = (_wiPanelItems[id]?.ai_tags) || {};
+      const updated = { ...current, secondary: null };
+      await api.workItems.patch(id, proj, { ai_tags: updated });
+      if (_wiPanelItems[id]) {
+        _wiPanelItems[id].ai_tags = updated;
+      }
+      _renderWiPanel(Object.values(_wiPanelItems), proj);
+    } catch(e) { toast('Dismiss failed: ' + e.message, 'error'); }
+  };
+
   window._wiPanelCreateTag = async (id, tagName, categoryName, proj) => {
     const catLabel = categoryName || 'task';
     if (!confirm(`Create new ${catLabel} tag "${tagName}" and link this work item?`)) return;
@@ -628,7 +655,7 @@ function _renderWiPanel(items, project) {
       </div>`;
     }
 
-    // Secondary AI suggestion (phase/doc_type) — shown when present
+    // Secondary AI suggestion (phase/doc_type) — shown when present, with approve/dismiss
     let secRow = '';
     const sec = wi.ai_tags && wi.ai_tags.secondary;
     if (sec) {
@@ -637,9 +664,18 @@ function _renderWiPanel(items, project) {
         ? ((sec.category || 'phase') + ':' + (sec.tag_name || ''))
         : ((sec.suggested_category || 'phase') + ':' + (sec.suggested_new || ''));
       if (secLabel && secLabel !== ':' && !secLabel.endsWith(':')) {
+        const secApproveBtn = sec.tag_id
+          ? `<button onclick="event.stopPropagation();window._wiSecApprove('${_esc(wi.id)}','${_esc(project)}','${_esc(sec.tag_id)}')"
+               title="Link to this tag" style="background:none;border:1px solid #8e44ad;color:#8e44ad;
+                      cursor:pointer;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>`
+          : '';
         secRow = `<div style="display:flex;align-items:center;gap:4px;margin-top:2px;flex-wrap:wrap">
           <span style="${LBL_AI_S}">AI</span>
           <span style="font-size:0.60rem;color:var(--muted);white-space:nowrap">${_esc(secLabel)}</span>
+          ${secApproveBtn}
+          <button onclick="event.stopPropagation();window._wiSecDismiss('${_esc(wi.id)}','${_esc(project)}')"
+            title="Dismiss" style="background:none;border:1px solid #888;color:#888;cursor:pointer;
+                   font-size:0.6rem;font-weight:700;padding:1px 5px;border-radius:4px;line-height:1.5">×</button>
         </div>`;
       }
     }
@@ -688,13 +724,10 @@ function _renderWiPanel(items, project) {
       </td>
       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
                  color:var(--text2);font-variant-numeric:tabular-nums;
-                 border-left:1px solid var(--border)">${wi.prompt_count||0}</td>
+                 border-left:1px solid var(--border)">${wi.event_count||0}</td>
       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
                  color:var(--text2);font-variant-numeric:tabular-nums;
                  border-left:1px solid var(--border)">${wi.commit_count||0}</td>
-      <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
-                 color:var(--text2);font-variant-numeric:tabular-nums;
-                 border-left:1px solid var(--border)">${wi.event_count||0}</td>
       <td style="padding:4px 10px 4px 6px;text-align:right;white-space:nowrap;font-size:0.66rem;vertical-align:top;
                  color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;
                  border-left:1px solid var(--border)">${fmtDate(wi.updated_at||wi.created_at)}</td>
@@ -703,15 +736,14 @@ function _renderWiPanel(items, project) {
 
   list.innerHTML = `
     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <colgroup><col><col style="width:52px"><col style="width:52px"><col style="width:52px"><col style="width:112px"></colgroup>
+      <colgroup><col><col style="width:52px"><col style="width:52px"><col style="width:112px"></colgroup>
       <thead><tr>
         <th style="text-align:left;padding:5px 8px 5px 12px;font-size:0.68rem;font-weight:600;
                    letter-spacing:.03em;text-transform:uppercase;
                    color:var(--muted);background:var(--surface2);
                    border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>
-        ${hdr('prompt_count','Prompts')}
+        ${hdr('event_count','Events')}
         ${hdr('commit_count','Commits')}
-        ${hdr('event_count','Digests')}
         ${hdr('updated_at','Updated')}
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -996,8 +1028,8 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
   const { field, dir } = _wiSort;
   const mul = dir === 'asc' ? 1 : -1;
   rows.sort((a, b) => {
-    if (field === 'prompt_count')  return mul * ((a.prompt_count||0)  - (b.prompt_count||0));
-    if (field === 'commit_count')  return mul * ((a.commit_count||0)  - (b.commit_count||0));
+    if (field === 'event_count')  return mul * ((a.event_count||0)  - (b.event_count||0));
+    if (field === 'commit_count') return mul * ((a.commit_count||0) - (b.commit_count||0));
     // default: updated_at / created_at
     return mul * (new Date(a.updated_at||a.created_at||0) - new Date(b.updated_at||b.created_at||0));
   });
@@ -1060,7 +1092,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
         </td>
         <td style="padding:0.42rem 0.5rem;text-align:right;white-space:nowrap;
                    font-size:0.65rem;color:var(--text2);font-variant-numeric:tabular-nums;
-                   width:58px">${wi.prompt_count||0}</td>
+                   width:58px">${wi.event_count||0}</td>
         <td style="padding:0.42rem 0.5rem;text-align:right;white-space:nowrap;
                    font-size:0.65rem;color:var(--text2);font-variant-numeric:tabular-nums;
                    width:58px">${wi.commit_count||0}</td>
@@ -1079,7 +1111,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
         <tr>
           <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:400;
                      font-size:0.68rem;border-bottom:2px solid var(--border)">Name / Description</th>
-          ${hdr('prompt_count','Prompts')}
+          ${hdr('event_count','Events')}
           ${hdr('commit_count','Commits')}
           ${hdr('updated_at','Updated')}
         </tr>

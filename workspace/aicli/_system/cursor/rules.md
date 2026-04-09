@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 13:46 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 14:06 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-09] Where are all the rpompts for ai_tags and work_item are ?
 - [2026-04-09] I do see same work item working on mention document summery and update ai memory. all internal work such update internal
 - [2026-04-09] Can you share the quesry you are suing the get all promotps, commit, event per work_item . I want to check that for work
 - [2026-04-09] before you desing. is it possible to add some mechanism to our converstion. for example force adding tags and every 5-10
 - [2026-04-09] I have just tried that, got unknow skill /tag. do I have to open a new session ?
+- [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
