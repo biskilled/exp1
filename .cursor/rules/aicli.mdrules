@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 01:40 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:04 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -66,8 +66,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-09] Now iot works but it is very close to each other (ui commit is on prompts) . can you make the header more clear
-- [2026-04-09] The data is not cleared can you change that to yy/mm/dd-hh:mm ? also I do see tags under work_items (Shared-memory, bill
 - [2026-04-09] What did you do now ?
 - [2026-04-09] I would like that the header wont disappear when user scroll down in work_items. also can you /momry in order to update 
 - [2026-04-09] I cannot see the sujjestion. is it on each row in work_items ?
+- [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
+- [2026-04-09] I do see there is one ai_tags which is good. but ai_tags suppose to be feature, bug or task with the name . for example 
