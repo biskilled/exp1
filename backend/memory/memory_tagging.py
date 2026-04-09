@@ -234,12 +234,13 @@ class MemoryTagging:
         if not query.strip():
             return []
 
+        candidates: list[dict] = []
         try:
             emb = await self._embed_text(query)
+            candidates = self._vector_search_tags(project, emb, limit=15)
         except Exception:
-            return []
+            pass  # no embedding available — fall through to Haiku fallback
 
-        candidates = self._vector_search_tags(project, emb, limit=15)
         strong = [c for c in candidates if c['score'] > 0.85]
         border = [c for c in candidates if 0.70 < c['score'] <= 0.85]
 
@@ -254,6 +255,18 @@ class MemoryTagging:
                 for j in judgments:
                     if j.get('relation') not in (None, 'none'):
                         results.append(j)
+            except Exception:
+                pass
+
+        # Level 4 — no vector candidates (tags have no embeddings yet): ask Haiku directly
+        if not candidates:
+            try:
+                all_tags = self._load_all_tags(project)
+                if all_tags:
+                    judgments = await self._claude_judge_candidates(wi, all_tags)
+                    for j in judgments:
+                        if j.get('relation') not in (None, 'none') and j.get('confidence', 0) >= 0.70:
+                            results.append(j)
             except Exception:
                 pass
 
@@ -306,6 +319,21 @@ class MemoryTagging:
                     return None
                 return {'id': str(row[0]), 'name': row[1], 'category_id': row[2]}
 
+    def _load_all_tags(self, project: str, limit: int = 40) -> list[dict]:
+        """Load all active planner tags (no embedding required) for Haiku-fallback matching."""
+        project_id = db.get_or_create_project_id(project)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, name, category_id, short_desc
+                    FROM planner_tags
+                    WHERE project_id = %s AND status != 'archived'
+                    ORDER BY created_at DESC LIMIT %s
+                """, (project_id, limit))
+                rows = cur.fetchall()
+                return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
+                         'short_desc': r[3] or '', 'score': 0.0} for r in rows]
+
     def _vector_search_tags(self, project: str, embedding: list, limit: int = 15) -> list[dict]:
         project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
@@ -331,41 +359,51 @@ class MemoryTagging:
         return resp.data[0].embedding
 
     async def _claude_judge_candidates(self, wi: dict, candidates: list[dict]) -> list[dict]:
-        """Use Claude Haiku to judge borderline tag candidates."""
+        """Use Claude Haiku to find the best matching tag for a work item."""
         cand_text = '\n'.join(
-            f"- {c['name']} (score:{c['score']:.2f}) | {c.get('short_desc','')}"
-            for c in candidates
+            f"- {c['name']} | {c.get('short_desc','')}" for c in candidates
         )
         prompt = (
-            f"WORK ITEM: name: {wi['name']}  summary: {wi.get('description','')}\n"
-            f"CANDIDATE TAGS:\n{cand_text}\n\n"
-            "For each candidate, determine if it matches this work item.\n"
-            "Exact: same concept, scope, intent. Similar: overlapping but not identical. None: unrelated.\n"
-            'Respond ONLY in JSON: {"matches":[{"tag_name":"...","relation":"exact|similar|none","confidence":0.0-1.0}]}'
+            f"WORK ITEM: {wi['name']} — {wi.get('description','')}\n\n"
+            f"AVAILABLE TAGS:\n{cand_text}\n\n"
+            "Pick the SINGLE best matching tag for this work item (if any).\n"
+            "relation: 'exact' (same concept), 'similar' (overlapping), or 'none' (no match).\n"
+            'Respond ONLY in JSON: {"tag_name":"...","relation":"exact|similar|none","confidence":0.0-1.0}\n'
+            'If no tag fits, respond: {"tag_name":null,"relation":"none","confidence":0.0}'
         )
         system = (
             "You are a technical project memory assistant. "
-            "Given an AI-generated work item and candidate tags, determine if any match. "
-            "Respond ONLY in JSON."
+            "Match AI-generated work items to project feature/task tags. "
+            "Respond ONLY in valid JSON — no markdown, no explanation."
         )
 
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         msg = await client.messages.create(
             model='claude-haiku-4-5-20251001',
-            max_tokens=512,
+            max_tokens=128,
             system=system,
             messages=[{'role': 'user', 'content': prompt}]
         )
         text = msg.content[0].text.strip()
+        # Strip markdown code fences if present
+        if text.startswith('```'):
+            text = text.split('```')[1]
+            if text.startswith('json'):
+                text = text[4:]
+            text = text.strip()
         data = json.loads(text)
         name_to_id = {c['name']: c['id'] for c in candidates}
+        # Handle both single-object and array response
+        matches = data if isinstance(data, list) else [data]
         results = []
-        for m in data.get('matches', []):
-            tid = name_to_id.get(m.get('tag_name'))
-            if tid:
+        for m in matches:
+            if not m.get('tag_name'):
+                continue
+            tid = name_to_id.get(m['tag_name'])
+            if tid and m.get('relation', 'none') != 'none':
                 results.append({
                     'tag_id': tid,
                     'relation': m.get('relation', 'none'),
-                    'confidence': float(m.get('confidence', 0.0))
+                    'confidence': float(m.get('confidence', 0.75))
                 })
         return results

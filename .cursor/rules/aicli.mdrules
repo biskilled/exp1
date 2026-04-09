@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 01:13 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 01:16 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -62,7 +62,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: sticky header on scroll, multi-column sortable table with YY/MM/DD-HH:MM date formatting, status color badges, and AI tag suggestions per row
+- Work item UI: multi-column sortable table with YY/MM/DD-HH:MM date formatting, wider columns (56px–80px), status color badges, and scope-filtered tag display
 
 ## Recent Context (last 5 changes)
 

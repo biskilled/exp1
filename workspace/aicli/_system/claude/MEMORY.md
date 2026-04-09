@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-09 01:13 UTC by aicli /memory_
+_Generated: 2026-04-09 01:16 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform integrating a FastAPI backend, PostgreSQL semantic database, Electron desktop UI, and multi-LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok). It captures development events, commits, and prompts into a unified memory architecture with 4-layer processing (ephemeral → raw → digested → work items), enabling semantic search and workflow automation. Currently focusing on work item UI refinement—sticky headers, better date formatting, tag filtering, and AI-generated tag suggestions per row.
+aicli is a shared AI memory platform that integrates code analysis, project tracking, and LLM-powered workflows across CLI, desktop (Electron), and backend (FastAPI) interfaces. It uses PostgreSQL with pgvector for semantic search, implements a 4-layer memory architecture from raw captures to synthesized work items, and supports multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) through a provider adapter pattern. Currently in active refinement of work item UI table formatting, tag filtering logic, and deletion workflows to improve user experience.
 
 ## Project Facts
 
@@ -133,16 +133,16 @@ Reviewer: ```json
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: sticky header on scroll, multi-column sortable table with YY/MM/DD-HH:MM date formatting, status color badges, and AI tag suggestions per row
+- Work item UI: multi-column sortable table with YY/MM/DD-HH:MM date formatting, wider columns (56px–80px), status color badges, and scope-filtered tag display
 
 ## In Progress
 
-- Work item table sticky header: implementing fixed header that persists when user scrolls down in work_items panel
-- Work item UI date formatting: standardized to YY/MM/DD-HH:MM format across all date columns with improved column widths (56px–80px)
-- Tag filtering in work items UI: investigating and implementing proper scope filtering for non-work-item tags (Shared-memory, billing) appearing incorrectly in work items panel
-- AI tag suggestion display: adding ai_tag_suggestion column to work item table rows to surface LLM-generated tag recommendations
-- Memory embedding pipeline refresh: executing /memory endpoint to sync all recent prompts and work items, verifying event-to-work-item linkage accuracy
+- Work item date formatting: standardized from YYMMDDHHSS to YY/MM/DD-HH:MM format for improved table readability
+- Work item table column width refinement: increased widths to 56px–80px to accommodate date format and better visual separation
+- Tag filtering in work items UI: investigating incorrect display of non-work-item tags (Shared-memory, billing, etc.) in work items panel; implementing proper scope filtering
 - Work item deletion implementation: completed DELETE /work-items/{id} endpoint with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering
+- AI tag suggestion display: adding ai_tag_suggestion column to work item table rows to surface LLM-generated tag recommendations
+- Memory embedding pipeline refresh: executing /memory endpoint to sync recent prompts and work items, verifying event-to-work-item linkage accuracy
 
 ## Active Features / Bugs / Tasks
 
@@ -336,4 +336,4 @@ index a66b7b2..cdbfe0b 100644
 
 ## AI Synthesis
 
-**[2026-04-09]** `ui/work-items` — Implemented work item table with YY/MM/DD-HH:MM date formatting, increased column widths (56px–80px) for better clarity, and added header styling with active-field indicators. **[2026-04-09]** `ui/headers` — Standardized header styling across sortable table with uppercase text-transform, letter-spacing, and active/inactive state indicators. **[2026-04-09]** `backend/deletion` — Completed DELETE /work-items/{id} endpoint wiring with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering. **[2026-04-09]** `database/performance` — Identified schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency in unlinked work items JOIN. **[2026-04-09]** `ui/filtering` — Investigated tag filtering scope issue where non-work-item tags (Shared-memory, billing) appear in work items panel; planning proper scope-based filtering. **[2026-04-09]** `ui/features` — Requested sticky header on work items table scroll, AI tag suggestion display per row, and /memory endpoint execution to validate event-to-work-item linkage. **[current]** `requirements` — User requests: sticky header during scroll, YY/MM/DD-HH:MM date format, tag scope filtering, and AI tag suggestions visible in work item rows.
+**[2026-04-09]** `UI refinement` — Standardized work item table date formatting from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability; increased column widths to 56px–80px for date and count columns. **[2026-04-09]** `Tag filtering` — Identified bug where non-work-item scoped tags (Shared-memory, billing) incorrectly appear in work items panel; implementing proper scope-based tag filtering. **[2026-04-09]** `Work item deletion` — Completed DELETE /work-items/{id} endpoint with confirm dialog, cache invalidation via window._wiPanelDelete callback, and full panel re-rendering. **[2026-04-08]** `Work item population` — Established FK linkage pattern where mem_ai_events.work_item_id connects many events to single work item; mem_mrr_commits.event_id points to mem_ai_events for commit tracking. **[2026-04-09]** `AI tag suggestions` — Planned ai_tag_suggestion column display in work item table rows to surface LLM-generated tag recommendations alongside manual tagging. **[2026-04-09]** `Memory embedding pipeline` — Executing /memory endpoint to synchronize recent prompts and work items; verifying event-to-work-item linkage accuracy via embedding refresh.

@@ -506,6 +506,35 @@ async def extract_work_item_code(item_id: str, project: str | None = Query(None)
     return result
 
 
+@router.post("/rematch-all")
+async def rematch_all_work_items(project: str | None = Query(None), background: BackgroundTasks = None):
+    """Run tag-matching for all unlinked work items (no ai_tag_id set) in the background."""
+    _require_db()
+    p = _project(project)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM mem_ai_work_items WHERE project_id=%s AND ai_tag_id IS NULL AND status_user!='done' LIMIT 100",
+                (db.get_project_id(p),),
+            )
+            ids = [str(r[0]) for r in cur.fetchall()]
+    for wi_id in ids:
+        background.add_task(_run_matching, p, wi_id)
+    return {"queued": len(ids), "project": p}
+
+
+@router.post("/{item_id}/match")
+async def match_work_item_tags(item_id: str, project: str | None = Query(None)):
+    """Run tag matching synchronously for a single work item — returns matches for debugging."""
+    _require_db()
+    p = _project(project)
+    from memory.memory_tagging import MemoryTagging
+    try:
+        matches = await MemoryTagging().match_work_item_to_tags(p, item_id)
+        return {"matches": matches, "count": len(matches)}
+    except Exception as e:
+        return {"error": str(e), "matches": []}
+
 
 # ── Lookup by sequential number ───────────────────────────────────────────────
 

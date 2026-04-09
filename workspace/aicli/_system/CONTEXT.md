@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-09 01:15 UTC — do not edit manually.
+> Auto-generated 2026-04-09 01:17 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 446
-- **Last active**: 2026-04-09T01:05:57Z
+- **Sessions**: 447
+- **Last active**: 2026-04-09T01:16:46Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -53,12 +53,12 @@
 
 ## In Progress
 
-- Work item table sticky header: implementing fixed header that persists when user scrolls down in work_items panel
-- Work item UI date formatting: standardized to YY/MM/DD-HH:MM format across all date columns with improved column widths (56px–80px)
-- Tag filtering in work items UI: investigating and implementing proper scope filtering for non-work-item tags (Shared-memory, billing) appearing incorrectly in work items panel
-- AI tag suggestion display: adding ai_tag_suggestion column to work item table rows to surface LLM-generated tag recommendations
-- Memory embedding pipeline refresh: executing /memory endpoint to sync all recent prompts and work items, verifying event-to-work-item linkage accuracy
+- Work item date formatting: standardized from YYMMDDHHSS to YY/MM/DD-HH:MM format for improved table readability
+- Work item table column width refinement: increased widths to 56px–80px to accommodate date format and better visual separation
+- Tag filtering in work items UI: investigating incorrect display of non-work-item tags (Shared-memory, billing, etc.) in work items panel; implementing proper scope filtering
 - Work item deletion implementation: completed DELETE /work-items/{id} endpoint with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering
+- AI tag suggestion display: adding ai_tag_suggestion column to work item table rows to surface LLM-generated tag recommendations
+- Memory embedding pipeline refresh: executing /memory endpoint to sync recent prompts and work items, verifying event-to-work-item linkage accuracy
 
 ## Key Decisions
 
@@ -76,7 +76,7 @@
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: sticky header on scroll, multi-column sortable table with YY/MM/DD-HH:MM date formatting, status color badges, and AI tag suggestions per row
+- Work item UI: multi-column sortable table with YY/MM/DD-HH:MM date formatting, wider columns (56px–80px), status color badges, and scope-filtered tag display
 
 ---
 
