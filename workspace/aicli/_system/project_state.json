@@ -51,12 +51,12 @@
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts \u2192 user planner_tags",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation",
-    "Work items: FK approach with mem_mrr_commits.event_id \u2192 mem_ai_events and mem_ai_events.work_item_id for many-to-one linkage; dual status tracking (status_user/status_ai)",
+    "Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events (commit digest)",
     "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
     "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
     "Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename\u2192recreate\u2192copy pattern (migrations m001-m019)",
     "Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes",
-    "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates"
+    "Work item UI: multi-column sortable table (name/desc, prompts, commits, last-updated date) with drag-and-drop support and work-item-drawer detail view"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -85,12 +85,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Work item population and linkage model: redesigned FK architecture so mem_mrr_commits.event_id points to mem_ai_events (commit digest), and mem_ai_events.work_item_id links to work_items; migration m019 implements this many-events-to-one-work-item pattern",
-    "mem_mrr_commits_code population strategy: investigating whether full population on every commit is necessary vs. lazy/selective population; questioning cost-benefit of semantic extraction for all commits",
-    "Planner tag UI binding fix: resolved `catName` ReferenceError in _renderDrawer() (scope issue) and corrected field mismatch v.short_desc \u2192 v.desc for proper tag display on left sidebar",
-    "Database schema canonicalization: consolidated all DDL into db_schema.sql with migration framework db_migrations.py (m001-m019 tracked); single source of truth for database design",
-    "Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader instead of mng_system_roles queries; eliminates redundant DB lookups",
-    "Database query performance optimization: investigating ~60s latency in route_work_items (JOIN optimization and indexing strategy for unlinked work items query)"
+    "Work item table UI refinement: implemented multi-column sortable display (name, prompts, commits, last-updated date); fixed draggable attribute binding to match _attachWorkItemDnd expectations",
+    "Work item counting query optimization: refactored _SQL_LIST_WORK_ITEMS_BASE to count events (event_count, prompt_count) and commits via mem_ai_events FK instead of legacy mem_mrr_* tag queries; fixed interaction_count \u2192 prompt_count field mismatch",
+    "Database schema canonicalization: consolidated DDL into db_schema.sql with migration framework db_migrations.py (m001-m019 tracked); single source of truth for all table definitions",
+    "Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries; eliminates redundant DB lookups",
+    "Database query performance optimization: investigating ~60s latency in route_work_items _SQL_UNLINKED_WORK_ITEMS JOIN; need index strategy on work_item_id and event_id FK columns",
+    "Memory embedding pipeline: tracing all LLM prompts in memory_embedding.py, agents/tools/, and routers; synchronizing mirror tables through mem_ai_events with consistent module imports"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -122,7 +122,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-09T00:11:32Z",
+  "last_memory_run": "2026-04-09T00:31:09Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -134,20 +134,20 @@
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts \u2192 user planner_tags",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation",
-      "Work items: FK approach with mem_mrr_commits.event_id \u2192 mem_ai_events and mem_ai_events.work_item_id for many-to-one linkage; dual status tracking (status_user/status_ai)",
+      "Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events (commit digest)",
       "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
       "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename\u2192recreate\u2192copy pattern (migrations m001-m019)",
       "Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes",
-      "Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates"
+      "Work item UI: multi-column sortable table (name/desc, prompts, commits, last-updated date) with drag-and-drop support and work-item-drawer detail view"
     ],
     "in_progress": [
-      "Work item population and linkage model: redesigned FK architecture so mem_mrr_commits.event_id points to mem_ai_events (commit digest), and mem_ai_events.work_item_id links to work_items; migration m019 implements this many-events-to-one-work-item pattern",
-      "mem_mrr_commits_code population strategy: investigating whether full population on every commit is necessary vs. lazy/selective population; questioning cost-benefit of semantic extraction for all commits",
-      "Planner tag UI binding fix: resolved `catName` ReferenceError in _renderDrawer() (scope issue) and corrected field mismatch v.short_desc \u2192 v.desc for proper tag display on left sidebar",
-      "Database schema canonicalization: consolidated all DDL into db_schema.sql with migration framework db_migrations.py (m001-m019 tracked); single source of truth for database design",
-      "Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader instead of mng_system_roles queries; eliminates redundant DB lookups",
-      "Database query performance optimization: investigating ~60s latency in route_work_items (JOIN optimization and indexing strategy for unlinked work items query)"
+      "Work item table UI refinement: implemented multi-column sortable display (name, prompts, commits, last-updated date); fixed draggable attribute binding to match _attachWorkItemDnd expectations",
+      "Work item counting query optimization: refactored _SQL_LIST_WORK_ITEMS_BASE to count events (event_count, prompt_count) and commits via mem_ai_events FK instead of legacy mem_mrr_* tag queries; fixed interaction_count \u2192 prompt_count field mismatch",
+      "Database schema canonicalization: consolidated DDL into db_schema.sql with migration framework db_migrations.py (m001-m019 tracked); single source of truth for all table definitions",
+      "Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries; eliminates redundant DB lookups",
+      "Database query performance optimization: investigating ~60s latency in route_work_items _SQL_UNLINKED_WORK_ITEMS JOIN; need index strategy on work_item_id and event_id FK columns",
+      "Memory embedding pipeline: tracing all LLM prompts in memory_embedding.py, agents/tools/, and routers; synchronizing mirror tables through mem_ai_events with consistent module imports"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -155,16 +155,19 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database_version": "PostgreSQL 15+",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
+      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_cloud": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "prompt_management": "core.prompt_loader module with centralized prompt caching",
       "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI for semantic code memory, work item tracking, and LLM-powered workflow automation. Currently stabilizing work item-to-event linkage, optimizing semantic commit extraction costs, and refactoring memory synthesis prompts for centralized caching and improved performance.",
-    "memory_digest": "**[2026-04-08]** `development_history` \u2014 Redesigned work_item linkage model using FK approach: mem_mrr_commits.event_id \u2192 mem_ai_events (digest), mem_ai_events.work_item_id \u2192 mem_ai_work_items (many-to-one). Clarified that work items should connect to multiple events via tags, not single event. Migration m019 implemented.\n\n**[2026-04-08]** `in_progress` \u2014 Investigating mem_mrr_commits_code population strategy: questioning whether semantic extraction on every commit is cost-effective vs. lazy/selective population model.\n\n**[2026-04-08]** `bug_fix` \u2014 Fixed planner tag UI visibility: resolved catName ReferenceError in _renderDrawer() scope issue and corrected v.short_desc \u2192 v.desc field binding for left sidebar tag display.\n\n**[2026-04-08]** `infrastructure` \u2014 Database schema canonicalization complete: db_schema.sql established as single source of truth with db_migrations.py framework (m001-m019 migrations tracked for safe DDL evolution).\n\n**[2026-04-08]** `refactoring` \u2014 Prompt loader integration in progress: route_snapshots.py and route_memory.py transitioning to core.prompt_loader to eliminate redundant mng_system_roles DB queries and enable unified prompt caching.\n\n**[2026-04-08]** `performance` \u2014 Identified ~60s latency in route_work_items (_SQL_UNLINKED_WORK_ITEMS query): JOIN optimization and strategic indexing required for unlinked work item retrieval at scale."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL semantic storage and an Electron desktop UI. It captures development context (commits, prompts, sessions) into a 4-layer memory architecture, synthesizes insights via Claude, and manages work items through a unified database schema with intelligent tagging and workflow automation.",
+    "memory_digest": "**[2026-04-09]** `route_work_items.py` \u2014 Refactored work item list query to use FK-based counting: replaced legacy mem_mrr_* tag queries with event/commit counts via mem_ai_events.work_item_id joins; fixed field names (interaction_count \u2192 prompt_count) to match frontend expectations. **[2026-04-09]** `entities.js` \u2014 Enhanced work item table UI with multi-column sortable display: name/desc, prompt_count, commit_count, and last-updated date; fixed draggable attribute binding to support drag-and-drop reordering. **[2026-04-09]** `db_migrations.py` \u2014 Established migration framework (m001-m019) with safe rename\u2192recreate\u2192copy pattern; consolidated all DDL into db_schema.sql as single source of truth replacing legacy ALTER TABLE statements. **[2026-04-09]** `core.prompt_loader` \u2014 Centralized prompt management module to eliminate redundant mng_system_roles database lookups; integrated into route_snapshots.py and route_memory.py. **[2026-04-09]** `route_work_items.py` \u2014 Identified ~60s latency in _SQL_UNLINKED_WORK_ITEMS query; root cause likely missing indexes on work_item_id and event_id FK columns requiring join optimization. **[2026-04-09]** `memory_embedding.py` \u2014 Traced LLM prompt pipeline across agents/tools/, routers, and memory synthesis; synchronized mirror table population (mem_mrr_commits_code) through mem_ai_events with consistent module imports."
   }
 }

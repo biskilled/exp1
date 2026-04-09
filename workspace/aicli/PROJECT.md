@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item population and linkage model: redesigned FK architecture so mem_mrr_commits.event_id points to mem_ai_events (commit digest), and mem_ai_events.work_item_id links to work_items; migration m019 implements this many-events-to-one-work-item pattern
-- mem_mrr_commits_code population strategy: investigating whether full population on every commit is necessary vs. lazy/selective population; questioning cost-benefit of semantic extraction for all commits
-- Planner tag UI binding fix: resolved `catName` ReferenceError in _renderDrawer() (scope issue) and corrected field mismatch v.short_desc → v.desc for proper tag display on left sidebar
-- Database schema canonicalization: consolidated all DDL into db_schema.sql with migration framework db_migrations.py (m001-m019 tracked); single source of truth for database design
-- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader instead of mng_system_roles queries; eliminates redundant DB lookups
-- Database query performance optimization: investigating ~60s latency in route_work_items (JOIN optimization and indexing strategy for unlinked work items query)
+- Work item table UI refinement: implemented multi-column sortable display (name, prompts, commits, last-updated date); fixed draggable attribute binding to match _attachWorkItemDnd expectations
+- Work item counting query optimization: refactored _SQL_LIST_WORK_ITEMS_BASE to count events (event_count, prompt_count) and commits via mem_ai_events FK instead of legacy mem_mrr_* tag queries; fixed interaction_count → prompt_count field mismatch
+- Database schema canonicalization: consolidated DDL into db_schema.sql with migration framework db_migrations.py (m001-m019 tracked); single source of truth for all table definitions
+- Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries; eliminates redundant DB lookups
+- Database query performance optimization: investigating ~60s latency in route_work_items _SQL_UNLINKED_WORK_ITEMS JOIN; need index strategy on work_item_id and event_id FK columns
+- Memory embedding pipeline: tracing all LLM prompts in memory_embedding.py, agents/tools/, and routers; synchronizing mirror tables through mem_ai_events with consistent module imports
