@@ -88,6 +88,36 @@ except:
     print('{}')
 " "$WORKSPACE_DIR" "$ACTIVE_PROJECT" 2>/dev/null || echo "{}")
 
+# ── Increment prompt counter + periodic tag reminder (every 8 prompts) ────────
+python3 -c "
+import json, sys, os
+
+ctx_file = os.path.join(sys.argv[1], sys.argv[2], '_system', '.agent-context')
+interval = 8   # soft reminder every N prompts
+
+try:
+    d = json.loads(open(ctx_file).read())
+except Exception:
+    sys.exit(0)
+
+count = d.get('prompt_count', 0) + 1
+d['prompt_count'] = count
+try:
+    open(ctx_file, 'w').write(json.dumps(d))
+except Exception:
+    pass
+
+tags = d.get('tags', {})
+if not tags:
+    sys.exit(0)
+
+tags_str = '  '.join(f'{k}:{v}' for k, v in tags.items() if v)
+
+if count % interval == 0:
+    print(f'┄ Prompt #{count} ╌ still on: {tags_str}')
+    print( '  (type /tag to update)')
+" "$WORKSPACE_DIR" "$ACTIVE_PROJECT" 2>/dev/null
+
 # ── Write prompt to DB via backend (primary) ──────────────────────────────────
 python3 -c "
 import json, sys, urllib.request, urllib.error

@@ -151,6 +151,7 @@ ctx = {
     'tags': tags,
     'tags_list': tags_list,
     'set_at': sys.argv[4],
+    'prompt_count': 0,
 }
 open(sys.argv[5], 'w').write(json.dumps(ctx, indent=2))
 " "$TAGS_JSON" "$TAGS_LIST" "$SESSION" "$TIMESTAMP" "$CONTEXT_FILE" 2>/dev/null
@@ -179,6 +180,51 @@ except:
 " "$CONTEXT_FILE" "$SESSION" 2>/dev/null || echo "FAIL")
 
     if [ "$CTX_CHECK" = "PASS" ]; then
+        # ── Increment prompt counter + periodic tag reminder ──────────────────
+        REMINDER=$(python3 -c "
+import json, sys, os
+
+ctx_file = sys.argv[1]
+interval  = int(sys.argv[2])   # reminder every N prompts
+
+try:
+    d = json.loads(open(ctx_file).read())
+except:
+    sys.exit(0)
+
+count = d.get('prompt_count', 0) + 1
+d['prompt_count'] = count
+open(ctx_file, 'w').write(json.dumps(d))
+
+tags_list = d.get('tags_list', [])
+tags_str  = '  '.join(tags_list) if tags_list else '(no tags)'
+
+# Soft reminder at every interval; hard check at 3× interval
+if count % interval == 0:
+    print(f'SOFT|#{count}|{tags_str}')
+elif count % (interval * 3) == 0:
+    print(f'HARD|#{count}|{tags_str}')
+" "$CONTEXT_FILE" "${TAG_REMINDER_INTERVAL:-8}" 2>/dev/null || echo "")
+
+        if [[ "$REMINDER" == SOFT* ]]; then
+            NUM=$(echo "$REMINDER" | cut -d'|' -f2)
+            TAGS=$(echo "$REMINDER" | cut -d'|' -f3)
+            echo ""
+            echo "┄ Prompt $NUM ╌ still on: $TAGS"
+            echo "  (type /tag to update)"
+            echo ""
+        elif [[ "$REMINDER" == HARD* ]]; then
+            NUM=$(echo "$REMINDER" | cut -d'|' -f2)
+            TAGS=$(echo "$REMINDER" | cut -d'|' -f3)
+            echo ""
+            echo "┄ Prompt $NUM ╌ Tags check ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+            echo "  Current: $TAGS"
+            echo "  Still correct? Re-send your prompt to continue."
+            echo "  Or: /tag phase:development feature:new-feature"
+            echo "┄╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+            echo ""
+        fi
+
         exit 0
     fi
 fi
@@ -236,6 +282,7 @@ ctx = {
     'tags': tags,
     'tags_list': tags_list,
     'set_at': sys.argv[4],
+    'prompt_count': 0,
 }
 open(sys.argv[5], 'w').write(json.dumps(ctx, indent=2))
 " "$TAGS_JSON" "$TAGS_LIST" "$SESSION" "$TIMESTAMP" "$CONTEXT_FILE" 2>/dev/null
