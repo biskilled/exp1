@@ -711,7 +711,7 @@ function _renderWiPanel(items, project) {
                    border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>
         ${hdr('prompt_count','Prompts')}
         ${hdr('commit_count','Commits')}
-        ${hdr('event_count','Events')}
+        ${hdr('event_count','Digests')}
         ${hdr('updated_at','Updated')}
       </tr></thead>
       <tbody>${rows}</tbody>

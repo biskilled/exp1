@@ -105,17 +105,19 @@ _SQL_UNLINKED_WORK_ITEMS = """
                  AND mc.session_id = (SELECT session_id FROM mem_ai_events
                                       WHERE id = w.source_event_id AND session_id IS NOT NULL)
            ), 0) AS commit_count,
-           -- Total events: session-based OR direct work_item_id link
+           -- Digest count: prompt_batch + session_summary only (exclude per-commit/diff_file noise)
            COALESCE((
                SELECT COUNT(*) FROM (
                    SELECT id FROM mem_ai_events
                    WHERE project_id = w.project_id
+                     AND event_type IN ('prompt_batch', 'session_summary')
                      AND session_id IS NOT NULL
                      AND session_id = (SELECT session_id FROM mem_ai_events
                                        WHERE id = w.source_event_id AND session_id IS NOT NULL)
                    UNION
                    SELECT id FROM mem_ai_events
                    WHERE project_id = w.project_id AND work_item_id = w.id
+                     AND event_type IN ('prompt_batch', 'session_summary')
                ) _e
            ), 0) AS event_count,
            -- User tags: planner tags referenced in events from the same session
