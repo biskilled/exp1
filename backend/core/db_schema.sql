@@ -343,6 +343,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     exec_llm          BOOLEAN      NOT NULL DEFAULT FALSE,
     session_id        VARCHAR(255),
     prompt_id         UUID         REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
+    event_id          UUID,                              -- FK to mem_ai_events.id (set after digest)
     tags              JSONB        NOT NULL DEFAULT '{}',
     tags_ai           JSONB        NOT NULL DEFAULT '{}',
     committed_at      TIMESTAMPTZ,
@@ -449,6 +450,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     tags         JSONB       NOT NULL DEFAULT '{}',
     importance   SMALLINT    NOT NULL DEFAULT 1,  -- 0-10; foundational facts get higher scores
     processed_at TIMESTAMPTZ,                      -- set by extract_work_items_from_events()
+    work_item_id UUID,                             -- FK to mem_ai_work_items.id (set on extraction or tagging)
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     embedding    VECTOR(1536),
     UNIQUE(project_id, event_type, source_id, chunk)

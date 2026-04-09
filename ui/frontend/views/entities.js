@@ -899,7 +899,8 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
 
         <!-- Stats row -->
         <div style="display:flex;gap:0.6rem;flex-wrap:wrap;font-size:0.6rem;color:var(--muted)">
-          <span>&#128172; <span id="wi-stat-prompts-${id}">${wi.interaction_count||0} prompts</span></span>
+          <span>&#128172; <span id="wi-stat-prompts-${id}">${wi.prompt_count||0} prompts</span></span>
+          <span>&#9741; ${wi.event_count||0} events</span>
           <span id="wi-stat-words-${id}">~… words</span>
           <span>&#8859; ${wi.commit_count||0} commits</span>
           <span id="wi-stat-files-${id}"></span>

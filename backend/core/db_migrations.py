@@ -107,12 +107,73 @@ def migrate_table(
 # Version naming convention: "m{NNN}_{table_slug}"
 # Examples: "m018_add_wi_priority", "m019_rename_fact_key"
 
+def m018_work_items_links(conn) -> None:
+    """Create mem_ai_work_items_links — comprehensive linkage table for work items."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mem_ai_work_items_links (
+                id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id       INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                work_item_id     UUID        NOT NULL REFERENCES mem_ai_work_items(id) ON DELETE CASCADE,
+                event_id         UUID        REFERENCES mem_ai_events(id) ON DELETE CASCADE,
+                commit_hash      VARCHAR(64) REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE,
+                prompt_source_id TEXT,
+                link_type        TEXT        NOT NULL DEFAULT 'explicit',
+                matched_tags     JSONB       NOT NULL DEFAULT '{}',
+                matched_tags_ai  JSONB       NOT NULL DEFAULT '{}',
+                created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mawi_links_pid    ON mem_ai_work_items_links(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mawi_links_wi     ON mem_ai_work_items_links(work_item_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_mawi_links_event  ON mem_ai_work_items_links(work_item_id, event_id)  WHERE event_id IS NOT NULL")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_mawi_links_commit ON mem_ai_work_items_links(work_item_id, commit_hash) WHERE commit_hash IS NOT NULL")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_mawi_links_prompt ON mem_ai_work_items_links(work_item_id, prompt_source_id) WHERE prompt_source_id IS NOT NULL")
+    conn.commit()
+    log.info("m018_work_items_links: mem_ai_work_items_links created")
+
+
+def m019_wi_event_fk_columns(conn) -> None:
+    """Replace mem_ai_work_items_links with direct FK columns on commits and events.
+
+    - mem_mrr_commits.event_id UUID  — links commit to its mem_ai_events digest row
+    - mem_ai_events.work_item_id UUID — links an event to the work item it belongs to
+    Backfills work_item_id from existing mem_ai_work_items.source_event_id relations.
+    """
+    with conn.cursor() as cur:
+        # Drop the short-lived links table (m018) if it exists
+        cur.execute("DROP TABLE IF EXISTS mem_ai_work_items_links CASCADE")
+        # Add event_id to commits (no FK constraint — events table created later in schema)
+        cur.execute(
+            "ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS event_id UUID"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mmrr_c_event ON mem_mrr_commits(event_id) WHERE event_id IS NOT NULL"
+        )
+        # Add work_item_id to events
+        cur.execute(
+            "ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS work_item_id UUID"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mem_ai_events_wi ON mem_ai_events(work_item_id) WHERE work_item_id IS NOT NULL"
+        )
+        # Backfill: set work_item_id on events that are source_event_id for a work item
+        cur.execute("""
+            UPDATE mem_ai_events e
+               SET work_item_id = w.id
+              FROM mem_ai_work_items w
+             WHERE w.source_event_id = e.id
+               AND e.work_item_id IS NULL
+        """)
+    conn.commit()
+    log.info("m019_wi_event_fk_columns: event_id on commits + work_item_id on events applied")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
     #   pr_tables_v1, memory_infra_v1, memory_infra_alters_v2,
     #   work_items_alters_v1, commit_code_v1
-    #
-    # Future migrations go here:
-    # ("m018_example", m018_example),
+    ("m018_work_items_links", m018_work_items_links),
+    ("m019_wi_event_fk_columns", m019_wi_event_fk_columns),
 ]

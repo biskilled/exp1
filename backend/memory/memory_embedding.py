@@ -448,12 +448,17 @@ class MemoryEmbedding:
             summary=summary_text, action_items=action_items, tags=digest_tags, importance=importance,
         )
 
-        # Back-propagate summary to mem_mrr_commits and set exec_llm flag
+        # Back-propagate summary + link event_id to mem_mrr_commits, set exec_llm flag
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(_SQL_UPDATE_COMMIT_SUMMARY, (summary_text, commit_hash_val))
                     cur.execute(_SQL_SET_EXEC_LLM, (settings.haiku_model, commit_hash_val))
+                    if event_id:
+                        cur.execute(
+                            "UPDATE mem_mrr_commits SET event_id=%s::uuid WHERE commit_hash=%s",
+                            (event_id, commit_hash_val),
+                        )
         except Exception as e:
             log.debug(f"process_commit column update error: {e}")
 

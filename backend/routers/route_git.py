@@ -179,6 +179,8 @@ def _extract_commit_code_background(project: str, commit_hash: str) -> None:
         loop.close()
 
 
+
+
 # ── Commit→prompt linking background task ─────────────────────────────────────
 
 def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
@@ -1148,7 +1150,7 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
             commit_author,
             commit_author_email,
         )
-        # Embed the commit (creates mem_ai_events) in background
+        # Embed the commit (creates mem_ai_events, sets event_id on commit) in background
         background.add_task(_embed_commit_background, project_name, commit_hash)
         # Tree-sitter symbol extraction → mem_mrr_commits_code in background
         background.add_task(_extract_commit_code_background, project_name, commit_hash)

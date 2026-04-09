@@ -30,16 +30,19 @@ from data.dl_seq import next_seq
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
 _SQL_LIST_WORK_ITEMS_BASE = (
-    """WITH pcount AS (
-         SELECT tags->>'work-item' AS wi_id, COUNT(*) AS cnt
-         FROM mem_mrr_prompts
-         WHERE project_id=%s AND tags ? 'work-item'
+    """WITH ev_count AS (
+         SELECT work_item_id::text AS wi_id,
+                COUNT(*) AS event_count,
+                COUNT(*) FILTER (WHERE event_type = 'prompt_batch') AS prompt_count
+         FROM mem_ai_events
+         WHERE project_id=%s AND work_item_id IS NOT NULL
          GROUP BY 1
        ),
-       ccount AS (
-         SELECT tags->>'work-item' AS wi_id, COUNT(*) AS cnt
-         FROM mem_mrr_commits
-         WHERE project_id=%s AND tags ? 'work-item'
+       cm_count AS (
+         SELECT e.work_item_id::text AS wi_id, COUNT(*) AS commit_count
+         FROM mem_mrr_commits c
+         JOIN mem_ai_events e ON e.id = c.event_id
+         WHERE c.project_id=%s AND e.work_item_id IS NOT NULL
          GROUP BY 1
        ),
        mcount AS (
@@ -55,13 +58,14 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.merged_into, w.start_date,
               w.created_at, w.updated_at, w.seq_num,
               tc.color, tc.icon,
-              COALESCE(pcount.cnt, 0) AS interaction_count,
-              COALESCE(ccount.cnt, 0) AS commit_count,
+              COALESCE(ev_count.event_count,  0) AS event_count,
+              COALESCE(ev_count.prompt_count, 0) AS prompt_count,
+              COALESCE(cm_count.commit_count, 0) AS commit_count,
               COALESCE(mcount.cnt, 0) AS merge_count
        FROM mem_ai_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
-       LEFT JOIN pcount ON pcount.wi_id = w.id::text
-       LEFT JOIN ccount ON ccount.wi_id = w.id::text
+       LEFT JOIN ev_count ON ev_count.wi_id = w.id::text
+       LEFT JOIN cm_count ON cm_count.wi_id = w.id::text
        LEFT JOIN mcount ON mcount.wi_id = w.id::text
        WHERE {where}
        ORDER BY w.created_at DESC
@@ -339,7 +343,7 @@ async def list_work_items(
     sql = _SQL_LIST_WORK_ITEMS_BASE.format(where=" AND ".join(where))
     with db.conn() as conn:
         with conn.cursor() as cur:
-            # 3 extra p_id params for the pcount/ccount/mcount CTEs
+            # 3 extra p_id params for the ev_count/cm_count/mcount CTEs
             cur.execute(sql, [p_id, p_id, p_id] + params + [limit])
             cols = [d[0] for d in cur.description]
             rows = []
@@ -495,6 +499,7 @@ async def extract_work_item_code(item_id: str, project: str | None = Query(None)
     from memory.memory_extraction import MemoryExtraction
     result = await MemoryExtraction().extract_work_item_code_summary(p, item_id)
     return result
+
 
 
 # ── Lookup by sequential number ───────────────────────────────────────────────

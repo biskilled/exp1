@@ -658,6 +658,12 @@ class MemoryPromotion:
                             row = cur.fetchone()
                             if row:
                                 created += 1
+                                # Link event to its newly created work item
+                                wi_id = str(row[0])
+                                cur.execute(
+                                    "UPDATE mem_ai_events SET work_item_id=%s::uuid WHERE id=%s::uuid",
+                                    (wi_id, str(ev_id)),
+                                )
                             else:
                                 updated += 1  # ON CONFLICT DO UPDATE hit an existing item
                 except Exception as e:
