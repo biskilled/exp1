@@ -39,7 +39,8 @@
     "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
     "deployment_local": "bash start_backend.sh + npm run dev",
     "prompt_management": "core.prompt_loader module with centralized prompt caching",
-    "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)"
+    "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)",
+    "database_tables": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories"
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -53,10 +54,10 @@
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation",
     "Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events",
     "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
-    "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
     "Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename\u2192recreate\u2192copy pattern (migrations m001-m019)",
-    "Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes",
-    "Work item UI: multi-column sortable table with sticky headers (position:sticky;top:0;z-index:1), YY/MM/DD-HH:MM date formatting, status color badges, AI tag suggestions with approve/reject buttons"
+    "Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/reject buttons for suggestions",
+    "Tag suggestion workflow: clicking approve patches tag_id=ai_tag_id, deletes from unlinked panel cache, refreshes display with success toast; remove button clears ai_tag_id only",
+    "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -85,12 +86,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Work item table sticky header implementation: applied position:sticky;top:0;z-index:1 to all 3 sortable column headers for persistence during vertical scroll",
-    "AI tag suggestion display in work items: added ai_tag_name rendering on each row with approve (\u2713) and remove (\u00d7) buttons; approve button patches tag_id=ai_tag_id and removes item from unlinked panel",
-    "Tag suggestion workflow: clicking approve triggers PATCH endpoint, deletes from _wiPanelItems cache, re-renders panel, and updates unlinked count with success toast",
-    "Remove suggestion button handler: clicking \u00d7 calls _wiPanelRemoveTag to clear ai_tag_id, nullify ai_tag_name, and refresh panel display without deleting work item",
-    "Memory embedding pipeline sync: executing /memory endpoint to refresh embeddings for recent prompts and work items, verifying event-to-work-item linkage accuracy post-suggestion",
-    "Work item scope filtering refinement: investigating display of non-work-item tags (Shared-memory, billing) appearing in work items panel and implementing proper scope-based filtering logic"
+    "Work item tag display fix: tags (both AI suggestions and user tags) disappeared from rows; investigating JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events",
+    "Description column layout issue: desc being cut in middle of row instead of using full row width; updating colgroup to make Name column flexible and removing table-layout:fixed constraint",
+    "Work item row rendering: adjusting Name column colspan to display full-length descriptions and accommodate both ai_tag_suggestion chip and user_tags pill display",
+    "Tag suggestion query refinement: verifying ai_tag_id/ai_tag_name/ai_tag_category/ai_tag_color columns are correctly joined from planner_tags and mng_tags_categories",
+    "User tags aggregation: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items and building jsonb_agg array for display",
+    "Frontend styling consolidation: ensuring consistent button styling (\u00d7 delete, \u2713 approve, \u00d7 remove) with border-radius, hover states, and color differentiation across work item panel"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -122,7 +123,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-09T02:05:25Z",
+  "last_memory_run": "2026-04-09T02:16:43Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -136,18 +137,18 @@
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation",
       "Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events",
       "Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint",
-      "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename\u2192recreate\u2192copy pattern (migrations m001-m019)",
-      "Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes",
-      "Work item UI: multi-column sortable table with sticky headers (position:sticky;top:0;z-index:1), YY/MM/DD-HH:MM date formatting, status color badges, AI tag suggestions with approve/reject buttons"
+      "Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/reject buttons for suggestions",
+      "Tag suggestion workflow: clicking approve patches tag_id=ai_tag_id, deletes from unlinked panel cache, refreshes display with success toast; remove button clears ai_tag_id only",
+      "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
     ],
     "in_progress": [
-      "Work item table sticky header implementation: applied position:sticky;top:0;z-index:1 to all 3 sortable column headers for persistence during vertical scroll",
-      "AI tag suggestion display in work items: added ai_tag_name rendering on each row with approve (\u2713) and remove (\u00d7) buttons; approve button patches tag_id=ai_tag_id and removes item from unlinked panel",
-      "Tag suggestion workflow: clicking approve triggers PATCH endpoint, deletes from _wiPanelItems cache, re-renders panel, and updates unlinked count with success toast",
-      "Remove suggestion button handler: clicking \u00d7 calls _wiPanelRemoveTag to clear ai_tag_id, nullify ai_tag_name, and refresh panel display without deleting work item",
-      "Memory embedding pipeline sync: executing /memory endpoint to refresh embeddings for recent prompts and work items, verifying event-to-work-item linkage accuracy post-suggestion",
-      "Work item scope filtering refinement: investigating display of non-work-item tags (Shared-memory, billing) appearing in work items panel and implementing proper scope-based filtering logic"
+      "Work item tag display fix: tags (both AI suggestions and user tags) disappeared from rows; investigating JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events",
+      "Description column layout issue: desc being cut in middle of row instead of using full row width; updating colgroup to make Name column flexible and removing table-layout:fixed constraint",
+      "Work item row rendering: adjusting Name column colspan to display full-length descriptions and accommodate both ai_tag_suggestion chip and user_tags pill display",
+      "Tag suggestion query refinement: verifying ai_tag_id/ai_tag_name/ai_tag_category/ai_tag_color columns are correctly joined from planner_tags and mng_tags_categories",
+      "User tags aggregation: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items and building jsonb_agg array for display",
+      "Frontend styling consolidation: ensuring consistent button styling (\u00d7 delete, \u2713 approve, \u00d7 remove) with border-radius, hover states, and color differentiation across work item panel"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -155,23 +156,16 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database_tables": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "database": "PostgreSQL 15+ with pgvector extension",
-      "database_version": "PostgreSQL 15+",
-      "node_modules_build": "npm 8+ with Electron-builder; Vite dev server",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
-      "prompt_management": "core.prompt_loader module with centralized prompt caching",
       "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL semantic storage with pgvector, and a desktop Electron UI. It synthesizes development work items from commits and prompts using Claude Haiku, tracks them with intelligent tagging and embeddings, and surfaces AI-suggested tags to users via an interactive work items panel with approve/reject workflows.",
-    "memory_digest": "**[2026-04-09]** `user_query` \u2014 User confirmed AI tag suggestions should appear on each row in work items panel; clarified UI visibility of suggestion line with approve/reject buttons. **[2026-04-08]** `feature_completion` \u2014 Implemented sticky header for work item table with position:sticky;top:0;z-index:1 on all 3 sortable column headers to persist during scroll. **[2026-04-07]** `feature_implementation` \u2014 Added AI tag suggestion display logic to work items rows: renders ai_tag_name with approve (\u2713) and remove (\u00d7) buttons; approve button triggers PATCH tag_id=ai_tag_id, deletes from cache, re-renders panel. **[2026-04-06]** `ui_refinement` \u2014 Standardized work item date formatting to YY/MM/DD-HH:MM format across all columns with optimized widths (56px\u201380px) for improved table readability and visual hierarchy. **[2026-04-05]** `endpoint_completion` \u2014 Completed DELETE /work-items/{id} endpoint with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering workflow. **[2026-04-04]** `tag_filtering` \u2014 Investigating incorrect display of non-work-item tags (Shared-memory, billing) in work items panel; identified need for proper scope-based tag filtering logic in rendering."
+    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 backend (FastAPI + PostgreSQL + pgvector embeddings), Electron desktop UI (vanilla JS + xterm.js + Monaco), and CLI tool for capturing and organizing development events into intelligent work items and project facts. Current focus: fixing work item row rendering (tags disappeared, description overflow) and refining AI tag suggestion workflow with category-aware display and user tag aggregation from connected events.",
+    "memory_digest": "**[2026-04-09]** `development` \u2014 Debugging work item row tag display: AI tag suggestions and user tags disappeared from work_items panel; investigating _SQL_UNLINKED_WORK_ITEMS query JOINs with planner_tags/mng_tags_categories and user_tags aggregation logic from mem_ai_events feature/bug_ref/bug fields. **[2026-04-09]** `development` \u2014 Description text overflow fix: Name column layout broken, causing ai_desc to be cut mid-row instead of full width; removing table-layout:fixed and adjusting colgroup to allow flexible Name column expansion. **[2026-03-14]** `feature_complete` \u2014 AI tag suggestion UI refinement: ai_tag_name now displays as `category:name` format (e.g., bug:auth, feature:dropbox) with category color background, white-space:nowrap, and inline-flex layout with \u2713/\u00d7 buttons for approve/remove actions. **[2026-03-14]** `feature_complete` \u2014 User tags display layer: extracted feature/bug_ref/bug tags from mem_ai_events connected to each work_item and rendered as informational pills in compact row layout below AI tag suggestion chip. **[2026-03-14]** `ui_refinement` \u2014 Font scaling and spacing: increased work item panel font sizes 15-20% for Electron readability, fixed date column padding to show full YY/MM/DD-HH:MM timestamps, styled \u00d7 delete button bold red with border styling matching \u2713 approve button. **[2026-03-14]** `architecture` \u2014 Tag suggestion workflow: approve button patches tag_id=ai_tag_id on work_item, deletes item from _wiPanelItems cache, refreshes panel without API reload, shows success toast; remove button only clears ai_tag_id/ai_tag_name (preserves work item)."
   }
 }

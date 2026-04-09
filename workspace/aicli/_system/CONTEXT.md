@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-09 02:05 UTC — do not edit manually.
+> Auto-generated 2026-04-09 02:16 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 450
-- **Last active**: 2026-04-09T02:04:57Z
+- **Sessions**: 451
+- **Last active**: 2026-04-09T02:15:56Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -50,15 +50,16 @@
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
 - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
 
 ## In Progress
 
-- Work item table sticky header implementation: applied position:sticky;top:0;z-index:1 to all 3 sortable column headers for persistence during vertical scroll
-- AI tag suggestion display in work items: added ai_tag_name rendering on each row with approve (✓) and remove (×) buttons; approve button patches tag_id=ai_tag_id and removes item from unlinked panel
-- Tag suggestion workflow: clicking approve triggers PATCH endpoint, deletes from _wiPanelItems cache, re-renders panel, and updates unlinked count with success toast
-- Remove suggestion button handler: clicking × calls _wiPanelRemoveTag to clear ai_tag_id, nullify ai_tag_name, and refresh panel display without deleting work item
-- Memory embedding pipeline sync: executing /memory endpoint to refresh embeddings for recent prompts and work items, verifying event-to-work-item linkage accuracy post-suggestion
-- Work item scope filtering refinement: investigating display of non-work-item tags (Shared-memory, billing) appearing in work items panel and implementing proper scope-based filtering logic
+- Work item tag display fix: tags (both AI suggestions and user tags) disappeared from rows; investigating JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events
+- Description column layout issue: desc being cut in middle of row instead of using full row width; updating colgroup to make Name column flexible and removing table-layout:fixed constraint
+- Work item row rendering: adjusting Name column colspan to display full-length descriptions and accommodate both ai_tag_suggestion chip and user_tags pill display
+- Tag suggestion query refinement: verifying ai_tag_id/ai_tag_name/ai_tag_category/ai_tag_color columns are correctly joined from planner_tags and mng_tags_categories
+- User tags aggregation: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items and building jsonb_agg array for display
+- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with border-radius, hover states, and color differentiation across work item panel
 
 ## Key Decisions
 
@@ -73,10 +74,10 @@
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
-- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
-- Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: multi-column sortable table with sticky headers (position:sticky;top:0;z-index:1), YY/MM/DD-HH:MM date formatting, status color badges, AI tag suggestions with approve/reject buttons
+- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/reject buttons for suggestions
+- Tag suggestion workflow: clicking approve patches tag_id=ai_tag_id, deletes from unlinked panel cache, refreshes display with success toast; remove button clears ai_tag_id only
+- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ---
 

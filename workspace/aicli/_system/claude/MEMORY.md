@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-09 02:04 UTC by aicli /memory_
+_Generated: 2026-04-09 02:15 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python 3.12 backend (FastAPI + PostgreSQL + pgvector embeddings), Electron desktop UI (vanilla JS + xterm.js + Monaco), and CLI tool for capturing and organizing development events into intelligent work items and project facts. Current focus: fixing work item row rendering (tags disappeared, description overflow) and refining AI tag suggestion workflow with category-aware display and user tag aggregation from connected events.
 
 ## Project Facts
 
@@ -120,6 +124,7 @@ Reviewer: ```json
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
 - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
 
 ## Key Decisions
 
@@ -134,19 +139,19 @@ Reviewer: ```json
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
-- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
-- Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: multi-column sortable table with sticky headers (position:sticky;top:0;z-index:1), YY/MM/DD-HH:MM date formatting, status color badges, AI tag suggestions with approve/reject buttons
+- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/reject buttons for suggestions
+- Tag suggestion workflow: clicking approve patches tag_id=ai_tag_id, deletes from unlinked panel cache, refreshes display with success toast; remove button clears ai_tag_id only
+- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ## In Progress
 
-- Work item table sticky header implementation: applied position:sticky;top:0;z-index:1 to all 3 sortable column headers for persistence during vertical scroll
-- AI tag suggestion display in work items: added ai_tag_name rendering on each row with approve (✓) and remove (×) buttons; approve button patches tag_id=ai_tag_id and removes item from unlinked panel
-- Tag suggestion workflow: clicking approve triggers PATCH endpoint, deletes from _wiPanelItems cache, re-renders panel, and updates unlinked count with success toast
-- Remove suggestion button handler: clicking × calls _wiPanelRemoveTag to clear ai_tag_id, nullify ai_tag_name, and refresh panel display without deleting work item
-- Memory embedding pipeline sync: executing /memory endpoint to refresh embeddings for recent prompts and work items, verifying event-to-work-item linkage accuracy post-suggestion
-- Work item scope filtering refinement: investigating display of non-work-item tags (Shared-memory, billing) appearing in work items panel and implementing proper scope-based filtering logic
+- Work item tag display fix: tags (both AI suggestions and user tags) disappeared from rows; investigating JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events
+- Description column layout issue: desc being cut in middle of row instead of using full row width; updating colgroup to make Name column flexible and removing table-layout:fixed constraint
+- Work item row rendering: adjusting Name column colspan to display full-length descriptions and accommodate both ai_tag_suggestion chip and user_tags pill display
+- Tag suggestion query refinement: verifying ai_tag_id/ai_tag_name/ai_tag_category/ai_tag_color columns are correctly joined from planner_tags and mng_tags_categories
+- User tags aggregation: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items and building jsonb_agg array for display
+- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with border-radius, hover states, and color differentiation across work item panel
 
 ## Active Features / Bugs / Tasks
 
@@ -196,6 +201,144 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+Frontend UI refinements: work item details loading fixed via direct GET endpoint, tag suggestions now display as `category:name` format (bug:auth, feature:dropbox) with new/existing tag color differentiation, user tags added as informational pills, fonts increased 15-20% for Electron readability, date column padding fixed to show full timestamps, × removal button styled bold red for visibility, and suggestion row compacted with inline-flex layout.
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index 9ddca92..4e1f316 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -539,25 +539,39 @@ function _renderWiPanel(items, project) {
+     const sc   = STATUS_C[wi.status_user] || '#888';
+     const desc = (wi.ai_desc || '').replace(/\n/g,' ');
+     const descClip = desc.length > 70 ? desc.slice(0,70)+'…' : desc;
+-    const tagSuggestion = wi.ai_tag_name
+-      ? `<div style="display:inline-flex;align-items:center;gap:4px;padding-left:18px;margin-top:2px">
++    // AI tag suggestion chip: "category:name" in category color with ✓ / × buttons
++    const aiTagColor  = wi.ai_tag_color  || 'var(--accent)';
++    const aiTagLabel  = wi.ai_tag_category && wi.ai_tag_name
++      ? `${wi.ai_tag_category}:${wi.ai_tag_name}`
++      : (wi.ai_tag_name || '');
++    const tagSuggestion = aiTagLabel
++      ? `<div style="display:inline-flex;align-items:center;gap:3px;padding-left:22px;margin-top:2px">
+            <span style="font-size:0.58rem;color:var(--muted);flex-shrink:0">✦</span>
+-           <span style="font-size:0.68rem;color:var(--muted);white-space:nowrap"
+-                 title="AI suggested: ${_esc(wi.ai_tag_name)}">${_esc(wi.ai_tag_name)}</span>
++           <span style="font-size:0.68rem;font-weight:500;color:${aiTagColor};white-space:nowrap;
++                        background:${aiTagColor}18;padding:0 5px;border-radius:4px;border:1px solid ${aiTagColor}44"
++                 title="AI suggested tag">${_esc(aiTagLabel)}</span>
+            <button title="Approve"
+              onclick="event.stopPropagation();window._wiPanelApproveTag('${_esc(wi.id)}','${_esc(project)}')"
+-             style="background:none;border:1px solid var(--accent);color:var(--accent);cursor:pointer;
+-                    font-size:0.6rem;padding:0 5px;border-radius:4px;line-height:1.6;flex-shrink:0"
+-             onmouseenter="this.style.background='var(--accent)';this.style.color='#fff'"
+-             onmouseleave="this.style.background='none';this.style.color='var(--accent)'">✓</button>
++             style="background:none;border:1px solid ${aiTagColor};color:${aiTagColor};cursor:pointer;
++                    font-size:0.62rem;padding:0 5px;border-radius:4px;line-height:1.7;flex-shrink:0;font-weight:600"
++             onmouseenter="this.style.background='${aiTagColor}';this.style.color='#fff'"
++             onmouseleave="this.style.background='none';this.style.color='${aiTagColor}'">✓</button>
+            <button title="Remove suggestion"
+              onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
+-             style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:0.85rem;
+-                    font-weight:700;padding:0 2px;line-height:1;flex-shrink:0"
++             style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;font-size:0.62rem;
++                    font-weight:700;padding:0 5px;border-radius:4px;line-height:1.7;flex-shrink:0"
+              onmouseenter="this.style.opacity='.7'"
+              onmouseleave="this.style.opacity='1'">×</button>
+          </div>`
+       : '';
++    // User tags: names from connected events (informational)
++    const userTagsList = Array.isArray(wi.user_tags) ? wi.user_tags : [];
++    const userTagsHtml = userTagsList.length
++      ? `<div style="display:flex;flex-wrap:wrap;gap:3px;padding-left:22px;margin-top:2px">
++           ${userTagsList.map(t => `<span style="font-size:0.6rem;color:var(--muted);background:var(--surface2);
++               border:1px solid var(--border);padding:0 5px;border-radius:4px;white-space:nowrap">${_esc(t)}</span>`).join('')}
++         </div>`
++      : '';
+     return `<tr draggable="true"
+         data-wi-id="${_esc(wi.id)}"
+         data-wi-name="${_esc(wi.ai_name)}"
+@@ -571,8 +585,8 @@ function _renderWiPanel(items, project) {
+         <div style="display:flex;align-items:center;gap:4px">
+           <button title="Delete this item"
+             onclick="event.stopPropagation();window._wiPanelDelete('${_esc(wi.id)}','${_esc(project)}')"
+-            style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:0.9rem;
+-                   font-weight:700;padding:0 3px;line-height:1;flex-shrink:0"
++            style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;font-size:0.62rem;
++                   font-weight:700;padding:0 4px;border-radius:4px;line-height:1.7;flex-shrink:0"
+             onmouseenter="this.style.opacity='.7'"
+             onmouseleave="this.style.opacity='1'">×</button>
+           <span style="flex-shrink:0;font-size:0.8rem">${icon}</span>
+@@ -585,6 +599,7 @@ function _renderWiPanel(items, project) {
+         ${descClip ? `<div style="font-size:0.65rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+                                   white-space:nowrap;padding-left:22px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
+         ${tagSuggestion}
++        ${userTagsHtml}
+       </td>
+       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;
+                  color:var(--text2);font-variant-numeric:tabular-nums;
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
+index 2dd99e2..857af4a 100644
+--- a/backend/routers/route_work_items.py
++++ b/backend/routers/route_work_items.py
+@@ -76,15 +76,31 @@ _SQL_UNLINKED_WORK_ITEMS = """
+     SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+            w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
+            w.start_date, w.created_at, w.updated_at, w.seq_num,
++           w.ai_tag_id,
+            pt.name AS ai_tag_name,
++           ptc.name  AS ai_tag_category,
++           ptc.color AS ai_tag_color,
+            (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
+            COALESCE((SELECT COUNT(*) FROM mem_ai_events
+                      WHERE work_item_id = w.id AND event_type = 'prompt_batch'), 0) AS prompt_count,
+            COALESCE((SELECT COUNT(*) FROM mem_mrr_commits c
+                      JOIN mem_ai_events e ON e.id = c.event_id
+-                     WHERE e.work_item_id = w.id), 0) AS commit_count
++                     WHERE e.work_item_id = w.id), 0) AS commit_count,
++           (SELECT COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb)
++            FROM mem_ai_events ev
++            JOIN planner_tags ut ON ut.project_id = w.project_id
++                 AND ut.name IN (
++                     ev.tags->>'feature',
++                     ev.tags->>'bug_ref',
++                     ev.tags->>'bug'
++                 )
++            WHERE ev.work_item_id = w.id
++              AND (ev.tags->>'feature' IS NOT NULL OR ev.tags->>'bug_ref' IS NOT NULL
++                   OR ev.tags->>'bug' IS NOT NULL)
++           ) AS user_tags
+     FROM mem_ai_work_items w
+-    LEFT JOIN planner_tags pt ON pt.id = w.ai_tag_id
++    LEFT JOIN planner_tags pt   ON pt.id  = w.ai_tag_id
++    LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
+     WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
+     ORDER BY w.updated_at DESC
+ """
+@@ -314,6 +330,10 @@ async def get_unlinked_work_items(project: str | None = Query(None)):
+             for r in cur.fetchall():
+                 row = dict(zip(cols, r))
+                 row["id"] = str(row["id"])
++                if row.get("ai_tag_id"):
++                    row["ai_tag_id"] = str(row["ai_tag_id"])
++                if row.get("user_tags") is None:
++                    row["user_tags"] = []
+                 for dt_field in ("created_at", "updated_at", "start_date"):
+                     if row.get(dt_field):
+                         row[dt_field] = row[dt_field].isoformat()
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+Removed legacy system files and reorganized the _system directory structure for improved maintainability and clarity.
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
@@ -264,201 +407,6 @@ index ea21726..e5f6ba9 100644
  
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+## AI Synthesis
 
-diff --git a/backend/memory/memory_tagging.py b/backend/memory/memory_tagging.py
-index 4b14c9f..1f779b1 100644
---- a/backend/memory/memory_tagging.py
-+++ b/backend/memory/memory_tagging.py
-@@ -234,12 +234,13 @@ class MemoryTagging:
-         if not query.strip():
-             return []
- 
-+        candidates: list[dict] = []
-         try:
-             emb = await self._embed_text(query)
-+            candidates = self._vector_search_tags(project, emb, limit=15)
-         except Exception:
--            return []
-+            pass  # no embedding available — fall through to Haiku fallback
- 
--        candidates = self._vector_search_tags(project, emb, limit=15)
-         strong = [c for c in candidates if c['score'] > 0.85]
-         border = [c for c in candidates if 0.70 < c['score'] <= 0.85]
- 
-@@ -257,6 +258,18 @@ class MemoryTagging:
-             except Exception:
-                 pass
- 
-+        # Level 4 — no vector candidates (tags have no embeddings yet): ask Haiku directly
-+        if not candidates:
-+            try:
-+                all_tags = self._load_all_tags(project)
-+                if all_tags:
-+                    judgments = await self._claude_judge_candidates(wi, all_tags)
-+                    for j in judgments:
-+                        if j.get('relation') not in (None, 'none') and j.get('confidence', 0) >= 0.70:
-+                            results.append(j)
-+            except Exception:
-+                pass
-+
-         # Persist best match to ai_tag_id (highest confidence)
-         if results:
-             best = max(results, key=lambda r: r.get('confidence', 0))
-@@ -306,6 +319,21 @@ class MemoryTagging:
-                     return None
-                 return {'id': str(row[0]), 'name': row[1], 'category_id': row[2]}
- 
-+    def _load_all_tags(self, project: str, limit: int = 40) -> list[dict]:
-+        """Load all active planner tags (no embedding required) for Haiku-fallback matching."""
-+        project_id = db.get_or_create_project_id(project)
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                cur.execute("""
-+                    SELECT id, name, category_id, short_desc
-+                    FROM planner_tags
-+                    WHERE project_id = %s AND status != 'archived'
-+                    ORDER BY created_at DESC LIMIT %s
-+                """, (project_id, limit))
-+                rows = cur.fetchall()
-+                return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
-+                         'short_desc': r[3] or '', 'score': 0.0} for r in rows]
-+
-     def _vector_search_tags(self, project: str, embedding: list, limit: int = 15) -> list[dict]:
-         project_id = db.get_or_create_project_id(project)
-         with db.conn() as conn:
-@@ -331,41 +359,51 @@ class MemoryTagging:
-         return resp.data[0].embedding
- 
-     async def _claude_judge_candidates(self, wi: dict, candidates: list[dict]) -> list[dict]:
--        """Use Claude Haiku to judge borderline tag candidates."""
-+        """Use Claude Haiku to find the best matching tag for a work item."""
-         cand_text = '\n'.join(
--            f"- {c['name']} (score:{c['score']:.2f}) | {c.get('short_desc','')}"
--            for c in candidates
-+            f"- {c['name']} | {c.get('short_desc','')}" for c in candidates
-         )
-         prompt = (
--            f"WORK ITEM: name: {wi['name']}  summary: {wi.get('description','')}\n"
--            f"CANDIDATE TAGS:\n{cand_text}\n\n"
--            "For each candidate, determine if it matches this work item.\n"
--            "Exact: same concept, scope, intent. Similar: overlapping but not identical. None: unrelated.\n"
--            'Respond ONLY in JSON: {"matches":[{"tag_name":"...","relation":"exact|similar|none","confidence":0.0-1.0}]}'
-+            f"WORK ITEM: {wi['name']} — {wi.get('description','')}\n\n"
-+            f"AVAILABLE TAGS:\n{cand_text}\n\n"
-+            "Pick the SINGLE best matching tag for this work item (if any).\n"
-+            "relation: 'exact' (same concept), 'similar' (overlapping), or 'none' (no match).\n"
-+            'Respond ONLY in JSON: {"tag_name":"...","relation":"exact|similar|none","confidence":0.0-1.0}\n'
-+            'If no tag fits, respond: {"tag_name":null,"relation":"none","confidence":0.0}'
-         )
-         system = (
-             "You are a technical project memory assistant. "
--            "Given an AI-generated work item and candidate tags, determine if any match. "
--            "Respond ONLY in JSON."
-+            "Match AI-generated work items to project feature/task tags. "
-+            "Respond ONLY in valid JSON — no markdown, no explanation."
-         )
- 
-         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-         msg = await client.messages.create(
-             model='claude-haiku-4-5-20251001',
--            max_tokens=512,
-+            max_tokens=128,
-             system=system,
-             messages=[{'role': 'user', 'content': prompt}]
-         )
-         text = msg.content[0].text.strip()
-+        # Strip markdown code fences if present
-+        if text.startswith('```'):
-+            text = text.split('```')[1]
-+            if text.startswith('json'):
-+                text = text[4:]
-+            text = text.strip()
-         data = json.loads(text)
-         name_to_id = {c['name']: c['id'] for c in candidates}
-+        # Handle both single-object and array response
-+        matches = data if isinstance(data, list) else [data]
-         results = []
--        for m in data.get('matches', []):
--            tid = name_to_id.get(m.get('tag_name'))
--            if tid:
-+        for m in matches:
-+            if not m.get('tag_name'):
-+                continue
-+            tid = name_to_id.get(m['tag_name'])
-+            if tid and m.get('relation', 'none') != 'none':
-                 results.append({
-                     'tag_id': tid,
-                     'relation': m.get('relation', 'none'),
--                    'confidence':
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index a0d8b7d..0a9eb0a 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-09 01:13 UTC
-+> Generated by aicli 2026-04-09 01:16 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -62,4 +62,4 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
- - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
- - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
--- Work item UI: sticky header on scroll, multi-column sortable table with YY/MM/DD-HH:MM date formatting, status color badges, and AI tag suggestions per row
-\ No newline at end of file
-+- Work item UI: multi-column sortable table with YY/MM/DD-HH:MM date formatting, wider columns (56px–80px), status color badges, and scope-filtered tag display
-\ No newline at end of file
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 96869a5..05c6f84 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 01:13 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 01:16 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -62,7 +62,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
- - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
- - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
--- Work item UI: sticky header on scroll, multi-column sortable table with YY/MM/DD-HH:MM date formatting, status color badges, and AI tag suggestions per row
-+- Work item UI: multi-column sortable table with YY/MM/DD-HH:MM date formatting, wider columns (56px–80px), status color badges, and scope-filtered tag display
- 
- ## Recent Context (last 5 changes)
- 
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 96869a5..05c6f84 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 01:13 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 01:16 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -62,7 +62,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
- - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
- - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
--- Work item UI: sticky header on scroll, multi-column sortable table with YY/MM/DD-HH:MM date formatting, status color badges, and AI tag suggestions per row
-+- Work item UI: multi-column sortable table with YY/MM/DD-HH:MM date formatting, wider columns (56px–80px), status color badges, and scope-filtered tag display
- 
- ## Recent Context (last 5 changes)
- 
-
+**[2026-04-09]** `development` — Debugging work item row tag display: AI tag suggestions and user tags disappeared from work_items panel; investigating _SQL_UNLINKED_WORK_ITEMS query JOINs with planner_tags/mng_tags_categories and user_tags aggregation logic from mem_ai_events feature/bug_ref/bug fields. **[2026-04-09]** `development` — Description text overflow fix: Name column layout broken, causing ai_desc to be cut mid-row instead of full width; removing table-layout:fixed and adjusting colgroup to allow flexible Name column expansion. **[2026-03-14]** `feature_complete` — AI tag suggestion UI refinement: ai_tag_name now displays as `category:name` format (e.g., bug:auth, feature:dropbox) with category color background, white-space:nowrap, and inline-flex layout with ✓/× buttons for approve/remove actions. **[2026-03-14]** `feature_complete` — User tags display layer: extracted feature/bug_ref/bug tags from mem_ai_events connected to each work_item and rendered as informational pills in compact row layout below AI tag suggestion chip. **[2026-03-14]** `ui_refinement` — Font scaling and spacing: increased work item panel font sizes 15-20% for Electron readability, fixed date column padding to show full YY/MM/DD-HH:MM timestamps, styled × delete button bold red with border styling matching ✓ approve button. **[2026-03-14]** `architecture` — Tag suggestion workflow: approve button patches tag_id=ai_tag_id on work_item, deletes item from _wiPanelItems cache, refreshes panel without API reload, shows success toast; remove button only clears ai_tag_id/ai_tag_name (preserves work item).
