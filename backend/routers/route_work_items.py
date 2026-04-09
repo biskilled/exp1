@@ -75,31 +75,54 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 
 _SQL_UNLINKED_WORK_ITEMS = """
     WITH wi AS (
-        -- Base filter: unlinked, non-done items; carry source_event_type for commit detection
+        -- Base filter; join source event once to get session_id + event_type
         SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
                w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
                w.start_date, w.created_at, w.updated_at, w.seq_num,
                w.ai_tag_id, w.source_event_id, w.project_id,
-               e.event_type AS src_event_type
+               e.event_type  AS src_event_type,
+               e.session_id  AS src_session_id,
+               e.source_id   AS src_source_id
         FROM mem_ai_work_items w
         LEFT JOIN mem_ai_events e ON e.id = w.source_event_id
         WHERE w.project_id = %s AND w.tag_id IS NULL AND w.status_user != 'done'
     ),
-    -- Events directly linked to this work item via work_item_id (set at extraction time)
+    -- prompt_batch/session_summary events in the source session
+    -- (all items extracted from the same batch share this session → all get same count)
     event_ct AS (
-        SELECT e.work_item_id::text AS wi_id, COUNT(*) AS cnt
-        FROM mem_ai_events e
-        WHERE e.project_id = %s AND e.work_item_id IS NOT NULL
-        GROUP BY 1
+        SELECT wi.id::text AS wi_id, COUNT(DISTINCT e.id) AS cnt
+        FROM wi
+        JOIN mem_ai_events e
+          ON e.project_id = wi.project_id
+         AND e.event_type IN ('prompt_batch', 'session_summary')
+         AND (
+               (wi.src_session_id IS NOT NULL AND e.session_id = wi.src_session_id)
+            OR  e.work_item_id = wi.id          -- fallback for directly linked events
+         )
+        GROUP BY wi.id
     ),
-    -- Commits: for commit-sourced items, the source commit itself counts as 1
+    -- raw prompts in the source session
+    prompt_ct AS (
+        SELECT wi.id::text AS wi_id, COUNT(DISTINCT p.id) AS cnt
+        FROM wi
+        JOIN mem_mrr_prompts p
+          ON p.project_id = wi.project_id
+         AND wi.src_session_id IS NOT NULL
+         AND p.session_id = wi.src_session_id
+        GROUP BY wi.id
+    ),
+    -- commits from source session (prompt-sourced) OR the source commit (commit-sourced)
+    -- Note: src_source_id is the short commit hash stored in mem_ai_events.source_id
     commit_ct AS (
         SELECT wi.id::text AS wi_id, COUNT(DISTINCT mc.commit_hash) AS cnt
         FROM wi
-        LEFT JOIN mem_mrr_commits mc
-               ON mc.project_id = wi.project_id
-              AND wi.src_event_type = 'commit'
-              AND mc.event_id = wi.source_event_id
+        JOIN mem_mrr_commits mc
+          ON mc.project_id = wi.project_id
+         AND (
+               (wi.src_session_id IS NOT NULL AND mc.session_id = wi.src_session_id)
+            OR (wi.src_event_type = 'commit' AND wi.src_source_id IS NOT NULL
+                AND mc.commit_short_hash = wi.src_source_id)
+         )
         GROUP BY wi.id
     ),
     merge_ct AS (
@@ -117,11 +140,13 @@ _SQL_UNLINKED_WORK_ITEMS = """
            ptc.color AS ai_tag_color,
            COALESCE(merge_ct.cnt,  0) AS merge_count,
            COALESCE(event_ct.cnt,  0) AS event_count,
+           COALESCE(prompt_ct.cnt, 0) AS prompt_count,
            COALESCE(commit_ct.cnt, 0) AS commit_count
     FROM wi
     LEFT JOIN planner_tags        pt  ON pt.id  = wi.ai_tag_id
     LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
     LEFT JOIN event_ct  ON event_ct.wi_id  = wi.id::text
+    LEFT JOIN prompt_ct ON prompt_ct.wi_id = wi.id::text
     LEFT JOIN commit_ct ON commit_ct.wi_id = wi.id::text
     LEFT JOIN merge_ct  ON merge_ct.wi_id  = wi.id::text
     ORDER BY wi.seq_num DESC NULLS LAST
@@ -440,7 +465,7 @@ async def get_unlinked_work_items(project: str | None = Query(None)):
     p_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id, p_id, p_id))
+            cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id, p_id))
             cols = [d[0] for d in cur.description]
             rows = []
             for r in cur.fetchall():

@@ -479,6 +479,7 @@ function _renderWiPanel(items, project) {
   const { field, dir } = window._wiPanelSort;
   const mul = dir === 'asc' ? 1 : -1;
   const sorted = [...items].sort((a, b) => {
+    if (field === 'prompt_count') return mul * ((a.prompt_count||0) - (b.prompt_count||0));
     if (field === 'event_count')  return mul * ((a.event_count||0)  - (b.event_count||0));
     if (field === 'commit_count') return mul * ((a.commit_count||0) - (b.commit_count||0));
     if (field === 'seq_num')      return mul * ((a.seq_num||0)      - (b.seq_num||0));
@@ -724,10 +725,13 @@ function _renderWiPanel(items, project) {
       </td>
       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
                  color:var(--text2);font-variant-numeric:tabular-nums;
-                 border-left:1px solid var(--border)">${wi.event_count||0}</td>
+                 border-left:1px solid var(--border)">${wi.prompt_count||0}</td>
       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
                  color:var(--text2);font-variant-numeric:tabular-nums;
                  border-left:1px solid var(--border)">${wi.commit_count||0}</td>
+      <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
+                 color:var(--text2);font-variant-numeric:tabular-nums;
+                 border-left:1px solid var(--border)">${wi.event_count||0}</td>
       <td style="padding:4px 10px 4px 6px;text-align:right;white-space:nowrap;font-size:0.66rem;vertical-align:top;
                  color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;
                  border-left:1px solid var(--border)">${fmtDate(wi.updated_at||wi.created_at)}</td>
@@ -736,14 +740,15 @@ function _renderWiPanel(items, project) {
 
   list.innerHTML = `
     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <colgroup><col><col style="width:52px"><col style="width:52px"><col style="width:112px"></colgroup>
+      <colgroup><col><col style="width:46px"><col style="width:46px"><col style="width:46px"><col style="width:112px"></colgroup>
       <thead><tr>
         <th style="text-align:left;padding:5px 8px 5px 12px;font-size:0.68rem;font-weight:600;
                    letter-spacing:.03em;text-transform:uppercase;
                    color:var(--muted);background:var(--surface2);
                    border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>
-        ${hdr('event_count','Events')}
+        ${hdr('prompt_count','Prompts')}
         ${hdr('commit_count','Commits')}
+        ${hdr('event_count','Events')}
         ${hdr('updated_at','Updated')}
       </tr></thead>
       <tbody>${rows}</tbody>
