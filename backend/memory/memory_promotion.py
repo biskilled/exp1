@@ -23,6 +23,35 @@ from core.prompt_loader import prompts as _prompts
 
 log = logging.getLogger(__name__)
 
+
+async def _match_new_work_item(project: str, work_item_id: str) -> None:
+    """Queue AI tag matching for a newly extracted work item."""
+    try:
+        from memory.memory_tagging import MemoryTagging
+        import json as _json
+        matches = await MemoryTagging().match_work_item_to_tags(project, work_item_id)
+        if not matches:
+            return
+        best = matches[0]
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                if best.get("tag_id") and best.get("confidence", 0) > 0.70:
+                    cur.execute(
+                        "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid, updated_at=NOW() WHERE id=%s::uuid",
+                        (best["tag_id"], work_item_id),
+                    )
+                elif best.get("suggested_new"):
+                    cur.execute(
+                        "UPDATE mem_ai_work_items SET ai_tags=ai_tags||%s::jsonb, updated_at=NOW() WHERE id=%s::uuid",
+                        (_json.dumps({
+                            "suggested_new": best["suggested_new"],
+                            "suggested_category": best.get("suggested_category") or "task",
+                        }), work_item_id),
+                    )
+    except Exception as e:
+        log.debug(f"_match_new_work_item error: {e}")
+
+
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
 _SQL_GET_TAG_ID = """
@@ -665,8 +694,16 @@ class MemoryPromotion:
                                     " WHERE id=%s::uuid AND work_item_id IS NULL",
                                     (wi_id, str(ev_id)),
                                 )
+                                # Queue AI tag matching for the new work item
+                                try:
+                                    import asyncio as _aio
+                                    loop = _aio.get_event_loop()
+                                    if loop.is_running():
+                                        loop.create_task(_match_new_work_item(project, wi_id))
+                                except Exception:
+                                    pass
                             else:
-                                updated += 1  # ON CONFLICT DO NOTHING hit an existing item
+                                updated += 1  # ON CONFLICT DO UPDATE hit an existing item
                 except Exception as e:
                     log.debug(f"extract_work_items insert error: {e}")
 

@@ -97,6 +97,13 @@ _SQL_UNLINKED_WORK_ITEMS = """
                WHERE mc.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
                  AND mc.project_id = w.project_id
            ), 0) AS commit_count,
+           -- Total events in the same session
+           COALESCE((
+               SELECT COUNT(*)
+               FROM mem_ai_events e3
+               WHERE e3.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
+                 AND e3.project_id = w.project_id
+           ), 0) AS event_count,
            -- User tags: planner tags referenced in events from the same session
            (SELECT COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb)
             FROM mem_ai_events ev
@@ -295,6 +302,54 @@ async def _run_matching(project: str, work_item_id: str) -> None:
                     )
     except Exception:
         pass  # non-critical background task
+
+
+async def _backlink_tag_to_events(project_id: int, work_item_id: str, tag_id: str) -> None:
+    """When a work item is linked to a planner tag, propagate that tag to related events.
+
+    Finds the session from source_event_id, then updates all events in that session
+    to include the tag name in their tags JSONB (using the category-appropriate key).
+    Only writes if the event doesn't already have a user tag for that key.
+    """
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Get tag name + category
+                cur.execute("""
+                    SELECT pt.name, tc.name AS cat
+                    FROM planner_tags pt
+                    LEFT JOIN mng_tags_categories tc ON tc.id = pt.category_id
+                    WHERE pt.id = %s::uuid
+                """, (tag_id,))
+                tag_row = cur.fetchone()
+                if not tag_row:
+                    return
+                tag_name, tag_cat = tag_row
+                # Map category to events tags key
+                tag_key = 'bug' if tag_cat == 'bug' else 'phase' if tag_cat == 'phase' else 'feature'
+
+                # Get session_id from source_event_id
+                cur.execute("""
+                    SELECT session_id FROM mem_ai_events
+                    WHERE id = (SELECT source_event_id FROM mem_ai_work_items WHERE id=%s::uuid)
+                """, (work_item_id,))
+                sess_row = cur.fetchone()
+                if not sess_row or not sess_row[0]:
+                    return
+                session_id = sess_row[0]
+
+                # Update events in that session that don't already have this key
+                cur.execute("""
+                    UPDATE mem_ai_events
+                    SET tags = tags || jsonb_build_object(%s, %s)
+                    WHERE session_id = %s
+                      AND project_id = %s
+                      AND (tags->>%s IS NULL OR tags->>%s = '')
+                """, (tag_key, tag_name, session_id, project_id, tag_key, tag_key))
+                log.debug(f"_backlink_tag_to_events: updated {cur.rowcount} events "
+                          f"session={session_id[:8]} tag={tag_key}:{tag_name}")
+    except Exception as e:
+        log.debug(f"_backlink_tag_to_events error: {e}")
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -521,6 +576,10 @@ async def patch_work_item(
         if row:
             asyncio.create_task(_embed_work_item(p_id, item_id, row[0], row[1] or "", row[2] or "", row[3] or ""))
         background.add_task(_run_matching, p, item_id)
+
+    # When tag_id is set, back-link that tag to all events in the same session
+    if body.tag_id and body.tag_id != '':
+        asyncio.create_task(_backlink_tag_to_events(p_id, item_id, body.tag_id))
 
     asyncio.create_task(_trigger_memory_regen(p))
     return {"ok": True, "id": item_id, "status_user": result[1]}

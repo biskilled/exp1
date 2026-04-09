@@ -367,6 +367,7 @@ api.workItems = {
   },
   get:          (id, project) => _get(`/work-items/${enc(id)}?project=${enc(project || '')}`),
   unlinked:     (project) => _get(`/work-items/unlinked?project=${enc(project || '')}`),
+  rematchAll:   (project) => _post(`/work-items/rematch-all?project=${enc(project || '')}`, {}),
   create:       (project, body) => _post(`/work-items?project=${enc(project)}`, body),
   patch:        (id, project, body) => fetch(
     _base() + `/work-items/${enc(id)}?project=${enc(project)}`,

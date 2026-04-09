@@ -110,10 +110,11 @@ export function renderEntities(container) {
         <span style="font-size:0.6rem;font-weight:700;color:var(--text);letter-spacing:.03em">⬡ WORK ITEMS</span>
         <span id="wi-panel-count" style="font-size:0.55rem;color:var(--muted)"></span>
         <span style="flex:1"></span>
-        <button id="wi-panel-add-btn"
-          style="background:var(--accent);border:none;color:#fff;font-size:0.57rem;
-                 padding:0.13rem 0.42rem;border-radius:var(--radius);cursor:pointer;
-                 font-family:var(--font);outline:none">+ New</button>
+        <button id="wi-panel-refresh-btn"
+          title="Refresh list and trigger AI tag matching for new items"
+          style="background:none;border:1px solid var(--border);color:var(--muted);font-size:0.62rem;
+                 padding:0.1rem 0.4rem;border-radius:var(--radius);cursor:pointer;
+                 font-family:var(--font);outline:none">↺</button>
       </div>
       <!-- Panel list (also a drop zone for unlinking) -->
       <div id="wi-panel-list" style="flex:1;overflow-y:auto;overflow-x:hidden"
@@ -443,13 +444,30 @@ async function _loadWiPanel(project) {
   } catch(e) {
     if (list) list.innerHTML = '<div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">Could not load work items</div>';
   }
+
+  // Wire up refresh button (only on first load)
+  const btn = document.getElementById('wi-panel-refresh-btn');
+  if (btn && !btn._wired) {
+    btn._wired = true;
+    btn.addEventListener('click', async () => {
+      btn.textContent = '…';
+      btn.disabled = true;
+      try {
+        await api.workItems.rematchAll(project);
+        await _loadWiPanel(project);
+      } catch(e) { /* ignore */ } finally {
+        btn.textContent = '↺';
+        btn.disabled = false;
+      }
+    });
+  }
 }
 
 function _renderWiPanel(items, project) {
   const list = document.getElementById('wi-panel-list');
   if (!list) return;
   if (!items.length) {
-    list.innerHTML = '<div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">No work items yet — click + New to create one</div>';
+    list.innerHTML = '<div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">All work items linked ✓ — or click ↺ to refresh</div>';
     return;
   }
 
@@ -598,12 +616,9 @@ function _renderWiPanel(items, project) {
         <span style="${LBL_AI_N}">AI(NEW)</span>
         <span style="font-size:0.65rem;font-weight:500;padding:1px 6px;border-radius:4px;
                      color:#e74c3c;border:1px solid #e74c3c;background:#e74c3c1a;
-                     white-space:nowrap">${_esc(aiNewLabel)}</span>
-        <button onclick="event.stopPropagation();window._wiPanelCreateTag('${_esc(wi.id)}','${_esc(aiNew)}','${_esc(aiNewCat)}','${_esc(project)}')"
-          title="Create this tag" style="background:none;border:1px solid #e74c3c;color:#e74c3c;
-                 cursor:pointer;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>
+                     white-space:nowrap" title="No existing tag — create one manually in the Planner">${_esc(aiNewLabel)}</span>
         <button onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
-          title="Dismiss" style="background:none;border:1px solid #888;color:#888;cursor:pointer;
+          title="Dismiss suggestion" style="background:none;border:1px solid #888;color:#888;cursor:pointer;
                  font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">×</button>
       </div>`;
     } else {
@@ -660,6 +675,9 @@ function _renderWiPanel(items, project) {
       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
                  color:var(--text2);font-variant-numeric:tabular-nums;
                  border-left:1px solid var(--border)">${wi.commit_count||0}</td>
+      <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
+                 color:var(--text2);font-variant-numeric:tabular-nums;
+                 border-left:1px solid var(--border)">${wi.event_count||0}</td>
       <td style="padding:4px 10px 4px 6px;text-align:right;white-space:nowrap;font-size:0.66rem;vertical-align:top;
                  color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;
                  border-left:1px solid var(--border)">${fmtDate(wi.updated_at||wi.created_at)}</td>
@@ -668,7 +686,7 @@ function _renderWiPanel(items, project) {
 
   list.innerHTML = `
     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <colgroup><col><col style="width:58px"><col style="width:58px"><col style="width:112px"></colgroup>
+      <colgroup><col><col style="width:52px"><col style="width:52px"><col style="width:52px"><col style="width:112px"></colgroup>
       <thead><tr>
         <th style="text-align:left;padding:5px 8px 5px 12px;font-size:0.68rem;font-weight:600;
                    letter-spacing:.03em;text-transform:uppercase;
@@ -676,6 +694,7 @@ function _renderWiPanel(items, project) {
                    border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>
         ${hdr('prompt_count','Prompts')}
         ${hdr('commit_count','Commits')}
+        ${hdr('event_count','Events')}
         ${hdr('updated_at','Updated')}
       </tr></thead>
       <tbody>${rows}</tbody>
