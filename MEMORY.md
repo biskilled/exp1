@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-08 23:30 UTC by aicli /memory_
+_Generated: 2026-04-09 00:11 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform (v2.2.0) combining a Python 3.12 CLI backend with FastAPI, PostgreSQL pgvector storage, and an Electron desktop UI, designed to capture, synthesize, and manage project knowledge using multi-layer memory (ephemeral → raw capture → LLM digests → work items → user tags). The system executes async DAG workflows, provides semantic search via embeddings, and integrates multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) with MCP tooling for intelligent code and work item management. Currently stabilizing database schema design, centralizing prompt management, and optimizing query performance for production readiness.
+aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI for semantic code memory, work item tracking, and LLM-powered workflow automation. Currently stabilizing work item-to-event linkage, optimizing semantic commit extraction costs, and refactoring memory synthesis prompts for centralized caching and improved performance.
 
 ## Project Facts
 
@@ -101,7 +101,7 @@ Reviewer: ```json
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (safe rename/recreate/copy pattern)
+- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
 
 ## Key Decisions
 
@@ -114,21 +114,21 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts → user planner_tags
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
+- Work items: FK approach with mem_mrr_commits.event_id → mem_ai_events and mem_ai_events.work_item_id for many-to-one linkage; dual status tracking (status_user/status_ai)
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m017)
-- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding
 - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
 
 ## In Progress
 
+- Work item population and linkage model: redesigned FK architecture so mem_mrr_commits.event_id points to mem_ai_events (commit digest), and mem_ai_events.work_item_id links to work_items; migration m019 implements this many-events-to-one-work-item pattern
+- mem_mrr_commits_code population strategy: investigating whether full population on every commit is necessary vs. lazy/selective population; questioning cost-benefit of semantic extraction for all commits
 - Planner tag UI binding fix: resolved `catName` ReferenceError in _renderDrawer() (scope issue) and corrected field mismatch v.short_desc → v.desc for proper tag display on left sidebar
-- Database schema canonicalization: consolidated all DDL into db_schema.sql with migration framework db_migrations.py (m001-m017 tracked); single source of truth for database design
+- Database schema canonicalization: consolidated all DDL into db_schema.sql with migration framework db_migrations.py (m001-m019 tracked); single source of truth for database design
 - Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader instead of mng_system_roles queries; eliminates redundant DB lookups
-- Commit pipeline prompt discovery: tracing all LLM prompts in memory_embedding.py, agents/tools/, and routers for unified prompt management and cost tracking
-- Memory endpoint data flow verification: synchronizing mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables with consistent module imports
-- Database query performance optimization: investigating ~60s latency in route_work_items (_SQL_UNLINKED_WORK_ITEMS join optimization and indexing needed)
+- Database query performance optimization: investigating ~60s latency in route_work_items (JOIN optimization and indexing strategy for unlinked work items query)
 
 ## Active Features / Bugs / Tasks
 
@@ -178,6 +178,81 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 15dde7b..79752d7 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-08 22:52 UTC
++> Generated by aicli 2026-04-08 23:26 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index cdf8015..bbba80e 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 22:52 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 23:26 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -66,8 +66,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-08] Can you explain how commit data statitics are connected to work_items ? Is there is a way to know how many rows/promtps 
+ - [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
+ - [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
+ - [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
+-- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
+\ No newline at end of file
++- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
++- [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index cdf8015..bbba80e 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 22:52 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 23:26 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -66,8 +66,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-08] Can you explain how commit data statitics are connected to work_items ? Is there is a way to know how many rows/promtps 
+ - [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
+ - [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
+ - [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
+-- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
+\ No newline at end of file
++- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
++- [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
+
+Removed legacy flat CLAUDE.md and CONTEXT.md files from aicli system read-only directory as part of cleanup.
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
 
@@ -234,96 +309,16 @@ index 416510b..15dde7b 100644
 \ No newline at end of file
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index f1be727..cdf8015 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 19:01 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 22:52 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -44,6 +44,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
- - **deployment_local**: bash start_backend.sh + npm run dev
- - **prompt_management**: core.prompt_loader module with centralized prompt caching
-+- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (safe rename/recreate/copy pattern)
- 
- ## Key Decisions
- 
-@@ -61,12 +62,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
--- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
-+- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes load prompts from configuration
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-08] can you explain where are the  prompts that used for update new commit ?
- - [2026-04-08] Can you explain how commit data statitics are connected to work_items ? Is there is a way to know how many rows/promtps 
- - [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
- - [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
--- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
-\ No newline at end of file
-+- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
-+- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
-\ No newline at end of file
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index f1be727..cdf8015 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 19:01 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 22:52 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -44,6 +44,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
- - **deployment_local**: bash start_backend.sh + npm run dev
- - **prompt_management**: core.prompt_loader module with centralized prompt caching
-+- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (safe rename/recreate/copy pattern)
- 
- ## Key Decisions
- 
-@@ -61,12 +62,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
- - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
- - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
--- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes now load prompts from configuration
-+- Prompt centralization via core.prompt_loader; system roles (mng_system_roles) replaced with prompt cache; routes load prompts from configuration
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-08] can you explain where are the  prompts that used for update new commit ?
- - [2026-04-08] Can you explain how commit data statitics are connected to work_items ? Is there is a way to know how many rows/promtps 
- - [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
- - [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
--- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
-\ No newline at end of file
-+- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
-+- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
-\ No newline at end of file
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-Removed stale auto-generated system context and CLAUDE.md documentation files that were no longer maintained or relevant.
-
-### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-08
-
-Fixed tag property drawer display by correcting variable scope error (catName undefined), field name mismatch (short_desc vs description), and added missing cache fields (requirements, acceptance_criteria, priority) to SQL query.
-
 ## AI Synthesis
 
-**[2026-04-08]** `planner_tag_ui` — Fixed `catName` ReferenceError in _renderDrawer() scope and corrected v.short_desc → v.desc field mismatch; planner tags now display properties correctly in left sidebar. **[2026-04-08]** `db_schema` — Consolidated all DDL into single db_schema.sql file as source of truth; created db_migrations.py framework with rename→recreate→copy pattern; tracked legacy ALTER TABLE statements as m001-m017. **[2026-04-08]** `prompt_loader` — Began refactoring route_snapshots.py and route_memory.py to use core.prompt_loader._prompts.content() instead of direct mng_system_roles queries; eliminates redundant database lookups per route. **[2026-04-08]** `commit_prompts` — Traced all LLM prompts used in commit processing (code extraction, summarization, embedding) across memory_embedding.py, agents/tools/, and routers; unified prompt management for cost tracking. **[2026-04-08]** `memory_flow` — Verified synchronization path from mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables; updated module imports for consistent data flow. **[2026-04-08]** `performance` — Identified ~60s latency in route_work_items; investigating _SQL_UNLINKED_WORK_ITEMS join optimization and database indexing.
+**[2026-04-08]** `development_history` — Redesigned work_item linkage model using FK approach: mem_mrr_commits.event_id → mem_ai_events (digest), mem_ai_events.work_item_id → mem_ai_work_items (many-to-one). Clarified that work items should connect to multiple events via tags, not single event. Migration m019 implemented.
+
+**[2026-04-08]** `in_progress` — Investigating mem_mrr_commits_code population strategy: questioning whether semantic extraction on every commit is cost-effective vs. lazy/selective population model.
+
+**[2026-04-08]** `bug_fix` — Fixed planner tag UI visibility: resolved catName ReferenceError in _renderDrawer() scope issue and corrected v.short_desc → v.desc field binding for left sidebar tag display.
+
+**[2026-04-08]** `infrastructure` — Database schema canonicalization complete: db_schema.sql established as single source of truth with db_migrations.py framework (m001-m019 migrations tracked for safe DDL evolution).
+
+**[2026-04-08]** `refactoring` — Prompt loader integration in progress: route_snapshots.py and route_memory.py transitioning to core.prompt_loader to eliminate redundant mng_system_roles DB queries and enable unified prompt caching.
+
+**[2026-04-08]** `performance` — Identified ~60s latency in route_work_items (_SQL_UNLINKED_WORK_ITEMS query): JOIN optimization and strategic indexing required for unlinked work item retrieval at scale.

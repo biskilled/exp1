@@ -701,6 +701,8 @@ function _renderTagTableFromCache() {
 const _wiCollapsed = new Set();
 // Current items cache (id → wi object) for the open category
 let _wiItemsCache = {};
+// Sort state for work items table
+let _wiSort = { field: 'updated_at', dir: 'desc' };
 
 async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
   pane.innerHTML = `
@@ -727,6 +729,16 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
     } catch (e) { toast('Create failed: ' + e.message, 'error'); }
   };
   window._plannerOpenWorkItemDrawer = (id, cn, proj) => _openWorkItemDrawer(id, cn, proj, pane, catColor, catIcon);
+  window._wiResort = (field) => {
+    if (_wiSort.field === field) {
+      _wiSort.dir = _wiSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      _wiSort.field = field;
+      _wiSort.dir = 'desc';
+    }
+    const tb = document.getElementById('wi-table-body');
+    if (tb) _wiSetTableBody(tb, _wiItemsCache, catName, catColor, catIcon, project);
+  };
 
   try {
     const data = await api.workItems.list(project, catName);
@@ -763,65 +775,99 @@ function _wiSetTableBody(tableBody, byId, catName, catColor, catIcon, project) {
 function _wiRenderRows(byId, catName, catColor, catIcon, project) {
   const rows = Object.values(byId);
 
-  const STATUS_UC = {active:'#27ae60', in_progress:'#e67e22', done:'#4a90e2', paused:'#888'};
+  // Sort rows client-side
+  const { field, dir } = _wiSort;
+  const mul = dir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    if (field === 'prompt_count')  return mul * ((a.prompt_count||0)  - (b.prompt_count||0));
+    if (field === 'commit_count')  return mul * ((a.commit_count||0)  - (b.commit_count||0));
+    // default: updated_at / created_at
+    return mul * (new Date(a.updated_at||a.created_at||0) - new Date(b.updated_at||b.created_at||0));
+  });
+
+  // Date → yymmddhhmm (local time)
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const yy = String(d.getFullYear()).slice(2);
+    const mo = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mn = String(d.getMinutes()).padStart(2,'0');
+    return `${yy}${mo}${dd}${hh}${mn}`;
+  }
+
+  // Sortable column header
+  function hdr(f, label, align='right') {
+    const active = _wiSort.field === f;
+    const arrow  = active ? (_wiSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
+    return `<th onclick="window._wiResort('${f}')"
+      style="text-align:${align};padding:0.35rem 0.5rem;white-space:nowrap;cursor:pointer;
+             user-select:none;font-size:0.68rem;font-weight:${active?'600':'400'};
+             color:${active?'var(--text)':'var(--muted)'};border-bottom:2px solid var(--border)">
+      ${label}${arrow}
+    </th>`;
+  }
+
+  const STATUS_C = {active:'#27ae60', in_progress:'#e67e22', done:'#4a90e2', paused:'#888'};
 
   function rowFor(wi) {
-    const su = wi.status_user || 'active';
-    const sa = wi.status_ai  || 'active';
-    const scU = STATUS_UC[su] || '#888';
-    const scA = STATUS_UC[sa] || '#888';
-    const seqBadge = wi.seq_num
-      ? `<span style="font-size:0.52rem;color:var(--muted);background:var(--surface2);
-                      border:1px solid var(--border);padding:0.05rem 0.28rem;
-                      border-radius:6px;white-space:nowrap;margin-right:4px;flex-shrink:0"
-               title="Seq #${wi.seq_num}">#${wi.seq_num}</span>`
-      : '';
-    const acPreview = wi.acceptance_criteria
-      ? wi.acceptance_criteria.replace(/\n/g, ' ').slice(0, 55) + (wi.acceptance_criteria.length > 55 ? '…' : '')
-      : '—';
-    const tagLink = wi.tag_id
-      ? `<span style="font-size:0.58rem;color:var(--accent);background:var(--accent)18;
-                      padding:0.1rem 0.35rem;border-radius:8px;white-space:nowrap">linked</span>`
-      : `<span style="font-size:0.58rem;color:var(--muted)">—</span>`;
+    const su  = wi.status_user || 'active';
+    const sc  = STATUS_C[su] || '#888';
+    const desc = (wi.ai_desc||'').replace(/\n/g,' ');
+    const descClip = desc.length > 90 ? desc.slice(0,90)+'…' : desc;
+    const date = fmtDate(wi.updated_at || wi.created_at);
+    const linked = wi.tag_id
+      ? `<span style="font-size:0.5rem;color:var(--accent);margin-left:4px">✓</span>`
+      : (wi.ai_tag_id ? `<span style="font-size:0.5rem;color:var(--muted);margin-left:4px">✦</span>` : '');
 
     return `
-      <tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
-          data-wi-id="${wi.id}"
+      <tr draggable="true" data-wi-id="${wi.id}" data-wi-name="${_esc(wi.ai_name)}"
+          style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
           onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(catName)}','${_esc(project)}')"
           onmouseenter="this.style.background='var(--surface2)'"
           onmouseleave="this.style.background=''">
-        <td style="padding:0.5rem;color:var(--text);font-weight:500">
-          <div style="display:flex;align-items:center">
-            ${seqBadge}
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${_esc(wi.ai_desc || '')}">${_esc(wi.ai_name)}</span>
+        <td style="padding:0.42rem 0.5rem;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:0.35rem">
+            ${wi.seq_num ? `<span style="font-size:0.5rem;color:var(--muted);flex-shrink:0;white-space:nowrap">#${wi.seq_num}</span>` : ''}
+            <span style="font-size:0.7rem;font-weight:500;color:var(--text);
+                         overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
+            <span style="font-size:0.5rem;color:${sc};background:${sc}22;
+                         padding:0 0.3rem;border-radius:8px;flex-shrink:0;white-space:nowrap">${su}</span>
+            ${linked}
           </div>
+          ${descClip ? `<div style="font-size:0.6rem;color:var(--muted);margin-top:0.08rem;
+                                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                             title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
         </td>
-        <td style="padding:0.5rem 0.4rem;white-space:nowrap">
-          <span style="font-size:0.57rem;color:${scU};background:${scU}22;
-                       padding:0.1rem 0.38rem;border-radius:10px" title="User status">${_esc(su)}</span>
-          ${sa !== su ? `<span style="font-size:0.52rem;color:${scA};background:${scA}18;
-                                     padding:0.08rem 0.3rem;border-radius:10px;margin-left:2px;
-                                     opacity:.8" title="AI suggests: ${_esc(sa)}">AI:${_esc(sa)}</span>` : ''}
-        </td>
-        <td style="padding:0.5rem 0.4rem;color:var(--muted);font-size:0.65rem;
-                   max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-            title="${_esc(wi.acceptance_criteria || '')}">${_esc(acPreview)}</td>
-        <td style="padding:0.5rem 0.4rem" onclick="event.stopPropagation()">${tagLink}</td>
+        <td style="padding:0.42rem 0.5rem;text-align:right;white-space:nowrap;
+                   font-size:0.65rem;color:var(--text2);font-variant-numeric:tabular-nums;
+                   width:58px">${wi.prompt_count||0}</td>
+        <td style="padding:0.42rem 0.5rem;text-align:right;white-space:nowrap;
+                   font-size:0.65rem;color:var(--text2);font-variant-numeric:tabular-nums;
+                   width:58px">${wi.commit_count||0}</td>
+        <td style="padding:0.42rem 0.5rem;text-align:right;white-space:nowrap;
+                   font-size:0.6rem;color:var(--muted);font-variant-numeric:tabular-nums;
+                   font-family:monospace;width:82px">${date}</td>
       </tr>`;
   }
 
   return `
-    <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
+    <table style="width:100%;border-collapse:collapse;font-size:0.72rem;table-layout:fixed">
+      <colgroup>
+        <col><col style="width:58px"><col style="width:58px"><col style="width:82px">
+      </colgroup>
       <thead>
-        <tr style="border-bottom:2px solid var(--border)">
-          <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:500">Name</th>
-          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:90px">Status</th>
-          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;max-width:110px">Criteria</th>
-          <th style="text-align:left;padding:0.35rem 0.4rem;color:var(--muted);font-weight:500;width:70px">Tag</th>
+        <tr>
+          <th style="text-align:left;padding:0.35rem 0.5rem;color:var(--muted);font-weight:400;
+                     font-size:0.68rem;border-bottom:2px solid var(--border)">Name / Description</th>
+          ${hdr('prompt_count','Prompts')}
+          ${hdr('commit_count','Commits')}
+          ${hdr('updated_at','Updated')}
         </tr>
       </thead>
-      <tbody>${rows.map(wi => rowFor(wi)).join('')}</tbody>
+      <tbody>${rows.map(rowFor).join('')}</tbody>
     </table>`;
 }
 
