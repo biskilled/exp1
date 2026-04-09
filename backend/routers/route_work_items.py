@@ -74,71 +74,84 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 )
 
 _SQL_UNLINKED_WORK_ITEMS = """
-    SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-           w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
-           w.start_date, w.created_at, w.updated_at, w.seq_num,
-           w.ai_tag_id,
-           pt.name AS ai_tag_name,
-           ptc.name  AS ai_tag_category,
+    WITH wi AS (
+        -- base filter once; carry session_id from source_event in one pass
+        SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+               w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
+               w.start_date, w.created_at, w.updated_at, w.seq_num,
+               w.ai_tag_id, w.source_event_id, w.project_id,
+               e.session_id AS src_session_id
+        FROM mem_ai_work_items w
+        LEFT JOIN mem_ai_events e ON e.id = w.source_event_id
+        WHERE w.project_id = %s AND w.tag_id IS NULL AND w.status_user != 'done'
+    ),
+    prompt_ct AS (
+        SELECT wi.id AS wi_id, COUNT(DISTINCT e.id) AS cnt
+        FROM wi
+        JOIN mem_ai_events e ON e.project_id = wi.project_id
+             AND e.event_type = 'prompt_batch'
+             AND (   (wi.src_session_id IS NOT NULL AND e.session_id = wi.src_session_id)
+                  OR e.work_item_id = wi.id )
+        GROUP BY wi.id
+    ),
+    commit_ct AS (
+        SELECT wi.id AS wi_id, COUNT(*) AS cnt
+        FROM wi
+        JOIN mem_mrr_commits mc ON mc.project_id = wi.project_id
+             AND wi.src_session_id IS NOT NULL
+             AND mc.session_id = wi.src_session_id
+        GROUP BY wi.id
+    ),
+    digest_ct AS (
+        SELECT wi.id AS wi_id, COUNT(DISTINCT e.id) AS cnt
+        FROM wi
+        JOIN mem_ai_events e ON e.project_id = wi.project_id
+             AND e.event_type IN ('prompt_batch', 'session_summary')
+             AND (   (wi.src_session_id IS NOT NULL AND e.session_id = wi.src_session_id)
+                  OR e.work_item_id = wi.id )
+        GROUP BY wi.id
+    ),
+    merge_ct AS (
+        SELECT merged_into AS wi_id, COUNT(*) AS cnt
+        FROM mem_ai_work_items
+        WHERE project_id = %s AND merged_into IS NOT NULL
+        GROUP BY 1
+    ),
+    user_tag_ct AS (
+        SELECT wi.id AS wi_id,
+               COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb) AS tags
+        FROM wi
+        JOIN mem_ai_events ev ON ev.project_id = wi.project_id
+             AND wi.src_session_id IS NOT NULL
+             AND ev.session_id = wi.src_session_id
+             AND (ev.tags->>'feature' IS NOT NULL
+                  OR ev.tags->>'bug_ref' IS NOT NULL
+                  OR ev.tags->>'bug'     IS NOT NULL)
+        JOIN planner_tags ut ON ut.project_id = wi.project_id
+             AND ut.name IN (ev.tags->>'feature', ev.tags->>'bug_ref', ev.tags->>'bug')
+        GROUP BY wi.id
+    )
+    SELECT wi.id, wi.ai_category, wi.ai_name, wi.ai_desc,
+           wi.status_user, wi.status_ai, wi.requirements, wi.summary, wi.tags, wi.ai_tags,
+           wi.start_date, wi.created_at, wi.updated_at, wi.seq_num,
+           wi.ai_tag_id,
+           pt.name  AS ai_tag_name,
+           ptc.name AS ai_tag_category,
            ptc.color AS ai_tag_color,
-           (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
-           -- Prompt count: session-based OR direct work_item_id link
-           COALESCE((
-               SELECT COUNT(*) FROM (
-                   SELECT id FROM mem_ai_events
-                   WHERE project_id = w.project_id
-                     AND event_type = 'prompt_batch'
-                     AND session_id IS NOT NULL
-                     AND session_id = (SELECT session_id FROM mem_ai_events
-                                       WHERE id = w.source_event_id AND session_id IS NOT NULL)
-                   UNION
-                   SELECT id FROM mem_ai_events
-                   WHERE project_id = w.project_id AND work_item_id = w.id
-                     AND event_type = 'prompt_batch'
-               ) _p
-           ), 0) AS prompt_count,
-           -- Commit count: session-based OR direct back-link
-           COALESCE((
-               SELECT COUNT(*) FROM mem_mrr_commits mc
-               WHERE mc.project_id = w.project_id
-                 AND mc.session_id IS NOT NULL
-                 AND mc.session_id = (SELECT session_id FROM mem_ai_events
-                                      WHERE id = w.source_event_id AND session_id IS NOT NULL)
-           ), 0) AS commit_count,
-           -- Digest count: prompt_batch + session_summary only (exclude per-commit/diff_file noise)
-           COALESCE((
-               SELECT COUNT(*) FROM (
-                   SELECT id FROM mem_ai_events
-                   WHERE project_id = w.project_id
-                     AND event_type IN ('prompt_batch', 'session_summary')
-                     AND session_id IS NOT NULL
-                     AND session_id = (SELECT session_id FROM mem_ai_events
-                                       WHERE id = w.source_event_id AND session_id IS NOT NULL)
-                   UNION
-                   SELECT id FROM mem_ai_events
-                   WHERE project_id = w.project_id AND work_item_id = w.id
-                     AND event_type IN ('prompt_batch', 'session_summary')
-               ) _e
-           ), 0) AS event_count,
-           -- User tags: planner tags referenced in events from the same session
-           (SELECT COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb)
-            FROM mem_ai_events ev
-            JOIN planner_tags ut ON ut.project_id = w.project_id
-                 AND ut.name IN (
-                     ev.tags->>'feature',
-                     ev.tags->>'bug_ref',
-                     ev.tags->>'bug'
-                 )
-            WHERE ev.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
-              AND ev.project_id = w.project_id
-              AND (ev.tags->>'feature' IS NOT NULL OR ev.tags->>'bug_ref' IS NOT NULL
-                   OR ev.tags->>'bug' IS NOT NULL)
-           ) AS user_tags
-    FROM mem_ai_work_items w
-    LEFT JOIN planner_tags pt   ON pt.id  = w.ai_tag_id
+           COALESCE(merge_ct.cnt,   0)        AS merge_count,
+           COALESCE(prompt_ct.cnt,  0)        AS prompt_count,
+           COALESCE(commit_ct.cnt,  0)        AS commit_count,
+           COALESCE(digest_ct.cnt,  0)        AS event_count,
+           COALESCE(user_tag_ct.tags, '[]'::jsonb) AS user_tags
+    FROM wi
+    LEFT JOIN planner_tags        pt  ON pt.id  = wi.ai_tag_id
     LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
-    WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
-    ORDER BY w.created_at DESC, w.id DESC
+    LEFT JOIN prompt_ct     ON prompt_ct.wi_id  = wi.id
+    LEFT JOIN commit_ct     ON commit_ct.wi_id  = wi.id
+    LEFT JOIN digest_ct     ON digest_ct.wi_id  = wi.id
+    LEFT JOIN merge_ct      ON merge_ct.wi_id   = wi.id
+    LEFT JOIN user_tag_ct   ON user_tag_ct.wi_id = wi.id
+    ORDER BY wi.created_at DESC, wi.id DESC
 """
 
 _SQL_INSERT_WORK_ITEM = (
@@ -454,7 +467,7 @@ async def get_unlinked_work_items(project: str | None = Query(None)):
     p_id = db.get_or_create_project_id(p)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id,))
+            cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id, p_id))
             cols = [d[0] for d in cur.description]
             rows = []
             for r in cur.fetchall():

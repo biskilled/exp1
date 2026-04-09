@@ -169,6 +169,42 @@ def m019_wi_event_fk_columns(conn) -> None:
     log.info("m019_wi_event_fk_columns: event_id on commits + work_item_id on events applied")
 
 
+def m020_perf_indexes(conn) -> None:
+    """Add missing composite indexes for query performance.
+
+    The work items and planner queries were doing O(N) correlated subqueries
+    or full-table scans due to missing indexes on frequently-filtered columns.
+    """
+    with conn.cursor() as cur:
+        # mem_ai_events — session_id lookups (used in _SQL_UNLINKED_WORK_ITEMS CTE)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mae_project_session "
+            "ON mem_ai_events(project_id, session_id) WHERE session_id IS NOT NULL"
+        )
+        # mem_ai_events — event_type filter (prompt_batch/session_summary counts)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mae_project_etype "
+            "ON mem_ai_events(project_id, event_type)"
+        )
+        # mem_mrr_commits — session_id lookups (commit count per session in work items)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mmrrc_project_session "
+            "ON mem_mrr_commits(project_id, session_id) WHERE session_id IS NOT NULL"
+        )
+        # planner_tags — name lookups (entity/tag search)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_planner_tags_project_name "
+            "ON planner_tags(project_id, name)"
+        )
+        # mem_ai_work_items — status_user filter (unlinked items query skips 'done')
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mawi_project_status_user "
+            "ON mem_ai_work_items(project_id, status_user)"
+        )
+    conn.commit()
+    log.info("m020_perf_indexes: composite indexes applied")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -176,4 +212,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     #   work_items_alters_v1, commit_code_v1
     ("m018_work_items_links", m018_work_items_links),
     ("m019_wi_event_fk_columns", m019_wi_event_fk_columns),
+    ("m020_perf_indexes", m020_perf_indexes),
 ]

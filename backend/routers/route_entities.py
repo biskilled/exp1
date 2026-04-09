@@ -188,6 +188,162 @@ _SQL_UPSERT_TAG_GITHUB = """
     RETURNING (xmax = 0) AS was_inserted, id::text
 """
 
+# Validate category id exists (global lookup)
+_SQL_GET_CATEGORY_BY_ID = """
+    SELECT id FROM mng_tags_categories WHERE client_id=1 AND id=%s
+"""
+
+# Get category name by id (global lookup)
+_SQL_GET_CATEGORY_NAME_BY_ID = """
+    SELECT name FROM mng_tags_categories WHERE client_id=1 AND id=%s
+"""
+
+# Resolve tag string "category:name" for a planner_tags UUID — used for tagging/events
+_SQL_GET_TAG_STRING_BY_ID = """
+    SELECT tc.name || ':' || t.name
+    FROM planner_tags t
+    JOIN mng_tags_categories tc ON tc.id = t.category_id
+    WHERE t.id=%s::uuid AND t.client_id=1
+    LIMIT 1
+"""
+
+# Work items per category for entity summary augmentation
+_SQL_WI_BY_CATEGORY = """
+    SELECT name, agent_status, acceptance_criteria, implementation_plan, lifecycle_status
+    FROM mem_ai_work_items
+    WHERE project_id=%s AND category_name=%s AND status != 'archived'
+"""
+
+# List commits for events endpoint
+_SQL_LIST_COMMIT_EVENTS = """
+    SELECT commit_hash, 'commit', commit_hash, left(commit_msg,120), committed_at
+    FROM mem_mrr_commits WHERE project_id=%s
+    ORDER BY committed_at DESC NULLS LAST LIMIT %s
+"""
+
+# List prompts for events endpoint
+_SQL_LIST_PROMPT_EVENTS = """
+    SELECT source_id, 'prompt', source_id, left(prompt,120), created_at
+    FROM mem_mrr_prompts WHERE project_id=%s AND event_type='prompt'
+    ORDER BY created_at DESC LIMIT %s
+"""
+
+# Find existing planner_tag by project + name
+_SQL_GET_TAG_BY_NAME = """
+    SELECT id::text FROM planner_tags WHERE project_id=%s AND name=%s
+"""
+
+# Insert session tag with short_desc
+_SQL_INSERT_SESSION_TAG_WITH_DESC = """
+    INSERT INTO planner_tags (project_id, name, category_id, seq_num, short_desc)
+    VALUES (%s, %s, %s, %s, %s) RETURNING id::text
+"""
+
+# Apply a JSONB tag to all prompts in a session
+_SQL_TAG_PROMPTS_BY_SESSION = """
+    UPDATE mem_mrr_prompts SET tags = tags || %s::jsonb
+    WHERE project_id=%s AND session_id=%s
+"""
+
+# Apply a JSONB tag to all commits in a session
+_SQL_TAG_COMMITS_BY_SESSION = """
+    UPDATE mem_mrr_commits SET tags = tags || %s::jsonb
+    WHERE project_id=%s AND session_id=%s
+"""
+
+# Apply a JSONB tag to a single commit by hash
+_SQL_TAG_COMMIT_BY_HASH = """
+    UPDATE mem_mrr_commits SET tags = tags || %s::jsonb
+    WHERE project_id=%s AND commit_hash=%s
+"""
+
+# Propagate tag from commit → its linked prompt
+_SQL_TAG_PROMPT_FROM_COMMIT = """
+    UPDATE mem_mrr_prompts pr
+       SET tags = pr.tags || %s::jsonb
+      FROM mem_mrr_commits c
+     WHERE c.project_id=%s AND c.commit_hash=%s
+       AND pr.id = c.prompt_id
+    RETURNING pr.source_id
+"""
+
+# Apply a JSONB tag to a single prompt by source_id
+_SQL_TAG_PROMPT_BY_SOURCE = """
+    UPDATE mem_mrr_prompts SET tags = tags || %s::jsonb
+    WHERE project_id=%s AND source_id=%s
+"""
+
+# Propagate tag from prompt → its linked commit
+_SQL_TAG_COMMIT_FROM_PROMPT = """
+    UPDATE mem_mrr_commits c
+       SET tags = c.tags || %s::jsonb
+      FROM mem_mrr_prompts p
+     WHERE p.project_id=%s AND p.source_id=%s
+       AND c.prompt_id = p.id
+    RETURNING c.commit_hash
+"""
+
+# Remove a tag key from a commit by hash
+_SQL_UNTAG_COMMIT_BY_HASH = """
+    UPDATE mem_mrr_commits SET tags = tags - %s
+    WHERE project_id=%s AND commit_hash=%s
+"""
+
+# Propagate tag removal from commit → its linked prompt
+_SQL_UNTAG_PROMPT_FROM_COMMIT = """
+    UPDATE mem_mrr_prompts pr
+       SET tags = pr.tags - %s
+      FROM mem_mrr_commits c
+     WHERE c.project_id=%s AND c.commit_hash=%s
+       AND pr.id = c.prompt_id
+    RETURNING pr.source_id
+"""
+
+# Remove a tag key from a prompt by source_id
+_SQL_UNTAG_PROMPT_BY_SOURCE = """
+    UPDATE mem_mrr_prompts SET tags = tags - %s
+    WHERE project_id=%s AND source_id=%s
+"""
+
+# Propagate tag removal from prompt → its linked commit
+_SQL_UNTAG_COMMIT_FROM_PROMPT = """
+    UPDATE mem_mrr_commits c
+       SET tags = c.tags - %s
+      FROM mem_mrr_prompts p
+     WHERE p.project_id=%s AND p.source_id=%s
+       AND c.prompt_id = p.id
+    RETURNING c.commit_hash
+"""
+
+# Remove a tag key from all prompts in a session
+_SQL_UNTAG_PROMPTS_BY_SESSION = """
+    UPDATE mem_mrr_prompts SET tags = tags - %s
+    WHERE project_id=%s AND session_id=%s
+"""
+
+# Remove a tag key from all commits in a session
+_SQL_UNTAG_COMMITS_BY_SESSION = """
+    UPDATE mem_mrr_commits SET tags = tags - %s
+    WHERE project_id=%s AND session_id=%s
+"""
+
+# All tagged prompts for source-tags endpoint (exclude internal-only tags)
+_SQL_GET_TAGGED_PROMPTS = """
+    SELECT source_id, tags FROM mem_mrr_prompts
+    WHERE project_id=%s AND (tags - 'source' - 'llm') != '{}'::jsonb
+"""
+
+# All tagged commits for source-tags endpoint (exclude internal-only tags)
+_SQL_GET_TAGGED_COMMITS = """
+    SELECT commit_hash, tags FROM mem_mrr_commits
+    WHERE project_id=%s AND (tags - 'source' - 'llm') != '{}'::jsonb
+"""
+
+# Set due_date on a planner_tag by id
+_SQL_SET_TAG_DUE_DATE = """
+    UPDATE planner_tags SET due_date=%s WHERE id=%s::uuid
+"""
+
 # ────────────────────────────────────────────────────────────────────────────────
 
 router = APIRouter()
@@ -424,13 +580,7 @@ async def entity_summary(project: str | None = Query(None)):
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        """SELECT name, agent_status, acceptance_criteria,
-                                  implementation_plan, lifecycle_status
-                           FROM mem_ai_work_items
-                           WHERE project_id=%s AND category_name=%s AND status != 'archived'""",
-                        (project_id, cat_name),
-                    )
+                    cur.execute(_SQL_WI_BY_CATEGORY, (project_id, cat_name))
                     wi_map = {r[0]: r for r in cur.fetchall()}
             for val in cat_data["values"]:
                 wi = wi_map.get(val["name"])
@@ -462,13 +612,13 @@ async def create_value(body: ValueCreate):
                     raise HTTPException(404, f"Category '{body.category_name}' not found")
                 cat_id = row[0]
             else:
-                cur.execute("SELECT id FROM mng_tags_categories WHERE client_id=1 AND id=%s", (cat_id,))
+                cur.execute(_SQL_GET_CATEGORY_BY_ID, (cat_id,))
                 if not cur.fetchone():
                     raise HTTPException(404, "Category not found")
 
             cat_name_for_seq = body.category_name or ""
             if not cat_name_for_seq:
-                cur.execute("SELECT name FROM mng_tags_categories WHERE client_id=1 AND id=%s", (cat_id,))
+                cur.execute(_SQL_GET_CATEGORY_NAME_BY_ID, (cat_id,))
                 r2 = cur.fetchone()
                 if r2:
                     cat_name_for_seq = r2[0]
@@ -613,12 +763,7 @@ async def list_events(
                 # Build tag string from planner_tags UUID
                 tag_str = None
                 try:
-                    cur.execute(
-                        """SELECT tc.name || ':' || t.name FROM planner_tags t
-                           JOIN mng_tags_categories tc ON tc.id = t.category_id
-                           WHERE t.id=%s::uuid AND t.client_id=1 LIMIT 1""",
-                        (value_id,),
-                    )
+                    cur.execute(_SQL_GET_TAG_STRING_BY_ID, (value_id,))
                     ts_row = cur.fetchone()
                     if ts_row:
                         tag_str = ts_row[0]
@@ -639,24 +784,14 @@ async def list_events(
                     for r in rows_raw
                 ]
             elif event_type == "commit":
-                cur.execute(
-                    """SELECT commit_hash, 'commit', commit_hash, left(commit_msg,120), committed_at
-                       FROM mem_mrr_commits WHERE project_id=%s
-                       ORDER BY committed_at DESC NULLS LAST LIMIT %s""",
-                    (project_id, limit),
-                )
+                cur.execute(_SQL_LIST_COMMIT_EVENTS, (project_id, limit))
                 rows = [
                     {"event_type": "commit", "source_id": r[0], "title": r[3],
                      "created_at": r[4].isoformat() if r[4] else None, "tags": []}
                     for r in cur.fetchall()
                 ]
             else:
-                cur.execute(
-                    """SELECT source_id, 'prompt', source_id, left(prompt,120), created_at
-                       FROM mem_mrr_prompts WHERE project_id=%s AND event_type='prompt'
-                       ORDER BY created_at DESC LIMIT %s""",
-                    (project_id, limit),
-                )
+                cur.execute(_SQL_LIST_PROMPT_EVENTS, (project_id, limit))
                 rows = [
                     {"event_type": "prompt", "source_id": r[0], "title": r[3],
                      "created_at": r[4].isoformat() if r[4] else None, "tags": []}
@@ -815,10 +950,7 @@ async def session_bulk_tag(body: SessionTagBody):
                     raise HTTPException(404, f"Category '{body.category_name}' not found")
                 cat_id = cat_row[0]
                 # Find or create tag
-                cur.execute(
-                    "SELECT id::text FROM planner_tags WHERE project_id=%s AND name=%s",
-                    (project_id, body.value_name),
-                )
+                cur.execute(_SQL_GET_TAG_BY_NAME, (project_id, body.value_name))
                 val_row = cur.fetchone()
                 if val_row:
                     tag_id = val_row[0]
@@ -826,15 +958,13 @@ async def session_bulk_tag(body: SessionTagBody):
                     seq = next_seq(cur, p, body.category_name)
                     if body.description:
                         cur.execute(
-                            "INSERT INTO planner_tags (project_id, name, category_id, seq_num, short_desc) "
-                            "VALUES (%s, %s, %s, %s, %s) RETURNING id::text",
+                            _SQL_INSERT_SESSION_TAG_WITH_DESC,
                             (project_id, body.value_name, cat_id, seq, body.description),
                         )
                     else:
                         cur.execute(
-                            "INSERT INTO planner_tags (project_id, name, category_id, seq_num) "
-                            "VALUES (%s, %s, %s, %s) RETURNING id::text",
-                            (project_id, body.value_name, cat_id, seq),
+                            _SQL_INSERT_VALUE,
+                            (project_id, body.value_name, cat_id, None, "idea", seq),
                         )
                     tag_id = cur.fetchone()[0]
 
@@ -845,32 +975,16 @@ async def session_bulk_tag(body: SessionTagBody):
                 tag_str = f"{body.category_name}:{body.value_name}"
             elif tag_id:
                 # Try to look up the tag string from planner_tags
-                cur.execute(
-                    """SELECT tc.name || ':' || t.name FROM planner_tags t
-                       JOIN mng_tags_categories tc ON tc.id = t.category_id
-                       WHERE t.id=%s::uuid LIMIT 1""",
-                    (tag_id,),
-                )
+                cur.execute(_SQL_GET_TAG_STRING_BY_ID, (tag_id,))
                 lookup = cur.fetchone()
                 if lookup:
                     tag_str = lookup[0]
 
             _sk, _sv = parse_tag(tag_str)
             _tag_jsonb = json.dumps({_sk: _sv})
-            cur.execute(
-                """UPDATE mem_mrr_prompts
-                   SET tags = tags || %s::jsonb
-                   WHERE project_id=%s AND session_id=%s""",
-                (_tag_jsonb, p, body.session_id),
-            )
+            cur.execute(_SQL_TAG_PROMPTS_BY_SESSION, (_tag_jsonb, p, body.session_id))
             prompt_tagged = cur.rowcount
-
-            cur.execute(
-                """UPDATE mem_mrr_commits
-                   SET tags = tags || %s::jsonb
-                   WHERE project_id=%s AND session_id=%s""",
-                (_tag_jsonb, p, body.session_id),
-            )
+            cur.execute(_SQL_TAG_COMMITS_BY_SESSION, (_tag_jsonb, p, body.session_id))
             commit_tagged = cur.rowcount
 
     return {
@@ -924,42 +1038,18 @@ async def tag_event_by_source_id(body: TagBySourceIdBody, background: Background
     with db.conn() as conn:
         with conn.cursor() as cur:
             if is_commit:
-                cur.execute(
-                    "UPDATE mem_mrr_commits SET tags = tags || %s::jsonb "
-                    "WHERE project_id=%s AND commit_hash=%s",
-                    (tag_jsonb, project_id, body.source_id),
-                )
+                cur.execute(_SQL_TAG_COMMIT_BY_HASH, (tag_jsonb, project_id, body.source_id))
                 if cur.rowcount == 0:
                     raise HTTPException(404, f"Commit {body.source_id!r} not found")
-                cur.execute(
-                    """UPDATE mem_mrr_prompts pr
-                       SET tags = pr.tags || %s::jsonb
-                       FROM mem_mrr_commits c
-                       WHERE c.project_id=%s AND c.commit_hash=%s
-                         AND pr.id = c.prompt_id
-                       RETURNING pr.source_id""",
-                    (tag_jsonb, project_id, body.source_id),
-                )
+                cur.execute(_SQL_TAG_PROMPT_FROM_COMMIT, (tag_jsonb, project_id, body.source_id))
                 row = cur.fetchone()
                 if row:
                     propagated_to = row[0]
             else:
-                cur.execute(
-                    "UPDATE mem_mrr_prompts SET tags = tags || %s::jsonb "
-                    "WHERE project_id=%s AND source_id=%s",
-                    (tag_jsonb, project_id, body.source_id),
-                )
+                cur.execute(_SQL_TAG_PROMPT_BY_SOURCE, (tag_jsonb, project_id, body.source_id))
                 if cur.rowcount == 0:
                     raise HTTPException(404, f"Prompt with source_id={body.source_id!r} not found")
-                cur.execute(
-                    """UPDATE mem_mrr_commits c
-                       SET tags = c.tags || %s::jsonb
-                       FROM mem_mrr_prompts p
-                       WHERE p.project_id=%s AND p.source_id=%s
-                         AND c.prompt_id = p.id
-                       RETURNING c.commit_hash""",
-                    (tag_jsonb, project_id, body.source_id),
-                )
+                cur.execute(_SQL_TAG_COMMIT_FROM_PROMPT, (tag_jsonb, project_id, body.source_id))
                 row = cur.fetchone()
                 if row:
                     propagated_to = row[0]
@@ -986,38 +1076,14 @@ async def untag_event_by_source_id(
     with db.conn() as conn:
         with conn.cursor() as cur:
             if is_commit:
-                cur.execute(
-                    "UPDATE mem_mrr_commits SET tags = tags - %s "
-                    "WHERE project_id=%s AND commit_hash=%s",
-                    (key, project_id, source_id),
-                )
-                cur.execute(
-                    """UPDATE mem_mrr_prompts pr
-                       SET tags = pr.tags - %s
-                       FROM mem_mrr_commits c
-                       WHERE c.project_id=%s AND c.commit_hash=%s
-                         AND pr.id = c.prompt_id
-                       RETURNING pr.source_id""",
-                    (key, project_id, source_id),
-                )
+                cur.execute(_SQL_UNTAG_COMMIT_BY_HASH, (key, project_id, source_id))
+                cur.execute(_SQL_UNTAG_PROMPT_FROM_COMMIT, (key, project_id, source_id))
                 row = cur.fetchone()
                 if row:
                     propagated_to = row[0]
             else:
-                cur.execute(
-                    "UPDATE mem_mrr_prompts SET tags = tags - %s "
-                    "WHERE project_id=%s AND source_id=%s",
-                    (key, project_id, source_id),
-                )
-                cur.execute(
-                    """UPDATE mem_mrr_commits c
-                       SET tags = c.tags - %s
-                       FROM mem_mrr_prompts p
-                       WHERE p.project_id=%s AND p.source_id=%s
-                         AND c.prompt_id = p.id
-                       RETURNING c.commit_hash""",
-                    (key, project_id, source_id),
-                )
+                cur.execute(_SQL_UNTAG_PROMPT_BY_SOURCE, (key, project_id, source_id))
+                cur.execute(_SQL_UNTAG_COMMIT_FROM_PROMPT, (key, project_id, source_id))
                 row = cur.fetchone()
                 if row:
                     propagated_to = row[0]
@@ -1038,17 +1104,9 @@ async def remove_session_tag(
     _rk, _ = parse_tag(tag)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE mem_mrr_prompts SET tags = tags - %s "
-                "WHERE project_id=%s AND session_id=%s",
-                (_rk, project_id, session_id),
-            )
+            cur.execute(_SQL_UNTAG_PROMPTS_BY_SESSION, (_rk, project_id, session_id))
             deleted_p = cur.rowcount
-            cur.execute(
-                "UPDATE mem_mrr_commits SET tags = tags - %s "
-                "WHERE project_id=%s AND session_id=%s",
-                (_rk, project_id, session_id),
-            )
+            cur.execute(_SQL_UNTAG_COMMITS_BY_SESSION, (_rk, project_id, session_id))
             deleted_c = cur.rowcount
     return {"ok": True, "session_id": session_id, "tag": tag,
             "deleted": deleted_p + deleted_c}
@@ -1071,22 +1129,12 @@ async def get_events_source_tags(project: str | None = Query(None)):
     with db.conn() as conn:
         with conn.cursor() as cur:
             # Prompts — only rows with user-facing tags (exclude source/llm-only rows)
-            cur.execute(
-                "SELECT source_id, tags FROM mem_mrr_prompts "
-                "WHERE project_id=%s "
-                "AND (tags - 'source' - 'llm') != '{}'::jsonb",
-                (project_id,),
-            )
+            cur.execute(_SQL_GET_TAGGED_PROMPTS, (project_id,))
             for source_id, tags in cur.fetchall():
                 if source_id and tags:
                     result[source_id] = tags_to_list(tags)
             # Commits — only rows with user-facing tags
-            cur.execute(
-                "SELECT commit_hash, tags FROM mem_mrr_commits "
-                "WHERE project_id=%s "
-                "AND (tags - 'source' - 'llm') != '{}'::jsonb",
-                (project_id,),
-            )
+            cur.execute(_SQL_GET_TAGGED_COMMITS, (project_id,))
             for commit_hash, tags in cur.fetchall():
                 if commit_hash and tags:
                     result[commit_hash] = tags_to_list(tags)
@@ -1188,10 +1236,7 @@ async def github_sync(
                     created += 1
                     # Set due_date if present (not covered by the upsert above)
                     if due:
-                        cur.execute(
-                            "UPDATE planner_tags SET due_date=%s WHERE id=%s::uuid",
-                            (due, row[1]),
-                        )
+                        cur.execute(_SQL_SET_TAG_DUE_DATE, (due, row[1]))
                 else:
                     updated += 1
 
