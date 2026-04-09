@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item refresh workflow: replaced 'new work item' button with ↺ refresh button triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions
+- Work item refresh workflow: replaced 'new work item' button with ↻ refresh button triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions
 - Event count aggregation: added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session
-- AI tag backlinking: implemented _backlink_tag_to_events() to propagate planner tag assignments back to all events in the source session, mapping category→tag_key (bug/phase/feature)
-- Work item panel UI refresh: added event_count column header, adjusted colgroup widths (52px per count column), updated empty state messaging to reflect 'refresh' paradigm
+- AI tag backlinking implementation: _backlink_tag_to_events() propagates planner tag assignments back to all events in source session, mapping category→tag_key (bug/phase/feature)
+- Work item panel UI refinement: adjusted colgroup widths (52px per count column), fixed table overflow issues showing only first column, added proper padding/spacing
 - Session-based tag propagation: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking, ensuring tag consistency across event-to-work-item relationships
-- Test coverage: verifying rematchAll API correctness, event_count calculation accuracy, and tag backlinking side-effects on mem_ai_events JSONB tags field
+- AI tag display debugging: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh

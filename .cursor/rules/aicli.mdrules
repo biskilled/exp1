@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 10:41 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 10:45 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -58,17 +58,17 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
-- Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
-- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
-- Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
+- Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
+- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, 0.60 confidence threshold
+- Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; event_count aggregation via session matching
+- Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
 - Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
-- Source event ID anchoring: mem_ai_work_items.source_event_id serves as pivot for session-based aggregation of prompt_count, commit_count, event_count without explicit work_item_id linking
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-09] I cannot see the last column now. all I see is the first column name (commits.. ) I would like to add label in order to 
 - [2026-04-09] Can you add some padding on the left side of the table as last column UPDATED, I do see ony yy:mm:dd-HH:.. instead of th
 - [2026-04-09] I would like to update the ai_sujjestion - it suppose to sujjest one tag from catgories (task, bug or feature) and can s
 - [2026-04-09] Can you explain how do I see work_item #20006 as the one that was last updated ? the last prompt was about ui, ai tags..
 - [2026-04-09] Can you recheck that ai_tags as I do see new work_item, bit cannot see any sujjeste AI - all i see is mepy AI(EXISTS).. 
+- [2026-04-09] Where are all the rpompts for ai_tags and work_item are ?
