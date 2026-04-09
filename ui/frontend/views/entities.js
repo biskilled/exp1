@@ -469,11 +469,12 @@ function _renderWiPanel(items, project) {
   function fmtDate(iso) {
     if (!iso) return '—';
     const d = new Date(iso);
-    return String(d.getFullYear()).slice(2)
-      + String(d.getMonth()+1).padStart(2,'0')
-      + String(d.getDate()).padStart(2,'0')
-      + String(d.getHours()).padStart(2,'0')
-      + String(d.getMinutes()).padStart(2,'0');
+    const yy = String(d.getFullYear()).slice(2);
+    const mo = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mn = String(d.getMinutes()).padStart(2,'0');
+    return `${yy}/${mo}/${dd}-${hh}:${mn}`;
   }
 
   function hdr(f, label) {
@@ -498,6 +499,18 @@ function _renderWiPanel(items, project) {
     _renderWiPanel(Object.values(_wiPanelItems), project);
   };
 
+  window._wiPanelDelete = async (id, proj) => {
+    if (!confirm('Remove this work item?')) return;
+    try {
+      await api.workItems.delete(id, proj);
+      delete _wiPanelItems[id];
+      const remaining = Object.values(_wiPanelItems);
+      _renderWiPanel(remaining, proj);
+      const cnt = document.getElementById('wi-panel-count');
+      if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
+    } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
+  };
+
   const rows = sorted.map(wi => {
     const icon = CAT_ICON[wi.ai_category] || '📋';
     const sc   = STATUS_C[wi.status_user] || '#888';
@@ -517,6 +530,12 @@ function _renderWiPanel(items, project) {
         onmouseleave="this.style.background=''">
       <td style="padding:3px 6px;min-width:0">
         <div style="display:flex;align-items:baseline;gap:3px">
+          <button title="Remove this item"
+            onclick="event.stopPropagation();window._wiPanelDelete('${_esc(wi.id)}','${_esc(project)}')"
+            style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.75rem;
+                   padding:0 2px;line-height:1;flex-shrink:0;opacity:.45;margin-right:1px"
+            onmouseenter="this.style.opacity=1;this.style.color='#e74c3c'"
+            onmouseleave="this.style.opacity='.45';this.style.color='var(--muted)'">×</button>
           <span style="flex-shrink:0;font-size:0.7rem">${icon}</span>
           ${wi.seq_num ? `<span style="font-size:0.48rem;color:var(--muted);flex-shrink:0">#${wi.seq_num}</span>` : ''}
           <span style="font-size:0.63rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;
