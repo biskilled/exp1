@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:30 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:35 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -66,8 +66,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
 - [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
 - [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
 - [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
 - [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
+- [2026-04-09] I do not see any change at the ui.

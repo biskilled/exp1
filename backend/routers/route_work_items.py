@@ -75,13 +75,18 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 _SQL_UNLINKED_WORK_ITEMS = """
     SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
            w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
-           w.start_date, w.created_at, w.seq_num,
+           w.start_date, w.created_at, w.updated_at, w.seq_num,
            pt.name AS ai_tag_name,
-           (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count
+           (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
+           COALESCE((SELECT COUNT(*) FROM mem_ai_events
+                     WHERE work_item_id = w.id AND event_type = 'prompt_batch'), 0) AS prompt_count,
+           COALESCE((SELECT COUNT(*) FROM mem_mrr_commits c
+                     JOIN mem_ai_events e ON e.id = c.event_id
+                     WHERE e.work_item_id = w.id), 0) AS commit_count
     FROM mem_ai_work_items w
     LEFT JOIN planner_tags pt ON pt.id = w.ai_tag_id
     WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
-    ORDER BY w.created_at DESC
+    ORDER BY w.updated_at DESC
 """
 
 _SQL_INSERT_WORK_ITEM = (
@@ -309,7 +314,7 @@ async def get_unlinked_work_items(project: str | None = Query(None)):
             for r in cur.fetchall():
                 row = dict(zip(cols, r))
                 row["id"] = str(row["id"])
-                for dt_field in ("created_at", "start_date"):
+                for dt_field in ("created_at", "updated_at", "start_date"):
                     if row.get(dt_field):
                         row[dt_field] = row[dt_field].isoformat()
                 rows.append(row)

@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-09 00:30 UTC by aicli /memory_
+_Generated: 2026-04-09 00:35 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL semantic storage and an Electron desktop UI. It captures development context (commits, prompts, sessions) into a 4-layer memory architecture, synthesizes insights via Claude, and manages work items through a unified database schema with intelligent tagging and workflow automation.
 
 ## Project Facts
 
@@ -179,192 +175,281 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+User requested UI enhancements for work_items table: add name, desc, prompts count, commits count, and last_update columns with sorting capabilities on prompts/commits/date and drag-and-drop support.
+
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index be58ca5..541b82d 100644
+index 541b82d..a3095d1 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
--- Planner tag UI binding fix: resolved `catName` ReferenceError in _renderDrawer() (scope issue) and corrected field mismatch v.short_desc → v.desc for proper tag property display on left sidebar
--- Database schema canonicalization: consolidated all DDL into db_schema.sql as single source of truth with migration framework in db_migrations.py (rename → recreate → copy pattern); legacy ALTER TABLE statements now tracked as migrations m001-m017
--- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries to eliminate redundant database lookups
-+- Planner tag UI binding fix: resolved `catName` ReferenceError in _renderDrawer() (scope issue) and corrected field mismatch v.short_desc → v.desc for proper tag display on left sidebar
-+- Database schema canonicalization: consolidated all DDL into db_schema.sql with migration framework db_migrations.py (m001-m017 tracked); single source of truth for database design
-+- Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader instead of mng_system_roles queries; eliminates redundant DB lookups
- - Commit pipeline prompt discovery: tracing all LLM prompts in memory_embedding.py, agents/tools/, and routers for unified prompt management and cost tracking
- - Memory endpoint data flow verification: synchronizing mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables with consistent module imports
--- Database query performance: investigating ~60s latency in route_work_items query (_SQL_UNLINKED_WORK_ITEMS join optimization and indexing)
-+- Database query performance optimization: investigating ~60s latency in route_work_items (_SQL_UNLINKED_WORK_ITEMS join optimization and indexing needed)
++- Work item population and linkage model: redesigned FK architecture so mem_mrr_commits.event_id points to mem_ai_events (commit digest), and mem_ai_events.work_item_id links to work_items; migration m019 implements this many-events-to-one-work-item pattern
++- mem_mrr_commits_code population strategy: investigating whether full population on every commit is necessary vs. lazy/selective population; questioning cost-benefit of semantic extraction for all commits
+ - Planner tag UI binding fix: resolved `catName` ReferenceError in _renderDrawer() (scope issue) and corrected field mismatch v.short_desc → v.desc for proper tag display on left sidebar
+-- Database schema canonicalization: consolidated all DDL into db_schema.sql with migration framework db_migrations.py (m001-m017 tracked); single source of truth for database design
++- Database schema canonicalization: consolidated all DDL into db_schema.sql with migration framework db_migrations.py (m001-m019 tracked); single source of truth for database design
+ - Prompt loader integration: refactoring route_snapshots.py and route_memory.py to use core.prompt_loader instead of mng_system_roles queries; eliminates redundant DB lookups
+-- Commit pipeline prompt discovery: tracing all LLM prompts in memory_embedding.py, agents/tools/, and routers for unified prompt management and cost tracking
+-- Memory endpoint data flow verification: synchronizing mirror tables (mem_mrr_commits_code) through mem_ai_events and downstream memory tables with consistent module imports
+-- Database query performance optimization: investigating ~60s latency in route_work_items (_SQL_UNLINKED_WORK_ITEMS join optimization and indexing needed)
++- Database query performance optimization: investigating ~60s latency in route_work_items (JOIN optimization and indexing strategy for unlinked work items query)
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index 0e53749..7fc3859 100644
+index 7fc3859..19c813d 100644
 --- a/ui/frontend/views/entities.js
 +++ b/ui/frontend/views/entities.js
-@@ -899,7 +899,8 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
+@@ -701,6 +701,8 @@ function _renderTagTableFromCache() {
+ const _wiCollapsed = new Set();
+ // Current items cache (id → wi object) for the open category
+ let _wiItemsCache = {};
++// Sort state for work items table
++let _wiSort = { field: 'updated_at', dir: 'desc' };
  
-         <!-- Stats row -->
-         <div style="display:flex;gap:0.6rem;flex-wrap:wrap;font-size:0.6rem;color:var(--muted)">
--          <span>&#128172; <span id="wi-stat-prompts-${id}">${wi.interaction_count||0} prompts</span></span>
-+          <span>&#128172; <span id="wi-stat-prompts-${id}">${wi.prompt_count||0} prompts</span></span>
-+          <span>&#9741; ${wi.event_count||0} events</span>
-           <span id="wi-stat-words-${id}">~… words</span>
-           <span>&#8859; ${wi.commit_count||0} commits</span>
-           <span id="wi-stat-files-${id}"></span>
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
-index ca87dfb..56d249a 100644
---- a/backend/routers/route_work_items.py
-+++ b/backend/routers/route_work_items.py
-@@ -30,16 +30,19 @@ from data.dl_seq import next_seq
- # ── SQL ──────────────────────────────────────────────────────────────────────
+ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
+   pane.innerHTML = `
+@@ -727,6 +729,16 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
+     } catch (e) { toast('Create failed: ' + e.message, 'error'); }
+   };
+   window._plannerOpenWorkItemDrawer = (id, cn, proj) => _openWorkItemDrawer(id, cn, proj, pane, catColor, catIcon);
++  window._wiResort = (field) => {
++    if (_wiSort.field === field) {
++      _wiSort.dir = _wiSort.dir === 'asc' ? 'desc' : 'asc';
++    } else {
++      _wiSort.field = field;
++      _wiSort.dir = 'desc';
++    }
++    const tb = document.getElementById('wi-table-body');
++    if (tb) _wiSetTableBody(tb, _wiItemsCache, catName, catColor, catIcon, project);
++  };
  
- _SQL_LIST_WORK_ITEMS_BASE = (
--    """WITH pcount AS (
--         SELECT tags->>'work-item' AS wi_id, COUNT(*) AS cnt
--         FROM mem_mrr_prompts
--         WHERE project_id=%s AND tags ? 'work-item'
-+    """WITH ev_count AS (
-+         SELECT work_item_id::text AS wi_id,
-+                COUNT(*) AS event_count,
-+                COUNT(*) FILTER (WHERE event_type = 'prompt_batch') AS prompt_count
-+         FROM mem_ai_events
-+         WHERE project_id=%s AND work_item_id IS NOT NULL
-          GROUP BY 1
-        ),
--       ccount AS (
--         SELECT tags->>'work-item' AS wi_id, COUNT(*) AS cnt
--         FROM mem_mrr_commits
--         WHERE project_id=%s AND tags ? 'work-item'
-+       cm_count AS (
-+         SELECT e.work_item_id::text AS wi_id, COUNT(*) AS commit_count
-+         FROM mem_mrr_commits c
-+         JOIN mem_ai_events e ON e.id = c.event_id
-+         WHERE c.project_id=%s AND e.work_item_id IS NOT NULL
-          GROUP BY 1
-        ),
-        mcount AS (
-@@ -55,13 +58,14 @@ _SQL_LIST_WORK_ITEMS_BASE = (
-               w.merged_into, w.start_date,
-               w.created_at, w.updated_at, w.seq_num,
-               tc.color, tc.icon,
--              COALESCE(pcount.cnt, 0) AS interaction_count,
--              COALESCE(ccount.cnt, 0) AS commit_count,
-+              COALESCE(ev_count.event_count,  0) AS event_count,
-+              COALESCE(ev_count.prompt_count, 0) AS prompt_count,
-+              COALESCE(cm_count.commit_count, 0) AS commit_count,
-               COALESCE(mcount.cnt, 0) AS merge_count
-        FROM mem_ai_work_items w
-        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
--       LEFT JOIN pcount ON pcount.wi_id = w.id::text
--       LEFT JOIN ccount ON ccount.wi_id = w.id::text
-+       LEFT JOIN ev_count ON ev_count.wi_id = w.id::text
-+       LEFT JOIN cm_count ON cm_count.wi_id = w.id::text
-        LEFT JOIN mcount ON mcount.wi_id = w.id::text
-        WHERE {where}
-        ORDER BY w.created_at DESC
-@@ -339,7 +343,7 @@ async def list_work_items(
-     sql = _SQL_LIST_WORK_ITEMS_BASE.format(where=" AND ".join(where))
-     with db.conn() as conn:
-         with conn.cursor() as cur:
--            # 3 extra p_id params for the pcount/ccount/mcount CTEs
-+            # 3 extra p_id params for the ev_count/cm_count/mcount CTEs
-             cur.execute(sql, [p_id, p_id, p_id] + params + [limit])
-             cols = [d[0] for d in cur.description]
-             rows = []
-@@ -497,6 +501,7 @@ async def extract_work_item_code(item_id: str, project: str | None = Query(None)
-     return result
+   try {
+     const data = await api.workItems.list(project, catName);
+@@ -763,65 +775,99 @@ function _wiSetTableBody(tableBody, byId, catName, catColor, catIcon, project) {
+ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
+   const rows = Object.values(byId);
  
- 
+-  const STATUS_UC = {active:'#27ae60', in_progress:'#e67e22', done:'#4a90e2', paused:'#888'};
++  // Sort rows client-side
++  const { field, dir } = _wiSort;
++  const mul = dir === 'asc' ? 1 : -1;
++  rows.sort((a, b) => {
++    if (field === 'prompt_count')  return mul * ((a.prompt_count||0)  - (b.prompt_count||0));
++    if (field === 'commit_count')  return mul * ((a.commit_count||0)  - (b.commit_count||0));
++    // default: updated_at / created_at
++    return mul * (new Date(a.updated_at||a.created_at||0) - new Date(b.updated_at||b.created_at||0));
++  });
 +
- # ── Lookup by sequential number ───────────────────────────────────────────────
- 
- @router.get("/number/{seq_num}")
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/backend/routers/route_git.py b/backend/routers/route_git.py
-index dd18344..831021e 100644
---- a/backend/routers/route_git.py
-+++ b/backend/routers/route_git.py
-@@ -179,6 +179,8 @@ def _extract_commit_code_background(project: str, commit_hash: str) -> None:
-         loop.close()
- 
- 
++  // Date → yymmddhhmm (local time)
++  function fmtDate(iso) {
++    if (!iso) return '—';
++    const d = new Date(iso);
++    const yy = String(d.getFullYear()).slice(2);
++    const mo = String(d.getMonth()+1).padStart(2,'0');
++    const dd = String(d.getDate()).padStart(2,'0');
++    const hh = String(d.getHours()).padStart(2,'0');
++    const mn = String(d.getMinutes()).padStart(2,'0');
++    return `${yy}${mo}${dd}${hh}${mn}`;
++  }
 +
++  // Sortable column header
++  function hdr(f, label, align='right') {
++    const active = _wiSort.field === f;
++    const arrow  = active ? (_wiSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
++    return `<th onclick="window._wiResort('${f}')"
++      style="text-align:${align};padding:0.35rem 0.5rem;white-space:nowrap;cursor:pointer;
++             user-select:none;font-size:0.68rem;font-weight:${active?'600':'400'};
++             color:${active?'var(--text)':'var(--muted)'};border-bottom:2px solid var(--border)">
++      ${label}${arrow}
++    </th>`;
++  }
 +
- # ── Commit→prompt linking background task ─────────────────────────────────────
++  const STATUS_C = {active:'#27ae60', in_progress:'#e67e22', done:'#4a90e2', paused:'#888'};
  
- def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
-@@ -1148,7 +1150,7 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
-             commit_author,
-             commit_author_email,
-         )
--        # Embed the commit (creates mem_ai_events) in background
-+        # Embed the commit (creates mem_ai_events, sets event_id on commit) in background
-         background.add_task(_embed_commit_background, project_name, commit_hash)
-         # Tree-sitter symbol extraction → mem_mrr_commits_code in background
-         background.add_task(_extract_commit_code_background, project_name, commit_hash)
+   function rowFor(wi) {
+-    const su = wi.status_user || 'active';
+-    const sa = wi.status_ai  || 'active';
+-    const scU = STATUS_UC[su] || '#888';
+-    const scA = STATUS_UC[sa] || '#888';
+-    const seqBadge = wi.seq_num
+-      ? `<span style="font-size:0.52rem;color:var(--muted);background:var(--surface2);
+-                      border:1px solid var(--border);padding:0.05rem 0.28rem;
+-                      border-radius:6px;white-space:nowrap;margin-right:4px;flex-shrink:0"
+-               title="Seq #${wi.seq_num}">#${wi.seq_num}</span>`
+-      : '';
+-    const acPreview = wi.acceptance_criteria
+-      ? wi.acceptance_criteria.replace(/\n/g, ' ').slice(0, 55) + (wi.acceptance_criteria.length > 55 ? '…' : '')
+-      : '—';
+-    const tagLink = wi.tag_id
+-      ? `<span style="font-size:0.58rem;color:var(--accent);background:var(--accent)18;
+-                      padding:0.1rem 0.35rem;border-radius:8px;white-space:nowrap">linked</span>`
+-      : `<span style="font-size:0.58rem;color:var(--muted)">—</span>`;
++    const su  = wi.status_user || 'active';
++    const sc  = STATUS_C[su] || '#888';
++    const desc = (wi.ai_desc||'').replace(/\n/g,' ');
++    const descClip = desc.length > 90 ? desc.slice(0,90)+'…' : desc;
++    const date = fmtDate(wi.updated_at || wi.created_at);
++    const linked = wi.tag_id
++      ? `<span style="font-size:0.5rem;color:var(--accent);margin-left:4px">✓</span>`
++      : (wi.ai_tag_id ? `<span style="font-size:0.5rem;color:var(--muted);margin-left:4px">✦</span>` : '');
+ 
+     return `
+-      <tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
+-          data-wi-id="${wi.id}"
++      <tr draggable="true" data-wi-id="${wi.id}" data-wi-name="${_esc(wi.ai_name)}"
++          style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
+           onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(catName)}','${_esc(project)}')"
+           onmouseenter="this.style.background='var(--surface2)'"
+           onmouseleave="this.style.background=''">
+-        <td style="padding:0.5rem;color:var(--text);font-weight:500">
+-          <div style="display:flex;align-items:center">
+-            ${seqBadge}
+-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+-                  title="${_esc(wi.ai_desc || '')}">${_esc(wi.ai_name)}</span>
++        <td style="padding:0.42rem 0.5rem;min-width:0">
++          <div style="display:flex;align-items:baseline;gap:0.35rem">
++            ${wi.seq_num ? `<span style="font-size:0.5rem;color:var(--muted);flex-shrink:0;white-space:nowrap">#${wi.seq_num}</span>` : ''}
++            <span style="font-size:0.7rem;font-weight:500;color:var(--text);
++                         overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
++             
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index dd5ec19..12db5fd 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-08 23:30 UTC
++> Generated by aicli 2026-04-09 00:11 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -44,7 +44,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - deployment_desktop: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - deployment_local: bash start_backend.sh + npm run dev
+ - prompt_management: core.prompt_loader module with centralized prompt caching
+-- schema_management: db_schema.sql (single source of truth) + db_migrations.py (safe rename/recreate/copy pattern)
++- schema_management: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+ 
+ ## Architectural Decisions
+ 
+@@ -57,9 +57,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts → user planner_tags
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
++- Work items: FK approach with mem_mrr_commits.event_id → mem_ai_events and mem_ai_events.work_item_id for many-to-one linkage; dual status tracking (status_user/status_ai)
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
+ - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
+-- Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m017)
+-- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+\ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
-diff --git a/backend/memory/memory_promotion.py b/backend/memory/memory_promotion.py
-index 04cabac..4a39098 100644
---- a/backend/memory/memory_promotion.py
-+++ b/backend/memory/memory_promotion.py
-@@ -658,6 +658,12 @@ class MemoryPromotion:
-                             row = cur.fetchone()
-                             if row:
-                                 created += 1
-+                                # Link event to its newly created work item
-+                                wi_id = str(row[0])
-+                                cur.execute(
-+                                    "UPDATE mem_ai_events SET work_item_id=%s::uuid WHERE id=%s::uuid",
-+                                    (wi_id, str(ev_id)),
-+                                )
-                             else:
-                                 updated += 1  # ON CONFLICT DO UPDATE hit an existing item
-                 except Exception as e:
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 6d02a0e..6f96e9d 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 23:30 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:11 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -44,7 +44,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - **deployment_local**: bash start_backend.sh + npm run dev
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (safe rename/recreate/copy pattern)
++- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+ 
+ ## Key Decisions
+ 
+@@ -57,17 +57,17 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts → user planner_tags
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
++- Work items: FK approach with mem_mrr_commits.event_id → mem_ai_events and mem_ai_events.work_item_id for many-to-one linkage; dual status tracking (status_user/status_ai)
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
+ - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
+-- Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m017)
+-- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
+ - [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
+ - [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
+ - [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
+-- [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
+\ No newline at end of file
++- [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
++- [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
+\ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
-diff --git a/backend/memory/memory_embedding.py b/backend/memory/memory_embedding.py
-index 8408f0a..ef5bb81 100644
---- a/backend/memory/memory_embedding.py
-+++ b/backend/memory/memory_embedding.py
-@@ -448,12 +448,17 @@ class MemoryEmbedding:
-             summary=summary_text, action_items=action_items, tags=digest_tags, importance=importance,
-         )
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 6d02a0e..6f96e9d 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-08 23:30 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:11 UTC
  
--        # Back-propagate summary to mem_mrr_commits and set exec_llm flag
-+        # Back-propagate summary + link event_id to mem_mrr_commits, set exec_llm flag
-         try:
-             with db.conn() as conn:
-                 with conn.cursor() as cur:
-                     cur.execute(_SQL_UPDATE_COMMIT_SUMMARY, (summary_text, commit_hash_val))
-                     cur.execute(_SQL_SET_EXEC_LLM, (settings.haiku_model, commit_hash_val))
-+                    if event_id:
-+                        cur.execute(
-+                            "UPDATE mem_mrr_commits SET event_id=%s::uuid WHERE commit_hash=%s",
-+                            (event_id, commit_hash_val),
-+                        )
-         except Exception as e:
-             log.debug(f"process_commit column update error: {e}")
+ # aicli — Shared AI Memory Platform
  
+@@ -44,7 +44,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - **deployment_local**: bash start_backend.sh + npm run dev
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (safe rename/recreate/copy pattern)
++- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+ 
+ ## Key Decisions
+ 
+@@ -57,17 +57,17 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts → user planner_tags
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
++- Work items: FK approach with mem_mrr_commits.event_id → mem_ai_events and mem_ai_events.work_item_id for many-to-one linkage; dual status tracking (status_user/status_ai)
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+ - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
+ - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
+-- Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m017)
+-- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag updates
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-08] three is link from prompts to commits. each five prompts summeries to event, which meand in this action also all related
+ - [2026-04-08] There is a problem to load work_items - line 331 in route_work_items -column w.ai_tags does not exist
+ - [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
+ - [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
+-- [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
+\ No newline at end of file
++- [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
++- [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
+\ No newline at end of file
 
-
-## AI Synthesis
-
-**[2026-04-09]** `route_work_items.py` — Refactored work item list query to use FK-based counting: replaced legacy mem_mrr_* tag queries with event/commit counts via mem_ai_events.work_item_id joins; fixed field names (interaction_count → prompt_count) to match frontend expectations. **[2026-04-09]** `entities.js` — Enhanced work item table UI with multi-column sortable display: name/desc, prompt_count, commit_count, and last-updated date; fixed draggable attribute binding to support drag-and-drop reordering. **[2026-04-09]** `db_migrations.py` — Established migration framework (m001-m019) with safe rename→recreate→copy pattern; consolidated all DDL into db_schema.sql as single source of truth replacing legacy ALTER TABLE statements. **[2026-04-09]** `core.prompt_loader` — Centralized prompt management module to eliminate redundant mng_system_roles database lookups; integrated into route_snapshots.py and route_memory.py. **[2026-04-09]** `route_work_items.py` — Identified ~60s latency in _SQL_UNLINKED_WORK_ITEMS query; root cause likely missing indexes on work_item_id and event_id FK columns requiring join optimization. **[2026-04-09]** `memory_embedding.py` — Traced LLM prompt pipeline across agents/tools/, routers, and memory synthesis; synchronized mirror table population (mem_mrr_commits_code) through mem_ai_events with consistent module imports.

@@ -452,53 +452,102 @@ function _renderWiPanel(items, project) {
     list.innerHTML = '<div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">No work items yet — click + New to create one</div>';
     return;
   }
-  const CAT_ICON = { feature: '✨', bug: '🐛', task: '📋' };
-  const STATUS_UC = { active: '#27ae60', in_progress: '#e67e22', done: '#4a90e2', paused: '#888' };
-  list.innerHTML = items.map(wi => {
+
+  const CAT_ICON  = { feature: '✨', bug: '🐛', task: '📋' };
+  const STATUS_C  = { active: '#27ae60', in_progress: '#e67e22', done: '#4a90e2', paused: '#888' };
+
+  // Sort state for bottom panel (separate from the category-pane sort)
+  if (!window._wiPanelSort) window._wiPanelSort = { field: 'updated_at', dir: 'desc' };
+  const { field, dir } = window._wiPanelSort;
+  const mul = dir === 'asc' ? 1 : -1;
+  const sorted = [...items].sort((a, b) => {
+    if (field === 'prompt_count')  return mul * ((a.prompt_count||0)  - (b.prompt_count||0));
+    if (field === 'commit_count')  return mul * ((a.commit_count||0)  - (b.commit_count||0));
+    return mul * (new Date(a.updated_at||a.created_at||0) - new Date(b.updated_at||b.created_at||0));
+  });
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return String(d.getFullYear()).slice(2)
+      + String(d.getMonth()+1).padStart(2,'0')
+      + String(d.getDate()).padStart(2,'0')
+      + String(d.getHours()).padStart(2,'0')
+      + String(d.getMinutes()).padStart(2,'0');
+  }
+
+  function hdr(f, label) {
+    const active = window._wiPanelSort.field === f;
+    const arrow  = active ? (window._wiPanelSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
+    return `<th onclick="window._wiPanelResort('${f}')"
+      style="text-align:right;padding:2px 6px;cursor:pointer;user-select:none;white-space:nowrap;
+             font-size:0.6rem;font-weight:${active?'600':'400'};
+             color:${active?'var(--text)':'var(--muted)'};border-bottom:1px solid var(--border)">
+      ${label}${arrow}
+    </th>`;
+  }
+
+  window._wiPanelResort = (f) => {
+    if (window._wiPanelSort.field === f) {
+      window._wiPanelSort.dir = window._wiPanelSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      window._wiPanelSort.field = f;
+      window._wiPanelSort.dir = 'desc';
+    }
+    _renderWiPanel(Object.values(_wiPanelItems), project);
+  };
+
+  const rows = sorted.map(wi => {
     const icon = CAT_ICON[wi.ai_category] || '📋';
-    const sc = STATUS_UC[wi.status_user] || '#888';
-    const mergeBadge = wi.merge_count > 0
-      ? `<span title="${wi.merge_count} item(s) merged into this"
-               style="font-size:0.5rem;color:var(--accent);background:var(--accent)20;
-                      padding:0.02rem 0.3rem;border-radius:8px;white-space:nowrap;flex-shrink:0
-                      ">⊕ ${wi.merge_count}</span>`
-      : '';
-    const linkedBadge = wi.tag_id
-      ? `<span title="Linked" style="font-size:0.52rem;color:var(--accent);margin-left:2px">✓</span>
-         <button title="Unlink from tag" onclick="event.stopPropagation();window._wiUnlink('${_esc(wi.id)}','${_esc(project)}')"
-           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.7rem;
-                  padding:0 2px;line-height:1;vertical-align:middle">×</button>`
-      : (wi.ai_tag_id
-          ? `<span title="AI-suggested link" style="font-size:0.52rem;color:var(--muted);margin-left:2px;opacity:.7">✦</span>`
-          : '');
-    const detail = (wi.action_items || wi.ai_desc || '').replace(/\n/g, ' ').slice(0, 80);
-    return `<div draggable="true"
-         data-wi-id="${_esc(wi.id)}"
-         data-wi-name="${_esc(wi.ai_name)}"
-         ondragstart="window._wiBotDragStart(event,'${_esc(wi.id)}','${_esc(wi.ai_name)}','${_esc(wi.ai_category)}')"
-         ondragend="window._wiBotDragEnd(event)"
-         onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(wi.ai_category)}','${_esc(project)}')"
-         style="display:grid;grid-template-columns:1fr 1fr;padding:3px 8px;
-                border-bottom:1px solid var(--border);cursor:grab;user-select:none;
-                transition:background 0.1s"
-         onmouseenter="this.style.background='var(--surface2)'"
-         onmouseleave="this.style.background=''">
-      <div style="display:flex;align-items:center;gap:3px;overflow:hidden;min-width:0">
-        <span style="flex-shrink:0;font-size:0.78rem">${icon}</span>
-        <span style="font-size:0.64rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;
-                     white-space:nowrap" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
-        <span style="font-size:0.52rem;color:${sc};background:${sc}22;padding:0.02rem 0.25rem;
-                     border-radius:8px;white-space:nowrap;flex-shrink:0">${wi.status_user || 'active'}</span>
-        ${mergeBadge}
-        ${linkedBadge}
-      </div>
-      <div style="font-size:0.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
-                  white-space:nowrap;align-self:center;padding-left:4px"
-           title="${_esc(wi.ai_desc || '')}">
-        ${_esc(detail) || '—'}
-      </div>
-    </div>`;
+    const sc   = STATUS_C[wi.status_user] || '#888';
+    const desc = (wi.ai_desc || '').replace(/\n/g,' ');
+    const descClip = desc.length > 70 ? desc.slice(0,70)+'…' : desc;
+    const linked = wi.tag_id
+      ? `<span style="font-size:0.48rem;color:var(--accent);flex-shrink:0">✓</span>`
+      : (wi.ai_tag_id ? `<span style="font-size:0.48rem;color:var(--muted);flex-shrink:0;opacity:.7">✦</span>` : '');
+    return `<tr draggable="true"
+        data-wi-id="${_esc(wi.id)}"
+        data-wi-name="${_esc(wi.ai_name)}"
+        ondragstart="window._wiBotDragStart(event,'${_esc(wi.id)}','${_esc(wi.ai_name)}','${_esc(wi.ai_category)}')"
+        ondragend="window._wiBotDragEnd(event)"
+        onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(wi.ai_category)}','${_esc(project)}')"
+        style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
+        onmouseenter="this.style.background='var(--surface2)'"
+        onmouseleave="this.style.background=''">
+      <td style="padding:3px 6px;min-width:0">
+        <div style="display:flex;align-items:baseline;gap:3px">
+          <span style="flex-shrink:0;font-size:0.7rem">${icon}</span>
+          ${wi.seq_num ? `<span style="font-size:0.48rem;color:var(--muted);flex-shrink:0">#${wi.seq_num}</span>` : ''}
+          <span style="font-size:0.63rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;
+                       white-space:nowrap" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
+          <span style="font-size:0.48rem;color:${sc};background:${sc}22;
+                       padding:0 0.25rem;border-radius:6px;flex-shrink:0;white-space:nowrap">${wi.status_user||'active'}</span>
+          ${linked}
+        </div>
+        ${descClip ? `<div style="font-size:0.57rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+                                  white-space:nowrap;padding-left:18px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
+      </td>
+      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.6rem;
+                 color:var(--text2);font-variant-numeric:tabular-nums;width:38px">${wi.prompt_count||0}</td>
+      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.6rem;
+                 color:var(--text2);font-variant-numeric:tabular-nums;width:38px">${wi.commit_count||0}</td>
+      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.57rem;
+                 color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;width:72px">${fmtDate(wi.updated_at||wi.created_at)}</td>
+    </tr>`;
   }).join('');
+
+  list.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+      <colgroup><col><col style="width:38px"><col style="width:38px"><col style="width:72px"></colgroup>
+      <thead><tr>
+        <th style="text-align:left;padding:2px 6px;font-size:0.6rem;font-weight:400;
+                   color:var(--muted);border-bottom:1px solid var(--border)">Name / Description</th>
+        ${hdr('prompt_count','Prompts')}
+        ${hdr('commit_count','Commits')}
+        ${hdr('updated_at','Updated')}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 /** Load work items linked to tags in the current category, inject as sub-rows. */
