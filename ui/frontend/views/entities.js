@@ -478,12 +478,13 @@ function _renderWiPanel(items, project) {
 
   function hdr(f, label) {
     const active = window._wiPanelSort.field === f;
-    const arrow  = active ? (window._wiPanelSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
+    const arrow  = active ? (window._wiPanelSort.dir === 'asc' ? '↑' : '↓') : '↕';
     return `<th onclick="window._wiPanelResort('${f}')"
-      style="text-align:right;padding:2px 6px;cursor:pointer;user-select:none;white-space:nowrap;
-             font-size:0.6rem;font-weight:${active?'600':'400'};
-             color:${active?'var(--text)':'var(--muted)'};border-bottom:1px solid var(--border)">
-      ${label}${arrow}
+      style="text-align:right;padding:4px 8px;cursor:pointer;user-select:none;white-space:nowrap;
+             font-size:0.62rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
+             color:${active?'var(--accent)':'var(--muted)'};background:var(--surface2);
+             border-bottom:2px solid ${active?'var(--accent)':'var(--border)'};border-left:1px solid var(--border)">
+      ${label}&nbsp;<span style="opacity:${active?1:.35};font-size:0.55rem">${arrow}</span>
     </th>`;
   }
 
@@ -527,21 +528,26 @@ function _renderWiPanel(items, project) {
         ${descClip ? `<div style="font-size:0.57rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
                                   white-space:nowrap;padding-left:18px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
       </td>
-      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.6rem;
-                 color:var(--text2);font-variant-numeric:tabular-nums;width:38px">${wi.prompt_count||0}</td>
-      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.6rem;
-                 color:var(--text2);font-variant-numeric:tabular-nums;width:38px">${wi.commit_count||0}</td>
-      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.57rem;
-                 color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;width:72px">${fmtDate(wi.updated_at||wi.created_at)}</td>
+      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.65rem;
+                 color:var(--text2);font-variant-numeric:tabular-nums;
+                 border-left:1px solid var(--border);width:56px">${wi.prompt_count||0}</td>
+      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.65rem;
+                 color:var(--text2);font-variant-numeric:tabular-nums;
+                 border-left:1px solid var(--border);width:56px">${wi.commit_count||0}</td>
+      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.6rem;
+                 color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;
+                 border-left:1px solid var(--border);width:80px">${fmtDate(wi.updated_at||wi.created_at)}</td>
     </tr>`;
   }).join('');
 
   list.innerHTML = `
     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <colgroup><col><col style="width:38px"><col style="width:38px"><col style="width:72px"></colgroup>
+      <colgroup><col><col style="width:56px"><col style="width:56px"><col style="width:80px"></colgroup>
       <thead><tr>
-        <th style="text-align:left;padding:2px 6px;font-size:0.6rem;font-weight:400;
-                   color:var(--muted);border-bottom:1px solid var(--border)">Name / Description</th>
+        <th style="text-align:left;padding:4px 8px;font-size:0.62rem;font-weight:600;
+                   letter-spacing:.03em;text-transform:uppercase;
+                   color:var(--muted);background:var(--surface2);
+                   border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>
         ${hdr('prompt_count','Prompts')}
         ${hdr('commit_count','Commits')}
         ${hdr('updated_at','Updated')}
