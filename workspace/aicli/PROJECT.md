@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item panel column layout fix: restored table-layout:fixed to prevent Name column from expanding and pushing right columns off-screen; adjusted colgroup widths
-- Work item tag section labeling: added persistent **AI:** and **User:** row labels to disambiguate tag types; User section shows '—' when no user tags exist
-- Work item detail loading: debugging click handlers on work item rows to ensure details panel opens when row is clicked (separate from button handlers)
-- AI tag suggestion display refinement: ensuring ai_tag_category:ai_tag_name format displays correctly with #4a90e2 default color when ai_tag_color is null
-- User tags aggregation from events: verifying jsonb_agg correctly collects feature/bug_ref/bug tags from mem_ai_events linked to work item
-- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across all tag interaction modes
+- Work item tag display restoration: investigating disappearing tags from work item rows; verifying JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events
+- Work item description column layout: fixing desc column being cut mid-row; updating colgroup widths and removing table-layout:fixed constraint to display full-length descriptions
+- AI tag suggestion column rendering: ensuring ai_tag_suggestion chip displays correctly with approve (✓) and remove (×) buttons; refactored to simplified chip markup
+- User tags aggregation refinement: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items via jsonb_agg; verifying tag_id matching
+- AI suggestion category-aware matching: confirmed matching pipeline now prioritizes task/bug/feature categories, enables Level 4 fallback for new suggestions, includes 0.60 confidence threshold
+- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across tag interaction modes

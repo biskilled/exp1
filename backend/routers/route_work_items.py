@@ -82,11 +82,22 @@ _SQL_UNLINKED_WORK_ITEMS = """
            ptc.name  AS ai_tag_category,
            ptc.color AS ai_tag_color,
            (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
-           COALESCE((SELECT COUNT(*) FROM mem_ai_events
-                     WHERE work_item_id = w.id AND event_type = 'prompt_batch'), 0) AS prompt_count,
-           COALESCE((SELECT COUNT(*) FROM mem_mrr_commits c
-                     JOIN mem_ai_events e ON e.id = c.event_id
-                     WHERE e.work_item_id = w.id), 0) AS commit_count,
+           -- Count prompt_batch events in the same session as the source event
+           COALESCE((
+               SELECT COUNT(*)
+               FROM mem_ai_events e2
+               WHERE e2.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
+                 AND e2.project_id = w.project_id
+                 AND e2.event_type = 'prompt_batch'
+           ), 0) AS prompt_count,
+           -- Count commits in the same session as the source event
+           COALESCE((
+               SELECT COUNT(*)
+               FROM mem_mrr_commits mc
+               WHERE mc.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
+                 AND mc.project_id = w.project_id
+           ), 0) AS commit_count,
+           -- User tags: planner tags referenced in events from the same session
            (SELECT COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb)
             FROM mem_ai_events ev
             JOIN planner_tags ut ON ut.project_id = w.project_id
@@ -95,7 +106,8 @@ _SQL_UNLINKED_WORK_ITEMS = """
                      ev.tags->>'bug_ref',
                      ev.tags->>'bug'
                  )
-            WHERE ev.work_item_id = w.id
+            WHERE ev.session_id = (SELECT session_id FROM mem_ai_events WHERE id = w.source_event_id)
+              AND ev.project_id = w.project_id
               AND (ev.tags->>'feature' IS NOT NULL OR ev.tags->>'bug_ref' IS NOT NULL
                    OR ev.tags->>'bug' IS NOT NULL)
            ) AS user_tags
@@ -103,7 +115,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
     LEFT JOIN planner_tags pt   ON pt.id  = w.ai_tag_id
     LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
     WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
-    ORDER BY w.seq_num DESC
+    ORDER BY w.created_at DESC
 """
 
 _SQL_INSERT_WORK_ITEM = (

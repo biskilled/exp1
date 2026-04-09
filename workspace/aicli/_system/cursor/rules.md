@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:45 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:59 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -59,16 +59,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
-- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/remove/delete buttons with labeled tag sections
-- Work item panel layout: table-layout:fixed restored to prevent Name column expansion; AI/User tag sections always displayed with labels and '—' placeholder for empty user tags
-- Date format frontend: YY/MM/DD-HH:MM format in work item panel and system displays
-- ai_tag_color_default: #4a90e2 replaces var(--accent) when ai_tag_color not set; tag label format is 'category:name' when both present, name-only fallback
+- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
+- Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
+- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
 - [2026-04-09] I do see there is one ai_tags which is good. but ai_tags suppose to be feature, bug or task with the name . for example 
 - [2026-04-09] I dont see any tags at the rows now (not ai and not users). also I do that desc is cut the the middle of the row instead
 - [2026-04-09] I cannot see the last column now. all I see is the first column name (commits.. ) I would like to add label in order to 
 - [2026-04-09] Can you add some padding on the left side of the table as last column UPDATED, I do see ony yy:mm:dd-HH:.. instead of th
+- [2026-04-09] I would like to update the ai_sujjestion - it suppose to sujjest one tag from catgories (task, bug or feature) and can s

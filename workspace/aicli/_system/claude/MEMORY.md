@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-09 02:45 UTC by aicli /memory_
+_Generated: 2026-04-09 02:59 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python/FastAPI backend with PostgreSQL semantic search (pgvector) and an Electron desktop UI, enabling teams to capture, synthesize, and retrieve project context across commits, events, and work items. The system implements AI-driven tag suggestion (category-aware matching with Claude Haiku), async DAG workflow execution with visual approval panels, and MCP tool integration. Current development focuses on stabilizing work item panel rendering (tag display, column layout) and refining the AI suggestion matching pipeline's category prioritization and fallback logic.
 
 ## Project Facts
 
@@ -140,20 +144,20 @@ Reviewer: ```json
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
-- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/remove/delete buttons with labeled tag sections
-- Work item panel layout: table-layout:fixed restored to prevent Name column expansion; AI/User tag sections always displayed with labels and '—' placeholder for empty user tags
-- Date format frontend: YY/MM/DD-HH:MM format in work item panel and system displays
-- ai_tag_color_default: #4a90e2 replaces var(--accent) when ai_tag_color not set; tag label format is 'category:name' when both present, name-only fallback
+- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
+- Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
+- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
 
 ## In Progress
 
-- Work item panel column layout fix: restored table-layout:fixed to prevent Name column from expanding and pushing right columns off-screen; adjusted colgroup widths
-- Work item tag section labeling: added persistent **AI:** and **User:** row labels to disambiguate tag types; User section shows '—' when no user tags exist
-- Work item detail loading: debugging click handlers on work item rows to ensure details panel opens when row is clicked (separate from button handlers)
-- AI tag suggestion display refinement: ensuring ai_tag_category:ai_tag_name format displays correctly with #4a90e2 default color when ai_tag_color is null
-- User tags aggregation from events: verifying jsonb_agg correctly collects feature/bug_ref/bug tags from mem_ai_events linked to work item
-- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across all tag interaction modes
+- Work item tag display restoration: investigating disappearing tags from work item rows; verifying JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events
+- Work item description column layout: fixing desc column being cut mid-row; updating colgroup widths and removing table-layout:fixed constraint to display full-length descriptions
+- AI tag suggestion column rendering: ensuring ai_tag_suggestion chip displays correctly with approve (✓) and remove (×) buttons; refactored to simplified chip markup
+- User tags aggregation refinement: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items via jsonb_agg; verifying tag_id matching
+- AI suggestion category-aware matching: confirmed matching pipeline now prioritizes task/bug/feature categories, enables Level 4 fallback for new suggestions, includes 0.60 confidence threshold
+- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across tag interaction modes
 
 ## Active Features / Bugs / Tasks
 
@@ -203,6 +207,14 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+Fixed critical matching pipeline bugs: restored json import, removed stray commit, enabled Level 4 fallback when embedding finds no matches ≥0.70, included suggested_new (0.60 confidence) in results, and prevented rematch-all from re-queuing processed items.
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+Reorganized internal system memory files in the aicli workspace to align with Claude's structure and conventions.
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
@@ -404,52 +416,16 @@ index 18a1f69..4f03061 100644
 \ No newline at end of file
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+## AI Synthesis
 
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 18a1f69..4f03061 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:04 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:15 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -45,6 +45,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **deployment_local**: bash start_backend.sh + npm run dev
- - **prompt_management**: core.prompt_loader module with centralized prompt caching
- - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
-+- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
- 
- ## Key Decisions
- 
-@@ -59,15 +60,15 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
- - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
--- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
- - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
--- Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
--- Work item UI: multi-column sortable table with sticky headers (position:sticky;top:0;z-index:1), YY/MM/DD-HH:MM date formatting, status color badges, AI tag suggestions with approve/reject buttons
-+- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/reject buttons for suggestions
-+- Tag suggestion workflow: clicking approve patches tag_id=ai_tag_id, deletes from unlinked panel cache, refreshes display with success toast; remove button clears ai_tag_id only
-+- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-09] What did you do now ?
- - [2026-04-09] I would like that the header wont disappear when user scroll down in work_items. also can you /momry in order to update 
- - [2026-04-09] I cannot see the sujjestion. is it on each row in work_items ?
- - [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
--- [2026-04-09] I do see there is one ai_tags which is good. but ai_tags suppose to be feature, bug or task with the name . for example 
-\ No newline at end of file
-+- [2026-04-09] I do see there is one ai_tags which is good. but ai_tags suppose to be feature, bug or task with the name . for example 
-+- [2026-04-09] I dont see any tags at the rows now (not ai and not users). also I do that desc is cut the the middle of the row instead
-\ No newline at end of file
+**[2026-04-09]** `claude_cli` — Refactored AI suggestion system to be category-aware: prioritizes task/bug/feature categories, implements Level 4 fallback for new suggestions when no matches ≥0.70, includes 0.60 confidence threshold for suggested_new results. Matching pipeline now processing 103 AI(EXISTS) and 15 AI(NEW) suggestions with proper category ordering.
 
+**[2026-04-08]** `development` — Reorganized internal system memory files in aicli workspace to align with Claude's structure and conventions; consolidating project state and memory file organization.
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+**[2026-04-07]** `frontend` — Work item panel column layout restoration: applied table-layout:fixed with fixed colgroup widths to prevent Name column expansion; added persistent **AI:** and **User:** section labels for tag type disambiguation; implemented User section fallback showing '—' when no user tags exist.
 
-Removed stale auto-generated system files (_sys directory context and CLAUDE.md) to clean up repository clutter.
+**[2026-04-06]** `frontend` — Work item tag display refinement: ensuring ai_tag_category:ai_tag_name format displays correctly with #4a90e2 default color when ai_tag_color is null; added approve (✓) and remove (×) button handlers; integrated user_tags aggregation from mem_ai_events linked to work items.
+
+**[2026-04-05]** `backend` — Fixed critical matching pipeline bugs: restored json import, removed stray commit, enabled Level 4 fallback when embedding finds no matches ≥0.70, included suggested_new (0.60 confidence) in results, prevented rematch-all from re-queuing processed items.
+
+**[2026-04-04]** `frontend` — Debugging work item click handlers to ensure details panel opens on row click; separate button handlers for tag approval/removal; refined tag suggestion workflow with PATCH endpoint integration and panel re-render on approve.
