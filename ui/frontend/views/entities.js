@@ -539,23 +539,37 @@ function _renderWiPanel(items, project) {
     const sc   = STATUS_C[wi.status_user] || '#888';
     const desc = (wi.ai_desc || '').replace(/\n/g,' ');
     const descClip = desc.length > 70 ? desc.slice(0,70)+'…' : desc;
-    const tagSuggestion = wi.ai_tag_name
-      ? `<div style="display:inline-flex;align-items:center;gap:4px;padding-left:18px;margin-top:2px">
+    // AI tag suggestion chip: "category:name" in category color with ✓ / × buttons
+    const aiTagColor  = wi.ai_tag_color  || 'var(--accent)';
+    const aiTagLabel  = wi.ai_tag_category && wi.ai_tag_name
+      ? `${wi.ai_tag_category}:${wi.ai_tag_name}`
+      : (wi.ai_tag_name || '');
+    const tagSuggestion = aiTagLabel
+      ? `<div style="display:inline-flex;align-items:center;gap:3px;padding-left:22px;margin-top:2px">
            <span style="font-size:0.58rem;color:var(--muted);flex-shrink:0">✦</span>
-           <span style="font-size:0.68rem;color:var(--muted);white-space:nowrap"
-                 title="AI suggested: ${_esc(wi.ai_tag_name)}">${_esc(wi.ai_tag_name)}</span>
+           <span style="font-size:0.68rem;font-weight:500;color:${aiTagColor};white-space:nowrap;
+                        background:${aiTagColor}18;padding:0 5px;border-radius:4px;border:1px solid ${aiTagColor}44"
+                 title="AI suggested tag">${_esc(aiTagLabel)}</span>
            <button title="Approve"
              onclick="event.stopPropagation();window._wiPanelApproveTag('${_esc(wi.id)}','${_esc(project)}')"
-             style="background:none;border:1px solid var(--accent);color:var(--accent);cursor:pointer;
-                    font-size:0.6rem;padding:0 5px;border-radius:4px;line-height:1.6;flex-shrink:0"
-             onmouseenter="this.style.background='var(--accent)';this.style.color='#fff'"
-             onmouseleave="this.style.background='none';this.style.color='var(--accent)'">✓</button>
+             style="background:none;border:1px solid ${aiTagColor};color:${aiTagColor};cursor:pointer;
+                    font-size:0.62rem;padding:0 5px;border-radius:4px;line-height:1.7;flex-shrink:0;font-weight:600"
+             onmouseenter="this.style.background='${aiTagColor}';this.style.color='#fff'"
+             onmouseleave="this.style.background='none';this.style.color='${aiTagColor}'">✓</button>
            <button title="Remove suggestion"
              onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
-             style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:0.85rem;
-                    font-weight:700;padding:0 2px;line-height:1;flex-shrink:0"
+             style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;font-size:0.62rem;
+                    font-weight:700;padding:0 5px;border-radius:4px;line-height:1.7;flex-shrink:0"
              onmouseenter="this.style.opacity='.7'"
              onmouseleave="this.style.opacity='1'">×</button>
+         </div>`
+      : '';
+    // User tags: names from connected events (informational)
+    const userTagsList = Array.isArray(wi.user_tags) ? wi.user_tags : [];
+    const userTagsHtml = userTagsList.length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:3px;padding-left:22px;margin-top:2px">
+           ${userTagsList.map(t => `<span style="font-size:0.6rem;color:var(--muted);background:var(--surface2);
+               border:1px solid var(--border);padding:0 5px;border-radius:4px;white-space:nowrap">${_esc(t)}</span>`).join('')}
          </div>`
       : '';
     return `<tr draggable="true"
@@ -571,8 +585,8 @@ function _renderWiPanel(items, project) {
         <div style="display:flex;align-items:center;gap:4px">
           <button title="Delete this item"
             onclick="event.stopPropagation();window._wiPanelDelete('${_esc(wi.id)}','${_esc(project)}')"
-            style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:0.9rem;
-                   font-weight:700;padding:0 3px;line-height:1;flex-shrink:0"
+            style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;font-size:0.62rem;
+                   font-weight:700;padding:0 4px;border-radius:4px;line-height:1.7;flex-shrink:0"
             onmouseenter="this.style.opacity='.7'"
             onmouseleave="this.style.opacity='1'">×</button>
           <span style="flex-shrink:0;font-size:0.8rem">${icon}</span>
@@ -585,6 +599,7 @@ function _renderWiPanel(items, project) {
         ${descClip ? `<div style="font-size:0.65rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
                                   white-space:nowrap;padding-left:22px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
         ${tagSuggestion}
+        ${userTagsHtml}
       </td>
       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;
                  color:var(--text2);font-variant-numeric:tabular-nums;
