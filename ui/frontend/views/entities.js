@@ -528,55 +528,102 @@ function _renderWiPanel(items, project) {
 
   window._wiPanelRemoveTag = async (id, proj) => {
     try {
-      await api.workItems.patch(id, proj, { ai_tag_id: '' });
-      if (_wiPanelItems[id]) { _wiPanelItems[id].ai_tag_id = null; _wiPanelItems[id].ai_tag_name = null; }
+      await api.workItems.patch(id, proj, { ai_tag_id: '', ai_tags: {} });
+      if (_wiPanelItems[id]) {
+        _wiPanelItems[id].ai_tag_id = null;
+        _wiPanelItems[id].ai_tag_name = null;
+        _wiPanelItems[id].ai_tag_category = null;
+        _wiPanelItems[id].ai_tag_color = null;
+        _wiPanelItems[id].ai_tags = {};
+      }
       _renderWiPanel(Object.values(_wiPanelItems), proj);
     } catch(e) { toast('Remove failed: ' + e.message, 'error'); }
   };
 
-  const LBL = 'font-size:0.58rem;color:var(--muted);flex-shrink:0;min-width:32px;font-weight:500;letter-spacing:.02em';
+  window._wiPanelCreateTag = async (id, tagName, proj) => {
+    if (!confirm(`Create new tag "${tagName}" and link this work item?`)) return;
+    try {
+      const wi = _wiPanelItems[id];
+      const cat = wi ? wi.ai_category : 'task';
+      // Find or create the category id
+      const cats = await api.tags.categories.list(proj);
+      const catObj = cats.find(c => c.name === cat) || cats.find(c => c.name === 'task') || cats[0];
+      const newTag = await api.tags.create({ name: tagName, project: proj, category_id: catObj?.id });
+      await api.workItems.patch(id, proj, { tag_id: newTag.id });
+      delete _wiPanelItems[id];
+      const remaining = Object.values(_wiPanelItems);
+      _renderWiPanel(remaining, proj);
+      const cnt = document.getElementById('wi-panel-count');
+      if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
+      toast(`Created tag "${tagName}" and linked`, 'success');
+    } catch(e) { toast('Create failed: ' + e.message, 'error'); }
+  };
+
+  const LBL_BASE = 'font-size:0.58rem;font-weight:600;flex-shrink:0;padding:1px 5px;border-radius:3px;letter-spacing:.02em;white-space:nowrap';
+  const LBL_AI_E = LBL_BASE + ';color:#27ae60;border:1px solid #27ae6066;background:#27ae6012';   // green — exists
+  const LBL_AI_N = LBL_BASE + ';color:#e74c3c;border:1px solid #e74c3c66;background:#e74c3c12';   // red — new
+  const LBL_USER = LBL_BASE + ';color:#4a90e2;border:1px solid #4a90e266;background:#4a90e212';   // blue — user
 
   const rows = sorted.map(wi => {
     const icon = CAT_ICON[wi.ai_category] || '📋';
     const sc   = STATUS_C[wi.status_user] || '#888';
     const desc = (wi.ai_desc || '').replace(/\n/g,' ').trim();
-    const aiTagColor = wi.ai_tag_color || '#4a90e2';
+    // AI(EXISTS) — matched to an existing planner tag
+    const aiTagColor = wi.ai_tag_color || '#27ae60';
     const aiTagLabel = wi.ai_tag_name
       ? (wi.ai_tag_category ? wi.ai_tag_category + ':' + wi.ai_tag_name : wi.ai_tag_name)
       : '';
+    // AI(NEW) — stored in ai_tags.suggested_new (set by backend when no existing tag fits)
+    const aiNew = (wi.ai_tags && wi.ai_tags.suggested_new) ? wi.ai_tags.suggested_new : '';
     const userTagsList = Array.isArray(wi.user_tags) ? wi.user_tags : [];
 
-    // AI row: always shown
-    const aiRow = aiTagLabel
-      ? `<div style="display:flex;align-items:center;gap:4px;margin-top:3px">
-           <span style="${LBL}">AI:</span>
-           <span style="font-size:0.65rem;font-weight:500;padding:1px 6px;border-radius:4px;
-                        color:${aiTagColor};border:1px solid ${aiTagColor};background:${aiTagColor}1a;
-                        white-space:nowrap">${_esc(aiTagLabel)}</span>
-           <button onclick="event.stopPropagation();window._wiPanelApproveTag('${_esc(wi.id)}','${_esc(project)}')"
-             title="Approve" style="background:none;border:1px solid ${aiTagColor};color:${aiTagColor};
-                    cursor:pointer;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>
-           <button onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
-             title="Dismiss" style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;
-                    font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">×</button>
-         </div>`
-      : `<div style="display:flex;align-items:center;gap:4px;margin-top:3px">
-           <span style="${LBL}">AI:</span>
-           <span style="font-size:0.62rem;color:var(--muted);opacity:.45">—</span>
-         </div>`;
+    // AI row — always shown; show EXISTS first, then NEW if no exists match
+    let aiRow;
+    if (aiTagLabel) {
+      aiRow = `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">
+        <span style="${LBL_AI_E}">AI(EXISTS)</span>
+        <span style="font-size:0.65rem;font-weight:500;padding:1px 6px;border-radius:4px;
+                     color:${aiTagColor};border:1px solid ${aiTagColor};background:${aiTagColor}1a;
+                     white-space:nowrap">${_esc(aiTagLabel)}</span>
+        <button onclick="event.stopPropagation();window._wiPanelApproveTag('${_esc(wi.id)}','${_esc(project)}')"
+          title="Link to this tag" style="background:none;border:1px solid #27ae60;color:#27ae60;
+                 cursor:pointer;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>
+        <button onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
+          title="Dismiss" style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;
+                 font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">×</button>
+      </div>`;
+    } else if (aiNew) {
+      aiRow = `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">
+        <span style="${LBL_AI_N}">AI(NEW)</span>
+        <span style="font-size:0.65rem;font-weight:500;padding:1px 6px;border-radius:4px;
+                     color:#e74c3c;border:1px solid #e74c3c;background:#e74c3c1a;
+                     white-space:nowrap">${_esc(aiNew)}</span>
+        <button onclick="event.stopPropagation();window._wiPanelCreateTag('${_esc(wi.id)}','${_esc(aiNew)}','${_esc(project)}')"
+          title="Create this tag" style="background:none;border:1px solid #e74c3c;color:#e74c3c;
+                 cursor:pointer;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>
+        <button onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
+          title="Dismiss" style="background:none;border:1px solid #888;color:#888;cursor:pointer;
+                 font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">×</button>
+      </div>`;
+    } else {
+      aiRow = `<div style="display:flex;align-items:center;gap:4px;margin-top:3px">
+        <span style="${LBL_AI_E}">AI(EXISTS)</span>
+        <span style="font-size:0.62rem;color:var(--muted);opacity:.5">—</span>
+      </div>`;
+    }
 
-    // User row: always shown
+    // User row — always shown
     const userRow = userTagsList.length
       ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:3px;margin-top:2px">
-           <span style="${LBL}">User:</span>
+           <span style="${LBL_USER}">USER</span>
            ${userTagsList.map(t =>
-             `<span style="font-size:0.62rem;color:var(--muted);border:1px solid var(--border);
+             `<span style="font-size:0.62rem;color:#4a90e2;border:1px solid #4a90e266;background:#4a90e212;
                            padding:1px 5px;border-radius:4px;white-space:nowrap">${_esc(t)}</span>`
            ).join('')}
          </div>`
       : `<div style="display:flex;align-items:center;gap:4px;margin-top:2px">
-           <span style="${LBL}">User:</span>
-           <span style="font-size:0.62rem;color:var(--muted);opacity:.45">—</span>
+           <span style="${LBL_USER}">USER</span>
+           <span style="font-size:0.62rem;color:var(--muted);opacity:.5">—</span>
          </div>`;
 
     return `<tr draggable="true"
@@ -588,7 +635,7 @@ function _renderWiPanel(items, project) {
         style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
         onmouseenter="this.style.background='var(--surface2)'"
         onmouseleave="this.style.background=''">
-      <td style="padding:4px 8px 6px;min-width:0;overflow:hidden">
+      <td style="padding:4px 8px 6px 12px;min-width:0;overflow:hidden">
         <div style="display:flex;align-items:center;gap:4px;min-width:0">
           <button title="Delete this item"
             onclick="event.stopPropagation();window._wiPanelDelete('${_esc(wi.id)}','${_esc(project)}')"
@@ -612,7 +659,7 @@ function _renderWiPanel(items, project) {
       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
                  color:var(--text2);font-variant-numeric:tabular-nums;
                  border-left:1px solid var(--border)">${wi.commit_count||0}</td>
-      <td style="padding:4px 12px 4px 8px;text-align:right;white-space:nowrap;font-size:0.68rem;vertical-align:top;
+      <td style="padding:4px 10px 4px 6px;text-align:right;white-space:nowrap;font-size:0.66rem;vertical-align:top;
                  color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;
                  border-left:1px solid var(--border)">${fmtDate(wi.updated_at||wi.created_at)}</td>
     </tr>`;
@@ -620,9 +667,9 @@ function _renderWiPanel(items, project) {
 
   list.innerHTML = `
     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <colgroup><col><col style="width:58px"><col style="width:58px"><col style="width:96px"></colgroup>
+      <colgroup><col><col style="width:58px"><col style="width:58px"><col style="width:112px"></colgroup>
       <thead><tr>
-        <th style="text-align:left;padding:5px 8px;font-size:0.68rem;font-weight:600;
+        <th style="text-align:left;padding:5px 8px 5px 12px;font-size:0.68rem;font-weight:600;
                    letter-spacing:.03em;text-transform:uppercase;
                    color:var(--muted);background:var(--surface2);
                    border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>

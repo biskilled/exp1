@@ -258,22 +258,26 @@ class MemoryTagging:
             except Exception:
                 pass
 
-        # Level 4 — no vector candidates (tags have no embeddings yet): ask Haiku directly
-        if not candidates:
+        # Level 4 — no strong/border results: ask Haiku directly on all tags
+        # (runs when embedding found no good matches OR tags have no embeddings yet)
+        if not results:
             try:
                 all_tags = self._load_all_tags(project)
                 if all_tags:
                     judgments = await self._claude_judge_candidates(wi, all_tags)
                     for j in judgments:
-                        if j.get('relation') not in (None, 'none') and j.get('confidence', 0) >= 0.70:
-                            results.append(j)
+                        if j.get('relation') not in (None, 'none'):
+                            # Accept existing matches ≥0.70 or any suggested_new
+                            if j.get('suggested_new') or j.get('confidence', 0) >= 0.70:
+                                results.append(j)
             except Exception:
                 pass
 
         # Persist best match to ai_tag_id (highest confidence)
         if results:
             best = max(results, key=lambda r: r.get('confidence', 0))
-            self._persist_ai_tag_id(work_item_id, best['tag_id'])
+            if best.get('tag_id'):
+                self._persist_ai_tag_id(work_item_id, best['tag_id'])
 
         return results
 
@@ -366,10 +370,12 @@ class MemoryTagging:
         prompt = (
             f"WORK ITEM: {wi['name']} — {wi.get('description','')}\n\n"
             f"AVAILABLE TAGS:\n{cand_text}\n\n"
-            "Pick the SINGLE best matching tag for this work item (if any).\n"
-            "relation: 'exact' (same concept), 'similar' (overlapping), or 'none' (no match).\n"
-            'Respond ONLY in JSON: {"tag_name":"...","relation":"exact|similar|none","confidence":0.0-1.0}\n'
-            'If no tag fits, respond: {"tag_name":null,"relation":"none","confidence":0.0}'
+            "Pick the SINGLE best matching tag for this work item.\n"
+            "If a tag fits (confidence ≥ 0.70), return it with relation 'exact' or 'similar'.\n"
+            "If NO existing tag fits, suggest a short new tag name (kebab-case, ≤3 words) as suggested_new.\n"
+            'Respond ONLY in JSON:\n'
+            '  Match exists:  {"tag_name":"existing-tag","relation":"exact|similar","confidence":0.0-1.0,"suggested_new":null}\n'
+            '  No match:      {"tag_name":null,"relation":"none","confidence":0.0,"suggested_new":"new-tag-name"}'
         )
         system = (
             "You are a technical project memory assistant. "
@@ -393,17 +399,25 @@ class MemoryTagging:
             text = text.strip()
         data = json.loads(text)
         name_to_id = {c['name']: c['id'] for c in candidates}
-        # Handle both single-object and array response
         matches = data if isinstance(data, list) else [data]
         results = []
         for m in matches:
-            if not m.get('tag_name'):
-                continue
-            tid = name_to_id.get(m['tag_name'])
-            if tid and m.get('relation', 'none') != 'none':
+            suggested_new = m.get('suggested_new') or ''
+            if m.get('tag_name'):
+                tid = name_to_id.get(m['tag_name'])
+                if tid and m.get('relation', 'none') != 'none':
+                    results.append({
+                        'tag_id': tid,
+                        'relation': m.get('relation', 'none'),
+                        'confidence': float(m.get('confidence', 0.75)),
+                        'suggested_new': None,
+                    })
+            elif suggested_new:
+                # No existing tag match — suggest a new tag name
                 results.append({
-                    'tag_id': tid,
-                    'relation': m.get('relation', 'none'),
-                    'confidence': float(m.get('confidence', 0.75))
+                    'tag_id': None,
+                    'relation': 'new',
+                    'confidence': 0.60,
+                    'suggested_new': suggested_new,
                 })
         return results

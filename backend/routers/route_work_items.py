@@ -17,6 +17,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Optional
 
@@ -256,19 +257,27 @@ async def _embed_work_item(
 
 
 async def _run_matching(project: str, work_item_id: str) -> None:
-    """Background task: match a work item to planner tags; persist best match as ai_tag_id."""
+    """Background task: match a work item to planner tags; persist best match or new suggestion."""
     try:
         from memory.memory_tagging import MemoryTagging
         matches = await MemoryTagging().match_work_item_to_tags(project, work_item_id)
-        if matches:
-            best = matches[0]
-            if best.get("confidence", 0) > 0.70 and best.get("tag_id"):
-                with db.conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid WHERE id=%s::uuid",
-                            (best["tag_id"], work_item_id),
-                        )
+        if not matches:
+            return
+        best = matches[0]
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                if best.get("tag_id") and best.get("confidence", 0) > 0.70:
+                    # Existing tag match — set ai_tag_id
+                    cur.execute(
+                        "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid, updated_at=NOW() WHERE id=%s::uuid",
+                        (best["tag_id"], work_item_id),
+                    )
+                elif best.get("suggested_new"):
+                    # New tag suggestion — store in ai_tags JSONB
+                    cur.execute(
+                        "UPDATE mem_ai_work_items SET ai_tags=ai_tags||%s::jsonb, updated_at=NOW() WHERE id=%s::uuid",
+                        (json.dumps({"suggested_new": best["suggested_new"]}), work_item_id),
+                    )
     except Exception:
         pass  # non-critical background task
 
@@ -561,7 +570,7 @@ async def rematch_all_work_items(project: str | None = Query(None), background: 
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM mem_ai_work_items WHERE project_id=%s AND ai_tag_id IS NULL AND status_user!='done' LIMIT 100",
+                "SELECT id FROM mem_ai_work_items WHERE project_id=%s AND ai_tag_id IS NULL AND NOT (ai_tags ? 'suggested_new') AND status_user!='done' LIMIT 100",
                 (db.get_project_id(p),),
             )
             ids = [str(r[0]) for r in cur.fetchall()]

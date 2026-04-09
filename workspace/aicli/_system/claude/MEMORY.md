@@ -1,15 +1,17 @@
 # Project Memory — aicli
-_Generated: 2026-04-09 02:15 UTC by aicli /memory_
+_Generated: 2026-04-09 02:21 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python 3.12 backend (FastAPI + PostgreSQL + pgvector embeddings), Electron desktop UI (vanilla JS + xterm.js + Monaco), and CLI tool for capturing and organizing development events into intelligent work items and project facts. Current focus: fixing work item row rendering (tags disappeared, description overflow) and refining AI tag suggestion workflow with category-aware display and user tag aggregation from connected events.
+aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL storage with an Electron desktop UI and Python CLI, designed to capture, synthesize, and organize development work through semantic embeddings, AI-generated work items, and team tags. Currently in active development with focus on work item panel UI refinement: fixing column layouts (table-layout:fixed restoration), implementing labeled tag sections (AI/User/—), and ensuring proper row interaction handlers for detail panel opening.
 
 ## Project Facts
 
-- **ai_tag_suggestion_feature**: ai_tag_suggestion column added to work_items table with approve/reject button handlers (_wiPanelApproveTag/_wiPanelRejectTag)
+- **ai_tag_color_default**: #4a90e2 replaces var(--accent), applied when wi.ai_tag_color not set
+- **ai_tag_label_format**: category:name when both present, falls back to name-only, empty string if neither
+- **ai_tag_suggestion_feature**: ai_tag_suggestion column with approve/remove button handlers (_wiPanelApproveTag/_wiPanelRemoveTag), refactored to simplified chip markup without category prefix display in non-category mode
 - **auth_pattern**: login_as_first_level_hierarchy
 - **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
 - **code_extraction_configuration**: min_lines: 5 (per-symbol threshold), min_diff_lines: 5 (commit-level threshold), only_on_commits_with_tags: false
@@ -24,7 +26,7 @@ aicli is a shared AI memory platform combining a Python 3.12 backend (FastAPI + 
 - **deployment_target**: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
 - **frontend_sticky_header_pattern**: CSS position:sticky;top:0;z-index:1 on table headers for work_items panel
-- **frontend_ui_pattern**: inline event handlers with event.stopPropagation(), CSS opacity/color hover states, escaped string interpolation in onclick
+- **frontend_ui_pattern**: inline event handlers with event.stopPropagation(), CSS opacity/color hover states via onmouseenter/onmouseleave, escaped string interpolation in onclick via _esc()
 - **known_bug_active**: planner_tag_visibility: categories upload but individual tags don't display in UI bindings
 - **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
@@ -53,8 +55,10 @@ Reviewer: ```json
     "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
 - **prompt_architecture**: core.prompt_loader for centralization; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
 - **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
+- **rel:ai_tag_suggestion:user_tags**: replaces
 - **rel:ai_tag_suggestion:work_items_table**: related_to
 - **rel:commit_processing:exec_llm_flag**: replaces
+- **rel:frontend_ui_pattern:ai_tag_suggestion_feature**: implements
 - **rel:memory_endpoint:tag_detection**: implements
 - **rel:memory_system:session_tags**: implements
 - **rel:prompt_loader:mng_system_roles**: replaces
@@ -79,8 +83,10 @@ Reviewer: ```json
 - **ui_toast_notification**: toast() function displays error messages with 'error' severity level
 - **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
 - **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
+- **user_tags_rendering**: removed from panel display (userTagsHtml variable deleted), stored in wi.user_tags array but no longer shown in UI
 - **work_item_deletion_endpoint**: DELETE /work-items/{id} with confirm dialog, cache clearing via window._wiPanelDelete, panel re-rendering
 - **work_item_deletion_pattern**: client-side confirmation dialog, async api.workItems.delete(), local state cleanup, re-render panel
+- **work_item_description_processing**: newlines replaced with spaces and trimmed (replace(/\n/g,' ').trim()), clipped to 70 chars with ellipsis
 - **work_item_display_fields**: ai_category icon mapping, status_user color mapping, seq_num sequence number, id identifier
 - **work_item_panel_state_management**: _wiPanelItems object stores work items, window._wiPanelDelete and window._wiPanelRefresh are global handlers
 - **work_item_ui_column_widths**: 56px–80px for multi-column sortable table headers
@@ -103,7 +109,7 @@ Reviewer: ```json
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
 - **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
@@ -138,20 +144,20 @@ Reviewer: ```json
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with UNION consolidation
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
+- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/remove/delete buttons with labeled tag sections
+- Work item panel layout: table-layout:fixed restored to prevent Name column expansion; AI/User tag sections always displayed with labels and '—' placeholder for empty user tags
+- Date format frontend: YY/MM/DD-HH:MM format in work item panel and system displays
+- ai_tag_color_default: #4a90e2 replaces var(--accent) when ai_tag_color not set; tag label format is 'category:name' when both present, name-only fallback
 - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
-- Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
-- Work item UI: multi-column sortable table with AI tag suggestions (category:name format) + user tags from connected events; approve/reject buttons for suggestions
-- Tag suggestion workflow: clicking approve patches tag_id=ai_tag_id, deletes from unlinked panel cache, refreshes display with success toast; remove button clears ai_tag_id only
-- Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ## In Progress
 
-- Work item tag display fix: tags (both AI suggestions and user tags) disappeared from rows; investigating JOIN logic in _SQL_UNLINKED_WORK_ITEMS query and user_tags aggregation from mem_ai_events
-- Description column layout issue: desc being cut in middle of row instead of using full row width; updating colgroup to make Name column flexible and removing table-layout:fixed constraint
-- Work item row rendering: adjusting Name column colspan to display full-length descriptions and accommodate both ai_tag_suggestion chip and user_tags pill display
-- Tag suggestion query refinement: verifying ai_tag_id/ai_tag_name/ai_tag_category/ai_tag_color columns are correctly joined from planner_tags and mng_tags_categories
-- User tags aggregation: extracting feature/bug_ref/bug tags from mem_ai_events connected to work items and building jsonb_agg array for display
-- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with border-radius, hover states, and color differentiation across work item panel
+- Work item panel column layout fix: restored table-layout:fixed to prevent Name column from expanding and pushing right columns off-screen; adjusted colgroup widths
+- Work item tag section labeling: added persistent **AI:** and **User:** row labels to disambiguate tag types; User section shows '—' when no user tags exist
+- Work item detail loading: debugging click handlers on work item rows to ensure details panel opens when row is clicked (separate from button handlers)
+- AI tag suggestion display refinement: ensuring ai_tag_category:ai_tag_name format displays correctly with #4a90e2 default color when ai_tag_color is null
+- User tags aggregation from events: verifying jsonb_agg correctly collects feature/bug_ref/bug tags from mem_ai_events linked to work item
+- Frontend styling consolidation: ensuring consistent button styling (× delete, ✓ approve, × remove) with proper hover states and color differentiation across all tag interaction modes
 
 ## Active Features / Bugs / Tasks
 
@@ -202,211 +208,174 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index 4e1f316..c57489f 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -537,41 +537,14 @@ function _renderWiPanel(items, project) {
+   const rows = sorted.map(wi => {
+     const icon = CAT_ICON[wi.ai_category] || '📋';
+     const sc   = STATUS_C[wi.status_user] || '#888';
+-    const desc = (wi.ai_desc || '').replace(/\n/g,' ');
+-    const descClip = desc.length > 70 ? desc.slice(0,70)+'…' : desc;
+-    // AI tag suggestion chip: "category:name" in category color with ✓ / × buttons
+-    const aiTagColor  = wi.ai_tag_color  || 'var(--accent)';
+-    const aiTagLabel  = wi.ai_tag_category && wi.ai_tag_name
+-      ? `${wi.ai_tag_category}:${wi.ai_tag_name}`
+-      : (wi.ai_tag_name || '');
+-    const tagSuggestion = aiTagLabel
+-      ? `<div style="display:inline-flex;align-items:center;gap:3px;padding-left:22px;margin-top:2px">
+-           <span style="font-size:0.58rem;color:var(--muted);flex-shrink:0">✦</span>
+-           <span style="font-size:0.68rem;font-weight:500;color:${aiTagColor};white-space:nowrap;
+-                        background:${aiTagColor}18;padding:0 5px;border-radius:4px;border:1px solid ${aiTagColor}44"
+-                 title="AI suggested tag">${_esc(aiTagLabel)}</span>
+-           <button title="Approve"
+-             onclick="event.stopPropagation();window._wiPanelApproveTag('${_esc(wi.id)}','${_esc(project)}')"
+-             style="background:none;border:1px solid ${aiTagColor};color:${aiTagColor};cursor:pointer;
+-                    font-size:0.62rem;padding:0 5px;border-radius:4px;line-height:1.7;flex-shrink:0;font-weight:600"
+-             onmouseenter="this.style.background='${aiTagColor}';this.style.color='#fff'"
+-             onmouseleave="this.style.background='none';this.style.color='${aiTagColor}'">✓</button>
+-           <button title="Remove suggestion"
+-             onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
+-             style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;font-size:0.62rem;
+-                    font-weight:700;padding:0 5px;border-radius:4px;line-height:1.7;flex-shrink:0"
+-             onmouseenter="this.style.opacity='.7'"
+-             onmouseleave="this.style.opacity='1'">×</button>
+-         </div>`
++    const desc = (wi.ai_desc || '').replace(/\n/g,' ').trim();
++    // AI tag suggestion: "category:name" chip with approve/remove
++    const aiTagColor = wi.ai_tag_color || '#4a90e2';
++    const aiTagLabel = wi.ai_tag_name
++      ? (wi.ai_tag_category ? wi.ai_tag_category + ':' + wi.ai_tag_name : wi.ai_tag_name)
+       : '';
+-    // User tags: names from connected events (informational)
++    // User tags from connected events
+     const userTagsList = Array.isArray(wi.user_tags) ? wi.user_tags : [];
+-    const userTagsHtml = userTagsList.length
+-      ? `<div style="display:flex;flex-wrap:wrap;gap:3px;padding-left:22px;margin-top:2px">
+-           ${userTagsList.map(t => `<span style="font-size:0.6rem;color:var(--muted);background:var(--surface2);
+-               border:1px solid var(--border);padding:0 5px;border-radius:4px;white-space:nowrap">${_esc(t)}</span>`).join('')}
+-         </div>`
+-      : '';
+     return `<tr draggable="true"
+         data-wi-id="${_esc(wi.id)}"
+         data-wi-name="${_esc(wi.ai_name)}"
+@@ -581,8 +554,8 @@ function _renderWiPanel(items, project) {
+         style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
+         onmouseenter="this.style.background='var(--surface2)'"
+         onmouseleave="this.style.background=''">
+-      <td style="padding:4px 8px;min-width:0">
+-        <div style="display:flex;align-items:center;gap:4px">
++      <td style="padding:4px 8px;min-width:0;overflow:hidden">
++        <div style="display:flex;align-items:center;gap:4px;min-width:0">
+           <button title="Delete this item"
+             onclick="event.stopPropagation();window._wiPanelDelete('${_esc(wi.id)}','${_esc(project)}')"
+             style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;font-size:0.62rem;
+@@ -592,14 +565,32 @@ function _renderWiPanel(items, project) {
+           <span style="flex-shrink:0;font-size:0.8rem">${icon}</span>
+           ${wi.seq_num ? `<span style="font-size:0.6rem;color:var(--muted);flex-shrink:0">#${wi.seq_num}</span>` : ''}
+           <span style="font-size:0.72rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;
+-                       white-space:nowrap" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
++                       white-space:nowrap;flex:1;min-width:0" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
+           <span style="font-size:0.58rem;color:${sc};background:${sc}22;
+                        padding:0 0.3rem;border-radius:6px;flex-shrink:0;white-space:nowrap">${wi.status_user||'active'}</span>
+         </div>
+-        ${descClip ? `<div style="font-size:0.65rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+-                                  white-space:nowrap;padding-left:22px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
+-        ${tagSuggestion}
+-        ${userTagsHtml}
++        ${desc ? `<div style="font-size:0.65rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
++                              white-space:nowrap;padding-left:22px;margin-top:1px"
++                       title="${_esc(desc)}">${_esc(desc)}</div>` : ''}
++        ${aiTagLabel ? `<div style="display:flex;align-items:center;gap:4px;padding-left:22px;margin-top:3px">
++          <span style="font-size:0.6rem;color:var(--muted)">✦</span>
++          <span style="font-size:0.68rem;font-weight:500;padding:1px 6px;border-radius:4px;
++                       color:${aiTagColor};border:1px solid ${aiTagColor};background:${aiTagColor}22;
++                       white-space:nowrap" title="AI suggestion">${_esc(aiTagLabel
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index feeb736..1bd4060 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-09 01:40 UTC
++> Generated by aicli 2026-04-09 02:04 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index cf7655f..18a1f69 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 01:40 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:04 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -66,8 +66,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-09] Now iot works but it is very close to each other (ui commit is on prompts) . can you make the header more clear
+-- [2026-04-09] The data is not cleared can you change that to yy/mm/dd-hh:mm ? also I do see tags under work_items (Shared-memory, bill
+ - [2026-04-09] What did you do now ?
+ - [2026-04-09] I would like that the header wont disappear when user scroll down in work_items. also can you /momry in order to update 
+-- [2026-04-09] I cannot see the sujjestion. is it on each row in work_items ?
+\ No newline at end of file
++- [2026-04-09] I cannot see the sujjestion. is it on each row in work_items ?
++- [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
++- [2026-04-09] I do see there is one ai_tags which is good. but ai_tags suppose to be feature, bug or task with the name . for example 
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index cf7655f..18a1f69 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 01:40 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 02:04 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -66,8 +66,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-09] Now iot works but it is very close to each other (ui commit is on prompts) . can you make the header more clear
+-- [2026-04-09] The data is not cleared can you change that to yy/mm/dd-hh:mm ? also I do see tags under work_items (Shared-memory, bill
+ - [2026-04-09] What did you do now ?
+ - [2026-04-09] I would like that the header wont disappear when user scroll down in work_items. also can you /momry in order to update 
+-- [2026-04-09] I cannot see the sujjestion. is it on each row in work_items ?
+\ No newline at end of file
++- [2026-04-09] I cannot see the sujjestion. is it on each row in work_items ?
++- [2026-04-09] Work_item not loading the details when I click on work item. also in the ui - I do see tag (left of the row) and approve
++- [2026-04-09] I do see there is one ai_tags which is good. but ai_tags suppose to be feature, bug or task with the name . for example 
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+Removed outdated auto-generated system context and CLAUDE.md documentation files that were no longer needed.
+
 ### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 Frontend UI refinements: work item details loading fixed via direct GET endpoint, tag suggestions now display as `category:name` format (bug:auth, feature:dropbox) with new/existing tag color differentiation, user tags added as informational pills, fonts increased 15-20% for Electron readability, date column padding fixed to show full timestamps, × removal button styled bold red for visibility, and suggestion row compacted with inline-flex layout.
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index 9ddca92..4e1f316 100644
---- a/ui/frontend/views/entities.js
-+++ b/ui/frontend/views/entities.js
-@@ -539,25 +539,39 @@ function _renderWiPanel(items, project) {
-     const sc   = STATUS_C[wi.status_user] || '#888';
-     const desc = (wi.ai_desc || '').replace(/\n/g,' ');
-     const descClip = desc.length > 70 ? desc.slice(0,70)+'…' : desc;
--    const tagSuggestion = wi.ai_tag_name
--      ? `<div style="display:inline-flex;align-items:center;gap:4px;padding-left:18px;margin-top:2px">
-+    // AI tag suggestion chip: "category:name" in category color with ✓ / × buttons
-+    const aiTagColor  = wi.ai_tag_color  || 'var(--accent)';
-+    const aiTagLabel  = wi.ai_tag_category && wi.ai_tag_name
-+      ? `${wi.ai_tag_category}:${wi.ai_tag_name}`
-+      : (wi.ai_tag_name || '');
-+    const tagSuggestion = aiTagLabel
-+      ? `<div style="display:inline-flex;align-items:center;gap:3px;padding-left:22px;margin-top:2px">
-            <span style="font-size:0.58rem;color:var(--muted);flex-shrink:0">✦</span>
--           <span style="font-size:0.68rem;color:var(--muted);white-space:nowrap"
--                 title="AI suggested: ${_esc(wi.ai_tag_name)}">${_esc(wi.ai_tag_name)}</span>
-+           <span style="font-size:0.68rem;font-weight:500;color:${aiTagColor};white-space:nowrap;
-+                        background:${aiTagColor}18;padding:0 5px;border-radius:4px;border:1px solid ${aiTagColor}44"
-+                 title="AI suggested tag">${_esc(aiTagLabel)}</span>
-            <button title="Approve"
-              onclick="event.stopPropagation();window._wiPanelApproveTag('${_esc(wi.id)}','${_esc(project)}')"
--             style="background:none;border:1px solid var(--accent);color:var(--accent);cursor:pointer;
--                    font-size:0.6rem;padding:0 5px;border-radius:4px;line-height:1.6;flex-shrink:0"
--             onmouseenter="this.style.background='var(--accent)';this.style.color='#fff'"
--             onmouseleave="this.style.background='none';this.style.color='var(--accent)'">✓</button>
-+             style="background:none;border:1px solid ${aiTagColor};color:${aiTagColor};cursor:pointer;
-+                    font-size:0.62rem;padding:0 5px;border-radius:4px;line-height:1.7;flex-shrink:0;font-weight:600"
-+             onmouseenter="this.style.background='${aiTagColor}';this.style.color='#fff'"
-+             onmouseleave="this.style.background='none';this.style.color='${aiTagColor}'">✓</button>
-            <button title="Remove suggestion"
-              onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
--             style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:0.85rem;
--                    font-weight:700;padding:0 2px;line-height:1;flex-shrink:0"
-+             style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;font-size:0.62rem;
-+                    font-weight:700;padding:0 5px;border-radius:4px;line-height:1.7;flex-shrink:0"
-              onmouseenter="this.style.opacity='.7'"
-              onmouseleave="this.style.opacity='1'">×</button>
-          </div>`
-       : '';
-+    // User tags: names from connected events (informational)
-+    const userTagsList = Array.isArray(wi.user_tags) ? wi.user_tags : [];
-+    const userTagsHtml = userTagsList.length
-+      ? `<div style="display:flex;flex-wrap:wrap;gap:3px;padding-left:22px;margin-top:2px">
-+           ${userTagsList.map(t => `<span style="font-size:0.6rem;color:var(--muted);background:var(--surface2);
-+               border:1px solid var(--border);padding:0 5px;border-radius:4px;white-space:nowrap">${_esc(t)}</span>`).join('')}
-+         </div>`
-+      : '';
-     return `<tr draggable="true"
-         data-wi-id="${_esc(wi.id)}"
-         data-wi-name="${_esc(wi.ai_name)}"
-@@ -571,8 +585,8 @@ function _renderWiPanel(items, project) {
-         <div style="display:flex;align-items:center;gap:4px">
-           <button title="Delete this item"
-             onclick="event.stopPropagation();window._wiPanelDelete('${_esc(wi.id)}','${_esc(project)}')"
--            style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:0.9rem;
--                   font-weight:700;padding:0 3px;line-height:1;flex-shrink:0"
-+            style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;font-size:0.62rem;
-+                   font-weight:700;padding:0 4px;border-radius:4px;line-height:1.7;flex-shrink:0"
-             onmouseenter="this.style.opacity='.7'"
-             onmouseleave="this.style.opacity='1'">×</button>
-           <span style="flex-shrink:0;font-size:0.8rem">${icon}</span>
-@@ -585,6 +599,7 @@ function _renderWiPanel(items, project) {
-         ${descClip ? `<div style="font-size:0.65rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
-                                   white-space:nowrap;padding-left:22px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
-         ${tagSuggestion}
-+        ${userTagsHtml}
-       </td>
-       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;
-                  color:var(--text2);font-variant-numeric:tabular-nums;
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
-index 2dd99e2..857af4a 100644
---- a/backend/routers/route_work_items.py
-+++ b/backend/routers/route_work_items.py
-@@ -76,15 +76,31 @@ _SQL_UNLINKED_WORK_ITEMS = """
-     SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-            w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
-            w.start_date, w.created_at, w.updated_at, w.seq_num,
-+           w.ai_tag_id,
-            pt.name AS ai_tag_name,
-+           ptc.name  AS ai_tag_category,
-+           ptc.color AS ai_tag_color,
-            (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
-            COALESCE((SELECT COUNT(*) FROM mem_ai_events
-                      WHERE work_item_id = w.id AND event_type = 'prompt_batch'), 0) AS prompt_count,
-            COALESCE((SELECT COUNT(*) FROM mem_mrr_commits c
-                      JOIN mem_ai_events e ON e.id = c.event_id
--                     WHERE e.work_item_id = w.id), 0) AS commit_count
-+                     WHERE e.work_item_id = w.id), 0) AS commit_count,
-+           (SELECT COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb)
-+            FROM mem_ai_events ev
-+            JOIN planner_tags ut ON ut.project_id = w.project_id
-+                 AND ut.name IN (
-+                     ev.tags->>'feature',
-+                     ev.tags->>'bug_ref',
-+                     ev.tags->>'bug'
-+                 )
-+            WHERE ev.work_item_id = w.id
-+              AND (ev.tags->>'feature' IS NOT NULL OR ev.tags->>'bug_ref' IS NOT NULL
-+                   OR ev.tags->>'bug' IS NOT NULL)
-+           ) AS user_tags
-     FROM mem_ai_work_items w
--    LEFT JOIN planner_tags pt ON pt.id = w.ai_tag_id
-+    LEFT JOIN planner_tags pt   ON pt.id  = w.ai_tag_id
-+    LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
-     WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
-     ORDER BY w.updated_at DESC
- """
-@@ -314,6 +330,10 @@ async def get_unlinked_work_items(project: str | None = Query(None)):
-             for r in cur.fetchall():
-                 row = dict(zip(cols, r))
-                 row["id"] = str(row["id"])
-+                if row.get("ai_tag_id"):
-+                    row["ai_tag_id"] = str(row["ai_tag_id"])
-+                if row.get("user_tags") is None:
-+                    row["user_tags"] = []
-                 for dt_field in ("created_at", "updated_at", "start_date"):
-                     if row.get(dt_field):
-                         row[dt_field] = row[dt_field].isoformat()
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-Removed legacy system files and reorganized the _system directory structure for improved maintainability and clarity.
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index fe59342..09c9940 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
--- Work item table sticky header: implementing fixed header that persists when user scrolls down in work_items panel
--- Work item UI date formatting: standardized to YY/MM/DD-HH:MM format across all date columns with improved column widths (56px–80px)
--- Tag filtering in work items UI: investigating and implementing proper scope filtering for non-work-item tags (Shared-memory, billing) appearing incorrectly in work items panel
--- AI tag suggestion display: adding ai_tag_suggestion column to work item table rows to surface LLM-generated tag recommendations
--- Memory embedding pipeline refresh: executing /memory endpoint to sync all recent prompts and work items, verifying event-to-work-item linkage accuracy
-+- Work item date formatting: standardized from YYMMDDHHSS to YY/MM/DD-HH:MM format for improved table readability
-+- Work item table column width refinement: increased widths to 56px–80px to accommodate date format and better visual separation
-+- Tag filtering in work items UI: investigating incorrect display of non-work-item tags (Shared-memory, billing, etc.) in work items panel; implementing proper scope filtering
- - Work item deletion implementation: completed DELETE /work-items/{id} endpoint with confirm dialog, cache clearing via window._wiPanelDelete, and panel re-rendering
-+- AI tag suggestion display: adding ai_tag_suggestion column to work item table rows to surface LLM-generated tag recommendations
-+- Memory embedding pipeline refresh: executing /memory endpoint to sync recent prompts and work items, verifying event-to-work-item linkage accuracy
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
-index ea21726..e5f6ba9 100644
---- a/backend/routers/route_work_items.py
-+++ b/backend/routers/route_work_items.py
-@@ -506,6 +506,35 @@ async def extract_work_item_code(item_id: str, project: str | None = Query(None)
-     return result
- 
- 
-+@router.post("/rematch-all")
-+async def rematch_all_work_items(project: str | None = Query(None), background: BackgroundTasks = None):
-+    """Run tag-matching for all unlinked work items (no ai_tag_id set) in the background."""
-+    _require_db()
-+    p = _project(project)
-+    with db.conn() as conn:
-+        with conn.cursor() as cur:
-+            cur.execute(
-+                "SELECT id FROM mem_ai_work_items WHERE project_id=%s AND ai_tag_id IS NULL AND status_user!='done' LIMIT 100",
-+                (db.get_project_id(p),),
-+            )
-+            ids = [str(r[0]) for r in cur.fetchall()]
-+    for wi_id in ids:
-+        background.add_task(_run_matching, p, wi_id)
-+    return {"queued": len(ids), "project": p}
-+
-+
-+@router.post("/{item_id}/match")
-+async def match_work_item_tags(item_id: str, project: str | None = Query(None)):
-+    """Run tag matching synchronously for a single work item — returns matches for debugging."""
-+    _require_db()
-+    p = _project(project)
-+    from memory.memory_tagging import MemoryTagging
-+    try:
-+        matches = await MemoryTagging().match_work_item_to_tags(p, item_id)
-+        return {"matches": matches, "count": len(matches)}
-+    except Exception as e:
-+        return {"error": str(e), "matches": []}
-+
- 
- # ── Lookup by sequential number ───────────────────────────────────────────────
- 
-
-
 ## AI Synthesis
 
-**[2026-04-09]** `development` — Debugging work item row tag display: AI tag suggestions and user tags disappeared from work_items panel; investigating _SQL_UNLINKED_WORK_ITEMS query JOINs with planner_tags/mng_tags_categories and user_tags aggregation logic from mem_ai_events feature/bug_ref/bug fields. **[2026-04-09]** `development` — Description text overflow fix: Name column layout broken, causing ai_desc to be cut mid-row instead of full width; removing table-layout:fixed and adjusting colgroup to allow flexible Name column expansion. **[2026-03-14]** `feature_complete` — AI tag suggestion UI refinement: ai_tag_name now displays as `category:name` format (e.g., bug:auth, feature:dropbox) with category color background, white-space:nowrap, and inline-flex layout with ✓/× buttons for approve/remove actions. **[2026-03-14]** `feature_complete` — User tags display layer: extracted feature/bug_ref/bug tags from mem_ai_events connected to each work_item and rendered as informational pills in compact row layout below AI tag suggestion chip. **[2026-03-14]** `ui_refinement` — Font scaling and spacing: increased work item panel font sizes 15-20% for Electron readability, fixed date column padding to show full YY/MM/DD-HH:MM timestamps, styled × delete button bold red with border styling matching ✓ approve button. **[2026-03-14]** `architecture` — Tag suggestion workflow: approve button patches tag_id=ai_tag_id on work_item, deletes item from _wiPanelItems cache, refreshes panel without API reload, shows success toast; remove button only clears ai_tag_id/ai_tag_name (preserves work item).
+**[2026-04-09]** Work item panel column layout crisis: table-layout:fixed was removed causing Name column to expand infinitely and push right columns off-screen; decision made to restore table-layout:fixed and adjust colgroup widths proportionally. **[2026-04-09]** Tag section labeling requirement: work item rows must always display **AI:** and **User:** section labels to disambiguate tag origin and intent; User section shows '—' placeholder when no tags exist (user education pattern). **[2026-04-09]** AI tag color default standardized to #4a90e2 (replaces var(--accent) variable reference) with label format logic: 'category:name' when both present, name-only fallback, empty string if neither. **[2026-04-09]** Work item click handler investigation: detail panel not opening on row click; separate button click handlers (delete/approve/remove) working but main row interaction failing. **[2026-04-09]** User tags aggregation pattern: extracting feature/bug_ref/bug tags from mem_ai_events connected to work item via jsonb_agg for display in User section. **[2026-04-09]** Frontend button styling consistency: × (delete, red #e74c3c), ✓ (approve, tag color), × (remove, red) with border-radius:4px and hover opacity/color transitions across all interaction modes.
