@@ -56,7 +56,7 @@
     "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
     "Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename\u2192recreate\u2192copy pattern (migrations m001-m019)",
     "Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes",
-    "Work item UI: multi-column sortable table with proper header styling, wider columns (38px\u219260+px), date formatting (YYMMDDHHSS), and status color badges"
+    "Work item UI: multi-column sortable table with proper header styling, wider columns (56px\u201380px), date formatting (YY/MM/DD-HH:MM), and status color badges"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -85,12 +85,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Work item table UI refinement: implemented multi-column sortable display with separate sort state (field/direction); added date formatter (fmtDate), header styling with active indicators, improved column widths and visual separation",
-    "Work item counting optimization: added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to _SQL_UNLINKED_WORK_ITEMS query; added updated_at timestamp tracking",
-    "Table header clarity: increased column width from 38px, added background/border styling to headers, implemented dynamic active-field indicator arrows (\u2191/\u2193), fixed text contrast for muted vs active states",
-    "Database query performance: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve ~60s latency in unlinked work items JOIN",
-    "Memory embedding pipeline: synchronized LLM prompt tracing across memory_embedding.py, agents/tools/, and routers/ with consistent module imports",
-    "Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries"
+    "Work item date formatting: changed from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability in table display",
+    "Work item table column width refinement: increased from 38px to 56px for prompt/commit counts, 80px for date column to accommodate new format",
+    "Tag filtering in work items UI: investigating why non-work-item tags (Shared-memory, billing, etc.) appear in work items panel and implementing proper scope filtering",
+    "Work item deletion implementation: completed wiring of DELETE /work-items/{id} endpoint with confirm dialog, cache clearing, and panel re-rendering",
+    "Header styling standardization: applied uppercase text-transform, letter-spacing, active/inactive state indicators with accent colors across all table headers",
+    "Database query performance optimization: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -122,7 +122,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-09T00:49:03Z",
+  "last_memory_run": "2026-04-09T00:57:03Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -139,15 +139,15 @@
       "Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename\u2192recreate\u2192copy pattern (migrations m001-m019)",
       "Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes",
-      "Work item UI: multi-column sortable table with proper header styling, wider columns (38px\u219260+px), date formatting (YYMMDDHHSS), and status color badges"
+      "Work item UI: multi-column sortable table with proper header styling, wider columns (56px\u201380px), date formatting (YY/MM/DD-HH:MM), and status color badges"
     ],
     "in_progress": [
-      "Work item table UI refinement: implemented multi-column sortable display with separate sort state (field/direction); added date formatter (fmtDate), header styling with active indicators, improved column widths and visual separation",
-      "Work item counting optimization: added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to _SQL_UNLINKED_WORK_ITEMS query; added updated_at timestamp tracking",
-      "Table header clarity: increased column width from 38px, added background/border styling to headers, implemented dynamic active-field indicator arrows (\u2191/\u2193), fixed text contrast for muted vs active states",
-      "Database query performance: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve ~60s latency in unlinked work items JOIN",
-      "Memory embedding pipeline: synchronized LLM prompt tracing across memory_embedding.py, agents/tools/, and routers/ with consistent module imports",
-      "Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries"
+      "Work item date formatting: changed from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability in table display",
+      "Work item table column width refinement: increased from 38px to 56px for prompt/commit counts, 80px for date column to accommodate new format",
+      "Tag filtering in work items UI: investigating why non-work-item tags (Shared-memory, billing, etc.) appear in work items panel and implementing proper scope filtering",
+      "Work item deletion implementation: completed wiring of DELETE /work-items/{id} endpoint with confirm dialog, cache clearing, and panel re-rendering",
+      "Header styling standardization: applied uppercase text-transform, letter-spacing, active/inactive state indicators with accent colors across all table headers",
+      "Database query performance optimization: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -155,19 +155,22 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database_version": "PostgreSQL 15+",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
       "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)",
       "config_management": "config.py + YAML pipelines + pyproject.toml",
       "prompt_management": "core.prompt_loader module with centralized prompt caching",
+      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)",
       "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining Python FastAPI backend with Electron desktop UI, PostgreSQL+pgvector semantic search, and multi-provider LLM adapters (Claude/OpenAI/DeepSeek/Gemini/Grok). It captures and synthesizes project context through smart code chunking, embeddings, and a 4-layer memory system, enabling AI workflows via async DAG executor and MCP tools. Currently focused on work item UI refinement (sortable table, proper headers), database query optimization, and consistent prompt/embedding pipeline across all routers.",
-    "memory_digest": "**[2026-04-09]** `entities.js + route_work_items.py` \u2014 Refactored work item table UI from grid layout to semantic HTML table with proper header styling: increased column width (38px\u219260+px), added active sort indicator arrows (\u2191/\u2193), implemented date formatter (YYMMDDHHSS), and separated sort state from category-pane sorting. **[2026-04-09]** `route_work_items.py` \u2014 Enhanced _SQL_UNLINKED_WORK_ITEMS query to count prompt_batch events and commits linked via mem_ai_events FK, enabling table columns for prompt_count and commit_count; added updated_at timestamp field for better recency sorting. **[2026-04-09]** `route_work_items.py` \u2014 Fixed work item drawer integration by adding updated_at to ISO datetime serialization alongside created_at and start_date; ensures proper date filtering in UI. **[2026-04-09]** `copilot-instructions.md` \u2014 Auto-regenerated project summary; aicli is a shared AI memory platform with PostgreSQL + pgvector semantic search, Claude/OpenAI LLM adapters, async DAG workflow engine, and Electron desktop UI for managing project context, work items, and AI-driven memory synthesis. **[Prior sessions]** \u2014 Established 4-layer memory architecture (ephemeral \u2192 mem_mrr raw capture \u2192 mem_ai_events LLM digests \u2192 mem_ai_work_items/project_facts), implemented prompt_loader centralization to eliminate redundant DB queries, deployed Railway + Electron-builder for cloud/desktop, and established db_schema.sql + db_migrations.py as source of truth."
+    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAPI + PostgreSQL with pgvector embeddings) and an Electron desktop UI (Vanilla JS + Cytoscape visualization). The system captures development events, commits, and interactions across projects, synthesizes them via Claude Haiku into structured work items and project facts, and provides semantic search via MCP tools and workflow automation via YAML-configured DAG pipelines. Currently focused on refining the work items UI (date formatting, column layout, tag scoping) and optimizing database query performance through FK indexing.",
+    "memory_digest": "**[2026-04-09]** `claude_cli` \u2014 Completed work item deletion feature with `DELETE /work-items/{id}` endpoint, confirm dialog, and UI cache invalidation. Fixed date display format from YYMMDDHHSS to YY/MM/DD-HH:MM for improved readability. **[2026-04-09]** `claude_cli` \u2014 Refined work item table UI: increased column widths (38px\u219256px for counts, 80px for date), improved header styling with uppercase text-transform, letter-spacing, and accent color indicators for active sort fields. **[2026-04-09]** `claude_cli` \u2014 Added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to unlinked work items query; updated_at timestamp tracking for sort optimization. **[2026-04-09]** `claude_cli` \u2014 Identified tag filtering bug: non-work-item tags (Shared-memory, billing, etc.) incorrectly display in work items panel; requires scope-based tag filtering implementation. **[prior]** \u2014 Established Claude Haiku dual-layer memory synthesis architecture generating 5 output files with auto-tag suggestions, timestamp tracking, and LLM response summarization. **[prior]** \u2014 Implemented async DAG workflow executor with Cytoscape.js visualization, 2-pane approval panel, and per-node retry/continue logic."
   }
 }

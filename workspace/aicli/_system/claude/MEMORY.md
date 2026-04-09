@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-09 00:48 UTC by aicli /memory_
+_Generated: 2026-04-09 00:56 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining Python FastAPI backend with Electron desktop UI, PostgreSQL+pgvector semantic search, and multi-provider LLM adapters (Claude/OpenAI/DeepSeek/Gemini/Grok). It captures and synthesizes project context through smart code chunking, embeddings, and a 4-layer memory system, enabling AI workflows via async DAG executor and MCP tools. Currently focused on work item UI refinement (sortable table, proper headers), database query optimization, and consistent prompt/embedding pipeline across all routers.
+aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAPI + PostgreSQL with pgvector embeddings) and an Electron desktop UI (Vanilla JS + Cytoscape visualization). The system captures development events, commits, and interactions across projects, synthesizes them via Claude Haiku into structured work items and project facts, and provides semantic search via MCP tools and workflow automation via YAML-configured DAG pipelines. Currently focused on refining the work items UI (date formatting, column layout, tag scoping) and optimizing database query performance through FK indexing.
 
 ## Project Facts
 
@@ -119,16 +119,16 @@ Reviewer: ```json
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: multi-column sortable table with proper header styling, wider columns (38px→60+px), date formatting (YYMMDDHHSS), and status color badges
+- Work item UI: multi-column sortable table with proper header styling, wider columns (56px–80px), date formatting (YY/MM/DD-HH:MM), and status color badges
 
 ## In Progress
 
-- Work item table UI refinement: implemented multi-column sortable display with separate sort state (field/direction); added date formatter (fmtDate), header styling with active indicators, improved column widths and visual separation
-- Work item counting optimization: added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to _SQL_UNLINKED_WORK_ITEMS query; added updated_at timestamp tracking
-- Table header clarity: increased column width from 38px, added background/border styling to headers, implemented dynamic active-field indicator arrows (↑/↓), fixed text contrast for muted vs active states
-- Database query performance: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve ~60s latency in unlinked work items JOIN
-- Memory embedding pipeline: synchronized LLM prompt tracing across memory_embedding.py, agents/tools/, and routers/ with consistent module imports
-- Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries
+- Work item date formatting: changed from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability in table display
+- Work item table column width refinement: increased from 38px to 56px for prompt/commit counts, 80px for date column to accommodate new format
+- Tag filtering in work items UI: investigating why non-work-item tags (Shared-memory, billing, etc.) appear in work items panel and implementing proper scope filtering
+- Work item deletion implementation: completed wiring of DELETE /work-items/{id} endpoint with confirm dialog, cache clearing, and panel re-rendering
+- Header styling standardization: applied uppercase text-transform, letter-spacing, active/inactive state indicators with accent colors across all table headers
+- Database query performance optimization: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency
 
 ## Active Features / Bugs / Tasks
 
@@ -179,168 +179,83 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+
+Fixed UI display issues by implementing hard refresh, restarting backend for SQL changes, and improving header clarity with wider columns (38px→wider), better padding, and visual separation.
+
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index 19c813d..4b7d08b 100644
+index 4b7d08b..556d186 100644
 --- a/ui/frontend/views/entities.js
 +++ b/ui/frontend/views/entities.js
-@@ -452,53 +452,102 @@ function _renderWiPanel(items, project) {
-     list.innerHTML = '<div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">No work items yet — click + New to create one</div>';
-     return;
-   }
--  const CAT_ICON = { feature: '✨', bug: '🐛', task: '📋' };
--  const STATUS_UC = { active: '#27ae60', in_progress: '#e67e22', done: '#4a90e2', paused: '#888' };
--  list.innerHTML = items.map(wi => {
-+
-+  const CAT_ICON  = { feature: '✨', bug: '🐛', task: '📋' };
-+  const STATUS_C  = { active: '#27ae60', in_progress: '#e67e22', done: '#4a90e2', paused: '#888' };
-+
-+  // Sort state for bottom panel (separate from the category-pane sort)
-+  if (!window._wiPanelSort) window._wiPanelSort = { field: 'updated_at', dir: 'desc' };
-+  const { field, dir } = window._wiPanelSort;
-+  const mul = dir === 'asc' ? 1 : -1;
-+  const sorted = [...items].sort((a, b) => {
-+    if (field === 'prompt_count')  return mul * ((a.prompt_count||0)  - (b.prompt_count||0));
-+    if (field === 'commit_count')  return mul * ((a.commit_count||0)  - (b.commit_count||0));
-+    return mul * (new Date(a.updated_at||a.created_at||0) - new Date(b.updated_at||b.created_at||0));
-+  });
-+
-+  function fmtDate(iso) {
-+    if (!iso) return '—';
-+    const d = new Date(iso);
-+    return String(d.getFullYear()).slice(2)
-+      + String(d.getMonth()+1).padStart(2,'0')
-+      + String(d.getDate()).padStart(2,'0')
-+      + String(d.getHours()).padStart(2,'0')
-+      + String(d.getMinutes()).padStart(2,'0');
-+  }
-+
-+  function hdr(f, label) {
-+    const active = window._wiPanelSort.field === f;
-+    const arrow  = active ? (window._wiPanelSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
-+    return `<th onclick="window._wiPanelResort('${f}')"
-+      style="text-align:right;padding:2px 6px;cursor:pointer;user-select:none;white-space:nowrap;
-+             font-size:0.6rem;font-weight:${active?'600':'400'};
-+             color:${active?'var(--text)':'var(--muted)'};border-bottom:1px solid var(--border)">
-+      ${label}${arrow}
-+    </th>`;
-+  }
-+
-+  window._wiPanelResort = (f) => {
-+    if (window._wiPanelSort.field === f) {
-+      window._wiPanelSort.dir = window._wiPanelSort.dir === 'asc' ? 'desc' : 'asc';
-+    } else {
-+      window._wiPanelSort.field = f;
-+      window._wiPanelSort.dir = 'desc';
-+    }
-+    _renderWiPanel(Object.values(_wiPanelItems), project);
-+  };
-+
-+  const rows = sorted.map(wi => {
-     const icon = CAT_ICON[wi.ai_category] || '📋';
--    const sc = STATUS_UC[wi.status_user] || '#888';
--    const mergeBadge = wi.merge_count > 0
--      ? `<span title="${wi.merge_count} item(s) merged into this"
--               style="font-size:0.5rem;color:var(--accent);background:var(--accent)20;
--                      padding:0.02rem 0.3rem;border-radius:8px;white-space:nowrap;flex-shrink:0
--                      ">⊕ ${wi.merge_count}</span>`
--      : '';
--    const linkedBadge = wi.tag_id
--      ? `<span title="Linked" style="font-size:0.52rem;color:var(--accent);margin-left:2px">✓</span>
--         <button title="Unlink from tag" onclick="event.stopPropagation();window._wiUnlink('${_esc(wi.id)}','${_esc(project)}')"
--           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.7rem;
--                  padding:0 2px;line-height:1;vertical-align:middle">×</button>`
--      : (wi.ai_tag_id
--          ? `<span title="AI-suggested link" style="font-size:0.52rem;color:var(--muted);margin-left:2px;opacity:.7">✦</span>`
--          : '');
--    const detail = (wi.action_items || wi.ai_desc || '').replace(/\n/g, ' ').slice(0, 80);
--    return `<div draggable="true"
--         data-wi-id="${_esc(wi.id)}"
--         data-wi-name="${_esc(wi.ai_name)}"
--         ondragstart="window._wiBotDragStart(event,'${_esc(wi.id)}','${_esc(wi.ai_name)}','${_esc(wi.ai_category)}')"
--         ondragend="window._wiBotDragEnd(event)"
--         onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(wi.ai_category)}','${_esc(project)}')"
--         style="display:grid;grid-template-columns:1fr 1fr;padding:3px 8px;
--                border-bottom:1px solid var(--border);cursor:grab;user-select:none;
--                transition:background 0.1s"
--         onmouseenter="this.style.background='var(--surface2)'"
--         onmouseleave="this.style.background=''">
--      <div style="display:flex;align-items:center;gap:3px;overflow:hidden;min-width:0">
--        <span style="flex-shrink:0;font-size:0.78rem">${icon}</span>
--        <span style="font-size:0.64rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;
--                     white-space:nowrap" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
--        <span style="font-size:0.52rem;color:${sc};background:${sc}22;padding:0.02rem 0.25rem;
--                     border-radius:8px;white-space:nowrap;flex-shrink:0">${wi.status_user || 'active'}</span>
--        ${mergeBadge}
--        ${linkedBadge}
--      </div>
--      <div style="font-size:0.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
--                  white-space:nowrap;align-self:center;padding-left:4px"
--           title="${_esc(wi.ai_desc || '')}">
--        ${_esc(detail) || '—'}
--      </div>
--    </div>`;
-+    const sc   = STATUS_C[wi.status_user] || '#888';
-+    const desc = (wi.ai_desc || '').replace(/\n/g,' ');
-+    const descClip = desc.length > 70 ? desc.slice(0,70)+'…' : desc;
-+    const linked = wi.tag_id
-+      ? `<span style="font-size:0.48rem;color:var(--accent);flex-shrink:0">✓</span>`
-+      : (wi.ai_tag_id ? `<span style="font-size:0.48rem;color:var(--muted);flex-shrink:0;opacity:.7">✦</span>` : '');
-+    return `<tr draggable="true"
-+        data-wi-id="${_esc(wi.id)}"
-+        data-wi-name="${_esc(wi.ai_name)}"
-+        ondragstart="window._wiBotDragStart(event,'${_esc(wi.id)}','${_esc(wi.ai
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
-index 56d249a..ea21726 100644
---- a/backend/routers/route_work_items.py
-+++ b/backend/routers/route_work_items.py
-@@ -75,13 +75,18 @@ _SQL_LIST_WORK_ITEMS_BASE = (
- _SQL_UNLINKED_WORK_ITEMS = """
-     SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-            w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
--           w.start_date, w.created_at, w.seq_num,
-+           w.start_date, w.created_at, w.updated_at, w.seq_num,
-            pt.name AS ai_tag_name,
--           (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count
-+           (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
-+           COALESCE((SELECT COUNT(*) FROM mem_ai_events
-+                     WHERE work_item_id = w.id AND event_type = 'prompt_batch'), 0) AS prompt_count,
-+           COALESCE((SELECT COUNT(*) FROM mem_mrr_commits c
-+                     JOIN mem_ai_events e ON e.id = c.event_id
-+                     WHERE e.work_item_id = w.id), 0) AS commit_count
-     FROM mem_ai_work_items w
-     LEFT JOIN planner_tags pt ON pt.id = w.ai_tag_id
-     WHERE w.project_id=%s AND w.tag_id IS NULL AND w.status_user != 'done'
--    ORDER BY w.created_at DESC
-+    ORDER BY w.updated_at DESC
- """
+@@ -478,12 +478,13 @@ function _renderWiPanel(items, project) {
  
- _SQL_INSERT_WORK_ITEM = (
-@@ -309,7 +314,7 @@ async def get_unlinked_work_items(project: str | None = Query(None)):
-             for r in cur.fetchall():
-                 row = dict(zip(cols, r))
-                 row["id"] = str(row["id"])
--                for dt_field in ("created_at", "start_date"):
-+                for dt_field in ("created_at", "updated_at", "start_date"):
-                     if row.get(dt_field):
-                         row[dt_field] = row[dt_field].isoformat()
-                 rows.append(row)
+   function hdr(f, label) {
+     const active = window._wiPanelSort.field === f;
+-    const arrow  = active ? (window._wiPanelSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
++    const arrow  = active ? (window._wiPanelSort.dir === 'asc' ? '↑' : '↓') : '↕';
+     return `<th onclick="window._wiPanelResort('${f}')"
+-      style="text-align:right;padding:2px 6px;cursor:pointer;user-select:none;white-space:nowrap;
+-             font-size:0.6rem;font-weight:${active?'600':'400'};
+-             color:${active?'var(--text)':'var(--muted)'};border-bottom:1px solid var(--border)">
+-      ${label}${arrow}
++      style="text-align:right;padding:4px 8px;cursor:pointer;user-select:none;white-space:nowrap;
++             font-size:0.62rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
++             color:${active?'var(--accent)':'var(--muted)'};background:var(--surface2);
++             border-bottom:2px solid ${active?'var(--accent)':'var(--border)'};border-left:1px solid var(--border)">
++      ${label}&nbsp;<span style="opacity:${active?1:.35};font-size:0.55rem">${arrow}</span>
+     </th>`;
+   }
+ 
+@@ -527,21 +528,26 @@ function _renderWiPanel(items, project) {
+         ${descClip ? `<div style="font-size:0.57rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+                                   white-space:nowrap;padding-left:18px" title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
+       </td>
+-      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.6rem;
+-                 color:var(--text2);font-variant-numeric:tabular-nums;width:38px">${wi.prompt_count||0}</td>
+-      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.6rem;
+-                 color:var(--text2);font-variant-numeric:tabular-nums;width:38px">${wi.commit_count||0}</td>
+-      <td style="padding:3px 6px;text-align:right;white-space:nowrap;font-size:0.57rem;
+-                 color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;width:72px">${fmtDate(wi.updated_at||wi.created_at)}</td>
++      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.65rem;
++                 color:var(--text2);font-variant-numeric:tabular-nums;
++                 border-left:1px solid var(--border);width:56px">${wi.prompt_count||0}</td>
++      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.65rem;
++                 color:var(--text2);font-variant-numeric:tabular-nums;
++                 border-left:1px solid var(--border);width:56px">${wi.commit_count||0}</td>
++      <td style="padding:3px 8px;text-align:right;white-space:nowrap;font-size:0.6rem;
++                 color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;
++                 border-left:1px solid var(--border);width:80px">${fmtDate(wi.updated_at||wi.created_at)}</td>
+     </tr>`;
+   }).join('');
+ 
+   list.innerHTML = `
+     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+-      <colgroup><col><col style="width:38px"><col style="width:38px"><col style="width:72px"></colgroup>
++      <colgroup><col><col style="width:56px"><col style="width:56px"><col style="width:80px"></colgroup>
+       <thead><tr>
+-        <th style="text-align:left;padding:2px 6px;font-size:0.6rem;font-weight:400;
+-                   color:var(--muted);border-bottom:1px solid var(--border)">Name / Description</th>
++        <th style="text-align:left;padding:4px 8px;font-size:0.62rem;font-weight:600;
++                   letter-spacing:.03em;text-transform:uppercase;
++                   color:var(--muted);background:var(--surface2);
++                   border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>
+         ${hdr('prompt_count','Prompts')}
+         ${hdr('commit_count','Commits')}
+         ${hdr('updated_at','Updated')}
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 381c829..b70d3d6 100644
+index b70d3d6..94cd853 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-09 00:30 UTC
-+> Generated by aicli 2026-04-09 00:35 UTC
+-> Generated by aicli 2026-04-09 00:35 UTC
++> Generated by aicli 2026-04-09 00:43 UTC
  
  # aicli — Shared AI Memory Platform
  
@@ -349,13 +264,13 @@ index 381c829..b70d3d6 100644
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 0378619..dc368db 100644
+index dc368db..915a767 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:30 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:35 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:35 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:43 UTC
  
  # aicli — Shared AI Memory Platform
  
@@ -363,27 +278,27 @@ index 0378619..dc368db 100644
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
- - [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
+-- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
  - [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
  - [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
--- [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
+ - [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
+-- [2026-04-09] I do not see any change at the ui.
 \ No newline at end of file
-+- [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
 +- [2026-04-09] I do not see any change at the ui.
++- [2026-04-09] Where did you add that ? is it in Work item tab (lower screen) in Planner ?
 \ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index 0378619..dc368db 100644
+index dc368db..915a767 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:30 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:35 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:35 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:43 UTC
  
  # aicli — Shared AI Memory Platform
  
@@ -391,21 +306,21 @@ index 0378619..dc368db 100644
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-08] I would like to sapparte database.py in order to have methgods and tables schema. can you create  db_schema.sql file tha
- - [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
+-- [2026-04-08] In the ui when I press any tag, I do not the property on the left (I do see that for work_items)
  - [2026-04-08] I do not see mem_mrr_commits_code populated on every commit. is that suppose to be like that? also is expensive to popul
  - [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
--- [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
+ - [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
+-- [2026-04-09] I do not see any change at the ui.
 \ No newline at end of file
-+- [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
 +- [2026-04-09] I do not see any change at the ui.
++- [2026-04-09] Where did you add that ? is it in Work item tab (lower screen) in Planner ?
 \ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
-Removed stale auto-generated context files and CLAUDE.md documentation from the _sys directory to clean up repository clutter.
+Removed deprecated _system root documentation that was no longer needed after session 9315de75.
 
 ## AI Synthesis
 
-**[2026-04-09]** `entities.js + route_work_items.py` — Refactored work item table UI from grid layout to semantic HTML table with proper header styling: increased column width (38px→60+px), added active sort indicator arrows (↑/↓), implemented date formatter (YYMMDDHHSS), and separated sort state from category-pane sorting. **[2026-04-09]** `route_work_items.py` — Enhanced _SQL_UNLINKED_WORK_ITEMS query to count prompt_batch events and commits linked via mem_ai_events FK, enabling table columns for prompt_count and commit_count; added updated_at timestamp field for better recency sorting. **[2026-04-09]** `route_work_items.py` — Fixed work item drawer integration by adding updated_at to ISO datetime serialization alongside created_at and start_date; ensures proper date filtering in UI. **[2026-04-09]** `copilot-instructions.md` — Auto-regenerated project summary; aicli is a shared AI memory platform with PostgreSQL + pgvector semantic search, Claude/OpenAI LLM adapters, async DAG workflow engine, and Electron desktop UI for managing project context, work items, and AI-driven memory synthesis. **[Prior sessions]** — Established 4-layer memory architecture (ephemeral → mem_mrr raw capture → mem_ai_events LLM digests → mem_ai_work_items/project_facts), implemented prompt_loader centralization to eliminate redundant DB queries, deployed Railway + Electron-builder for cloud/desktop, and established db_schema.sql + db_migrations.py as source of truth.
+**[2026-04-09]** `claude_cli` — Completed work item deletion feature with `DELETE /work-items/{id}` endpoint, confirm dialog, and UI cache invalidation. Fixed date display format from YYMMDDHHSS to YY/MM/DD-HH:MM for improved readability. **[2026-04-09]** `claude_cli` — Refined work item table UI: increased column widths (38px→56px for counts, 80px for date), improved header styling with uppercase text-transform, letter-spacing, and accent color indicators for active sort fields. **[2026-04-09]** `claude_cli` — Added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to unlinked work items query; updated_at timestamp tracking for sort optimization. **[2026-04-09]** `claude_cli` — Identified tag filtering bug: non-work-item tags (Shared-memory, billing, etc.) incorrectly display in work items panel; requires scope-based tag filtering implementation. **[prior]** — Established Claude Haiku dual-layer memory synthesis architecture generating 5 output files with auto-tag suggestions, timestamp tracking, and LLM response summarization. **[prior]** — Implemented async DAG workflow executor with Cytoscape.js visualization, 2-pane approval panel, and per-node retry/continue logic.

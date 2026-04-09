@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item table UI refinement: implemented multi-column sortable display with separate sort state (field/direction); added date formatter (fmtDate), header styling with active indicators, improved column widths and visual separation
-- Work item counting optimization: added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to _SQL_UNLINKED_WORK_ITEMS query; added updated_at timestamp tracking
-- Table header clarity: increased column width from 38px, added background/border styling to headers, implemented dynamic active-field indicator arrows (↑/↓), fixed text contrast for muted vs active states
-- Database query performance: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve ~60s latency in unlinked work items JOIN
-- Memory embedding pipeline: synchronized LLM prompt tracing across memory_embedding.py, agents/tools/, and routers/ with consistent module imports
-- Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries
+- Work item date formatting: changed from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability in table display
+- Work item table column width refinement: increased from 38px to 56px for prompt/commit counts, 80px for date column to accommodate new format
+- Tag filtering in work items UI: investigating why non-work-item tags (Shared-memory, billing, etc.) appear in work items panel and implementing proper scope filtering
+- Work item deletion implementation: completed wiring of DELETE /work-items/{id} endpoint with confirm dialog, cache clearing, and panel re-rendering
+- Header styling standardization: applied uppercase text-transform, letter-spacing, active/inactive state indicators with accent colors across all table headers
+- Database query performance optimization: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency

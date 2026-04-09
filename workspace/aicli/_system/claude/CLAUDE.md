@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: multi-column sortable table with proper header styling, wider columns (38px→60+px), date formatting (YYMMDDHHSS), and status color badges
+- Work item UI: multi-column sortable table with proper header styling, wider columns (56px–80px), date formatting (YY/MM/DD-HH:MM), and status color badges
 
 ---
 

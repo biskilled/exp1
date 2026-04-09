@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:48 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 00:56 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -62,12 +62,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: multi-column sortable table with proper header styling, wider columns (38px→60+px), date formatting (YYMMDDHHSS), and status color badges
+- Work item UI: multi-column sortable table with proper header styling, wider columns (56px–80px), date formatting (YY/MM/DD-HH:MM), and status color badges
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-08] I would like to understand how work_item are populated. work_item suppose to be linked to all events that relaed to spec
 - [2026-04-09] In the UI - work_items shows as a row. I would each row to have name - desc column, prompts column- show total prompts, 
 - [2026-04-09] I do not see any change at the ui.
 - [2026-04-09] Where did you add that ? is it in Work item tab (lower screen) in Planner ?
 - [2026-04-09] Now iot works but it is very close to each other (ui commit is on prompts) . can you make the header more clear
+- [2026-04-09] The data is not cleared can you change that to yy/mm/dd-hh:mm ? also I do see tags under work_items (Shared-memory, bill

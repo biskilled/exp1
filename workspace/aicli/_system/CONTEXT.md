@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-09 00:49 UTC — do not edit manually.
+> Auto-generated 2026-04-09 00:57 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 444
-- **Last active**: 2026-04-09T00:48:29Z
+- **Sessions**: 445
+- **Last active**: 2026-04-09T00:56:35Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -53,12 +53,12 @@
 
 ## In Progress
 
-- Work item table UI refinement: implemented multi-column sortable display with separate sort state (field/direction); added date formatter (fmtDate), header styling with active indicators, improved column widths and visual separation
-- Work item counting optimization: added prompt_count (event_type='prompt_batch') and commit_count (JOIN mem_mrr_commits via mem_ai_events) to _SQL_UNLINKED_WORK_ITEMS query; added updated_at timestamp tracking
-- Table header clarity: increased column width from 38px, added background/border styling to headers, implemented dynamic active-field indicator arrows (↑/↓), fixed text contrast for muted vs active states
-- Database query performance: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve ~60s latency in unlinked work items JOIN
-- Memory embedding pipeline: synchronized LLM prompt tracing across memory_embedding.py, agents/tools/, and routers/ with consistent module imports
-- Prompt loader integration: refactored route_snapshots.py and route_memory.py to use core.prompt_loader instead of direct mng_system_roles queries
+- Work item date formatting: changed from YYMMDDHHSS to YY/MM/DD-HH:MM format for better readability in table display
+- Work item table column width refinement: increased from 38px to 56px for prompt/commit counts, 80px for date column to accommodate new format
+- Tag filtering in work items UI: investigating why non-work-item tags (Shared-memory, billing, etc.) appear in work items panel and implementing proper scope filtering
+- Work item deletion implementation: completed wiring of DELETE /work-items/{id} endpoint with confirm dialog, cache clearing, and panel re-rendering
+- Header styling standardization: applied uppercase text-transform, letter-spacing, active/inactive state indicators with accent colors across all table headers
+- Database query performance optimization: schema-wide FK indexing strategy on work_item_id and event_id columns to resolve query latency
 
 ## Key Decisions
 
@@ -76,7 +76,7 @@
 - Deployment: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema management: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - Prompt centralization via core.prompt_loader; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
-- Work item UI: multi-column sortable table with proper header styling, wider columns (38px→60+px), date formatting (YYMMDDHHSS), and status color badges
+- Work item UI: multi-column sortable table with proper header styling, wider columns (56px–80px), date formatting (YY/MM/DD-HH:MM), and status color badges
 
 ---
 
