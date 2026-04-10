@@ -2,8 +2,8 @@
 
 ## Active Features (do not break)
 
+UI: Improved chat UI view with better display and interaction patterns.
+development: Enhanced history view UI with improved display and interaction patterns.
+entity-routing: Implemented entity routing system to enable navigation to specific entities with
 development: Improve git router to streamline version control operations and better integrate
-modernize-state-management: Update system state handling mechanisms to align with current best practices and
-development: Streamline database core operations by removing unnecessary complexity and impro
-cleanup-project-router: Remove outdated router code and implementation from the project codebase.
-ai-tag-approval-workflow: Review and document user ability to approve or remove AI-generated tags on work 
+development: Update system state handling mechanisms to align with current best practices and

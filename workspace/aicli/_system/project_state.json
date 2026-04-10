@@ -55,8 +55,8 @@
     "Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation",
     "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation",
     "AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category\u2192tag_key mapping",
-    "Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) \u2192 mem_mrr_commits.commit_short_hash for commit-sourced items",
-    "Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)",
+    "Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) \u2192 mem_mrr_commits.commit_short_hash",
+    "Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)",
     "Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)"
   ],
   "implemented_features": [
@@ -86,12 +86,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Work item counter architecture overhaul: refactored _SQL_UNLINKED_WORK_ITEMS to separate prompt_count (raw mem_mrr_prompts in source session), event_count (prompt_batch/session_summary digests), and commit_count (session-based or source commit); consolidated event_ct/prompt_ct/commit_ct CTEs with src_session_id and src_source_id tracking",
-    "Query parameter rationalization: reduced _SQL_UNLINKED_WORK_ITEMS from 3 param refs to 2 by removing redundant (p_id, p_id, p_id) pattern; unified WHERE conditions across event/prompt/commit joins",
-    "Frontend column reordering: added prompt_count column to work item panel; sorted display as Name | Prompts | Commits | Events | Updated; added prompt_count to sort handler",
-    "Debugging unlinked work items with zero prompts: investigating why work_item #20442 has event_count=0 despite /memory command processing; hypothesis is session-to-work-item linkage not persisting across prompt_batch extraction",
-    "Memory synthesis linkage investigation: determining root cause of work items created without corresponding mem_mrr_prompts or mem_ai_events in source session; may indicate race condition in prompt capture or session_id mismatch",
-    "Session workflow tracing: planning comprehensive debug of /memory execution: prompt capture \u2192 session_id assignment \u2192 work_item creation \u2192 event_ct join validation"
+    "Work item deletion UI: added _wiDeleteLinked handler to entities.js with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect",
+    "Tag creation with auto-link workflow: _wiPanelCreateTag now creates new tags without confirmation, auto-links work item, and refreshes tag cache + planner table + category tag list view",
+    "Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems now reloads to reflect linked/unlinked status changes in planner view",
+    "Session tagging during prompt entry: confirmed /tag command works mid-session without new session needed; log_user_prompt.sh reads .agent-context on every prompt for immediate tag propagation",
+    "AI suggestion chips UX refinement: added clickable \u2713 button to create missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'",
+    "Copilot instructions regeneration: timestamp updates (2026-04-10 14:52 \u2192 15:00 UTC) indicate successful /memory command synthesis and file generation workflow"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -123,7 +123,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-10T15:18:35Z",
+  "last_memory_run": "2026-04-10T15:21:24Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -138,17 +138,17 @@
       "Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation",
       "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation",
       "AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category\u2192tag_key mapping",
-      "Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) \u2192 mem_mrr_commits.commit_short_hash for commit-sourced items",
-      "Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)",
+      "Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) \u2192 mem_mrr_commits.commit_short_hash",
+      "Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)",
       "Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)"
     ],
     "in_progress": [
-      "Work item counter architecture overhaul: refactored _SQL_UNLINKED_WORK_ITEMS to separate prompt_count (raw mem_mrr_prompts in source session), event_count (prompt_batch/session_summary digests), and commit_count (session-based or source commit); consolidated event_ct/prompt_ct/commit_ct CTEs with src_session_id and src_source_id tracking",
-      "Query parameter rationalization: reduced _SQL_UNLINKED_WORK_ITEMS from 3 param refs to 2 by removing redundant (p_id, p_id, p_id) pattern; unified WHERE conditions across event/prompt/commit joins",
-      "Frontend column reordering: added prompt_count column to work item panel; sorted display as Name | Prompts | Commits | Events | Updated; added prompt_count to sort handler",
-      "Debugging unlinked work items with zero prompts: investigating why work_item #20442 has event_count=0 despite /memory command processing; hypothesis is session-to-work-item linkage not persisting across prompt_batch extraction",
-      "Memory synthesis linkage investigation: determining root cause of work items created without corresponding mem_mrr_prompts or mem_ai_events in source session; may indicate race condition in prompt capture or session_id mismatch",
-      "Session workflow tracing: planning comprehensive debug of /memory execution: prompt capture \u2192 session_id assignment \u2192 work_item creation \u2192 event_ct join validation"
+      "Work item deletion UI: added _wiDeleteLinked handler to entities.js with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect",
+      "Tag creation with auto-link workflow: _wiPanelCreateTag now creates new tags without confirmation, auto-links work item, and refreshes tag cache + planner table + category tag list view",
+      "Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems now reloads to reflect linked/unlinked status changes in planner view",
+      "Session tagging during prompt entry: confirmed /tag command works mid-session without new session needed; log_user_prompt.sh reads .agent-context on every prompt for immediate tag propagation",
+      "AI suggestion chips UX refinement: added clickable \u2713 button to create missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'",
+      "Copilot instructions regeneration: timestamp updates (2026-04-10 14:52 \u2192 15:00 UTC) indicate successful /memory command synthesis and file generation workflow"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -156,17 +156,14 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "database_version": "PostgreSQL 15+",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "database": "PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema"
     },
-    "project_summary": "aicli is a shared AI memory platform integrating a Python 3.12 CLI backend (FastAPI + PostgreSQL with pgvector) with a desktop Electron UI, designed to capture developer sessions, extract semantic work items through Claude synthesis, and surface them via unified event/tag/work-item architecture. Current state: resolving critical linkage bug where newly created work items have zero associated prompts/events despite /memory command processing, indicating session-to-work-item propagation failure.",
-    "memory_digest": "**[2026-04-10]** `user_query` \u2014 Uncovered critical gap: work items are being created without linked prompts/events in source session. Work item #20442 (recently updated) has event_count=0 despite /memory command execution, indicating failure in session_id propagation or prompt capture timing.\n\n**[2026-04-09]** `refactor` \u2014 Restructured work item counter architecture: separated prompt_count (raw mem_mrr_prompts in session), event_count (prompt_batch/session_summary digests), and commit_count (session-based or source commit). Added src_session_id and src_source_id tracking to _SQL_UNLINKED_WORK_ITEMS for accurate aggregation.\n\n**[2026-04-09]** `frontend_update` \u2014 Reordered work item panel columns: Name | Prompts | Commits | Events | Updated. Added prompt_count to sort handler and table colgroup; reduced visual column widths from 52px to 46px for tabular alignment.\n\n**[2026-04-09]** `query_optimization` \u2014 Consolidated _SQL_UNLINKED_WORK_ITEMS parameter pattern from (p_id, p_id, p_id) to (p_id, p_id) by unifying event/prompt/commit CTE joins with consistent WHERE conditions on project_id.\n\n**[2026-04-10]** `investigation` \u2014 Root cause analysis needed: /memory command execution flow must be traced from prompt capture \u2192 session_id assignment \u2192 mem_ai_events insertion \u2192 work_item source_event_id linkage to identify where unlinked items originate."
+    "project_summary": "aicli is a shared AI memory platform that combines a Python CLI backend with an Electron desktop UI to capture, synthesize, and organize development work through semantic embeddings and AI-powered tagging. The system integrates with multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) and uses PostgreSQL with pgvector for semantic search, supporting 4-layer memory synthesis from raw prompts to work items with auto-generated tags. Recent work focused on refining the tag creation and work item deletion UX, improving AI suggestion workflows, and ensuring mid-session tagging works seamlessly.",
+    "memory_digest": "**[2026-04-10]** `entities.js` \u2014 Added work item deletion UI (_wiDeleteLinked handler) with confirmation dialog and delete button in tag-linked work items panel; improved opacity toggle on hover for better UX.\n\n**[2026-04-10]** `entities.js` \u2014 Refactored tag creation workflow (_wiPanelCreateTag): removed confirmation dialog, auto-links work item after creation, refreshes tag cache and planner table views to reflect new tag immediately.\n\n**[2026-04-10]** `entities.js` \u2014 Improved AI suggestion chip UX: added clickable \u2713 button to create missing suggested tags with automatic category inference; refined tooltip messaging from 'No existing tag \u2014 create one manually' to 'Does not exist yet \u2014 click \u2713 to create'.\n\n**[2026-04-10]** `entities.js` \u2014 Fixed tag-linked work item refresh: after approve/reject/create operations, now calls _loadTagLinkedWorkItems to reload work item list and reflect linked/unlinked status changes in planner category view.\n\n**[2026-04-10]** `cli/` \u2014 Confirmed /tag command works mid-session without requiring new session; log_user_prompt.sh reads .agent-context on every prompt entry, ensuring tags take effect immediately for all subsequent prompts in the session.\n\n**[2026-04-10]** `memory synthesis` \u2014 /memory command successfully regenerated copilot-instructions.md and aicli.mdrules with updated timestamp (2026-04-10 15:00 UTC), confirming automated synthesis and file generation workflow functioning correctly."
   }
 }

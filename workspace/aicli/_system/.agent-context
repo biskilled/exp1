@@ -1,1 +1,9 @@
-{"session_src": "claude_cli", "tags": {"feature": "work_items"}, "set_at": "2026-04-09T16:08:47Z", "prompt_count": 3}
+{
+  "session_src": "claude_cli",
+  "tags": {
+    "phase": "development",
+    "feature": "work_items"
+  },
+  "set_at": "2026-04-10T15:36:15Z",
+  "prompt_count": 4
+}

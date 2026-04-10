@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item counter architecture overhaul: refactored _SQL_UNLINKED_WORK_ITEMS to separate prompt_count (raw mem_mrr_prompts in source session), event_count (prompt_batch/session_summary digests), and commit_count (session-based or source commit); consolidated event_ct/prompt_ct/commit_ct CTEs with src_session_id and src_source_id tracking
-- Query parameter rationalization: reduced _SQL_UNLINKED_WORK_ITEMS from 3 param refs to 2 by removing redundant (p_id, p_id, p_id) pattern; unified WHERE conditions across event/prompt/commit joins
-- Frontend column reordering: added prompt_count column to work item panel; sorted display as Name | Prompts | Commits | Events | Updated; added prompt_count to sort handler
-- Debugging unlinked work items with zero prompts: investigating why work_item #20442 has event_count=0 despite /memory command processing; hypothesis is session-to-work-item linkage not persisting across prompt_batch extraction
-- Memory synthesis linkage investigation: determining root cause of work items created without corresponding mem_mrr_prompts or mem_ai_events in source session; may indicate race condition in prompt capture or session_id mismatch
-- Session workflow tracing: planning comprehensive debug of /memory execution: prompt capture → session_id assignment → work_item creation → event_ct join validation
+- Work item deletion UI: added _wiDeleteLinked handler to entities.js with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
+- Tag creation with auto-link workflow: _wiPanelCreateTag now creates new tags without confirmation, auto-links work item, and refreshes tag cache + planner table + category tag list view
+- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems now reloads to reflect linked/unlinked status changes in planner view
+- Session tagging during prompt entry: confirmed /tag command works mid-session without new session needed; log_user_prompt.sh reads .agent-context on every prompt for immediate tag propagation
+- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
+- Copilot instructions regeneration: timestamp updates (2026-04-10 14:52 → 15:00 UTC) indicate successful /memory command synthesis and file generation workflow
