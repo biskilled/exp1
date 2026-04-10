@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:00 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:18 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-09] I have just tried that, got unknow skill /tag. do I have to open a new session ?
 - [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
 - [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
 - [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
 - [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
+- [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 

@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-10 15:00 UTC by aicli /memory_
+_Generated: 2026-04-10 15:18 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -221,224 +221,173 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
-diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index 5fc5ccc..3864a86 100644
---- a/ui/frontend/views/entities.js
-+++ b/ui/frontend/views/entities.js
-@@ -479,6 +479,7 @@ function _renderWiPanel(items, project) {
-   const { field, dir } = window._wiPanelSort;
-   const mul = dir === 'asc' ? 1 : -1;
-   const sorted = [...items].sort((a, b) => {
-+    if (field === 'prompt_count') return mul * ((a.prompt_count||0) - (b.prompt_count||0));
-     if (field === 'event_count')  return mul * ((a.event_count||0)  - (b.event_count||0));
-     if (field === 'commit_count') return mul * ((a.commit_count||0) - (b.commit_count||0));
-     if (field === 'seq_num')      return mul * ((a.seq_num||0)      - (b.seq_num||0));
-@@ -724,10 +725,13 @@ function _renderWiPanel(items, project) {
-       </td>
-       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
-                  color:var(--text2);font-variant-numeric:tabular-nums;
--                 border-left:1px solid var(--border)">${wi.event_count||0}</td>
-+                 border-left:1px solid var(--border)">${wi.prompt_count||0}</td>
-       <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
-                  color:var(--text2);font-variant-numeric:tabular-nums;
-                  border-left:1px solid var(--border)">${wi.commit_count||0}</td>
-+      <td style="padding:4px 10px;text-align:right;white-space:nowrap;font-size:0.72rem;vertical-align:top;
-+                 color:var(--text2);font-variant-numeric:tabular-nums;
-+                 border-left:1px solid var(--border)">${wi.event_count||0}</td>
-       <td style="padding:4px 10px 4px 6px;text-align:right;white-space:nowrap;font-size:0.66rem;vertical-align:top;
-                  color:var(--muted);font-variant-numeric:tabular-nums;font-family:monospace;
-                  border-left:1px solid var(--border)">${fmtDate(wi.updated_at||wi.created_at)}</td>
-@@ -736,14 +740,15 @@ function _renderWiPanel(items, project) {
+Fixed work item commit linking by correcting SQL join from event_id to commit_short_hash via source_id. Confirmed that work items without prompts are expected—they originate from historical commit backfill (2026-04-07) processed without active CLI sessions, while recent items with prompts come from live prompt/session data.
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
+
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index 87fb7fb..aa66bb3 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
-   list.innerHTML = `
-     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
--      <colgroup><col><col style="width:52px"><col style="width:52px"><col style="width:112px"></colgroup>
-+      <colgroup><col><col style="width:46px"><col style="width:46px"><col style="width:46px"><col style="width:112px"></colgroup>
-       <thead><tr>
-         <th style="text-align:left;padding:5px 8px 5px 12px;font-size:0.68rem;font-weight:600;
-                    letter-spacing:.03em;text-transform:uppercase;
-                    color:var(--muted);background:var(--surface2);
-                    border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">Name</th>
--        ${hdr('event_count','Events')}
-+        ${hdr('prompt_count','Prompts')}
-         ${hdr('commit_count','Commits')}
-+        ${hdr('event_count','Events')}
-         ${hdr('updated_at','Updated')}
-       </tr></thead>
-       <tbody>${rows}</tbody>
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
-
-diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
-index 8808280..d7b3e98 100644
---- a/backend/routers/route_work_items.py
-+++ b/backend/routers/route_work_items.py
-@@ -75,31 +75,54 @@ _SQL_LIST_WORK_ITEMS_BASE = (
+ ## Recent Work
  
- _SQL_UNLINKED_WORK_ITEMS = """
-     WITH wi AS (
--        -- Base filter: unlinked, non-done items; carry source_event_type for commit detection
-+        -- Base filter; join source event once to get session_id + event_type
-         SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-                w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
-                w.start_date, w.created_at, w.updated_at, w.seq_num,
-                w.ai_tag_id, w.source_event_id, w.project_id,
--               e.event_type AS src_event_type
-+               e.event_type  AS src_event_type,
-+               e.session_id  AS src_session_id,
-+               e.source_id   AS src_source_id
-         FROM mem_ai_work_items w
-         LEFT JOIN mem_ai_events e ON e.id = w.source_event_id
-         WHERE w.project_id = %s AND w.tag_id IS NULL AND w.status_user != 'done'
-     ),
--    -- Events directly linked to this work item via work_item_id (set at extraction time)
-+    -- prompt_batch/session_summary events in the source session
-+    -- (all items extracted from the same batch share this session → all get same count)
-     event_ct AS (
--        SELECT e.work_item_id::text AS wi_id, COUNT(*) AS cnt
--        FROM mem_ai_events e
--        WHERE e.project_id = %s AND e.work_item_id IS NOT NULL
--        GROUP BY 1
-+        SELECT wi.id::text AS wi_id, COUNT(DISTINCT e.id) AS cnt
-+        FROM wi
-+        JOIN mem_ai_events e
-+          ON e.project_id = wi.project_id
-+         AND e.event_type IN ('prompt_batch', 'session_summary')
-+         AND (
-+               (wi.src_session_id IS NOT NULL AND e.session_id = wi.src_session_id)
-+            OR  e.work_item_id = wi.id          -- fallback for directly linked events
-+         )
-+        GROUP BY wi.id
-+    ),
-+    -- raw prompts in the source session
-+    prompt_ct AS (
-+        SELECT wi.id::text AS wi_id, COUNT(DISTINCT p.id) AS cnt
-+        FROM wi
-+        JOIN mem_mrr_prompts p
-+          ON p.project_id = wi.project_id
-+         AND wi.src_session_id IS NOT NULL
-+         AND p.session_id = wi.src_session_id
-+        GROUP BY wi.id
-     ),
--    -- Commits: for commit-sourced items, the source commit itself counts as 1
-+    -- commits from source session (prompt-sourced) OR the source commit (commit-sourced)
-+    -- Note: src_source_id is the short commit hash stored in mem_ai_events.source_id
-     commit_ct AS (
-         SELECT wi.id::text AS wi_id, COUNT(DISTINCT mc.commit_hash) AS cnt
-         FROM wi
--        LEFT JOIN mem_mrr_commits mc
--               ON mc.project_id = wi.project_id
--              AND wi.src_event_type = 'commit'
--              AND mc.event_id = wi.source_event_id
-+        JOIN mem_mrr_commits mc
-+          ON mc.project_id = wi.project_id
-+         AND (
-+               (wi.src_session_id IS NOT NULL AND mc.session_id = wi.src_session_id)
-+            OR (wi.src_event_type = 'commit' AND wi.src_source_id IS NOT NULL
-+                AND mc.commit_short_hash = wi.src_source_id)
-+         )
-         GROUP BY wi.id
-     ),
-     merge_ct AS (
-@@ -117,11 +140,13 @@ _SQL_UNLINKED_WORK_ITEMS = """
-            ptc.color AS ai_tag_color,
-            COALESCE(merge_ct.cnt,  0) AS merge_count,
-            COALESCE(event_ct.cnt,  0) AS event_count,
-+           COALESCE(prompt_ct.cnt, 0) AS prompt_count,
-            COALESCE(commit_ct.cnt, 0) AS commit_count
-     FROM wi
-     LEFT JOIN planner_tags        pt  ON pt.id  = wi.ai_tag_id
-     LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
-     LEFT JOIN event_ct  ON event_ct.wi_id  = wi.id::text
-+    LEFT JOIN prompt_ct ON prompt_ct.wi_id = wi.id::text
-     LEFT JOIN commit_ct ON commit_ct.wi_id = wi.id::text
-     LEFT JOIN merge_ct  ON merge_ct.wi_id  = wi.id::text
-     ORDER BY wi.seq_num DESC NULLS LAST
-@@ -440,7 +465,7 @@ async def get_unlinked_work_items(project: str | None = Query(None)):
-     p_id = db.get_or_create_project_id(p)
-     with db.conn() as conn:
-         with conn.cursor() as cur:
--            cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id, p_id, p_id))
-+            cur.execute(_SQL_UNLINKED_WORK_ITEMS, (p_id, p_id))
-             cols = [d[0] for d in cur.description]
-             rows = []
-             for r in cur.fetchall():
+-- Session tagging command (/tag) implementation: added tag_reminder_interval config to aicli.yaml with periodic prompt reminders (every 5-10 prompts) to validate prompt relevance to tagged context
+-- MCP set_session_tags tool documentation: updated schema to clarify phase as required, feature/bug_ref as optional, and 'extra' object for flexible tag categories (task, component, doc_type, design, decision, meeting, customer)
+-- Tag skill loading in Claude Code: sessions must be restarted to pick up new /tag skill definition; multi-tag syntax supported (phase:development feature:work-items-ui bug:login-500)
+-- Work item refresh workflow: refresh button triggers /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions in real-time
+-- Event count aggregation: 'Digests' column displays session-based COUNT(*) from mem_ai_events filtered to prompt_batch and session_summary types only
+-- AI tag backlinking propagation: tag assignments to work items automatically propagate to all events in source session via category→tag_key mapping (bug/phase/feature)
++- Work item counter architecture overhaul: refactored _SQL_UNLINKED_WORK_ITEMS to separate prompt_count (raw mem_mrr_prompts in source session), event_count (prompt_batch/session_summary digests), and commit_count (session-based or source commit); consolidated event_ct/prompt_ct/commit_ct CTEs with src_session_id and src_source_id tracking
++- Query parameter rationalization: reduced _SQL_UNLINKED_WORK_ITEMS from 3 param refs to 2 by removing redundant (p_id, p_id, p_id) pattern; unified WHERE conditions across event/prompt/commit joins
++- Frontend column reordering: added prompt_count column to work item panel; sorted display as Name | Prompts | Commits | Events | Updated; added prompt_count to sort handler
++- Debugging unlinked work items with zero prompts: investigating why work_item #20442 has event_count=0 despite /memory command processing; hypothesis is session-to-work-item linkage not persisting across prompt_batch extraction
++- Memory synthesis linkage investigation: determining root cause of work items created without corresponding mem_mrr_prompts or mem_ai_events in source session; may indicate race condition in prompt capture or session_id mismatch
++- Session workflow tracing: planning comprehensive debug of /memory execution: prompt capture → session_id assignment → work_item creation → event_ct join validation
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 1c3879b..e9d7810 100644
+index e9d7810..c1b0a1e 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-09 14:06 UTC
-+> Generated by aicli 2026-04-09 15:09 UTC
+-> Generated by aicli 2026-04-09 15:09 UTC
++> Generated by aicli 2026-04-10 14:52 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -45,7 +45,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - deployment_local: bash start_backend.sh + npm run dev
+ - prompt_management: core.prompt_loader module with centralized prompt caching
+ - schema_management: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+-- database_tables: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
++- database_tables: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+ 
+ ## Architectural Decisions
+ 
+@@ -59,8 +59,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
+-- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, 0.60 confidence threshold
+-- Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
+-- Session tagging via /tag command with tag_reminder_interval config (every N prompts); valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design/decision/meeting/customer optional)
+-- Stdio MCP server with 12+ tools for semantic search, work item management, and session tag updates; embedding pipeline triggered via /memory endpoint
+\ No newline at end of file
++- AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
++- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash for commit-sourced items
++- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)
++- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
+\ No newline at end of file
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 6f09f30..4f44f3d 100644
+index 4f44f3d..80ea1bf 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 14:06 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 15:09 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 15:09 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 14:52 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -45,7 +45,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **deployment_local**: bash start_backend.sh + npm run dev
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+ - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+-- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
++- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+ 
+ ## Key Decisions
+ 
+@@ -59,16 +59,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
+-- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, 0.60 confidence threshold
+-- Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
+-- Session tagging via /tag command with tag_reminder_interval config (every N prompts); valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design/decision/meeting/customer optional)
+-- Stdio MCP server with 12+ tools for semantic search, work item management, and session tag updates; embedding pipeline triggered via /memory endpoint
++- AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
++- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash for commit-sourced items
++- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)
++- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-09] I do see same work item working on mention document summery and update ai memory. all internal work such update internal
- - [2026-04-09] Can you share the quesry you are suing the get all promotps, commit, event per work_item . I want to check that for work
- - [2026-04-09] before you desing. is it possible to add some mechanism to our converstion. for example force adding tags and every 5-10
+-- [2026-04-09] Can you share the quesry you are suing the get all promotps, commit, event per work_item . I want to check that for work
+-- [2026-04-09] before you desing. is it possible to add some mechanism to our converstion. for example force adding tags and every 5-10
  - [2026-04-09] I have just tried that, got unknow skill /tag. do I have to open a new session ?
--- [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
+ - [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
+-- [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
 \ No newline at end of file
-+- [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
 +- [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
++- [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
++- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
 \ No newline at end of file
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index 6f09f30..4f44f3d 100644
+index 4f44f3d..80ea1bf 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 14:06 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 15:09 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 15:09 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 14:52 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -45,7 +45,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **deployment_local**: bash start_backend.sh + npm run dev
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+ - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+-- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
++- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+ 
+ ## Key Decisions
+ 
+@@ -59,16 +59,16 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
+-- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, 0.60 confidence threshold
+-- Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
+-- Session tagging via /tag command with tag_reminder_interval config (every N prompts); valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design/decision/meeting/customer optional)
+-- Stdio MCP server with 12+ tools for semantic search, work item management, and session tag updates; embedding pipeline triggered via /memory endpoint
++- AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
++- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash for commit-sourced items
++- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)
++- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-09] I do see same work item working on mention document summery and update ai memory. all internal work such update internal
- - [2026-04-09] Can you share the quesry you are suing the get all promotps, commit, event per work_item . I want to check that for work
- - [2026-04-09] before you desing. is it possible to add some mechanism to our converstion. for example force adding tags and every 5-10
+-- [2026-04-09] Can you share the quesry you are suing the get all promotps, commit, event per work_item . I want to check that for work
+-- [2026-04-09] before you desing. is it possible to add some mechanism to our converstion. for example force adding tags and every 5-10
  - [2026-04-09] I have just tried that, got unknow skill /tag. do I have to open a new session ?
--- [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
+ - [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
+-- [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
 \ No newline at end of file
-+- [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
 +- [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
++- [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
++- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
 \ No newline at end of file
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
-Removed stale auto-generated system context and CLAUDE.md files to clean up repository cruft.
+Cleanup of temporary system context files generated during Claude CLI session 931 to remove stale artifacts.

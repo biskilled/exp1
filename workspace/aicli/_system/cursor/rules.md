@@ -2,8 +2,8 @@
 
 ## Active Features (do not break)
 
-development: Add extended functionality to prompts feature including UI enhancements and data
-workflow-api-layer-update: Updated API layer to support new workflow features and data structures for enhan
-graph-workflow: Improved navigation and visual components in the graph workflow interface for be
-entity-views-upgrade: Upgraded entity views to improve overall user experience and system usability.
-graph-runner-improvements: Enhanced graph runner functionality for better performance and reliability.
+development: Improve git router to streamline version control operations and better integrate
+modernize-state-management: Update system state handling mechanisms to align with current best practices and
+development: Streamline database core operations by removing unnecessary complexity and impro
+cleanup-project-router: Remove outdated router code and implementation from the project codebase.
+ai-tag-approval-workflow: Review and document user ability to approve or remove AI-generated tags on work 

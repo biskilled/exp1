@@ -1,5 +1,5 @@
 # Project Context: aicli
-# Generated: 2026-04-10 15:10 UTC
+# Generated: 2026-04-10 15:21 UTC
 
 ## Project Facts
 
@@ -106,6 +106,38 @@ Reviewer: ```json
 - work_item_ui_pattern: multi-column sortable table with proper header styling, status color badges
 
 ## Active Work Items
+
+### #20452 development
+Category: task
+Improve git router to streamline version control operations and better integrate git-related functionality throughout th
+
+### #20451 modernize-state-management
+Category: task
+Update system state handling mechanisms to align with current best practices and improve code clarity.
+
+### #20450 development
+Category: task
+Streamline database core operations by removing unnecessary complexity and improving maintainability of core logic.
+
+### #20449 cleanup-project-router
+Category: task
+Remove outdated router code and implementation from the project codebase.
+
+### #20448 ai-tag-approval-workflow
+Category: task
+Review and document user ability to approve or remove AI-generated tags on work items to ensure proper permission contro
+
+### #20447 session-context-historical-commits
+Category: feature
+Consider adding session context to historical commit backfill process to enable future code generation and improve trace
+
+### #20446 document-backfill-pattern
+Category: task
+Document the expected zero-prompt pattern for historical commits processed via backfill without active CLI sessions, ver
+
+### #20445 work-item-commit-linking
+Category: bug
+Fixed SQL join from event_id to commit_short_hash via source_id to properly link work items to commits. Verify all work 
 
 ### #20444 development
 Category: feature
@@ -1076,6 +1108,10 @@ History view only shows prompts, not LLM responses. After fixes, only small text
 Category: bug
 aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
 
+### #20061 billing
+Category: bug
+In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
+
 ### #20063 UI
 Category: bug
 Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
@@ -1083,14 +1119,6 @@ Users are unable to copy text from the history view in the UI, limiting the abil
 ### #20062 mcp
 Category: bug
 History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
-
-### #20061 billing
-Category: bug
-In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
-
-### #20057 auth
-Category: bug
-History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
 
 ### #20059 Spurious history events in database
 Category: bug
@@ -1104,9 +1132,17 @@ Error in route_history line 470 with cur.execute(b''.join(parts)) call to execut
 Category: bug
 llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
 
+### #20057 auth
+Category: bug
+History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
+
 ### #20053 Copy text functionality missing from history UI
 Category: bug
 Users cannot copy text from the history section of the UI, which limits usability for reviewing and sharing past interac
+
+### #20054 Column order not applied in mem_ai_events table
+Category: bug
+After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
 
 ### #20055 Spurious event records in history table
 Category: bug
@@ -1116,25 +1152,21 @@ The event history table contains many events that don't make sense and appear to
 Category: bug
 The history display is not showing LLM responses, only prompts. Additionally, full prompt and LLM response text is trunc
 
-### #20054 Column order not applied in mem_ai_events table
+### #20050 Column Order Not Applied in mem_ai_events
 Category: bug
-After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
-
-### #20049 Unexpected Historical Events in Database
-Category: bug
-The developer observed numerous events from history in the table that don't make sense and appear to be legacy/erroneous
-
-### #20047 UI History Display Truncation
-Category: bug
-Prompts and LLM responses in history are displaying as small text instead of showing the full content. Users cannot see 
+After requesting changes to column order (llm_source after project, embedding at end), no changes were observed in the m
 
 ### #20048 Missing Copy Functionality in UI History
 Category: bug
 Users are unable to copy text from the history section in the UI, indicating missing copy-to-clipboard functionality.
 
-### #20050 Column Order Not Applied in mem_ai_events
+### #20047 UI History Display Truncation
 Category: bug
-After requesting changes to column order (llm_source after project, embedding at end), no changes were observed in the m
+Prompts and LLM responses in history are displaying as small text instead of showing the full content. Users cannot see 
+
+### #20049 Unexpected Historical Events in Database
+Category: bug
+The developer observed numerous events from history in the table that don't make sense and appear to be legacy/erroneous
 
 ### #20045 Inconsistent data in mem_ai_events from history
 Category: bug
@@ -1156,10 +1188,6 @@ Tags attached to prompts and commits are not visible after being saved. Addition
 Category: bug
 psycopg2.errors.UndefinedColumn error in route_work_i: column p.work_item_id does not exist. The query references 'p.wor
 
-### #20041 Tagging system not persisting data
-Category: bug
-Tags attached to prompts and commits are not visible after being saved. No connection between tagging system and data re
-
 ### #20038 SQL execution error in /history/commits/sync endpoint
 Category: bug
 Error occurred in route_history line 441 during execute_values() call with _SQL_BATCH_UPSERT. The cur.execute(b''.join(p
@@ -1167,6 +1195,10 @@ Error occurred in route_history line 441 during execute_values() call with _SQL_
 ### #20039 Undefined column p.work_item_id in route_work_i
 Category: bug
 psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
+
+### #20041 Tagging system not persisting data
+Category: bug
+Tags attached to prompts and commits are not visible after being saved. No connection between tagging system and data re
 
 ### #20040 Column ordering mismatch in mem_ai_events table
 Category: bug
@@ -1220,13 +1252,13 @@ Developer explicitly identified that table is named 'mng_ai_tags_relations' but 
 Category: bug
 Developer explicitly identified that the table name should be 'mem_ai_tags_relations' but was incorrectly named 'mng_ai_
 
-### #20018 Incorrect table name in tags relations
-Category: bug
-Table is named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. Developer explicitly identified this error
-
 ### #20019 Table merge not completed for embeddings and events
 Category: bug
 pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table, but this appea
+
+### #20018 Incorrect table name in tags relations
+Category: bug
+Table is named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. Developer explicitly identified this error
 
 ### #20017 Table consolidation not completed
 Category: bug
@@ -1236,13 +1268,13 @@ Developer references that 'pr_embeddings' and 'pr_memory_events' were supposed t
 Category: bug
 Developer indicates that tagging functionality is not fully implemented. Specifically, 'mng_ai_tags_relations' table/fea
 
-### #20013 Incorrect table name reference
-Category: bug
-Table name mismatch: code references 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. This naming inconsis
-
 ### #20015 Schema merge not completed for embeddings
 Category: bug
 Previous design specified that pr_embeddings and pr_memory_events should be merged into a single 'mem_ai_events' table, 
+
+### #20013 Incorrect table name reference
+Category: bug
+Table name mismatch: code references 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. This naming inconsis
 
 ### #20014 Incomplete tagging functionality implementation
 Category: bug
@@ -1280,6 +1312,10 @@ Developer mentions concerns about duplicate tables in the database (pr_events an
 Category: bug
 File 'aicli_memory.md' does not reflect actual flows and recent changes made to the system, requiring complete rewrite a
 
+### #20004 Ambiguous embedding and chunking behavior
+Category: bug
+Unclear whether embedding with 3 different methods creates 3 separate database rows per prompt, and whether this only oc
+
 ### #20002 Unclear data loading source
 Category: bug
 System behavior unclear regarding whether it loads history from 'pr_prompts' table or from JSONL files, with developer n
@@ -1291,10 +1327,6 @@ Associated junction table 'pr_interation_tags' was not renamed to 'pr_prompts_ta
 ### #20000 Database table naming inconsistency
 Category: bug
 Table name 'pr_interation' (or 'pr_interaction') was not renamed to 'pr_prompts' in the database schema, causing mismatc
-
-### #20004 Ambiguous embedding and chunking behavior
-Category: bug
-Unclear whether embedding with 3 different methods creates 3 separate database rows per prompt, and whether this only oc
 
 ### shared-memory
 Category: task
