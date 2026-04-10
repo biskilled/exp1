@@ -240,6 +240,17 @@ export function renderEntities(container) {
       _loadWiPanel(proj);
     } catch(err) { toast('Merge failed: ' + err.message, 'error'); }
   };
+  window._wiDeleteLinked = async (id, proj) => {
+    if (!confirm('Delete this work item?')) return;
+    try {
+      await api.workItems.delete(id, proj);
+      const tr = document.querySelector(`.wi-sub-row[data-wi-id="${CSS.escape(id)}"]`);
+      if (tr) tr.remove();
+      delete _wiPanelItems[id];
+      toast('Work item deleted', 'success');
+    } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
+  };
+
   window._wiUnlink = async (id, proj) => {
     try {
       await api.workItems.patch(id, proj, { tag_id: '' });
@@ -537,12 +548,14 @@ function _renderWiPanel(items, project) {
     if (!wi || !wi.ai_tag_id) return;
     try {
       await api.workItems.patch(id, proj, { tag_id: wi.ai_tag_id });
-      delete _wiPanelItems[id];  // now linked → remove from unlinked panel
+      delete _wiPanelItems[id];
       const remaining = Object.values(_wiPanelItems);
       _renderWiPanel(remaining, proj);
       const cnt = document.getElementById('wi-panel-count');
       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
       toast(`Linked to "${wi.ai_tag_name}"`, 'success');
+      const { selectedCatName } = _plannerState;
+      if (selectedCatName) _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
     } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
   };
 
@@ -570,6 +583,8 @@ function _renderWiPanel(items, project) {
       const cnt = document.getElementById('wi-panel-count');
       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
       toast('Linked via secondary suggestion', 'success');
+      const { selectedCatName } = _plannerState;
+      if (selectedCatName) _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
     } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
   };
 
@@ -588,9 +603,7 @@ function _renderWiPanel(items, project) {
 
   window._wiPanelCreateTag = async (id, tagName, categoryName, proj) => {
     const catLabel = categoryName || 'task';
-    if (!confirm(`Create new ${catLabel} tag "${tagName}" and link this work item?`)) return;
     try {
-      // Resolve category id from name
       const cats = await api.tags.categories.list(proj);
       const catObj = cats.find(c => c.name === catLabel) || cats.find(c => c.name === 'task') || cats[0];
       const newTag = await api.tags.create({ name: tagName, project: proj, category_id: catObj?.id });
@@ -601,6 +614,11 @@ function _renderWiPanel(items, project) {
       const cnt = document.getElementById('wi-panel-count');
       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
       toast(`Created ${catLabel} tag "${tagName}" and linked`, 'success');
+      // Reload tag cache so the new tag appears in the planner table, then inject sub-row
+      await loadTagCache(proj, true);
+      _renderCategoryList();
+      if (_plannerState.selectedCat) _renderTagTableFromCache();
+      _loadTagLinkedWorkItems(proj, catLabel).catch(() => {});
     } catch(e) { toast('Create failed: ' + e.message, 'error'); }
   };
 
@@ -644,7 +662,10 @@ function _renderWiPanel(items, project) {
         <span style="${LBL_AI_N}">AI(NEW)</span>
         <span style="font-size:0.65rem;font-weight:500;padding:1px 6px;border-radius:4px;
                      color:#e74c3c;border:1px solid #e74c3c;background:#e74c3c1a;
-                     white-space:nowrap" title="No existing tag — create one manually in the Planner">${_esc(aiNewLabel)}</span>
+                     white-space:nowrap" title="Does not exist yet — click ✓ to create">${_esc(aiNewLabel)}</span>
+        <button onclick="event.stopPropagation();window._wiPanelCreateTag('${_esc(wi.id)}','${_esc(aiNew)}','${_esc(aiNewCat)}','${_esc(project)}')"
+          title="Create this tag and link" style="background:none;border:1px solid #27ae60;color:#27ae60;cursor:pointer;
+                 font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>
         <button onclick="event.stopPropagation();window._wiPanelRemoveTag('${_esc(wi.id)}','${_esc(project)}')"
           title="Dismiss suggestion" style="background:none;border:1px solid #888;color:#888;cursor:pointer;
                  font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">×</button>
@@ -794,6 +815,11 @@ async function _loadTagLinkedWorkItems(project, catName) {
                     title="${_esc(wi.ai_desc||'')}">${_esc(wi.ai_name)}</span>
               <span style="font-size:0.52rem;color:${sc};background:${sc}22;
                            padding:0.02rem 0.25rem;border-radius:8px;flex-shrink:0">${wi.status_user||'active'}</span>
+              <button title="Delete work item"
+                onclick="event.stopPropagation();window._wiDeleteLinked('${_esc(wi.id)}','${_esc(project)}')"
+                style="background:none;border:1px solid #e74c3c;color:#e74c3c;cursor:pointer;font-size:0.55rem;
+                       font-weight:700;padding:0 3px;border-radius:3px;line-height:1.3;flex-shrink:0;opacity:.6"
+                onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=.6">×</button>
               <button title="Unlink — move back to Work Items"
                 onclick="event.stopPropagation();window._wiUnlink('${_esc(wi.id)}','${_esc(project)}')"
                 style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.75rem;

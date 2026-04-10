@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-10 14:52 UTC by aicli /memory_
+_Generated: 2026-04-10 15:00 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform integrating a Python 3.12 CLI backend (FastAPI + PostgreSQL with pgvector) with a desktop Electron UI, designed to capture developer sessions, extract semantic work items through Claude synthesis, and surface them via unified event/tag/work-item architecture. Current state: resolving critical linkage bug where newly created work items have zero associated prompts/events despite /memory command processing, indicating session-to-work-item propagation failure.
 
 ## Project Facts
 
@@ -27,7 +23,7 @@ aicli is a shared AI memory platform integrating a Python 3.12 CLI backend (Fast
 - **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
 - **deployment_target**: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
-- **event_count_column_semantics**: renamed from 'Total events' to 'Digest count'; now counts only prompt_batch + session_summary event types, not all session events
+- **event_count_column_semantics**: counts prompt_batch + session_summary events only; now displayed after commit_count (moved from position 2 to position 4)
 - **frontend_sticky_header_pattern**: CSS position:sticky;top:0;z-index:1 on table headers for work_items panel
 - **frontend_ui_pattern**: inline event handlers with event.stopPropagation(), CSS opacity/color hover states via onmouseenter/onmouseleave, escaped string interpolation in onclick via _esc()
 - **known_bug_active**: planner_tag_visibility: categories upload but individual tags don't display in UI bindings
@@ -57,6 +53,7 @@ Reviewer: ```json
   "issues": [
     "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
 - **prompt_architecture**: core.prompt_loader for centralization; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
+- **prompt_count_metric**: distinct metric tracked separately from event_count in work items API response
 - **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
 - **rel:ai_tag_suggestion:user_tags**: replaces
 - **rel:ai_tag_suggestion:work_items_table**: related_to
@@ -77,7 +74,9 @@ Reviewer: ```json
 - **rel:sticky_header:work_items_panel**: implements
 - **rel:tag_reminder:session_context**: depends_on
 - **rel:ui_notifications:error_handling**: related_to
+- **rel:work_item_api:prompt_count**: depends_on
 - **rel:work_item_deletion:api_endpoint**: depends_on
+- **rel:work_item_panel_sort:prompt_count**: implements
 - **rel:work_item_panel:state_management**: implements
 - **route_work_items_sql_errors**: line_249_cur_execute_missing_parameter_binding_line_288_incomplete_column_selection_in_merged_query
 - **session_context_prompt_counter**: prompt_count field added to session context JSON, initialized to 0, incremented on each prompt validation
@@ -99,6 +98,9 @@ Reviewer: ```json
 - **work_item_description_processing**: newlines replaced with spaces and trimmed (replace(/\n/g,' ').trim()), clipped to 70 chars with ellipsis
 - **work_item_display_fields**: ai_category icon mapping, status_user color mapping, seq_num sequence number, id identifier
 - **work_item_event_association**: two-path join: session_id match from source_event_id OR direct work_item_id link, both filtered by event_type
+- **work_item_panel_column_order**: Name, prompt_count, commit_count, event_count, updated_at (prompts column added before commits, events moved last)
+- **work_item_panel_column_widths**: prompt_count:46px, commit_count:46px, event_count:46px (resized from 52px event_count + 52px commit_count)
+- **work_item_panel_sortable_fields**: prompt_count, event_count, commit_count, seq_num (prompt_count added to sort handler)
 - **work_item_panel_state_management**: _wiPanelItems object stores work items, window._wiPanelDelete and window._wiPanelRefresh are global handlers
 - **work_item_ui_column_widths**: 56px–80px for multi-column sortable table headers
 - **work_item_ui_pattern**: multi-column sortable table with proper header styling, status color badges
@@ -440,15 +442,3 @@ index 6f09f30..4f44f3d 100644
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-09
 
 Removed stale auto-generated system context and CLAUDE.md files to clean up repository cruft.
-
-## AI Synthesis
-
-**[2026-04-10]** `user_query` — Uncovered critical gap: work items are being created without linked prompts/events in source session. Work item #20442 (recently updated) has event_count=0 despite /memory command execution, indicating failure in session_id propagation or prompt capture timing.
-
-**[2026-04-09]** `refactor` — Restructured work item counter architecture: separated prompt_count (raw mem_mrr_prompts in session), event_count (prompt_batch/session_summary digests), and commit_count (session-based or source commit). Added src_session_id and src_source_id tracking to _SQL_UNLINKED_WORK_ITEMS for accurate aggregation.
-
-**[2026-04-09]** `frontend_update` — Reordered work item panel columns: Name | Prompts | Commits | Events | Updated. Added prompt_count to sort handler and table colgroup; reduced visual column widths from 52px to 46px for tabular alignment.
-
-**[2026-04-09]** `query_optimization` — Consolidated _SQL_UNLINKED_WORK_ITEMS parameter pattern from (p_id, p_id, p_id) to (p_id, p_id) by unifying event/prompt/commit CTE joins with consistent WHERE conditions on project_id.
-
-**[2026-04-10]** `investigation` — Root cause analysis needed: /memory command execution flow must be traced from prompt capture → session_id assignment → mem_ai_events insertion → work_item source_event_id linkage to identify where unlinked items originate.

@@ -1,128 +1,26 @@
-# Senior Python Architect — aicli
+# Project: aicli
 
-You are a senior Python software architect with deep expertise in:
-- Python 3.12+ type system, pathlib, asyncio
-- CLI tool design (prompt_toolkit, rich, typer)
-- LLM provider APIs (Anthropic, OpenAI, DeepSeek, Gemini, xAI)
-- FastAPI backend design
-- YAML-based workflow systems
-- File-based persistence (JSONL, JSON, CSV) — no unnecessary databases
+## Active Work
 
-## Your Principles
+- `#20444 development` [feature] — Add extended functionality to prompts feature including UI enhancements and database layer improvements for managing add
+- `#20443 workflow-api-layer-update` [feature] — Updated API layer to support new workflow features and data structures for enhanced graph workflow capabilities.
+- `#20442 graph-workflow` [feature] — Improved navigation and visual components in the graph workflow interface for better usability and clarity.
+- `#20441 entity-views-upgrade` [feature] — Upgraded entity views to improve overall user experience and system usability.
+- `#20440 graph-runner-improvements` [feature] — Enhanced graph runner functionality for better performance and reliability.
+- `#20439 work-items-management-enhancements` [feature] — Improved work items management functionality to enhance system capabilities and user experience.
+- `#20438 workflow-graph-frontend-visualization` [feature] — Enhanced frontend view with improved visualization and interaction capabilities for workflow graphs, providing better UX
+- `#20437 graph-workflow-backend-router` [feature] — Implemented new backend router to handle API endpoints for graph operations, enabling server-side support for workflow g
+- `#20436 backend-routing-graph-operations` [task] — Updated backend routing logic to enhance support for graph-based operations and improve overall workflow architecture.
+- `#20435 graph-workflow-history-tracking` [feature] — Implemented improved history tracking mechanism for graph workflow system to better capture and manage state transitions
+- `#20434 system-documentation-update` [task] — Updated system documentation to reflect backend changes and improve clarity for developers. Ensure documentation is curr
+- `#20433 backend-database-pipeline-optimization` [task] — Enhanced database handling and pipeline logic to improve data processing efficiency and maintainability. Review implemen
 
-- **Simplicity over cleverness**: a 20-line function beats a 200-line abstraction
-- **Read before writing**: always understand existing code before modifying it
-- **Engine/workspace separation**: aicli/ is engine (code), workspace/ is content (prompts, data)
-- **Provider contract**: every provider has send(prompt, system) → str and stream() → Generator
-- **No shared state between CLI and UI backend** — they are independent services
+## Last Session _2026-04-08 13:30_
 
-## Code Quality Standards
-
-- All functions have type hints
-- All file paths use `Path` objects
-- No raw `print()` in library code — use `console.print()` or `logger`
-- Exception messages tell the user what to do, not just what went wrong
-- New modules get a one-paragraph docstring explaining why they exist
-
-## Key Architectural Decisions
-
-- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
-- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
-- Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
-- Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
-- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
-- 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
-- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
-- AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
-- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash for commit-sourced items
-- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)
-- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
+- • Added `commit_short_hash` column to database schema
+- • `mem_mrr_commits_code` table now includes all 19 columns with `full_symbol` as a generated column
+- • Identified silent failure in DDL runner during initial migration - likely caused by timing issues and table locks during the first run
 
 ---
-
-## Project Documentation
-
-# aicli — Shared AI Memory Platform
-
-_Last updated: 2026-03-14 | Version 2.2.0_
-
----
-
-## Vision
-
-**aicli gives every LLM the same project memory.**
-
-When you switch between Claude CLI, the aicli terminal, Cursor, or the web UI, the AI picks up
-exactly where you left off — same codebase context, same decisions, same feature history.
-No more copy-pasting context. No more re-explaining your architecture.
-
----
-
-## Core Goals
-
-| # | Goal | Status |
-|---|------|--------|
-| 1 | **Shared LLM memory** — Claude CLI, aicli CLI, Cursor, UI all read the same knowledge base | ✓ Implemented |
-| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Implemented |
-| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Implemented |
-| 4 | **Auto-deploy** — pull → commit → push after every AI session | ✓ Hooks + git.py |
-| 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
-| 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
-| 7 | **Entity/knowledge graph** — Tag every event (prompt/commit) to features, bugs, tasks | ✓ Implemented |
-| 8 | **Semantic search** — pgvector cosine similarity over chunked history + code | ✓ Implemented |
-| 9 | **Project management UI** — Unified Planner: 2-pane tag manager, per-entry tagging, commit linking | ✓ Implemented |
-
----
-
-## 5-Layer Memory Architecture
-
-```
-Layer 1 — Immediate Context
-  └── providers/{claude,openai,...}.messages  (in-memory, not persisted)
-      Live conversation: current prompt chain within the session
-
-Layer 2 — Working Memory
-  └── {cli_data_dir}/sessions/{provider}_messages.json
-  └── {cli_data_dir}/session_state.json
-      Short-term task state: active feature, tag, last commit, cross-provider handoff
-
-Layer 3 — Project Knowledge
-  └── workspace/{project}/PROJECT.md          — living project doc (this file)
-  └── workspace/{project}/_system/project_state.json  — structured metadata + next_phase_plan
-  └── workspace/{project}/_system/CLAUDE.md   — synced to code_dir/CLAUDE.md for Claude Code
-
-Layer 4 — Historical Knowledge
-  └── workspace/{project}/_system/history.jsonl    — all interactions (UI + CLI + workflow + Cursor)
-  └── workspace/{project}/_system/events_{p}       — PostgreSQL event log, tagged to features/bugs
-      Past decisions, design discussions, feature history, bug postmortems, refactor notes
-
-Layer 5 — Global Knowledge
-  └── workspace/_templates/hooks/                  — canonical hook scripts for all projects
-  └── workspace/_templates/{blank,python_api,...}  — project starter templates
-  └── workspace/_templates/workflows/              — shared workflow YAML library (planned)
-  └── workspace/_templates/roles/                  — shared AI role prompts (planned)
-```
-
-
-*See PROJECT.md for full documentation (383 lines total)*
-
-## Recent Work (last 5 prompts)
-
-- [2026-03-30] `claude_cli`: It it still balnck. the error is Uncaught SyntaxError: Identifier '_esc' has already been declared t
-- [2026-03-30] `claude_cli`: Is all table strucure is implemeted properly ? I dont see the table strucure ? 
-- [2026-03-30] `claude_cli`: yes, continue with data migration 
-- [2026-03-30] `claude_cli`: I think the sujjestion tagging is missing now (it used to be prevously ) - when user run /memeoy it 
-- [2026-03-31] `claude_cli`: I am not so happy with the infrastrucure, think it is bit complicated anbd would like to dp antoehr 
-
----
-*Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
-
----
-
-## Session Memory
-
-Read `MEMORY.md` in this directory for recent work history, key decisions, and in-progress items. It was generated by aicli `/memory` (LLM-synthesized project digest).
+_Auto-generated by aicli memory system. Run `/memory` to refresh._
+_Last updated: 2026-04-10 15:10 UTC_
