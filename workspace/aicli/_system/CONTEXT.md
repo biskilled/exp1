@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-09 17:00 UTC — do not edit manually.
+> Auto-generated 2026-04-10 14:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 466
-- **Last active**: 2026-04-09T15:09:06Z
+- **Sessions**: 467
+- **Last active**: 2026-04-09T17:17:29Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -50,16 +50,16 @@
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
 - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
-- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 
 ## In Progress
 
-- Session tagging command (/tag) implementation: added tag_reminder_interval config to aicli.yaml with periodic prompt reminders (every 5-10 prompts) to validate prompt relevance to tagged context
-- MCP set_session_tags tool documentation: updated schema to clarify phase as required, feature/bug_ref as optional, and 'extra' object for flexible tag categories (task, component, doc_type, design, decision, meeting, customer)
-- Tag skill loading in Claude Code: sessions must be restarted to pick up new /tag skill definition; multi-tag syntax supported (phase:development feature:work-items-ui bug:login-500)
-- Work item refresh workflow: refresh button triggers /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions in real-time
-- Event count aggregation: 'Digests' column displays session-based COUNT(*) from mem_ai_events filtered to prompt_batch and session_summary types only
-- AI tag backlinking propagation: tag assignments to work items automatically propagate to all events in source session via category→tag_key mapping (bug/phase/feature)
+- Work item counter architecture overhaul: refactored _SQL_UNLINKED_WORK_ITEMS to separate prompt_count (raw mem_mrr_prompts in source session), event_count (prompt_batch/session_summary digests), and commit_count (session-based or source commit); consolidated event_ct/prompt_ct/commit_ct CTEs with src_session_id and src_source_id tracking
+- Query parameter rationalization: reduced _SQL_UNLINKED_WORK_ITEMS from 3 param refs to 2 by removing redundant (p_id, p_id, p_id) pattern; unified WHERE conditions across event/prompt/commit joins
+- Frontend column reordering: added prompt_count column to work item panel; sorted display as Name | Prompts | Commits | Events | Updated; added prompt_count to sort handler
+- Debugging unlinked work items with zero prompts: investigating why work_item #20442 has event_count=0 despite /memory command processing; hypothesis is session-to-work-item linkage not persisting across prompt_batch extraction
+- Memory synthesis linkage investigation: determining root cause of work items created without corresponding mem_mrr_prompts or mem_ai_events in source session; may indicate race condition in prompt capture or session_id mismatch
+- Session workflow tracing: planning comprehensive debug of /memory execution: prompt capture → session_id assignment → work_item creation → event_ct join validation
 
 ## Key Decisions
 
@@ -73,11 +73,11 @@
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
-- AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, 0.60 confidence threshold
-- Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
-- Session tagging via /tag command with tag_reminder_interval config (every N prompts); valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design/decision/meeting/customer optional)
-- Stdio MCP server with 12+ tools for semantic search, work item management, and session tag updates; embedding pipeline triggered via /memory endpoint
+- AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
+- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash for commit-sourced items
+- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)
+- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
 
 ---
 
