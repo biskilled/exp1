@@ -242,16 +242,18 @@ export function renderEntities(container) {
   };
   window._wiDeleteLinked = async (id, proj) => {
     if (!confirm('Delete this work item?')) return;
+    _wiRowLoading(id, true);
     try {
       await api.workItems.delete(id, proj);
       const tr = document.querySelector(`.wi-sub-row[data-wi-id="${CSS.escape(id)}"]`);
       if (tr) tr.remove();
       delete _wiPanelItems[id];
       toast('Work item deleted', 'success');
-    } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
+    } catch(e) { toast('Delete failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
 
   window._wiUnlink = async (id, proj) => {
+    _wiRowLoading(id, true);
     try {
       await api.workItems.patch(id, proj, { tag_id: '' });
       toast('Unlinked', 'success');
@@ -531,8 +533,28 @@ function _renderWiPanel(items, project) {
     _renderWiPanel(Object.values(_wiPanelItems), project);
   };
 
+  // ── Loading indicator for work item rows ─────────────────────────────────────
+  // Injects a pulsing CSS animation while an async operation is in flight.
+  function _ensureWiLoadingStyle() {
+    if (document.getElementById('wi-loading-style')) return;
+    const s = document.createElement('style');
+    s.id = 'wi-loading-style';
+    s.textContent = `@keyframes wi-pulse{0%,100%{opacity:.55}50%{opacity:.25}}` +
+                    `.wi-loading{animation:wi-pulse .7s ease-in-out infinite;pointer-events:none!important;}`;
+    document.head.appendChild(s);
+  }
+  function _wiRowLoading(id, loading) {
+    _ensureWiLoadingStyle();
+    // Check both the unlinked panel and the linked sub-rows
+    const tr = document.querySelector(`#wi-panel-list tr[data-wi-id="${CSS.escape(id)}"]`) ||
+               document.querySelector(`.wi-sub-row[data-wi-id="${CSS.escape(id)}"]`);
+    if (!tr) return;
+    loading ? tr.classList.add('wi-loading') : tr.classList.remove('wi-loading');
+  }
+
   window._wiPanelDelete = async (id, proj) => {
     if (!confirm('Remove this work item?')) return;
+    _wiRowLoading(id, true);
     try {
       await api.workItems.delete(id, proj);
       delete _wiPanelItems[id];
@@ -540,12 +562,13 @@ function _renderWiPanel(items, project) {
       _renderWiPanel(remaining, proj);
       const cnt = document.getElementById('wi-panel-count');
       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
-    } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
+    } catch(e) { toast('Delete failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
 
   window._wiPanelApproveTag = async (id, proj) => {
     const wi = _wiPanelItems[id];
     if (!wi || !wi.ai_tag_id) return;
+    _wiRowLoading(id, true);
     try {
       await api.workItems.patch(id, proj, { tag_id: wi.ai_tag_id });
       delete _wiPanelItems[id];
@@ -556,10 +579,11 @@ function _renderWiPanel(items, project) {
       toast(`Linked to "${wi.ai_tag_name}"`, 'success');
       const { selectedCatName } = _plannerState;
       if (selectedCatName) _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
-    } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
+    } catch(e) { toast('Approve failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
 
   window._wiPanelRemoveTag = async (id, proj) => {
+    _wiRowLoading(id, true);
     try {
       await api.workItems.patch(id, proj, { ai_tag_id: '', ai_tags: {} });
       if (_wiPanelItems[id]) {
@@ -570,39 +594,43 @@ function _renderWiPanel(items, project) {
         _wiPanelItems[id].ai_tags = {};
       }
       _renderWiPanel(Object.values(_wiPanelItems), proj);
-    } catch(e) { toast('Remove failed: ' + e.message, 'error'); }
+    } catch(e) { toast('Remove failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
 
-  // Secondary AI suggestion: approve = link tag_id directly (removes from unlinked list)
-  window._wiSecApprove = async (id, proj, tagId) => {
+  // Secondary AI suggestion (doc_type, phase, component, etc.):
+  // approve = store as confirmed metadata, keep item in list (NOT a primary feature/bug/task link)
+  window._wiSecApprove = async (id, proj, tagId, tagName, tagCat) => {
+    _wiRowLoading(id, true);
     try {
-      await api.workItems.patch(id, proj, { tag_id: tagId });
-      delete _wiPanelItems[id];
-      const remaining = Object.values(_wiPanelItems);
-      _renderWiPanel(remaining, proj);
-      const cnt = document.getElementById('wi-panel-count');
-      if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
-      toast('Linked via secondary suggestion', 'success');
-      const { selectedCatName } = _plannerState;
-      if (selectedCatName) _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
-    } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
+      const current = (_wiPanelItems[id]?.ai_tags) || {};
+      const confirmed = Array.isArray(current.confirmed) ? current.confirmed : [];
+      const updated = {
+        ...current,
+        secondary: null,
+        confirmed: [...confirmed, { tag_id: tagId, tag_name: tagName, category: tagCat }],
+      };
+      await api.workItems.patch(id, proj, { ai_tags: updated });
+      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
+      _renderWiPanel(Object.values(_wiPanelItems), proj);
+      toast(`Saved ${tagCat ? tagCat + ':' : ''}${tagName || ''} as metadata`, 'success');
+    } catch(e) { toast('Failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
 
-  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only
+  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only, item stays in list
   window._wiSecDismiss = async (id, proj) => {
+    _wiRowLoading(id, true);
     try {
       const current = (_wiPanelItems[id]?.ai_tags) || {};
       const updated = { ...current, secondary: null };
       await api.workItems.patch(id, proj, { ai_tags: updated });
-      if (_wiPanelItems[id]) {
-        _wiPanelItems[id].ai_tags = updated;
-      }
+      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
       _renderWiPanel(Object.values(_wiPanelItems), proj);
-    } catch(e) { toast('Dismiss failed: ' + e.message, 'error'); }
+    } catch(e) { toast('Dismiss failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
 
   window._wiPanelCreateTag = async (id, tagName, categoryName, proj) => {
     const catLabel = categoryName || 'task';
+    _wiRowLoading(id, true);
     try {
       const cats = await api.tags.categories.list(proj);
       const catObj = cats.find(c => c.name === catLabel) || cats.find(c => c.name === 'task') || cats[0];
@@ -614,12 +642,11 @@ function _renderWiPanel(items, project) {
       const cnt = document.getElementById('wi-panel-count');
       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
       toast(`Created ${catLabel} tag "${tagName}" and linked`, 'success');
-      // Reload tag cache so the new tag appears in the planner table, then inject sub-row
       await loadTagCache(proj, true);
       _renderCategoryList();
       if (_plannerState.selectedCat) _renderTagTableFromCache();
       _loadTagLinkedWorkItems(proj, catLabel).catch(() => {});
-    } catch(e) { toast('Create failed: ' + e.message, 'error'); }
+    } catch(e) { toast('Create failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
 
   const LBL_BASE = 'font-size:0.58rem;font-weight:600;flex-shrink:0;padding:1px 5px;border-radius:3px;letter-spacing:.02em;white-space:nowrap';
@@ -686,15 +713,16 @@ function _renderWiPanel(items, project) {
         ? ((sec.category || 'phase') + ':' + (sec.tag_name || ''))
         : ((sec.suggested_category || 'phase') + ':' + (sec.suggested_new || ''));
       if (secLabel && secLabel !== ':' && !secLabel.endsWith(':')) {
-        const secApproveBtn = sec.tag_id
-          ? `<button onclick="event.stopPropagation();window._wiSecApprove('${_esc(wi.id)}','${_esc(project)}','${_esc(sec.tag_id)}')"
-               title="Link to this tag" style="background:none;border:1px solid #8e44ad;color:#8e44ad;
-                      cursor:pointer;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>`
-          : '';
+        // ✓ always shown — adds as metadata, item stays in list (unlike AI(EXISTS) which links as primary)
+        const secTagId  = _esc(sec.tag_id || '');
+        const secTName  = _esc(sec.tag_name || sec.suggested_new || '');
+        const secTCat   = _esc(sec.category || sec.suggested_category || '');
         secRow = `<div style="display:flex;align-items:center;gap:4px;margin-top:2px;flex-wrap:wrap">
-          <span style="${LBL_AI_S}">AI</span>
+          <span style="${LBL_AI_S}" title="Metadata tag — ✓ saves for search/filter, item stays in list">AI</span>
           <span style="font-size:0.60rem;color:var(--muted);white-space:nowrap">${_esc(secLabel)}</span>
-          ${secApproveBtn}
+          <button onclick="event.stopPropagation();window._wiSecApprove('${_esc(wi.id)}','${_esc(project)}','${secTagId}','${secTName}','${secTCat}')"
+            title="Save as metadata tag (item stays in list)" style="background:none;border:1px solid #8e44ad;color:#8e44ad;
+                   cursor:pointer;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.5">✓</button>
           <button onclick="event.stopPropagation();window._wiSecDismiss('${_esc(wi.id)}','${_esc(project)}')"
             title="Dismiss" style="background:none;border:1px solid #888;color:#888;cursor:pointer;
                    font-size:0.6rem;font-weight:700;padding:1px 5px;border-radius:4px;line-height:1.5">×</button>

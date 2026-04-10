@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-10 15:20 UTC by aicli /memory_
+_Generated: 2026-04-10 15:36 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that combines a Python CLI backend with an Electron desktop UI to capture, synthesize, and organize development work through semantic embeddings and AI-powered tagging. The system integrates with multiple LLM providers (Claude, OpenAI, DeepSeek, Gemini, Grok) and uses PostgreSQL with pgvector for semantic search, supporting 4-layer memory synthesis from raw prompts to work items with auto-generated tags. Recent work focused on refining the tag creation and work item deletion UX, improving AI suggestion workflows, and ensuring mid-session tagging works seamlessly.
+aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL with pgvector, a Python CLI with prompt_toolkit, and an Electron desktop UI with Vanilla JS. It synthesizes work sessions into structured memory via Claude LLM, tracking events/commits/tags across projects with semantic embeddings. Current focus: fixing skill naming conflicts (/tag→/stag), optimizing work item queries, and refining tag approval/deletion UX in the planner interface.
 
 ## Project Facts
 
@@ -135,7 +135,7 @@ Reviewer: ```json
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
+- **database**: PostgreSQL 15+ with pgvector extensions
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
@@ -164,17 +164,17 @@ Reviewer: ```json
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
 - AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
 - Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
+- Session tagging: /tag command replaced with /stag due to skill loader conflict; renamed skill maintains same tag:category functionality; immediate propagation via log_user_prompt.sh
 - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
-- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
 
 ## In Progress
 
-- Work item deletion UI: added _wiDeleteLinked handler to entities.js with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
-- Tag creation with auto-link workflow: _wiPanelCreateTag now creates new tags without confirmation, auto-links work item, and refreshes tag cache + planner table + category tag list view
-- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems now reloads to reflect linked/unlinked status changes in planner view
-- Session tagging during prompt entry: confirmed /tag command works mid-session without new session needed; log_user_prompt.sh reads .agent-context on every prompt for immediate tag propagation
-- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
-- Copilot instructions regeneration: timestamp updates (2026-04-10 14:52 → 15:00 UTC) indicate successful /memory command synthesis and file generation workflow
+- Skill naming conflict resolution: /tag command conflicted with Claude Code reserved skill name; created /stag as replacement with identical functionality and immediate availability
+- Work item deletion UI: _wiDeleteLinked handler in entities.js with confirmation dialog; delete button appears in tag-linked work item panel with opacity toggle hover effect
+- Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
+- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip UX
+- Tag confirmation/deletion UX clarification: investigate current confirm/delete button behavior for AI tags; accept should trigger 'remove' rather than separate 'confirm' action
+- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems reloads to reflect linked/unlinked status changes in planner view
 
 ## Active Features / Bugs / Tasks
 
@@ -198,7 +198,7 @@ Reviewer: ```json
 ### Feature
 
 - **pagination**
-- **graph-workflow** `[open]`
+- **entity-routing** `[open]`
 - **billing** `[open]`
 - **embeddings** `[open]`
 - **tagging** `[open]`
@@ -209,12 +209,13 @@ Reviewer: ```json
 - **auth** `[open]`
 - **dropbox** `[open]`
 - **shared-memory** `[open]`
+- **graph-workflow** `[open]`
 
 ### Phase
 
-- **discovery** `[open]`
 - **prod** `[open]`
 - **development** `[open]`
+- **discovery** `[open]`
 
 ### Task
 
@@ -224,6 +225,81 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 58357d5..3ea4893 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-10 15:00 UTC
++> Generated by aicli 2026-04-10 15:18 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 9d9156c..41fff4b 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:00 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:18 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-09] I have just tried that, got unknow skill /tag. do I have to open a new session ?
+ - [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
+ - [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
+ - [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
+-- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
+\ No newline at end of file
++- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
++- [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 9d9156c..41fff4b 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:00 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:18 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-09] I have just tried that, got unknow skill /tag. do I have to open a new session ?
+ - [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
+ - [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
+ - [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
+-- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
+\ No newline at end of file
++- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
++- [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
+
+Removed obsolete agent context and system documentation files from a completed session (9315de). This is a maintenance task to clean up temporary or session-specific artifacts.
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
@@ -337,54 +413,16 @@ index c1b0a1e..58357d5 100644
  
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 80ea1bf..9d9156c 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 14:52 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:00 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 80ea1bf..9d9156c 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 14:52 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:00 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
-
-Reorganized _system context files following a Claude CLI session, likely restructuring or consolidating system prompt/context definitions.
-
-### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
-
-Fixed work item commit linking by correcting SQL join from event_id to commit_short_hash via source_id. Confirmed that work items without prompts are expected—they originate from historical commit backfill (2026-04-07) processed without active CLI sessions, while recent items with prompts come from live prompt/session data.
-
 ## AI Synthesis
 
-**[2026-04-10]** `entities.js` — Added work item deletion UI (_wiDeleteLinked handler) with confirmation dialog and delete button in tag-linked work items panel; improved opacity toggle on hover for better UX.
+**[2026-04-10]** `claude_cli` — Resolved `/tag` command skill naming conflict: Claude Code's skill loader reserved `tag` as system keyword, causing 'unknown skill' errors. Created `/stag` as functional replacement with identical tag:category functionality and immediate CLI availability after restart. Issue affected session tagging workflow where tags should propagate via log_user_prompt.sh context reading.
 
-**[2026-04-10]** `entities.js` — Refactored tag creation workflow (_wiPanelCreateTag): removed confirmation dialog, auto-links work item after creation, refreshes tag cache and planner table views to reflect new tag immediately.
+**[2026-04-09→04-10]** `work_item_queries` — User reported performance issues with planner tab and work item loading; queries appear unoptimized. Concurrent issue: DIGEST column presence confusing (should be event count). Work items appear without linked events despite FK constraints suggesting they should exist.
 
-**[2026-04-10]** `entities.js` — Improved AI suggestion chip UX: added clickable ✓ button to create missing suggested tags with automatic category inference; refined tooltip messaging from 'No existing tag — create one manually' to 'Does not exist yet — click ✓ to create'.
+**[2026-04-09]** `ai_tag_suggestion_feature` — Implemented clickable chip UI for creating missing ai_suggestion tags with category inference. Improved tooltip messaging from 'No existing tag' to clarify 'Does not exist yet' status. Added category detection logic for auto-suggesting appropriate tag categories.
 
-**[2026-04-10]** `entities.js` — Fixed tag-linked work item refresh: after approve/reject/create operations, now calls _loadTagLinkedWorkItems to reload work item list and reflect linked/unlinked status changes in planner category view.
+**[2026-04-10]** `tag_linked_work_items_ui` — Refined work item deletion UX in tag-linked panel with _wiDeleteLinked handler; added confirmation dialog and opacity-toggled delete button. Tag-linked work item list now refreshes after approve/reject/create operations to reflect link status changes.
 
-**[2026-04-10]** `cli/` — Confirmed /tag command works mid-session without requiring new session; log_user_prompt.sh reads .agent-context on every prompt entry, ensuring tags take effect immediately for all subsequent prompts in the session.
+**[2026-04-09]** `memory_synthesis_refresh` — Copilot instructions and AI rules files updated (timestamp 15:00→15:18 UTC) confirming successful `/memory` command execution. Recent context window captures user confusion about work item event counts and query performance degradation.
 
-**[2026-04-10]** `memory synthesis` — /memory command successfully regenerated copilot-instructions.md and aicli.mdrules with updated timestamp (2026-04-10 15:00 UTC), confirming automated synthesis and file generation workflow functioning correctly.
+**[2026-04-10]** `ai_tag_confirmation_ux` — User feedback indicates 'confirm' button behavior for accepting AI tags should be 'remove' instead; only 'delete' should remain as separate action. Suggests current UI conflates approval action with confirmation/removal semantics.

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:20 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:36 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
+- **database**: PostgreSQL 15+ with pgvector extensions
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
@@ -62,13 +62,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
 - AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
 - Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
+- Session tagging: /tag command replaced with /stag due to skill loader conflict; renamed skill maintains same tag:category functionality; immediate propagation via log_user_prompt.sh
 - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
-- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
 - [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
 - [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
 - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
 - [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
+- [2026-04-10] I always get an error saying ynknow skill tag.

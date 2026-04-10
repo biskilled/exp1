@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item deletion UI: added _wiDeleteLinked handler to entities.js with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
-- Tag creation with auto-link workflow: _wiPanelCreateTag now creates new tags without confirmation, auto-links work item, and refreshes tag cache + planner table + category tag list view
-- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems now reloads to reflect linked/unlinked status changes in planner view
-- Session tagging during prompt entry: confirmed /tag command works mid-session without new session needed; log_user_prompt.sh reads .agent-context on every prompt for immediate tag propagation
-- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
-- Copilot instructions regeneration: timestamp updates (2026-04-10 14:52 → 15:00 UTC) indicate successful /memory command synthesis and file generation workflow
+- Skill naming conflict resolution: /tag command conflicted with Claude Code reserved skill name; created /stag as replacement with identical functionality and immediate availability
+- Work item deletion UI: _wiDeleteLinked handler in entities.js with confirmation dialog; delete button appears in tag-linked work item panel with opacity toggle hover effect
+- Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
+- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip UX
+- Tag confirmation/deletion UX clarification: investigate current confirm/delete button behavior for AI tags; accept should trigger 'remove' rather than separate 'confirm' action
+- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems reloads to reflect linked/unlinked status changes in planner view
