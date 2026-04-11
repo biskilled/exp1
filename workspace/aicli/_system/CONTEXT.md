@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-11 11:39 UTC — do not edit manually.
+> Auto-generated 2026-04-11 12:27 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 472
-- **Last active**: 2026-04-10T15:45:16Z
+- **Sessions**: 474
+- **Last active**: 2026-04-11T12:27:15Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -54,12 +54,12 @@
 
 ## In Progress
 
-- Secondary AI tag UX refinement: _wiSecApprove stores doc_type/feature/phase/bug/task tags in ai_tags.confirmed[] array; items remain visible in work item list with ✓ button showing as permanent chip indicator
-- Work item deletion UI: implemented _wiDeleteLinked handler with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
+- Skill naming conflict resolution: /tag command conflicted with Claude Code reserved skill name; created /stag as replacement with identical functionality and immediate availability
+- Work item deletion UI: _wiDeleteLinked handler in entities.js with confirmation dialog; delete button appears in tag-linked work item panel with opacity toggle hover effect
 - Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
+- Secondary AI tag UX refinement: _wiSecApprove stores doc_type/feature/phase/bug/task tags in ai_tags.confirmed[] array; items remain visible in work item list with checkmark button showing as permanent chip indicator
 - AI suggestion chips UX: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip messaging for non-existent tags
 - Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject/create operations to reflect linked/unlinked status changes in planner view
-- Work item persistence across sessions: ensuring tag-linked and newly-created work items remain accessible across tag switches and session changes
 
 ## Key Decisions
 
