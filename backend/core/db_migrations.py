@@ -285,23 +285,33 @@ def m024_backfill_work_item_tags(conn) -> None:
     copies the user-intent keys (source, phase, feature, bug, component, doc_type)
     from the source event's tags JSONB into the work item.
 
+    Handles both session events (phase/feature keys) and commit events
+    (ai_phase/ai_feature keys) by using COALESCE to map ai_* variants.
+
     This is a one-time data migration for items created before m023/m024.
     Going forward, tags are set at extraction time in memory_promotion.py.
     """
-    _USER_KEYS = "source", "phase", "feature", "bug", "component", "doc_type"
-    key_filter = " OR ".join(f"e.tags ? '{k}'" for k in _USER_KEYS)
     with conn.cursor() as cur:
-        cur.execute(f"""
+        cur.execute("""
             UPDATE mem_ai_work_items wi
-            SET tags = (
-                SELECT jsonb_object_agg(kv.key, kv.value)
-                FROM jsonb_each_text(e.tags) AS kv(key, value)
-                WHERE kv.key = ANY(ARRAY['source','phase','feature','bug','component','doc_type'])
-            )
+            SET tags = jsonb_strip_nulls(jsonb_build_object(
+                'phase',     COALESCE(e.tags->>'phase',   e.tags->>'ai_phase'),
+                'feature',   COALESCE(e.tags->>'feature', e.tags->>'ai_feature'),
+                'source',    e.tags->>'source',
+                'bug',       e.tags->>'bug',
+                'component', e.tags->>'component',
+                'doc_type',  e.tags->>'doc_type'
+            ))
             FROM mem_ai_events e
             WHERE e.id = wi.source_event_id
-              AND wi.tags = '{{}}'::jsonb
-              AND ({key_filter})
+              AND wi.tags = '{}'::jsonb
+              AND (
+                    e.tags->>'phase'      IS NOT NULL
+                 OR e.tags->>'ai_phase'   IS NOT NULL
+                 OR e.tags->>'feature'    IS NOT NULL
+                 OR e.tags->>'ai_feature' IS NOT NULL
+                 OR e.tags->>'source'     IS NOT NULL
+              )
         """)
         updated = cur.rowcount
     conn.commit()

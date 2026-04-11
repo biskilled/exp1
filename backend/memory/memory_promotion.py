@@ -668,9 +668,19 @@ class MemoryPromotion:
             if not items:
                 continue
 
-            # Build filtered tags from source event (user-intent keys only)
-            wi_tags = json.dumps({k: v for k, v in event_tags.items()
-                                  if k in _USER_TAG_KEYS and v})
+            # Build filtered tags from source event (user-intent keys only).
+            # Commit events use ai_phase/ai_feature; session events use phase/feature.
+            merged: dict = {}
+            for k, v in event_tags.items():
+                if not v:
+                    continue
+                if k in _USER_TAG_KEYS:
+                    merged[k] = v
+                elif k == "ai_phase":
+                    merged.setdefault("phase", v)
+                elif k == "ai_feature":
+                    merged.setdefault("feature", v)
+            wi_tags = json.dumps(merged)
 
             for item in items[:5]:
                 category = item.get("category", "task")

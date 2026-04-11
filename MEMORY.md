@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-11 12:27 UTC by aicli /memory_
+_Generated: 2026-04-11 13:29 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL with pgvector semantic search, and an Electron desktop UI with Vanilla JS. It manages project context through a 4-layer memory architecture (ephemeral sessions → raw captures → LLM-digested events → work items), supports multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok), and features async DAG workflow execution with Cytoscape visualization. Current focus is on work item UX refinement, including loading state indicators, secondary AI tag metadata management, and tag-linked panel consistency across session switches.
 
 ## Project Facts
 
@@ -14,6 +10,7 @@ aicli is a shared AI memory platform combining a Python FastAPI backend, Postgre
 - **ai_tag_label_format**: category:name when both present, falls back to name-only, empty string if neither
 - **ai_tag_suggestion_debugging_status**: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh workflow
 - **ai_tag_suggestion_feature**: ai_tag_suggestion column with approve/remove button handlers (_wiPanelApproveTag/_wiPanelRemoveTag), refactored to simplified chip markup without category prefix display in non-category mode
+- **ai_tag_suggestion_ux**: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip improved from 'No existing tag' to 'Does not exist yet'
 - **auth_pattern**: login_as_first_level_hierarchy
 - **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
 - **code_extraction_configuration**: min_lines: 5 (per-symbol threshold), min_diff_lines: 5 (commit-level threshold), only_on_commits_with_tags: false
@@ -75,9 +72,12 @@ Reviewer: ```json
 - **rel:route_snapshots:prompt_loader**: depends_on
 - **rel:route_work_items:sql_parameter_binding**: depends_on
 - **rel:session_context:prompt_counter**: implements
+- **rel:stag_command:tag_command**: replaces
 - **rel:sticky_header:work_items_panel**: implements
 - **rel:tag_reminder:session_context**: depends_on
 - **rel:ui_notifications:error_handling**: related_to
+- **rel:wiDeleteLinked:entities_js**: implements
+- **rel:wiUnlink:wiRowLoading**: depends_on
 - **rel:work_item_api:prompt_count**: depends_on
 - **rel:work_item_deletion:api_endpoint**: depends_on
 - **rel:work_item_panel_sort:prompt_count**: implements
@@ -86,6 +86,8 @@ Reviewer: ```json
 - **session_context_prompt_counter**: prompt_count field added to session context JSON, initialized to 0, incremented on each prompt validation
 - **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
 - **stale_code_removed**: git_supervisor_module_deleted_automated_git_workflow_no_longer_used
+- **tag_command_alias**: /stag replaces /tag due to Claude Code skill name conflict; identical functionality with immediate availability
+- **tag_creation_workflow**: _wiPanelCreateTag creates tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
 - **tag_filtering_scope_issue**: non-work-item tags (Shared-memory, billing) incorrectly appearing in work_items panel UI; scope filtering implementation in progress
 - **tagging_system**: nested_hierarchy_beyond_2_levels
 - **tagging_system_hierarchy**: nested_hierarchy_beyond_2_levels_approved
@@ -98,6 +100,7 @@ Reviewer: ```json
 - **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
 - **user_tags_rendering**: removed from panel display (userTagsHtml variable deleted), stored in wi.user_tags array but no longer shown in UI
 - **work_item_deletion_endpoint**: DELETE /work-items/{id} with confirm dialog, cache clearing via window._wiPanelDelete, panel re-rendering
+- **work_item_deletion_handler**: _wiDeleteLinked in entities.js with confirmation dialog and _wiRowLoading state management
 - **work_item_deletion_pattern**: client-side confirmation dialog, async api.workItems.delete(), local state cleanup, re-render panel
 - **work_item_description_processing**: newlines replaced with spaces and trimmed (replace(/\n/g,' ').trim()), clipped to 70 chars with ellipsis
 - **work_item_display_fields**: ai_category icon mapping, status_user color mapping, seq_num sequence number, id identifier
@@ -108,6 +111,7 @@ Reviewer: ```json
 - **work_item_panel_state_management**: _wiPanelItems object stores work items, window._wiPanelDelete and window._wiPanelRefresh are global handlers
 - **work_item_ui_column_widths**: 56px–80px for multi-column sortable table headers
 - **work_item_ui_pattern**: multi-column sortable table with proper header styling, status color badges
+- **work_item_unlink_handler**: _wiUnlink uses _wiRowLoading(id, true) for loading state during patch operation
 
 ## Tech Stack
 
@@ -226,281 +230,438 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 233b24d..b73b1fd 100644
+index b73b1fd..67d006f 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
--- Work item deletion UI: added _wiDeleteLinked handler to entities.js with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
--- Tag creation with auto-link workflow: _wiPanelCreateTag now creates new tags without confirmation, auto-links work item, and refreshes tag cache + planner table + category tag list view
--- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems now reloads to reflect linked/unlinked status changes in planner view
--- Session tagging during prompt entry: confirmed /tag command works mid-session without new session needed; log_user_prompt.sh reads .agent-context on every prompt for immediate tag propagation
--- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
--- Copilot instructions regeneration: timestamp updates (2026-04-10 14:52 → 15:00 UTC) indicate successful /memory command synthesis and file generation workflow
-+- Skill naming conflict resolution: /tag command conflicted with Claude Code reserved skill name; created /stag as replacement with identical functionality and immediate availability
-+- Work item deletion UI: _wiDeleteLinked handler in entities.js with confirmation dialog; delete button appears in tag-linked work item panel with opacity toggle hover effect
-+- Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
-+- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip UX
-+- Tag confirmation/deletion UX clarification: investigate current confirm/delete button behavior for AI tags; accept should trigger 'remove' rather than separate 'confirm' action
-+- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems reloads to reflect linked/unlinked status changes in planner view
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
-
-diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index cd44fd2..ef5d2f0 100644
---- a/ui/frontend/views/entities.js
-+++ b/ui/frontend/views/entities.js
-@@ -242,16 +242,18 @@ export function renderEntities(container) {
-   };
-   window._wiDeleteLinked = async (id, proj) => {
-     if (!confirm('Delete this work item?')) return;
-+    _wiRowLoading(id, true);
-     try {
-       await api.workItems.delete(id, proj);
-       const tr = document.querySelector(`.wi-sub-row[data-wi-id="${CSS.escape(id)}"]`);
-       if (tr) tr.remove();
-       delete _wiPanelItems[id];
-       toast('Work item deleted', 'success');
--    } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
-+    } catch(e) { toast('Delete failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
-   };
- 
-   window._wiUnlink = async (id, proj) => {
-+    _wiRowLoading(id, true);
-     try {
-       await api.workItems.patch(id, proj, { tag_id: '' });
-       toast('Unlinked', 'success');
-@@ -531,8 +533,28 @@ function _renderWiPanel(items, project) {
-     _renderWiPanel(Object.values(_wiPanelItems), project);
-   };
- 
-+  // ── Loading indicator for work item rows ─────────────────────────────────────
-+  // Injects a pulsing CSS animation while an async operation is in flight.
-+  function _ensureWiLoadingStyle() {
-+    if (document.getElementById('wi-loading-style')) return;
-+    const s = document.createElement('style');
-+    s.id = 'wi-loading-style';
-+    s.textContent = `@keyframes wi-pulse{0%,100%{opacity:.55}50%{opacity:.25}}` +
-+                    `.wi-loading{animation:wi-pulse .7s ease-in-out infinite;pointer-events:none!important;}`;
-+    document.head.appendChild(s);
-+  }
-+  function _wiRowLoading(id, loading) {
-+    _ensureWiLoadingStyle();
-+    // Check both the unlinked panel and the linked sub-rows
-+    const tr = document.querySelector(`#wi-panel-list tr[data-wi-id="${CSS.escape(id)}"]`) ||
-+               document.querySelector(`.wi-sub-row[data-wi-id="${CSS.escape(id)}"]`);
-+    if (!tr) return;
-+    loading ? tr.classList.add('wi-loading') : tr.classList.remove('wi-loading');
-+  }
-+
-   window._wiPanelDelete = async (id, proj) => {
-     if (!confirm('Remove this work item?')) return;
-+    _wiRowLoading(id, true);
-     try {
-       await api.workItems.delete(id, proj);
-       delete _wiPanelItems[id];
-@@ -540,12 +562,13 @@ function _renderWiPanel(items, project) {
-       _renderWiPanel(remaining, proj);
-       const cnt = document.getElementById('wi-panel-count');
-       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
--    } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
-+    } catch(e) { toast('Delete failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
-   };
- 
-   window._wiPanelApproveTag = async (id, proj) => {
-     const wi = _wiPanelItems[id];
-     if (!wi || !wi.ai_tag_id) return;
-+    _wiRowLoading(id, true);
-     try {
-       await api.workItems.patch(id, proj, { tag_id: wi.ai_tag_id });
-       delete _wiPanelItems[id];
-@@ -556,10 +579,11 @@ function _renderWiPanel(items, project) {
-       toast(`Linked to "${wi.ai_tag_name}"`, 'success');
-       const { selectedCatName } = _plannerState;
-       if (selectedCatName) _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
--    } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
-+    } catch(e) { toast('Approve failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
-   };
- 
-   window._wiPanelRemoveTag = async (id, proj) => {
-+    _wiRowLoading(id, true);
-     try {
-       await api.workItems.patch(id, proj, { ai_tag_id: '', ai_tags: {} });
-       if (_wiPanelItems[id]) {
-@@ -570,39 +594,43 @@ function _renderWiPanel(items, project) {
-         _wiPanelItems[id].ai_tags = {};
-       }
-       _renderWiPanel(Object.values(_wiPanelItems), proj);
--    } catch(e) { toast('Remove failed: ' + e.message, 'error'); }
-+    } catch(e) { toast('Remove failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
-   };
- 
--  // Secondary AI suggestion: approve = link tag_id directly (removes from unlinked list)
--  window._wiSecApprove = async (id, proj, tagId) => {
-+  // Secondary AI suggestion (doc_type, phase, component, etc.):
-+  // approve = store as confirmed metadata, keep item in list (NOT a primary feature/bug/task link)
-+  window._wiSecApprove = async (id, proj, tagId, tagName, tagCat) => {
-+    _wiRowLoading(id, true);
-     try {
--      await api.workItems.patch(id, proj, { tag_id: tagId });
--      delete _wiPanelItems[id];
--      const remaining = Object.values(_wiPanelItems);
--      _renderWiPanel(remaining, proj);
--      const cnt = document.getElementById('wi-panel-count');
--      if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
--      toast('Linked via secondary suggestion', 'success');
--      const { selectedCatName } = _plannerState;
--      if (selectedCatName) _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
--    } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
-+      const current = (_wiPanelItems[id]?.ai_tags) || {};
-+      const confirmed = Array.isArray(current.confirmed) ? current.confirmed : [];
-+      const updated = {
-+        ...current,
-+        secondary: null,
-+        confirmed: [...confirmed, { tag_id: tagId, tag_name: tagName, category: tagCat }],
-+      };
-+      await api.workItems.patch(id, proj, { ai_tags: updated });
-+      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
-+      _renderWiPanel(Object.values(_wiPanelItems), proj);
-+      toast(`Saved ${tagCat ? tagCat + ':' : ''}${tagName || ''} as metadata`, 'success');
-+    } catch(e) { toast('Failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
-   };
- 
--  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only
-+  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only, item stays in list
-   window._wiSecDismiss = async (id, proj) => {
-+    _wiRowLoadi
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index d3e931e..7f614d1 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-10 15:20 UTC
-+> Generated by aicli 2026-04-10 15:36 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - billing_storage: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - backend_modules: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - dev_environment: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- database: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
-+- database: PostgreSQL 15+ with pgvector extensions
- - node_modules_build: npm 8+ with Electron-builder; Vite dev server
- - database_version: PostgreSQL 15+
- - build_tooling: npm 8+ with Electron-builder; Vite dev server
-@@ -62,5 +62,5 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
- - AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
- - Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
--- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
--- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
-\ No newline at end of file
-+- Session tagging: /tag command replaced with /stag due to skill loader conflict; renamed skill maintains same tag:category functionality; immediate propagation via log_user_prompt.sh
-+- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
-\ No newline at end of file
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index d6aff7b..ed0ae1d 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:20 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:36 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- **database**: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
-+- **database**: PostgreSQL 15+ with pgvector extensions
- - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
-@@ -62,13 +62,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
- - AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
- - Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
-+- Session tagging: /tag command replaced with /stag due to skill loader conflict; renamed skill maintains same tag:category functionality; immediate propagation via log_user_prompt.sh
- - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
--- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
- - [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
- - [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
- - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
--- [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
-\ No newline at end of file
-+- [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
-+- [2026-04-10] I always get an error saying ynknow skill tag.
-\ No newline at end of file
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index d6aff7b..ed0ae1d 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:20 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:36 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- **database**: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
-+- **database**: PostgreSQL 15+ with pgvector extensions
- - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
-@@ -62,13 +62,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
- - AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
- - Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
-+- Session tagging: /tag command replaced with /stag due to skill loader conflict; renamed skill maintains same tag:category functionality; immediate propagation via log_user_prompt.sh
- - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
--- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
- - [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
- - [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
- - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
--- [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
-\ No newline at end of file
-+- [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
-+- [2026-04-10] I always get an error saying ynknow skill tag.
-\ No newline at end of file
+-- Skill naming conflict resolution: /tag command conflicted with Claude Code reserved skill name; created /stag as replacement with identical functionality and immediate availability
+-- Work item deletion UI: _wiDeleteLinked handler in entities.js with confirmation dialog; delete button appears in tag-linked work item panel with opacity toggle hover effect
++- Secondary AI tag UX refinement: _wiSecApprove stores doc_type/feature/phase/bug/task tags in ai_tags.confirmed[] array; items remain visible in work item list with ✓ button showing as permanent chip indicator
++- Work item deletion UI: implemented _wiDeleteLinked handler with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
+ - Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
+-- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip UX
+-- Tag confirmation/deletion UX clarification: investigate current confirm/delete button behavior for AI tags; accept should trigger 'remove' rather than separate 'confirm' action
+-- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems reloads to reflect linked/unlinked status changes in planner view
++- AI suggestion chips UX: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip messaging for non-existent tags
++- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject/create operations to reflect linked/unlinked status changes in planner view
++- Work item persistence across sessions: ensuring tag-linked and newly-created work items remain accessible across tag switches and session changes
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
-Reorganized system memory files following a Claude CLI session, likely consolidating or refactoring internal file structure for better maintainability.
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index ef5d2f0..e11df9a 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -183,8 +183,8 @@ export function renderEntities(container) {
+       const msg = `${agg.commit_count || 0} commits · ${(agg.all_files || []).length} files`;
+       toast(`Extracted · ${msg}`, 'success');
+       if (statusEl) statusEl.textContent = msg;
+-      // Refresh ai_tags display
+-      const aiTagsEl = document.getElementById(`wi-ai-tags-${id}`);
++      // Refresh tags_ai display
++      const tagsAiEl = document.getElementById(`wi-ai-tags-${id}`);
+       if (aiTagsEl) {
+         const cs = r.code_summary || {};
+         const tc = r.test_coverage || {};
+@@ -255,7 +255,7 @@ export function renderEntities(container) {
+   window._wiUnlink = async (id, proj) => {
+     _wiRowLoading(id, true);
+     try {
+-      await api.workItems.patch(id, proj, { tag_id: '' });
++      await api.workItems.patch(id, proj, { tag_id_user: '' });
+       toast('Unlinked', 'success');
+       _loadWiPanel(proj);
+       const { selectedCatName } = _plannerState;
+@@ -329,7 +329,7 @@ export function renderEntities(container) {
+     _dragWiData = null;
+     const proj = _plannerState.project;
+     try {
+-      await api.workItems.patch(wi.id, proj, { tag_id: '' });
++      await api.workItems.patch(wi.id, proj, { tag_id_user: '' });
+       toast(`Unlinked "${wi.ai_name}"`, 'success');
+       _loadWiPanel(proj);
+       _loadTagLinkedWorkItems(proj).catch(() => {});
+@@ -567,10 +567,10 @@ function _renderWiPanel(items, project) {
+ 
+   window._wiPanelApproveTag = async (id, proj) => {
+     const wi = _wiPanelItems[id];
+-    if (!wi || !wi.ai_tag_id) return;
++    if (!wi || !wi.tag_id_ai) return;
+     _wiRowLoading(id, true);
+     try {
+-      await api.workItems.patch(id, proj, { tag_id: wi.ai_tag_id });
++      await api.workItems.patch(id, proj, { tag_id_user: wi.tag_id_ai });
+       delete _wiPanelItems[id];
+       const remaining = Object.values(_wiPanelItems);
+       _renderWiPanel(remaining, proj);
+@@ -585,13 +585,13 @@ function _renderWiPanel(items, project) {
+   window._wiPanelRemoveTag = async (id, proj) => {
+     _wiRowLoading(id, true);
+     try {
+-      await api.workItems.patch(id, proj, { ai_tag_id: '', ai_tags: {} });
++      await api.workItems.patch(id, proj, { tag_id_ai: '', tags_ai: {} });
+       if (_wiPanelItems[id]) {
+-        _wiPanelItems[id].ai_tag_id = null;
++        _wiPanelItems[id].tag_id_ai = null;
+         _wiPanelItems[id].ai_tag_name = null;
+         _wiPanelItems[id].ai_tag_category = null;
+         _wiPanelItems[id].ai_tag_color = null;
+-        _wiPanelItems[id].ai_tags = {};
++        _wiPanelItems[id].tags_ai = {};
+       }
+       _renderWiPanel(Object.values(_wiPanelItems), proj);
+     } catch(e) { toast('Remove failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
+@@ -602,28 +602,28 @@ function _renderWiPanel(items, project) {
+   window._wiSecApprove = async (id, proj, tagId, tagName, tagCat) => {
+     _wiRowLoading(id, true);
+     try {
+-      const current = (_wiPanelItems[id]?.ai_tags) || {};
++      const current = (_wiPanelItems[id]?.tags_ai) || {};
+       const confirmed = Array.isArray(current.confirmed) ? current.confirmed : [];
+       const updated = {
+         ...current,
+         secondary: null,
+         confirmed: [...confirmed, { tag_id: tagId, tag_name: tagName, category: tagCat }],
+       };
+-      await api.workItems.patch(id, proj, { ai_tags: updated });
+-      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
++      await api.workItems.patch(id, proj, { tags_ai: updated });
++      if (_wiPanelItems[id]) _wiPanelItems[id].tags_ai = updated;
+       _renderWiPanel(Object.values(_wiPanelItems), proj);
+       toast(`Saved ${tagCat ? tagCat + ':' : ''}${tagName || ''} as metadata`, 'success');
+     } catch(e) { toast('Failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
+   };
+ 
+-  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only, item stays in list
++  // Secondary AI suggestion: dismiss = clear tags_ai.secondary only, item stays in list
+   window._wiSecDismiss = async (id, proj) => {
+     _wiRowLoading(id, true);
+     try {
+-      const current = (_wiPanelItems[id]?.ai_tags) || {};
++      const current = (_wiPanelItems[id]?.tags_ai) || {};
+       const updated = { ...current, secondary: null };
+-      await api.workItems.patch(id, proj, { ai_tags: updated });
+-      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
++      await api.workItems.patch(id, proj, { tags_ai: updated });
++      if (_wiPanelItems[id]) _wiPanelItems[id].tags_ai = updated;
+       _renderWiPanel(Object.values(_wiPanelItems), proj);
+     } catch(e) { toast('Dismiss failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
+   };
+@@ -635,7 +635,7 @@ function _renderWiPanel(items, project) {
+       const cats = await api.tags.categories.list(proj);
+       const catObj = cats.find(c => c.name === catLabel) || cats.find(c => c.name === 'task') || cats[0];
+       const newTag = await api.tags.create({ name: tagName, project: proj, category_id: catObj?.id });
+-      await api.workItems.patch(id, proj, { tag_id: newTag.id });
++      await api.workItems.patch(id, proj, { tag_id_user: newTag.id });
+       delete _wiPanelItems[id];
+       const remaining = Object.values(_wiPanelItems);
+       _renderWiPanel(remaining, proj);
+@@ -663,9 +663,9 @@ function _renderWiPanel(items, project) {
+     const aiTagLabel = wi.ai_tag_name
+       ? (wi.ai_tag_category ? wi.ai_tag_category + ':' + wi.ai_tag_name : wi.ai_tag_name)
+       : '';
+-    // AI(NEW) — stored in ai_tags.suggested_new + suggested_category
+-    const aiNew = (wi.ai_tags && wi.ai_tags.suggested_new) ? wi.ai_tags.suggested_new : '';
+-    const aiNewCat = (wi.ai_tags && wi.ai_tags.suggested_category) ? wi.ai_tags.suggested_category : 'task';
++    // AI(NEW) — stored in tags_ai.suggested_new + suggested_category
++    const aiN
 
-## AI Synthesis
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
-**[2026-04-10]** `entities.js` — Implemented work item row loading states with _wiRowLoading() CSS pulsing animation; integrated into delete, approve, and dismiss handlers to provide visual feedback during async operations. **[2026-04-10]** `entities.js` — Refined secondary AI tag workflow: _wiSecApprove now stores doc_type/phase/component tags in ai_tags.confirmed[] metadata array, keeping items visible in panel instead of removing them (non-primary linking). **[2026-04-10]** `entities.js` — Fixed error handling to restore loading state on exception catch; improved toast messaging to distinguish between primary link ('Linked to tag'), metadata removal ('Clear metadata'), and secondary approval ('Saved as metadata'). **[2026-04-10]** `entities.js` — Enhanced tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject to reflect linked/unlinked status changes in planner view when category selected. **[2026-04-09]** `PROJECT.md` — Resolved /tag command skill naming conflict with Claude Code by introducing /stag replacement; confirmed identical functionality with immediate availability and log_user_prompt.sh integration for mid-session tagging. **[2026-04-08]** `entities.js` — Added AI tag suggestion UX with clickable ✓ button for missing ai_suggestion tags; improved tooltip messaging and category inference for non-existent tag creation.
+diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
+index d7b3e98..fbb714e 100644
+--- a/backend/routers/route_work_items.py
++++ b/backend/routers/route_work_items.py
+@@ -5,7 +5,7 @@ Endpoints:
+     GET    /work-items                    ?project=&category=&status=
+     GET    /work-items/unlinked           ?project=
+     POST   /work-items                    {ai_category, ai_name, ai_desc, ...}
+-    PATCH  /work-items/{id}               {ai_name?, ai_desc?, tag_id?, ...}
++    PATCH  /work-items/{id}               {ai_name?, ai_desc?, tag_id_user?, ...}
+     DELETE /work-items/{id}
+     GET    /work-items/{id}/interactions  ?limit=20
+     GET    /work-items/number/{seq_num}
+@@ -32,6 +32,8 @@ from data.dl_seq import next_seq
+ 
+ _SQL_LIST_WORK_ITEMS_BASE = (
+     """WITH ev_count AS (
++         -- Count all events linked to each work item via work_item_id FK
++         -- (populated by m022 backfill + ongoing backlink in memory_promotion.py)
+          SELECT work_item_id::text AS wi_id,
+                 COUNT(*) AS event_count,
+                 COUNT(*) FILTER (WHERE event_type = 'prompt_batch') AS prompt_count
+@@ -40,10 +42,14 @@ _SQL_LIST_WORK_ITEMS_BASE = (
+          GROUP BY 1
+        ),
+        cm_count AS (
+-         SELECT e.work_item_id::text AS wi_id, COUNT(*) AS commit_count
+-         FROM mem_mrr_commits c
+-         JOIN mem_ai_events e ON e.id = c.event_id
+-         WHERE c.project_id=%s AND e.work_item_id IS NOT NULL
++         -- Commits in the same session as linked events (session-based, consistent
++         -- with _SQL_UNLINKED_WORK_ITEMS; avoids relying on c.event_id which is sparse)
++         SELECT e.work_item_id::text AS wi_id, COUNT(DISTINCT c.commit_hash) AS commit_count
++         FROM mem_ai_events e
++         JOIN mem_mrr_commits c ON c.project_id = e.project_id
++                               AND c.session_id = e.session_id
++                               AND c.session_id IS NOT NULL
++         WHERE e.project_id=%s AND e.work_item_id IS NOT NULL
+          GROUP BY 1
+        ),
+        mcount AS (
+@@ -53,9 +59,9 @@ _SQL_LIST_WORK_ITEMS_BASE = (
+          GROUP BY 1
+        )
+        SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+-              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
+-              w.requirements, w.code_summary, w.summary,
+-              w.tags, w.ai_tags, w.tag_id, w.ai_tag_id, w.source_event_id,
++              w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
++              w.code_summary, w.summary,
++              w.tags, w.tags_ai, w.tag_id_user, w.tag_id_ai, w.source_event_id,
+               w.merged_into, w.start_date,
+               w.created_at, w.updated_at, w.seq_num,
+               tc.color, tc.icon,
+@@ -77,15 +83,15 @@ _SQL_UNLINKED_WORK_ITEMS = """
+     WITH wi AS (
+         -- Base filter; join source event once to get session_id + event_type
+         SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+-               w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
++               w.status_user, w.status_ai, w.summary, w.tags, w.tags_ai,
+                w.start_date, w.created_at, w.updated_at, w.seq_num,
+-               w.ai_tag_id, w.source_event_id, w.project_id,
++               w.tag_id_ai, w.source_event_id, w.project_id,
+                e.event_type  AS src_event_type,
+                e.session_id  AS src_session_id,
+                e.source_id   AS src_source_id
+         FROM mem_ai_work_items w
+         LEFT JOIN mem_ai_events e ON e.id = w.source_event_id
+-        WHERE w.project_id = %s AND w.tag_id IS NULL AND w.status_user != 'done'
++        WHERE w.project_id = %s AND w.tag_id_user IS NULL AND w.status_user != 'done'
+     ),
+     -- prompt_batch/session_summary events in the source session
+     -- (all items extracted from the same batch share this session → all get same count)
+@@ -132,9 +138,9 @@ _SQL_UNLINKED_WORK_ITEMS = """
+         GROUP BY 1
+     )
+     SELECT wi.id, wi.ai_category, wi.ai_name, wi.ai_desc,
+-           wi.status_user, wi.status_ai, wi.requirements, wi.summary, wi.tags, wi.ai_tags,
++           wi.status_user, wi.status_ai, wi.summary, wi.tags, wi.tags_ai,
+            wi.start_date, wi.created_at, wi.updated_at, wi.seq_num,
+-           wi.ai_tag_id,
++           wi.tag_id_ai,
+            pt.name   AS ai_tag_name,
+            ptc.name  AS ai_tag_category,
+            ptc.color AS ai_tag_color,
+@@ -143,7 +149,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
+            COALESCE(prompt_ct.cnt, 0) AS prompt_count,
+            COALESCE(commit_ct.cnt, 0) AS commit_count
+     FROM wi
+-    LEFT JOIN planner_tags        pt  ON pt.id  = wi.ai_tag_id
++    LEFT JOIN planner_tags        pt  ON pt.id  = wi.tag_id_ai
+     LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
+     LEFT JOIN event_ct  ON event_ct.wi_id  = wi.id::text
+     LEFT JOIN prompt_ct ON prompt_ct.wi_id = wi.id::text
+@@ -155,18 +161,18 @@ _SQL_UNLINKED_WORK_ITEMS = """
+ _SQL_INSERT_WORK_ITEM = (
+     """INSERT INTO mem_ai_work_items
+            (project_id, ai_category, ai_name, ai_desc,
+-            requirements, acceptance_criteria, action_items,
++            acceptance_criteria_ai, action_items_ai,
+             code_summary, summary, tags, status_user, status_ai, seq_num)
+-       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
++       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
+        RETURNING id, ai_name, ai_category, created_at, seq_num"""
+ )
+ 
+ _SQL_GET_WORK_ITEM = (
+     """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+-              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
+-              w.requirements, w.code_summary, w.summary,
+-              w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
++              w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
++              w.code_summary, w.summary,
++              w.ta
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+diff --git a/backend/memory/memory_tagging.py b/backend/memory/memory_tagging.py
+index ced3489..ccd29bb 100644
+--- a/backend/memory/memory_tagging.py
++++ b/backend/memory/memory_tagging.py
+@@ -216,7 +216,7 @@ class MemoryTagging:
+         """3-level matching: exact name → semantic (>0.85 auto) → Claude judgment (0.70–0.85).
+ 
+         Returns list of dicts: {tag_id, relation, confidence}.
+-        Best match is auto-persisted to mem_ai_work_items.ai_tag_id.
++        Best match is auto-persisted to mem_ai_work_items.tag_id_ai.
+         """
+         wi = self._load_work_item(work_item_id)
+         if not wi:
+@@ -226,7 +226,7 @@ class MemoryTagging:
+         tag = self._find_exact_tag(project, wi['name'])
+         if tag:
+             result = [{'tag_id': tag['id'], 'relation': 'exact', 'confidence': 1.0}]
+-            self._persist_ai_tag_id(work_item_id, tag['id'])
++            self._persist_tag_id_ai(work_item_id, tag['id'])
+             return result
+ 
+         # Level 2 — semantic similarity
+@@ -273,26 +273,26 @@ class MemoryTagging:
+             except Exception:
+                 pass
+ 
+-        # Persist best match to ai_tag_id (highest confidence)
++        # Persist best match to tag_id_ai (highest confidence)
+         if results:
+             best = max(results, key=lambda r: r.get('confidence', 0))
+             if best.get('tag_id'):
+-                self._persist_ai_tag_id(work_item_id, best['tag_id'])
++                self._persist_tag_id_ai(work_item_id, best['tag_id'])
+ 
+         return results
+ 
+-    def _persist_ai_tag_id(self, work_item_id: str, tag_id: str) -> None:
+-        """Update ai_tag_id on the work item (AI suggestion only — never overwrites tag_id)."""
++    def _persist_tag_id_ai(self, work_item_id: str, tag_id: str) -> None:
++        """Update tag_id_ai on the work item (AI suggestion only — never overwrites tag_id)."""
+         try:
+             with db.conn() as conn:
+                 with conn.cursor() as cur:
+                     cur.execute(
+-                        "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid, updated_at=NOW() "
+-                        "WHERE id=%s::uuid AND ai_tag_id IS DISTINCT FROM %s::uuid",
++                        "UPDATE mem_ai_work_items SET tag_id_ai=%s::uuid, updated_at=NOW() "
++                        "WHERE id=%s::uuid AND tag_id_ai IS DISTINCT FROM %s::uuid",
+                         (tag_id, work_item_id, tag_id),
+                     )
+         except Exception as e:
+-            log.debug(f"_persist_ai_tag_id error: {e}")
++            log.debug(f"_persist_tag_id_ai error: {e}")
+ 
+     # ── Private helpers ─────────────────────────────────────────────────────
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+diff --git a/backend/memory/memory_promotion.py b/backend/memory/memory_promotion.py
+index d2d5dee..79e20b6 100644
+--- a/backend/memory/memory_promotion.py
++++ b/backend/memory/memory_promotion.py
+@@ -45,15 +45,15 @@ _SQL_GET_TAG_ID = """
+ """
+ 
+ _SQL_GET_WORK_ITEM = """
+-    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria
++    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria_ai
+     FROM mem_ai_work_items wi
+     WHERE wi.project_id=%s
+     ORDER BY wi.created_at DESC LIMIT 10
+ """
+ 
+ _SQL_GET_WORK_ITEM_BY_NAME = """
+-    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria,
+-           wi.action_items, wi.status_ai, wi.tag_id
++    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria_ai,
++           wi.action_items_ai, wi.status_ai, wi.tag_id_user
+     FROM mem_ai_work_items wi
+     WHERE wi.project_id=%s AND wi.ai_name=%s
+     LIMIT 1
+@@ -254,7 +254,7 @@ class MemoryPromotion:
+             log.debug(f"promote_work_item: no work item found for '{tag_name}'")
+             return None
+ 
+-        wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id = row
++        wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id_user = row
+ 
+         system_prompt = _prompts.content("work_item_promotion") or (
+             "Given a work item, produce a 2-4 sentence summary capturing what it is, "
+@@ -672,12 +672,17 @@ class MemoryPromotion:
+                             if row:
+                                 wi_id = str(row[0])
+                                 created += 1
+-                                # Link event → first work item only (don't overwrite if already set)
+-                                cur.execute(
+-                                    "UPDATE mem_ai_events SET work_item_id=%s::uuid"
+-                                    " WHERE id=%s::uuid AND work_item_id IS NULL",
+-                                    (wi_id, str(ev_id)),
+-                                )
++                                # Backlink ALL events in the same session → one-to-many relationship
++                                # Events without work_item_id get assigned to this work item.
++                                cur.execute("""
++                                    UPDATE mem_ai_events
++                                    SET work_item_id = %s::uuid
++                                    WHERE session_id = (
++                                        SELECT session_id FROM mem_ai_events WHERE id = %s::uuid
++                                    )
++                                      AND project_id = %s
++                                      AND work_item_id IS NULL
++                                """, (wi_id, str(ev_id), project_id))
+                                 # Queue AI tag matching for the new work item
+                                 try:
+                                     import asyncio as _aio
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+diff --git a/backend/memory/memory_planner.py b/backend/memory/memory_planner.py
+index bf3ea5e..6746c72 100644
+--- a/backend/memory/memory_planner.py
++++ b/backend/memory/memory_planner.py
+@@ -36,10 +36,10 @@ _SQL_GET_TAG = """
+ 
+ _SQL_GET_WORK_ITEMS = """
+     SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.status_ai,
+-           wi.acceptance_criteria, wi.action_items, wi.summary,
+-           wi.requirements, wi.seq_num, wi.start_date
++           wi.acceptance_criteria_ai, wi.action_items_ai, wi.summary,
++           wi.seq_num, wi.start_date
+     FROM mem_ai_work_items wi
+-    WHERE wi.tag_id = %s::uuid AND wi.project_id = %s
++    WHERE wi.tag_id_user = %s::uuid AND wi.project_id = %s
+       AND wi.merged_into IS NULL
+     ORDER BY wi.created_at
+ """
+@@ -66,7 +66,7 @@ _SQL_UPDATE_TAG = """
+ 
+ _SQL_UPDATE_WORK_ITEM = """
+     UPDATE mem_ai_work_items
+-    SET action_items = %s, acceptance_criteria = %s, summary = %s, updated_at = NOW()
++    SET action_items_ai = %s, acceptance_criteria_ai = %s, summary = %s, updated_at = NOW()
+     WHERE id = %s::uuid AND project_id = %s
+ """
+ 
+@@ -314,9 +314,9 @@ class MemoryPlanner:
+             lines.append(f"ID: {wi['id']}")
+             lines.append(f"Status: {wi.get('status_user', 'active')}")
+             lines.append(f"Description: {wi.get('ai_desc') or '—'}")
+-            lines.append(f"Requirements: {wi.get('requirements') or '—'}")
+-            lines.append(f"Action items: {wi.get('action_items') or '—'}")
+-            lines.append(f"Acceptance criteria: {wi.get('acceptance_criteria') or '—'}")
++            lines.append(f"Requirements: —")
++            lines.append(f"Action items: {wi.get('action_items_ai') or '—'}")
++            lines.append(f"Acceptance criteria: {wi.get('acceptance_criteria_ai') or '—'}")
+             lines.append(f"Summary: {wi.get('summary') or '—'}")
+             lines.append(f"Prompts: {wi['n_prompts']} · ~{wi['words']} words · {wi['n_commits']} commits")
+             if wi["files"]:
+@@ -390,8 +390,8 @@ class MemoryPlanner:
+                 f"{wi['n_commits']} commits · Started: {start_str}_\n\n"
+                 f"{wi.get('summary') or wi.get('ai_desc') or ''}\n\n"
+                 + (
+-                    f"**Remaining:** {wi.get('action_items') or '—'}\n"
+-                    if wi.get("action_items")
++                    f"**Remaining:** {wi.get('action_items_ai') or '—'}\n"
++                    if wi.get("action_items_ai")
+                     else ""
+                 )
+             )
+

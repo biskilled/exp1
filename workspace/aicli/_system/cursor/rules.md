@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 12:27 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 13:29 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
 - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
 - [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
 - [2026-04-10] I always get an error saying ynknow skill tag.
 - [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
+- [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
