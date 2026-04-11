@@ -183,8 +183,8 @@ export function renderEntities(container) {
       const msg = `${agg.commit_count || 0} commits · ${(agg.all_files || []).length} files`;
       toast(`Extracted · ${msg}`, 'success');
       if (statusEl) statusEl.textContent = msg;
-      // Refresh ai_tags display
-      const aiTagsEl = document.getElementById(`wi-ai-tags-${id}`);
+      // Refresh tags_ai display
+      const tagsAiEl = document.getElementById(`wi-ai-tags-${id}`);
       if (aiTagsEl) {
         const cs = r.code_summary || {};
         const tc = r.test_coverage || {};
@@ -255,7 +255,7 @@ export function renderEntities(container) {
   window._wiUnlink = async (id, proj) => {
     _wiRowLoading(id, true);
     try {
-      await api.workItems.patch(id, proj, { tag_id: '' });
+      await api.workItems.patch(id, proj, { tag_id_user: '' });
       toast('Unlinked', 'success');
       _loadWiPanel(proj);
       const { selectedCatName } = _plannerState;
@@ -329,7 +329,7 @@ export function renderEntities(container) {
     _dragWiData = null;
     const proj = _plannerState.project;
     try {
-      await api.workItems.patch(wi.id, proj, { tag_id: '' });
+      await api.workItems.patch(wi.id, proj, { tag_id_user: '' });
       toast(`Unlinked "${wi.ai_name}"`, 'success');
       _loadWiPanel(proj);
       _loadTagLinkedWorkItems(proj).catch(() => {});
@@ -567,10 +567,10 @@ function _renderWiPanel(items, project) {
 
   window._wiPanelApproveTag = async (id, proj) => {
     const wi = _wiPanelItems[id];
-    if (!wi || !wi.ai_tag_id) return;
+    if (!wi || !wi.tag_id_ai) return;
     _wiRowLoading(id, true);
     try {
-      await api.workItems.patch(id, proj, { tag_id: wi.ai_tag_id });
+      await api.workItems.patch(id, proj, { tag_id_user: wi.tag_id_ai });
       delete _wiPanelItems[id];
       const remaining = Object.values(_wiPanelItems);
       _renderWiPanel(remaining, proj);
@@ -585,13 +585,13 @@ function _renderWiPanel(items, project) {
   window._wiPanelRemoveTag = async (id, proj) => {
     _wiRowLoading(id, true);
     try {
-      await api.workItems.patch(id, proj, { ai_tag_id: '', ai_tags: {} });
+      await api.workItems.patch(id, proj, { tag_id_ai: '', tags_ai: {} });
       if (_wiPanelItems[id]) {
-        _wiPanelItems[id].ai_tag_id = null;
+        _wiPanelItems[id].tag_id_ai = null;
         _wiPanelItems[id].ai_tag_name = null;
         _wiPanelItems[id].ai_tag_category = null;
         _wiPanelItems[id].ai_tag_color = null;
-        _wiPanelItems[id].ai_tags = {};
+        _wiPanelItems[id].tags_ai = {};
       }
       _renderWiPanel(Object.values(_wiPanelItems), proj);
     } catch(e) { toast('Remove failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
@@ -602,28 +602,28 @@ function _renderWiPanel(items, project) {
   window._wiSecApprove = async (id, proj, tagId, tagName, tagCat) => {
     _wiRowLoading(id, true);
     try {
-      const current = (_wiPanelItems[id]?.ai_tags) || {};
+      const current = (_wiPanelItems[id]?.tags_ai) || {};
       const confirmed = Array.isArray(current.confirmed) ? current.confirmed : [];
       const updated = {
         ...current,
         secondary: null,
         confirmed: [...confirmed, { tag_id: tagId, tag_name: tagName, category: tagCat }],
       };
-      await api.workItems.patch(id, proj, { ai_tags: updated });
-      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
+      await api.workItems.patch(id, proj, { tags_ai: updated });
+      if (_wiPanelItems[id]) _wiPanelItems[id].tags_ai = updated;
       _renderWiPanel(Object.values(_wiPanelItems), proj);
       toast(`Saved ${tagCat ? tagCat + ':' : ''}${tagName || ''} as metadata`, 'success');
     } catch(e) { toast('Failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
 
-  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only, item stays in list
+  // Secondary AI suggestion: dismiss = clear tags_ai.secondary only, item stays in list
   window._wiSecDismiss = async (id, proj) => {
     _wiRowLoading(id, true);
     try {
-      const current = (_wiPanelItems[id]?.ai_tags) || {};
+      const current = (_wiPanelItems[id]?.tags_ai) || {};
       const updated = { ...current, secondary: null };
-      await api.workItems.patch(id, proj, { ai_tags: updated });
-      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
+      await api.workItems.patch(id, proj, { tags_ai: updated });
+      if (_wiPanelItems[id]) _wiPanelItems[id].tags_ai = updated;
       _renderWiPanel(Object.values(_wiPanelItems), proj);
     } catch(e) { toast('Dismiss failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
@@ -635,7 +635,7 @@ function _renderWiPanel(items, project) {
       const cats = await api.tags.categories.list(proj);
       const catObj = cats.find(c => c.name === catLabel) || cats.find(c => c.name === 'task') || cats[0];
       const newTag = await api.tags.create({ name: tagName, project: proj, category_id: catObj?.id });
-      await api.workItems.patch(id, proj, { tag_id: newTag.id });
+      await api.workItems.patch(id, proj, { tag_id_user: newTag.id });
       delete _wiPanelItems[id];
       const remaining = Object.values(_wiPanelItems);
       _renderWiPanel(remaining, proj);
@@ -663,9 +663,9 @@ function _renderWiPanel(items, project) {
     const aiTagLabel = wi.ai_tag_name
       ? (wi.ai_tag_category ? wi.ai_tag_category + ':' + wi.ai_tag_name : wi.ai_tag_name)
       : '';
-    // AI(NEW) — stored in ai_tags.suggested_new + suggested_category
-    const aiNew = (wi.ai_tags && wi.ai_tags.suggested_new) ? wi.ai_tags.suggested_new : '';
-    const aiNewCat = (wi.ai_tags && wi.ai_tags.suggested_category) ? wi.ai_tags.suggested_category : 'task';
+    // AI(NEW) — stored in tags_ai.suggested_new + suggested_category
+    const aiNew = (wi.tags_ai && wi.tags_ai.suggested_new) ? wi.tags_ai.suggested_new : '';
+    const aiNewCat = (wi.tags_ai && wi.tags_ai.suggested_category) ? wi.tags_ai.suggested_category : 'task';
     const aiNewLabel = aiNew ? (aiNewCat + ':' + aiNew) : '';
     const userTagsList = Array.isArray(wi.user_tags) ? wi.user_tags : [];
 
@@ -706,7 +706,7 @@ function _renderWiPanel(items, project) {
 
     // Secondary AI suggestion (phase/doc_type) — shown when present, with approve/dismiss
     let secRow = '';
-    const sec = wi.ai_tags && wi.ai_tags.secondary;
+    const sec = wi.tags_ai && wi.tags_ai.secondary;
     if (sec) {
       const LBL_AI_S = LBL_BASE + ';color:#8e44ad;border:1px solid #8e44ad66;background:#8e44ad12';
       const secLabel = sec.tag_id
@@ -810,7 +810,7 @@ async function _loadTagLinkedWorkItems(project, catName) {
     // Fetch all linked work items (no ai_category filter — a 'task' work item can be linked
     // to a 'feature' tag; we rely on the DOM tr[data-tag-id] selector to scope to current view)
     const data = await api.workItems.list({ project });
-    const linked = (data.work_items || []).filter(w => w.tag_id && !w.merged_into);
+    const linked = (data.work_items || []).filter(w => w.tag_id_user && !w.merged_into);
     // Always clear existing sub-rows first — tags that lost all linked items would otherwise
     // keep stale sub-rows (the per-tag cleanup below only runs for tags that still have items)
     document.querySelectorAll('.wi-sub-row').forEach(r => r.remove());
@@ -819,7 +819,7 @@ async function _loadTagLinkedWorkItems(project, catName) {
     const STATUS_UC = { active: '#27ae60', in_progress: '#e67e22', done: '#4a90e2', paused: '#888' };
     // Group by tag_id
     const byTag = {};
-    linked.forEach(w => { (byTag[w.tag_id] = byTag[w.tag_id] || []).push(w); });
+    linked.forEach(w => { (byTag[w.tag_id_user] = byTag[w.tag_id_user] || []).push(w); });
     Object.entries(byTag).forEach(([tagId, wis]) => {
       const tagRow = document.querySelector(`tr[data-tag-id="${CSS.escape(tagId)}"]`);
       if (!tagRow) return;
@@ -964,7 +964,7 @@ async function _renderWorkItemsPane(pane, project) {
       event.currentTarget.style.background = '';
       if (!_dragWiData) return;
       try {
-        await api.workItems.patch(_dragWiData.id, proj, { tag_id: tagId });
+        await api.workItems.patch(_dragWiData.id, proj, { tag_id_user: tagId });
         _dragWiData = null;
         // Refresh panel and unlinked count
         _renderWorkItemsPane(pane, proj);
@@ -1125,9 +1125,9 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
     const desc = (wi.ai_desc||'').replace(/\n/g,' ');
     const descClip = desc.length > 90 ? desc.slice(0,90)+'…' : desc;
     const date = fmtDate(wi.updated_at || wi.created_at);
-    const linked = wi.tag_id
+    const linked = wi.tag_id_user
       ? `<span style="font-size:0.5rem;color:var(--accent);margin-left:4px">✓</span>`
-      : (wi.ai_tag_id ? `<span style="font-size:0.5rem;color:var(--muted);margin-left:4px">✦</span>` : '');
+      : (wi.tag_id_ai ? `<span style="font-size:0.5rem;color:var(--muted);margin-left:4px">✦</span>` : '');
 
     return `
       <tr draggable="true" data-wi-id="${wi.id}" data-wi-name="${_esc(wi.ai_name)}"
@@ -1198,7 +1198,7 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
     // Siblings = other non-done work items in the same context (same tag, or both unlinked)
     const siblings = (sibData.work_items || []).filter(w =>
       w.id !== id && w.status_user !== 'done' &&
-      (wi.tag_id ? w.tag_id === wi.tag_id : !w.tag_id)
+      (wi.tag_id_user ? w.tag_id_user === wi.tag_id_user : !w.tag_id_user)
     );
 
     const drawerSeqBadge = wi.seq_num
@@ -1207,10 +1207,10 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                        border-radius:6px;white-space:nowrap;cursor:default"
               title="Reference #${wi.seq_num}">#${wi.seq_num}</span>`
       : '';
-    const linkedTagBadge = wi.tag_id
+    const linkedTagBadge = wi.tag_id_user
       ? `<span style="font-size:0.58rem;color:var(--accent);background:var(--accent)18;
                       padding:0.1rem 0.35rem;border-radius:8px">linked ✓</span>`
-      : (wi.ai_tag_id
+      : (wi.tag_id_ai
           ? `<span style="font-size:0.58rem;color:var(--muted);border:1px solid var(--border);
                           padding:0.1rem 0.35rem;border-radius:8px;opacity:.7">✦ suggested</span>`
           : '');
@@ -1273,13 +1273,13 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <span id="wi-extract-status-${id}" style="font-size:0.57rem;color:var(--muted)"></span>
         </div>
 
-        <!-- ai_tags display (populated after extract) -->
-        ${wi.ai_tags && wi.ai_tags.code_summary ? `
+        <!-- tags_ai display (populated after extract) -->
+        ${wi.tags_ai && wi.tags_ai.code_summary ? `
         <div id="wi-ai-tags-${id}" style="font-size:0.6rem;color:var(--muted)">
           <div style="font-size:0.52rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:0.2rem">Code Intelligence</div>
-          ${wi.ai_tags.code_summary.key_classes?.length ? `<div>Classes: ${_esc(wi.ai_tags.code_summary.key_classes.join(', '))}</div>` : ''}
-          ${wi.ai_tags.code_summary.key_methods?.length ? `<div>Methods: ${_esc(wi.ai_tags.code_summary.key_methods.join(', '))}</div>` : ''}
-          ${wi.ai_tags.test_coverage?.missing?.length ? `<div style="color:#e67e22">Missing tests: ${_esc(wi.ai_tags.test_coverage.missing.join(', '))}</div>` : ''}
+          ${wi.tags_ai.code_summary.key_classes?.length ? `<div>Classes: ${_esc(wi.tags_ai.code_summary.key_classes.join(', '))}</div>` : ''}
+          ${wi.tags_ai.code_summary.key_methods?.length ? `<div>Methods: ${_esc(wi.tags_ai.code_summary.key_methods.join(', '))}</div>` : ''}
+          ${wi.tags_ai.test_coverage?.missing?.length ? `<div style="color:#e67e22">Missing tests: ${_esc(wi.tags_ai.test_coverage.missing.join(', '))}</div>` : ''}
         </div>` : `<div id="wi-ai-tags-${id}"></div>`}
 
         <!-- Start date -->
@@ -1318,8 +1318,8 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                    color:var(--text);font-family:var(--font);font-size:0.65rem;
                    padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                    resize:vertical;box-sizing:border-box;line-height:1.5"
-            onblur="api.workItems.patch('${id}','${project}',{requirements:this.value}).catch(e=>toast(e.message,'error'))"
-          >${_esc(wi.requirements || '')}</textarea>
+            onblur="api.workItems.patch('${id}','${project}',{}.catch(e=>toast(e.message,'error'))"
+          >${_esc('')}</textarea>
         </div>
 
         <!-- Acceptance Criteria -->
@@ -1332,8 +1332,8 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                    color:var(--text);font-family:var(--font);font-size:0.65rem;
                    padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                    resize:vertical;box-sizing:border-box;line-height:1.5"
-            onblur="api.workItems.patch('${id}','${project}',{acceptance_criteria:this.value}).catch(e=>toast(e.message,'error'))"
-          >${_esc(wi.acceptance_criteria || '')}</textarea>
+            onblur="api.workItems.patch('${id}','${project}',{acceptance_criteria_ai:this.value}).catch(e=>toast(e.message,'error'))"
+          >${_esc(wi.acceptance_criteria_ai || '')}</textarea>
         </div>
 
         <!-- Action Items -->
@@ -1346,8 +1346,8 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                    color:var(--text);font-family:var(--font);font-size:0.65rem;
                    padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                    resize:vertical;box-sizing:border-box;line-height:1.5"
-            onblur="api.workItems.patch('${id}','${project}',{action_items:this.value}).catch(e=>toast(e.message,'error'))"
-          >${_esc(wi.action_items || '')}</textarea>
+            onblur="api.workItems.patch('${id}','${project}',{action_items_ai:this.value}).catch(e=>toast(e.message,'error'))"
+          >${_esc(wi.action_items_ai || '')}</textarea>
         </div>
 
         ${wi.summary ? `
@@ -2031,7 +2031,7 @@ async function _loadDrawerPipeline(catName, valName, project) {
            <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.25rem">Acceptance Criteria</div>
            <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;white-space:pre-wrap;
                        max-height:100px;overflow-y:auto;background:var(--surface2);
-                       padding:0.35rem 0.5rem;border-radius:var(--radius)">${_esc(wi.acceptance_criteria)}</div>
+                       padding:0.35rem 0.5rem;border-radius:var(--radius)">${_esc(wi.acceptance_criteria_ai)}</div>
          </div>` : '';
     const planSection = wi.implementation_plan
       ? `<div style="margin-top:0.5rem">
@@ -2534,7 +2534,7 @@ function _attachTagTableDnd(pane, catName) {
         const _rem = document.querySelectorAll('#wi-panel-list [data-wi-id]').length;
         if (_cnt) _cnt.textContent = _rem ? `(${_rem} unlinked)` : '(all linked ✓)';
       }
-      api.workItems.patch(wi.id, proj, { tag_id: tagId })
+      api.workItems.patch(wi.id, proj, { tag_id_user: tagId })
         .then(() => {
           toast(`Linked "${wi.ai_name}" → "${tagName}"`, 'success');
           _loadWiPanel(proj);

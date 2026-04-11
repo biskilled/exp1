@@ -45,15 +45,15 @@ _SQL_GET_TAG_ID = """
 """
 
 _SQL_GET_WORK_ITEM = """
-    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria
+    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria_ai
     FROM mem_ai_work_items wi
     WHERE wi.project_id=%s
     ORDER BY wi.created_at DESC LIMIT 10
 """
 
 _SQL_GET_WORK_ITEM_BY_NAME = """
-    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria,
-           wi.action_items, wi.status_ai, wi.tag_id
+    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria_ai,
+           wi.action_items_ai, wi.status_ai, wi.tag_id_user
     FROM mem_ai_work_items wi
     WHERE wi.project_id=%s AND wi.ai_name=%s
     LIMIT 1
@@ -254,7 +254,7 @@ class MemoryPromotion:
             log.debug(f"promote_work_item: no work item found for '{tag_name}'")
             return None
 
-        wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id = row
+        wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id_user = row
 
         system_prompt = _prompts.content("work_item_promotion") or (
             "Given a work item, produce a 2-4 sentence summary capturing what it is, "
@@ -672,12 +672,17 @@ class MemoryPromotion:
                             if row:
                                 wi_id = str(row[0])
                                 created += 1
-                                # Link event → first work item only (don't overwrite if already set)
-                                cur.execute(
-                                    "UPDATE mem_ai_events SET work_item_id=%s::uuid"
-                                    " WHERE id=%s::uuid AND work_item_id IS NULL",
-                                    (wi_id, str(ev_id)),
-                                )
+                                # Backlink ALL events in the same session → one-to-many relationship
+                                # Events without work_item_id get assigned to this work item.
+                                cur.execute("""
+                                    UPDATE mem_ai_events
+                                    SET work_item_id = %s::uuid
+                                    WHERE session_id = (
+                                        SELECT session_id FROM mem_ai_events WHERE id = %s::uuid
+                                    )
+                                      AND project_id = %s
+                                      AND work_item_id IS NULL
+                                """, (wi_id, str(ev_id), project_id))
                                 # Queue AI tag matching for the new work item
                                 try:
                                     import asyncio as _aio

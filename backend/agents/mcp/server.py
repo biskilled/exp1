@@ -491,7 +491,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "name": wi["name"],
                 "lifecycle": wi.get("lifecycle_status", "idea"),
                 "status": wi.get("status", "active"),
-                "criteria_preview": (wi.get("acceptance_criteria") or "")[:120],
+                "criteria_preview": (wi.get("acceptance_criteria_ai") or "")[:120],
             })
 
         return {
@@ -665,7 +665,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                     "status": wi.get("status", "active"),
                     "agent_status": wi.get("agent_status"),
                     "due_date": wi.get("due_date"),
-                    "criteria_preview": (wi.get("acceptance_criteria") or "")[:120],
+                    "criteria_preview": (wi.get("acceptance_criteria_ai") or "")[:120],
                 }
                 for wi in items
             ],
@@ -704,7 +704,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "status": wi.get("status", "active"),
                 "agent_status": wi.get("agent_status"),
                 "description": (wi.get("description") or "")[:500],
-                "acceptance_criteria": (wi.get("acceptance_criteria") or "")[:800],
+                "acceptance_criteria": (wi.get("acceptance_criteria_ai") or "")[:800],
                 "implementation_plan": (wi.get("implementation_plan") or "")[:800],
                 "due_date": wi.get("due_date"),
                 "created_at": wi.get("created_at"),
@@ -864,7 +864,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                     "key_columns": [
                         "id UUID PK", "client_id INT FK", "project_id INT FK projects",
                         "name TEXT", "category_name TEXT", "description TEXT",
-                        "acceptance_criteria TEXT", "implementation_plan TEXT",
+                        "acceptance_criteria_ai TEXT", "action_items_ai TEXT",
                         "status TEXT  -- open|active|done|archived",
                         "agent_status TEXT", "agent_run_id TEXT", "lifecycle_status TEXT",
                         "due_date DATE", "parent_id UUID FK self", "seq_num INT",

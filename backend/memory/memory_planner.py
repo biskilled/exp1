@@ -36,10 +36,10 @@ _SQL_GET_TAG = """
 
 _SQL_GET_WORK_ITEMS = """
     SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.status_ai,
-           wi.acceptance_criteria, wi.action_items, wi.summary,
-           wi.requirements, wi.seq_num, wi.start_date
+           wi.acceptance_criteria_ai, wi.action_items_ai, wi.summary,
+           wi.seq_num, wi.start_date
     FROM mem_ai_work_items wi
-    WHERE wi.tag_id = %s::uuid AND wi.project_id = %s
+    WHERE wi.tag_id_user = %s::uuid AND wi.project_id = %s
       AND wi.merged_into IS NULL
     ORDER BY wi.created_at
 """
@@ -66,7 +66,7 @@ _SQL_UPDATE_TAG = """
 
 _SQL_UPDATE_WORK_ITEM = """
     UPDATE mem_ai_work_items
-    SET action_items = %s, acceptance_criteria = %s, summary = %s, updated_at = NOW()
+    SET action_items_ai = %s, acceptance_criteria_ai = %s, summary = %s, updated_at = NOW()
     WHERE id = %s::uuid AND project_id = %s
 """
 
@@ -314,9 +314,9 @@ class MemoryPlanner:
             lines.append(f"ID: {wi['id']}")
             lines.append(f"Status: {wi.get('status_user', 'active')}")
             lines.append(f"Description: {wi.get('ai_desc') or '—'}")
-            lines.append(f"Requirements: {wi.get('requirements') or '—'}")
-            lines.append(f"Action items: {wi.get('action_items') or '—'}")
-            lines.append(f"Acceptance criteria: {wi.get('acceptance_criteria') or '—'}")
+            lines.append(f"Requirements: —")
+            lines.append(f"Action items: {wi.get('action_items_ai') or '—'}")
+            lines.append(f"Acceptance criteria: {wi.get('acceptance_criteria_ai') or '—'}")
             lines.append(f"Summary: {wi.get('summary') or '—'}")
             lines.append(f"Prompts: {wi['n_prompts']} · ~{wi['words']} words · {wi['n_commits']} commits")
             if wi["files"]:
@@ -390,8 +390,8 @@ class MemoryPlanner:
                 f"{wi['n_commits']} commits · Started: {start_str}_\n\n"
                 f"{wi.get('summary') or wi.get('ai_desc') or ''}\n\n"
                 + (
-                    f"**Remaining:** {wi.get('action_items') or '—'}\n"
-                    if wi.get("action_items")
+                    f"**Remaining:** {wi.get('action_items_ai') or '—'}\n"
+                    if wi.get("action_items_ai")
                     else ""
                 )
             )

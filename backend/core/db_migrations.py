@@ -205,6 +205,53 @@ def m020_perf_indexes(conn) -> None:
     log.info("m020_perf_indexes: composite indexes applied")
 
 
+
+def m021_rename_work_item_columns(conn) -> None:
+    """Rename mem_ai_work_items columns for consistency.
+
+    - ai_tags     → tags_ai        (JSONB AI suggestions)
+    - ai_tag_id   → tag_id_ai      (AI-suggested planner_tag FK)
+    - tag_id      → tag_id_user    (User-confirmed planner_tag FK)
+    - acceptance_criteria → acceptance_criteria_ai  (AI-generated)
+    - action_items → action_items_ai               (AI-generated)
+    - requirements → DROPPED       (belonged on planner_tags, not work items)
+    """
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME COLUMN ai_tags TO tags_ai")
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME COLUMN ai_tag_id TO tag_id_ai")
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME COLUMN tag_id TO tag_id_user")
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME COLUMN acceptance_criteria TO acceptance_criteria_ai")
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME COLUMN action_items TO action_items_ai")
+        cur.execute("ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS requirements")
+    conn.commit()
+    log.info("m021_rename_work_item_columns: 5 renames + 1 drop applied")
+
+
+def m022_backfill_event_work_item_ids(conn) -> None:
+    """Backfill work_item_id on mem_ai_events for all work items with source_event_id.
+
+    Implements proper one-to-many: one work_item → many events.
+    For each work item that has a source_event_id (session-sourced), find all other
+    events in the same session and set work_item_id = work_item.id on them
+    (only if they don't already have a work_item_id assigned).
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            UPDATE mem_ai_events e
+            SET work_item_id = wi.id
+            FROM mem_ai_work_items wi
+            JOIN mem_ai_events src ON src.id = wi.source_event_id
+            WHERE e.session_id = src.session_id
+              AND e.project_id = wi.project_id
+              AND e.work_item_id IS NULL
+              AND wi.source_event_id IS NOT NULL
+              AND src.session_id IS NOT NULL
+        """)
+        updated = cur.rowcount
+    conn.commit()
+    log.info(f"m022_backfill_event_work_item_ids: {updated} events backlinked")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -213,4 +260,6 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m018_work_items_links", m018_work_items_links),
     ("m019_wi_event_fk_columns", m019_wi_event_fk_columns),
     ("m020_perf_indexes", m020_perf_indexes),
+    ("m021_rename_work_item_columns", m021_rename_work_item_columns),
+    ("m022_backfill_event_work_item_ids", m022_backfill_event_work_item_ids),
 ]

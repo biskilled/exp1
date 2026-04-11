@@ -2,7 +2,7 @@
 memory_extraction.py — Work item code intelligence extraction.
 
 Aggregates commits linked to a work item and runs LLM extraction to populate
-ai_tags JSONB with structured code summary, design patterns, test coverage,
+tags_ai JSONB with structured code summary, design patterns, test coverage,
 and architectural decisions.
 
 Public API::
@@ -45,9 +45,9 @@ _SQL_AGGREGATE_CODE = """
     GROUP BY file_path, file_ext, file_language
 """
 
-_SQL_MERGE_AI_TAGS = """
+_SQL_MERGE_TAGS_AI = """
     UPDATE mem_ai_work_items
-    SET ai_tags = ai_tags || %s::jsonb, updated_at = NOW()
+    SET tags_ai = tags_ai || %s::jsonb, updated_at = NOW()
     WHERE id=%s::uuid AND project_id=%s
 """
 
@@ -143,14 +143,14 @@ class MemoryExtraction:
         }
 
     async def extract_work_item_code_summary(self, project: str, work_item_id: str) -> dict:
-        """Aggregate commits + LLM extraction → populate ai_tags on the work item.
+        """Aggregate commits + LLM extraction → populate tags_ai on the work item.
 
         Steps:
           1. Fetch work item name
           2. Fetch all commits tagged with work-item=<id>
           3. Aggregate file/line stats
           4. Run LLM (Haiku) to extract structured code intelligence
-          5. Merge result into mem_ai_work_items.ai_tags (JSONB ||)
+          5. Merge result into mem_ai_work_items.tags_ai (JSONB ||)
           6. Return the extracted result
         """
         if not db.is_available():
@@ -227,12 +227,12 @@ class MemoryExtraction:
 
         result["aggregated"] = agg
 
-        # 5. Merge into ai_tags
+        # 5. Merge into tags_ai
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_MERGE_AI_TAGS, (json.dumps(result), work_item_id, project_id))
+                    cur.execute(_SQL_MERGE_TAGS_AI, (json.dumps(result), work_item_id, project_id))
         except Exception as e:
-            log.warning(f"extract_work_item_code_summary: ai_tags update failed: {e}")
+            log.warning(f"extract_work_item_code_summary: tags_ai update failed: {e}")
 
         return result

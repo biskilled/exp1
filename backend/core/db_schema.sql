@@ -465,9 +465,9 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_events_tags    ON mem_ai_events USING gin(
 -- Dual-status design:
 --   status_user = user-managed lifecycle (active|in_progress|paused|done)
 --   status_ai   = AI-suggested status (auto-updated by promote_work_item())
--- tag_id    = user-confirmed link to planner_tags (drag-drop in Planner UI)
--- ai_tag_id = AI-suggested best-match tag (confidence > 0.70)
--- ai_tags   = AI-generated metadata JSONB (populated by extract_work_item_code_summary)
+-- tag_id_user = user-confirmed link to planner_tags (drag-drop in Planner UI)
+-- tag_id_ai   = AI-suggested best-match tag (confidence > 0.70)
+-- tags_ai     = AI-generated metadata JSONB (populated by extract_work_item_code_summary)
 CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id           INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -475,15 +475,14 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     ai_category         TEXT        NOT NULL,                           -- 'feature'|'bug'|'task'
     ai_name             TEXT        NOT NULL,
     ai_desc             TEXT        NOT NULL DEFAULT '',
-    requirements        TEXT        NOT NULL DEFAULT '',
-    acceptance_criteria TEXT        NOT NULL DEFAULT '',
-    action_items        TEXT        NOT NULL DEFAULT '',
+    acceptance_criteria_ai TEXT     NOT NULL DEFAULT '',
+    action_items_ai     TEXT        NOT NULL DEFAULT '',
     code_summary        TEXT        NOT NULL DEFAULT '',
     summary             TEXT        NOT NULL DEFAULT '',
     tags                JSONB       NOT NULL DEFAULT '{}',
-    ai_tags             JSONB       NOT NULL DEFAULT '{}',
-    ai_tag_id           UUID        REFERENCES planner_tags(id),
-    tag_id              UUID        REFERENCES planner_tags(id),
+    tags_ai             JSONB       NOT NULL DEFAULT '{}',
+    tag_id_ai           UUID        REFERENCES planner_tags(id),
+    tag_id_user         UUID        REFERENCES planner_tags(id),
     merged_into         UUID        REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
     status_user         VARCHAR(20) NOT NULL DEFAULT 'active',
     status_ai           VARCHAR(20) NOT NULL DEFAULT 'active',

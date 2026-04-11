@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:36 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:45 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -61,14 +61,14 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
 - AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
-- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
-- Session tagging: /tag command replaced with /stag due to skill loader conflict; renamed skill maintains same tag:category functionality; immediate propagation via log_user_prompt.sh
+- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category, secondary tags remain as chips
 - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
+- Session tagging: /stag command (replaced /tag due to Claude Code skill conflict) with immediate tag propagation via log_user_prompt.sh reading .agent-context
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
 - [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
 - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
 - [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
 - [2026-04-10] I always get an error saying ynknow skill tag.
+- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an

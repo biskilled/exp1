@@ -52,7 +52,7 @@ _SQL_ACTIVE_WORK_ITEMS = """
     SELECT wi.ai_name, wi.ai_desc, wi.ai_category,
            wi.seq_num, t.name AS tag_name
     FROM mem_ai_work_items wi
-    LEFT JOIN planner_tags t ON t.id = wi.tag_id
+    LEFT JOIN planner_tags t ON t.id = wi.tag_id_user
     WHERE wi.project_id=%s AND wi.status_user != 'done'
     ORDER BY wi.created_at DESC
 """

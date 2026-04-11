@@ -216,7 +216,7 @@ class MemoryTagging:
         """3-level matching: exact name → semantic (>0.85 auto) → Claude judgment (0.70–0.85).
 
         Returns list of dicts: {tag_id, relation, confidence}.
-        Best match is auto-persisted to mem_ai_work_items.ai_tag_id.
+        Best match is auto-persisted to mem_ai_work_items.tag_id_ai.
         """
         wi = self._load_work_item(work_item_id)
         if not wi:
@@ -226,7 +226,7 @@ class MemoryTagging:
         tag = self._find_exact_tag(project, wi['name'])
         if tag:
             result = [{'tag_id': tag['id'], 'relation': 'exact', 'confidence': 1.0}]
-            self._persist_ai_tag_id(work_item_id, tag['id'])
+            self._persist_tag_id_ai(work_item_id, tag['id'])
             return result
 
         # Level 2 — semantic similarity
@@ -273,26 +273,26 @@ class MemoryTagging:
             except Exception:
                 pass
 
-        # Persist best match to ai_tag_id (highest confidence)
+        # Persist best match to tag_id_ai (highest confidence)
         if results:
             best = max(results, key=lambda r: r.get('confidence', 0))
             if best.get('tag_id'):
-                self._persist_ai_tag_id(work_item_id, best['tag_id'])
+                self._persist_tag_id_ai(work_item_id, best['tag_id'])
 
         return results
 
-    def _persist_ai_tag_id(self, work_item_id: str, tag_id: str) -> None:
-        """Update ai_tag_id on the work item (AI suggestion only — never overwrites tag_id)."""
+    def _persist_tag_id_ai(self, work_item_id: str, tag_id: str) -> None:
+        """Update tag_id_ai on the work item (AI suggestion only — never overwrites tag_id)."""
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid, updated_at=NOW() "
-                        "WHERE id=%s::uuid AND ai_tag_id IS DISTINCT FROM %s::uuid",
+                        "UPDATE mem_ai_work_items SET tag_id_ai=%s::uuid, updated_at=NOW() "
+                        "WHERE id=%s::uuid AND tag_id_ai IS DISTINCT FROM %s::uuid",
                         (tag_id, work_item_id, tag_id),
                     )
         except Exception as e:
-            log.debug(f"_persist_ai_tag_id error: {e}")
+            log.debug(f"_persist_tag_id_ai error: {e}")
 
     # ── Private helpers ─────────────────────────────────────────────────────
 
