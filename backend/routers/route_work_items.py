@@ -163,7 +163,7 @@ _SQL_INSERT_WORK_ITEM = (
            (project_id, ai_category, ai_name, ai_desc,
             acceptance_criteria_ai, action_items_ai,
             code_summary, summary, tags, status_user, status_ai, seq_num)
-       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
        ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
        RETURNING id, ai_name, ai_category, created_at, seq_num"""
 )
@@ -550,9 +550,9 @@ async def list_work_items(
                     row["tag_id_user"] = str(row["tag_id_user"])
                 if row.get("tag_id_ai"):
                     row["tag_id_ai"] = str(row["tag_id_ai"])
-                if row.get("tags") is None:
-                    row["tags"] = {}
-                if row.get("tags_ai") is None:
+                if not isinstance(row.get("tags"), dict):
+                    row["tags"] = {}   # handles NULL and legacy TEXT[] values
+                if not isinstance(row.get("tags_ai"), dict):
                     row["tags_ai"] = {}
                 rows.append(row)
     return {"work_items": rows, "project": p, "total": len(rows)}
@@ -615,7 +615,7 @@ async def patch_work_item(
     if body.summary             is not None: fields.append("summary=%s");             params.append(body.summary)
     if body.tags                is not None:
         import json as _json
-        fields.append("tags=%s"); params.append(_json.dumps(body.tags))
+        fields.append("tags=%s::jsonb"); params.append(_json.dumps(body.tags))
     if body.tags_ai             is not None:
         import json as _json
         fields.append("tags_ai = tags_ai || %s::jsonb"); params.append(_json.dumps(body.tags_ai))

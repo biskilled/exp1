@@ -141,14 +141,28 @@ _SQL_UPDATE_EVENT_AI_TAGS = """
 _SQL_INSERT_EXTRACTED_WORK_ITEM = """
     INSERT INTO mem_ai_work_items
         (project_id, ai_category, ai_name, ai_desc,
+         acceptance_criteria_ai, action_items_ai, tags,
          source_event_id, seq_num)
-    VALUES (%s, %s, %s, %s, %s::uuid,
+    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::uuid,
             (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
     ON CONFLICT (project_id, ai_category, ai_name) DO UPDATE SET
-        ai_desc    = EXCLUDED.ai_desc,
-        updated_at = NOW()
+        ai_desc              = EXCLUDED.ai_desc,
+        acceptance_criteria_ai = CASE WHEN EXCLUDED.acceptance_criteria_ai != ''
+                                      THEN EXCLUDED.acceptance_criteria_ai
+                                      ELSE mem_ai_work_items.acceptance_criteria_ai END,
+        action_items_ai      = CASE WHEN EXCLUDED.action_items_ai != ''
+                                    THEN EXCLUDED.action_items_ai
+                                    ELSE mem_ai_work_items.action_items_ai END,
+        tags                 = CASE WHEN EXCLUDED.tags != '{}'::jsonb
+                                    THEN mem_ai_work_items.tags || EXCLUDED.tags
+                                    ELSE mem_ai_work_items.tags END,
+        updated_at           = NOW()
     RETURNING id
 """
+
+# Keys considered "user intent" tags — copied from event tags to work item tags
+_USER_TAG_KEYS = frozenset({"source", "phase", "feature", "bug", "component",
+                             "doc_type", "design", "decision", "meeting", "customer"})
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -654,18 +668,25 @@ class MemoryPromotion:
             if not items:
                 continue
 
+            # Build filtered tags from source event (user-intent keys only)
+            wi_tags = json.dumps({k: v for k, v in event_tags.items()
+                                  if k in _USER_TAG_KEYS and v})
+
             for item in items[:5]:
                 category = item.get("category", "task")
                 name = (item.get("name") or "").strip().lower()[:200]
                 description = (item.get("description") or "").strip()[:1000]
                 if not name or not description:
                     continue
+                ac = (item.get("acceptance_criteria") or "").strip()[:2000]
+                ai = (item.get("action_items") or "").strip()[:2000]
                 try:
                     with db.conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute(
                                 _SQL_INSERT_EXTRACTED_WORK_ITEM,
                                 (project_id, category, name, description,
+                                 ac, ai, wi_tags,
                                  str(ev_id), project_id),
                             )
                             row = cur.fetchone()

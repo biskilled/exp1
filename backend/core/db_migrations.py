@@ -252,6 +252,62 @@ def m022_backfill_event_work_item_ids(conn) -> None:
     log.info(f"m022_backfill_event_work_item_ids: {updated} events backlinked")
 
 
+def m023_work_items_tags_to_jsonb(conn) -> None:
+    """Convert mem_ai_work_items.tags from TEXT[] to JSONB.
+
+    Old design stored tags as a text array {source:claude_cli, phase:dev} — never
+    populated and hard to query. New design: JSONB object {source, phase, feature, ...}
+    matching the tags on mem_mrr_* tables.
+
+    All existing rows have tags={} (empty array) so the USING clause just sets '{}'.
+    """
+    with conn.cursor() as cur:
+        # Step 1: drop the old TEXT[] default so PostgreSQL allows the type change
+        cur.execute("ALTER TABLE mem_ai_work_items ALTER COLUMN tags DROP DEFAULT")
+        # Step 2: alter type with explicit USING — all existing rows are empty arrays
+        cur.execute("""
+            ALTER TABLE mem_ai_work_items
+            ALTER COLUMN tags TYPE JSONB
+            USING CASE WHEN array_length(tags, 1) IS NULL THEN '{}'::jsonb
+                       ELSE array_to_json(tags)::jsonb END
+        """)
+        # Step 3: restore default and NOT NULL constraint for JSONB
+        cur.execute("ALTER TABLE mem_ai_work_items ALTER COLUMN tags SET DEFAULT '{}'::jsonb")
+        cur.execute("ALTER TABLE mem_ai_work_items ALTER COLUMN tags SET NOT NULL")
+    conn.commit()
+    log.info("m023_work_items_tags_to_jsonb: tags column converted TEXT[] → JSONB")
+
+
+def m024_backfill_work_item_tags(conn) -> None:
+    """Backfill work item tags from source event tags.
+
+    For each work item whose tags={} and has a source_event_id,
+    copies the user-intent keys (source, phase, feature, bug, component, doc_type)
+    from the source event's tags JSONB into the work item.
+
+    This is a one-time data migration for items created before m023/m024.
+    Going forward, tags are set at extraction time in memory_promotion.py.
+    """
+    _USER_KEYS = "source", "phase", "feature", "bug", "component", "doc_type"
+    key_filter = " OR ".join(f"e.tags ? '{k}'" for k in _USER_KEYS)
+    with conn.cursor() as cur:
+        cur.execute(f"""
+            UPDATE mem_ai_work_items wi
+            SET tags = (
+                SELECT jsonb_object_agg(kv.key, kv.value)
+                FROM jsonb_each_text(e.tags) AS kv(key, value)
+                WHERE kv.key = ANY(ARRAY['source','phase','feature','bug','component','doc_type'])
+            )
+            FROM mem_ai_events e
+            WHERE e.id = wi.source_event_id
+              AND wi.tags = '{{}}'::jsonb
+              AND ({key_filter})
+        """)
+        updated = cur.rowcount
+    conn.commit()
+    log.info(f"m024_backfill_work_item_tags: {updated} work items backfilled with event tags")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -262,4 +318,6 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m020_perf_indexes", m020_perf_indexes),
     ("m021_rename_work_item_columns", m021_rename_work_item_columns),
     ("m022_backfill_event_work_item_ids", m022_backfill_event_work_item_ids),
+    ("m023_work_items_tags_to_jsonb", m023_work_items_tags_to_jsonb),
+    ("m024_backfill_work_item_tags", m024_backfill_work_item_tags),
 ]

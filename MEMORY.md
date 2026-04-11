@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-10 15:45 UTC by aicli /memory_
+_Generated: 2026-04-11 12:27 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL semantic database, and Electron desktop UI to capture, synthesize, and link development context (prompts, commits, code) into searchable work items. The system uses Claude Haiku dual-layer synthesis with AI-suggested tags (doc_type/feature/phase), tag backlinking, and async DAG workflows; recent work focused on fixing secondary AI tag persistence so metadata tags stay in work items instead of disappearing, and improving tag creation/deletion UX in the planner interface.
+aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL with pgvector semantic search, and an Electron desktop UI with Vanilla JS. It manages project context through a 4-layer memory architecture (ephemeral sessions → raw captures → LLM-digested events → work items), supports multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok), and features async DAG workflow execution with Cytoscape visualization. Current focus is on work item UX refinement, including loading state indicators, secondary AI tag metadata management, and tag-linked panel consistency across session switches.
 
 ## Project Facts
 
@@ -152,7 +152,7 @@ Reviewer: ```json
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags_relations, project_facts, work_items, features
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
@@ -162,19 +162,19 @@ Reviewer: ```json
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
-- AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category, secondary tags remain as chips
 - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
 - Session tagging: /stag command (replaced /tag due to Claude Code skill conflict) with immediate tag propagation via log_user_prompt.sh reading .agent-context
+- UI state management: _wiPanelItems object-keyed cache; _renderWiPanel for unlinked items; tag-linked items persist across category switches
 
 ## In Progress
 
-- Secondary AI tag UX refinement: _wiSecApprove stores doc_type/feature/phase/bug/task tags in ai_tags.confirmed[] array; items remain visible in work item list with ✓ button showing as permanent chip indicator
-- Work item deletion UI: implemented _wiDeleteLinked handler with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
-- Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
-- AI suggestion chips UX: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip messaging for non-existent tags
-- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject/create operations to reflect linked/unlinked status changes in planner view
-- Work item persistence across sessions: ensuring tag-linked and newly-created work items remain accessible across tag switches and session changes
+- Work item row loading states: _wiRowLoading() helper with CSS pulsing animation during async operations (delete, approve, dismiss); integrated into _wiDeleteLinked, _wiUnlink, _wiPanelDelete, _wiPanelApproveTag, _wiPanelRemoveTag handlers
+- Secondary AI tag workflow refinement: _wiSecApprove now stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array instead of removing items from panel; items remain visible with permanent chip indicators
+- Work item panel consistency: error handling improved to restore loading state on catch; toast messaging clarified for approve (link to tag), remove (clear metadata), and secondary approve (save as metadata)
+- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates to reflect linked/unlinked status changes when category is selected
+- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
+- Work item deletion UI: confirmation dialogs + loading indicators for _wiDeleteLinked (tag-linked panel) and _wiPanelDelete (unlinked panel); delete operations remove items and refresh counts
 
 ## Active Features / Bugs / Tasks
 
@@ -226,143 +226,281 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
-
-Implemented UI workflow for tag confirmation: AI tag approval removes confirm button (delete only), existing tag confirmation moves work_item to tag with links, new tag confirmation creates tag in planned and moves work_item there. Also resolved tag skill conflict by creating /stag alias since /tag is reserved.
-
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index aa66bb3..233b24d 100644
+index 233b24d..b73b1fd 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
--- Work item counter architecture overhaul: refactored _SQL_UNLINKED_WORK_ITEMS to separate prompt_count (raw mem_mrr_prompts in source session), event_count (prompt_batch/session_summary digests), and commit_count (session-based or source commit); consolidated event_ct/prompt_ct/commit_ct CTEs with src_session_id and src_source_id tracking
--- Query parameter rationalization: reduced _SQL_UNLINKED_WORK_ITEMS from 3 param refs to 2 by removing redundant (p_id, p_id, p_id) pattern; unified WHERE conditions across event/prompt/commit joins
--- Frontend column reordering: added prompt_count column to work item panel; sorted display as Name | Prompts | Commits | Events | Updated; added prompt_count to sort handler
--- Debugging unlinked work items with zero prompts: investigating why work_item #20442 has event_count=0 despite /memory command processing; hypothesis is session-to-work-item linkage not persisting across prompt_batch extraction
--- Memory synthesis linkage investigation: determining root cause of work items created without corresponding mem_mrr_prompts or mem_ai_events in source session; may indicate race condition in prompt capture or session_id mismatch
--- Session workflow tracing: planning comprehensive debug of /memory execution: prompt capture → session_id assignment → work_item creation → event_ct join validation
-+- Work item deletion UI: added _wiDeleteLinked handler to entities.js with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
-+- Tag creation with auto-link workflow: _wiPanelCreateTag now creates new tags without confirmation, auto-links work item, and refreshes tag cache + planner table + category tag list view
-+- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems now reloads to reflect linked/unlinked status changes in planner view
-+- Session tagging during prompt entry: confirmed /tag command works mid-session without new session needed; log_user_prompt.sh reads .agent-context on every prompt for immediate tag propagation
-+- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
-+- Copilot instructions regeneration: timestamp updates (2026-04-10 14:52 → 15:00 UTC) indicate successful /memory command synthesis and file generation workflow
+-- Work item deletion UI: added _wiDeleteLinked handler to entities.js with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
+-- Tag creation with auto-link workflow: _wiPanelCreateTag now creates new tags without confirmation, auto-links work item, and refreshes tag cache + planner table + category tag list view
+-- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems now reloads to reflect linked/unlinked status changes in planner view
+-- Session tagging during prompt entry: confirmed /tag command works mid-session without new session needed; log_user_prompt.sh reads .agent-context on every prompt for immediate tag propagation
+-- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
+-- Copilot instructions regeneration: timestamp updates (2026-04-10 14:52 → 15:00 UTC) indicate successful /memory command synthesis and file generation workflow
++- Skill naming conflict resolution: /tag command conflicted with Claude Code reserved skill name; created /stag as replacement with identical functionality and immediate availability
++- Work item deletion UI: _wiDeleteLinked handler in entities.js with confirmation dialog; delete button appears in tag-linked work item panel with opacity toggle hover effect
++- Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
++- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip UX
++- Tag confirmation/deletion UX clarification: investigate current confirm/delete button behavior for AI tags; accept should trigger 'remove' rather than separate 'confirm' action
++- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems reloads to reflect linked/unlinked status changes in planner view
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index cd44fd2..ef5d2f0 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -242,16 +242,18 @@ export function renderEntities(container) {
+   };
+   window._wiDeleteLinked = async (id, proj) => {
+     if (!confirm('Delete this work item?')) return;
++    _wiRowLoading(id, true);
+     try {
+       await api.workItems.delete(id, proj);
+       const tr = document.querySelector(`.wi-sub-row[data-wi-id="${CSS.escape(id)}"]`);
+       if (tr) tr.remove();
+       delete _wiPanelItems[id];
+       toast('Work item deleted', 'success');
+-    } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
++    } catch(e) { toast('Delete failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
+   };
+ 
+   window._wiUnlink = async (id, proj) => {
++    _wiRowLoading(id, true);
+     try {
+       await api.workItems.patch(id, proj, { tag_id: '' });
+       toast('Unlinked', 'success');
+@@ -531,8 +533,28 @@ function _renderWiPanel(items, project) {
+     _renderWiPanel(Object.values(_wiPanelItems), project);
+   };
+ 
++  // ── Loading indicator for work item rows ─────────────────────────────────────
++  // Injects a pulsing CSS animation while an async operation is in flight.
++  function _ensureWiLoadingStyle() {
++    if (document.getElementById('wi-loading-style')) return;
++    const s = document.createElement('style');
++    s.id = 'wi-loading-style';
++    s.textContent = `@keyframes wi-pulse{0%,100%{opacity:.55}50%{opacity:.25}}` +
++                    `.wi-loading{animation:wi-pulse .7s ease-in-out infinite;pointer-events:none!important;}`;
++    document.head.appendChild(s);
++  }
++  function _wiRowLoading(id, loading) {
++    _ensureWiLoadingStyle();
++    // Check both the unlinked panel and the linked sub-rows
++    const tr = document.querySelector(`#wi-panel-list tr[data-wi-id="${CSS.escape(id)}"]`) ||
++               document.querySelector(`.wi-sub-row[data-wi-id="${CSS.escape(id)}"]`);
++    if (!tr) return;
++    loading ? tr.classList.add('wi-loading') : tr.classList.remove('wi-loading');
++  }
++
+   window._wiPanelDelete = async (id, proj) => {
+     if (!confirm('Remove this work item?')) return;
++    _wiRowLoading(id, true);
+     try {
+       await api.workItems.delete(id, proj);
+       delete _wiPanelItems[id];
+@@ -540,12 +562,13 @@ function _renderWiPanel(items, project) {
+       _renderWiPanel(remaining, proj);
+       const cnt = document.getElementById('wi-panel-count');
+       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
+-    } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
++    } catch(e) { toast('Delete failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
+   };
+ 
+   window._wiPanelApproveTag = async (id, proj) => {
+     const wi = _wiPanelItems[id];
+     if (!wi || !wi.ai_tag_id) return;
++    _wiRowLoading(id, true);
+     try {
+       await api.workItems.patch(id, proj, { tag_id: wi.ai_tag_id });
+       delete _wiPanelItems[id];
+@@ -556,10 +579,11 @@ function _renderWiPanel(items, project) {
+       toast(`Linked to "${wi.ai_tag_name}"`, 'success');
+       const { selectedCatName } = _plannerState;
+       if (selectedCatName) _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
+-    } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
++    } catch(e) { toast('Approve failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
+   };
+ 
+   window._wiPanelRemoveTag = async (id, proj) => {
++    _wiRowLoading(id, true);
+     try {
+       await api.workItems.patch(id, proj, { ai_tag_id: '', ai_tags: {} });
+       if (_wiPanelItems[id]) {
+@@ -570,39 +594,43 @@ function _renderWiPanel(items, project) {
+         _wiPanelItems[id].ai_tags = {};
+       }
+       _renderWiPanel(Object.values(_wiPanelItems), proj);
+-    } catch(e) { toast('Remove failed: ' + e.message, 'error'); }
++    } catch(e) { toast('Remove failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
+   };
+ 
+-  // Secondary AI suggestion: approve = link tag_id directly (removes from unlinked list)
+-  window._wiSecApprove = async (id, proj, tagId) => {
++  // Secondary AI suggestion (doc_type, phase, component, etc.):
++  // approve = store as confirmed metadata, keep item in list (NOT a primary feature/bug/task link)
++  window._wiSecApprove = async (id, proj, tagId, tagName, tagCat) => {
++    _wiRowLoading(id, true);
+     try {
+-      await api.workItems.patch(id, proj, { tag_id: tagId });
+-      delete _wiPanelItems[id];
+-      const remaining = Object.values(_wiPanelItems);
+-      _renderWiPanel(remaining, proj);
+-      const cnt = document.getElementById('wi-panel-count');
+-      if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
+-      toast('Linked via secondary suggestion', 'success');
+-      const { selectedCatName } = _plannerState;
+-      if (selectedCatName) _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
+-    } catch(e) { toast('Approve failed: ' + e.message, 'error'); }
++      const current = (_wiPanelItems[id]?.ai_tags) || {};
++      const confirmed = Array.isArray(current.confirmed) ? current.confirmed : [];
++      const updated = {
++        ...current,
++        secondary: null,
++        confirmed: [...confirmed, { tag_id: tagId, tag_name: tagName, category: tagCat }],
++      };
++      await api.workItems.patch(id, proj, { ai_tags: updated });
++      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
++      _renderWiPanel(Object.values(_wiPanelItems), proj);
++      toast(`Saved ${tagCat ? tagCat + ':' : ''}${tagName || ''} as metadata`, 'success');
++    } catch(e) { toast('Failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
+   };
+ 
+-  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only
++  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only, item stays in list
+   window._wiSecDismiss = async (id, proj) => {
++    _wiRowLoadi
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
+
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 3ea4893..d3e931e 100644
+index d3e931e..7f614d1 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-10 15:18 UTC
-+> Generated by aicli 2026-04-10 15:20 UTC
+-> Generated by aicli 2026-04-10 15:20 UTC
++> Generated by aicli 2026-04-10 15:36 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -61,6 +61,6 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
+@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - billing_storage: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+ - backend_modules: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - dev_environment: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+-- database: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
++- database: PostgreSQL 15+ with pgvector extensions
+ - node_modules_build: npm 8+ with Electron-builder; Vite dev server
+ - database_version: PostgreSQL 15+
+ - build_tooling: npm 8+ with Electron-builder; Vite dev server
+@@ -62,5 +62,5 @@ _Last updated: 2026-03-14 | Version 2.2.0_
  - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
  - AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
--- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash for commit-sourced items
--- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)
-+- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
+ - Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
+-- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
+-- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
+\ No newline at end of file
++- Session tagging: /tag command replaced with /stag due to skill loader conflict; renamed skill maintains same tag:category functionality; immediate propagation via log_user_prompt.sh
 +- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
- - Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
 \ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 41fff4b..d6aff7b 100644
+index d6aff7b..ed0ae1d 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:18 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:20 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:20 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:36 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -61,14 +61,14 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
+@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+ - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+-- **database**: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
++- **database**: PostgreSQL 15+ with pgvector extensions
+ - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
+ - **database_version**: PostgreSQL 15+
+ - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
+@@ -62,13 +62,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
  - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
  - AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
--- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash for commit-sourced items
--- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)
-+- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
-+- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
- - Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
+ - Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
++- Session tagging: /tag command replaced with /stag due to skill loader conflict; renamed skill maintains same tag:category functionality; immediate propagation via log_user_prompt.sh
+ - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
+-- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
- - [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
+-- [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
  - [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
  - [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
--- [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+ - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+-- [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
 \ No newline at end of file
-+- [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
 +- [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
++- [2026-04-10] I always get an error saying ynknow skill tag.
 \ No newline at end of file
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index 41fff4b..d6aff7b 100644
+index d6aff7b..ed0ae1d 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:18 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:20 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:20 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-10 15:36 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -61,14 +61,14 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
+@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+ - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+-- **database**: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
++- **database**: PostgreSQL 15+ with pgvector extensions
+ - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
+ - **database_version**: PostgreSQL 15+
+ - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
+@@ -62,13 +62,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
  - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
  - AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
--- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash for commit-sourced items
--- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session or source commit)
-+- Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
-+- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
- - Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
+ - Commit tracking: mem_mrr_commits_code table with 19 columns; join is mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash
++- Session tagging: /tag command replaced with /stag due to skill loader conflict; renamed skill maintains same tag:category functionality; immediate propagation via log_user_prompt.sh
+ - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
+-- Session tagging: /tag command with tag_reminder_interval config; valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design optional)
  
  ## Recent Context (last 5 changes)
  
--- [2026-04-09] can you check why it takes to long to  load planner tabs and work items? it looks liike quesry are not optimised. also d
- - [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
+-- [2026-04-09] I am more confused noew. query - looks like it take longer. why there is DIGEST column ? it  suppose to  be events count
  - [2026-04-09] now I dont see the counter or the promts. also, I still see work item   that  are  not having any events or prompts (204
  - [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
--- [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+ - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+-- [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
 \ No newline at end of file
-+- [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
 +- [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
++- [2026-04-10] I always get an error saying ynknow skill tag.
 \ No newline at end of file
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
-Clean up stale agent context and system memory files after session completion to prevent accumulation of unused files and improve system hygiene.
+Reorganized system memory files following a Claude CLI session, likely consolidating or refactoring internal file structure for better maintainability.
 
 ## AI Synthesis
 
-**[2026-04-10 15:41]** `claude_cli` — Implemented secondary AI tag storage in `ai_tags.confirmed[]` array for metadata tags (doc_type/feature/phase/bug/task); work items now persist in list instead of disappearing when AI tags are accepted; primary tag_id links to category, secondary tags show as permanent chips.
-
-**[2026-04-10 15:20]** `copilot_instructions` — Regenerated GitHub Copilot instructions with finalized work item counter architecture and session tagging `/stag` command (replaced `/tag` due to Claude Code skill conflict); confirmed immediate tag propagation via log_user_prompt.sh.
-
-**[2026-04-10 (inferred)]** `ui_development` — Added _wiDeleteLinked handler for tag-linked work item deletion with confirmation dialog; implemented _wiPanelCreateTag to auto-link newly created tags without confirmation; refined AI suggestion chips with clickable ✓ button and improved tooltip messaging.
-
-**[2026-04-10 (inferred)]** `tag_management` — Refactored tag confirmation workflow: AI tag approval removes confirm button (delete only), existing tag confirmation moves work_item with links, new tag confirmation creates tag in planned state; confirmed /stag command works mid-session with immediate propagation.
-
-**[2026-04-10 (inferred)]** `work_item_counters` — Finalized work item counter architecture: prompt_count (raw mem_mrr_prompts in source session), event_count (prompt_batch/session_summary digests), commit_count (distinct per session); consolidated event_ct/prompt_ct/commit_ct CTEs with src_session_id tracking.
+**[2026-04-10]** `entities.js` — Implemented work item row loading states with _wiRowLoading() CSS pulsing animation; integrated into delete, approve, and dismiss handlers to provide visual feedback during async operations. **[2026-04-10]** `entities.js` — Refined secondary AI tag workflow: _wiSecApprove now stores doc_type/phase/component tags in ai_tags.confirmed[] metadata array, keeping items visible in panel instead of removing them (non-primary linking). **[2026-04-10]** `entities.js` — Fixed error handling to restore loading state on exception catch; improved toast messaging to distinguish between primary link ('Linked to tag'), metadata removal ('Clear metadata'), and secondary approval ('Saved as metadata'). **[2026-04-10]** `entities.js` — Enhanced tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject to reflect linked/unlinked status changes in planner view when category selected. **[2026-04-09]** `PROJECT.md` — Resolved /tag command skill naming conflict with Claude Code by introducing /stag replacement; confirmed identical functionality with immediate availability and log_user_prompt.sh integration for mid-session tagging. **[2026-04-08]** `entities.js` — Added AI tag suggestion UX with clickable ✓ button for missing ai_suggestion tags; improved tooltip messaging and category inference for non-existent tag creation.

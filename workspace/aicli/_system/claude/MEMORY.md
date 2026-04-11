@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-11 12:26 UTC by aicli /memory_
+_Generated: 2026-04-11 12:27 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that captures development context (commits, sessions, prompts) into a unified PostgreSQL backend with semantic search via pgvector. It features a Python CLI + FastAPI backend with LLM provider adapters (Claude/OpenAI/DeepSeek), a 4-layer memory architecture (ephemeral → raw → digested → work items), and an Electron desktop UI with async DAG workflow visualization. Current focus: refining tag-linked work item UX with secondary AI suggestions stored as metadata, auto-link workflows, and immediate status propagation across the planner view.
+aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL with pgvector semantic search, and an Electron desktop UI with Vanilla JS. It manages project context through a 4-layer memory architecture (ephemeral sessions → raw captures → LLM-digested events → work items), supports multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok), and features async DAG workflow execution with Cytoscape visualization. Current focus is on work item UX refinement, including loading state indicators, secondary AI tag metadata management, and tag-linked panel consistency across session switches.
 
 ## Project Facts
 
@@ -152,7 +152,7 @@ Reviewer: ```json
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags_relations, project_facts, work_items, features
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
@@ -162,19 +162,19 @@ Reviewer: ```json
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
-- AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category, secondary tags remain as chips
 - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
 - Session tagging: /stag command (replaced /tag due to Claude Code skill conflict) with immediate tag propagation via log_user_prompt.sh reading .agent-context
+- UI state management: _wiPanelItems object-keyed cache; _renderWiPanel for unlinked items; tag-linked items persist across category switches
 
 ## In Progress
 
-- Skill naming conflict resolution: /tag command conflicted with Claude Code reserved skill name; created /stag as replacement with identical functionality and immediate availability
-- Work item deletion UI: _wiDeleteLinked handler in entities.js with confirmation dialog; delete button appears in tag-linked work item panel with opacity toggle hover effect
-- Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
-- Secondary AI tag UX refinement: _wiSecApprove stores doc_type/feature/phase/bug/task tags in ai_tags.confirmed[] array; items remain visible in work item list with checkmark button showing as permanent chip indicator
-- AI suggestion chips UX: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip messaging for non-existent tags
-- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject/create operations to reflect linked/unlinked status changes in planner view
+- Work item row loading states: _wiRowLoading() helper with CSS pulsing animation during async operations (delete, approve, dismiss); integrated into _wiDeleteLinked, _wiUnlink, _wiPanelDelete, _wiPanelApproveTag, _wiPanelRemoveTag handlers
+- Secondary AI tag workflow refinement: _wiSecApprove now stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array instead of removing items from panel; items remain visible with permanent chip indicators
+- Work item panel consistency: error handling improved to restore loading state on catch; toast messaging clarified for approve (link to tag), remove (clear metadata), and secondary approve (save as metadata)
+- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates to reflect linked/unlinked status changes when category is selected
+- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
+- Work item deletion UI: confirmation dialogs + loading indicators for _wiDeleteLinked (tag-linked panel) and _wiPanelDelete (unlinked panel); delete operations remove items and refresh counts
 
 ## Active Features / Bugs / Tasks
 
@@ -497,10 +497,10 @@ index d6aff7b..ed0ae1d 100644
 \ No newline at end of file
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-10
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
-Removed stale agent-context files and auto-generated system files that were left over after previous operations.
+Reorganized system memory files following a Claude CLI session, likely consolidating or refactoring internal file structure for better maintainability.
 
 ## AI Synthesis
 
-**[2026-04-10]** `skill-conflict` — Resolved naming conflict: /tag command conflicted with Claude Code reserved skill name; renamed to /stag with identical functionality and immediate tag propagation via log_user_prompt.sh reading .agent-context. **[2026-04-10]** `ui-work-items` — Implemented work item deletion UI with _wiDeleteLinked handler, confirmation dialog, and opacity toggle hover effect in tag-linked panel; added loading indicators (_wiRowLoading) with pulsing CSS animation. **[2026-04-10]** `tag-creation-workflow` — Built auto-link workflow where _wiPanelCreateTag creates new tags without confirmation, auto-links work item, and refreshes tag cache + planner table + category tag list. **[2026-04-10]** `secondary-ai-tags` — Refined UX for secondary AI suggestions (doc_type/phase/component): _wiSecApprove stores tags in ai_tags.confirmed[] array as metadata rather than primary links; items remain visible with checkmark indicator. **[2026-04-10]** `ai-suggestion-chips` — Added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip UX from 'No existing tag' to 'Does not exist yet'. **[2026-04-10]** `work-item-persistence` — Enhanced _loadTagLinkedWorkItems to reload after approve/reject/create operations, ensuring linked/unlinked status changes reflect immediately in planner view.
+**[2026-04-10]** `entities.js` — Implemented work item row loading states with _wiRowLoading() CSS pulsing animation; integrated into delete, approve, and dismiss handlers to provide visual feedback during async operations. **[2026-04-10]** `entities.js` — Refined secondary AI tag workflow: _wiSecApprove now stores doc_type/phase/component tags in ai_tags.confirmed[] metadata array, keeping items visible in panel instead of removing them (non-primary linking). **[2026-04-10]** `entities.js` — Fixed error handling to restore loading state on exception catch; improved toast messaging to distinguish between primary link ('Linked to tag'), metadata removal ('Clear metadata'), and secondary approval ('Saved as metadata'). **[2026-04-10]** `entities.js` — Enhanced tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject to reflect linked/unlinked status changes in planner view when category selected. **[2026-04-09]** `PROJECT.md` — Resolved /tag command skill naming conflict with Claude Code by introducing /stag replacement; confirmed identical functionality with immediate availability and log_user_prompt.sh integration for mid-session tagging. **[2026-04-08]** `entities.js` — Added AI tag suggestion UX with clickable ✓ button for missing ai_suggestion tags; improved tooltip messaging and category inference for non-existent tag creation.
