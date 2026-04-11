@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-11 13:29 UTC by aicli /memory_
+_Generated: 2026-04-11 23:00 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -233,435 +233,275 @@ Reviewer: ```json
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index b73b1fd..67d006f 100644
+index 67d006f..8890c87 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
--- Skill naming conflict resolution: /tag command conflicted with Claude Code reserved skill name; created /stag as replacement with identical functionality and immediate availability
--- Work item deletion UI: _wiDeleteLinked handler in entities.js with confirmation dialog; delete button appears in tag-linked work item panel with opacity toggle hover effect
-+- Secondary AI tag UX refinement: _wiSecApprove stores doc_type/feature/phase/bug/task tags in ai_tags.confirmed[] array; items remain visible in work item list with ✓ button showing as permanent chip indicator
-+- Work item deletion UI: implemented _wiDeleteLinked handler with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
- - Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
--- AI suggestion chips UX refinement: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip UX
--- Tag confirmation/deletion UX clarification: investigate current confirm/delete button behavior for AI tags; accept should trigger 'remove' rather than separate 'confirm' action
--- Tag-linked work item refresh: after approve/reject/create operations, _loadTagLinkedWorkItems reloads to reflect linked/unlinked status changes in planner view
-+- AI suggestion chips UX: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip messaging for non-existent tags
-+- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject/create operations to reflect linked/unlinked status changes in planner view
-+- Work item persistence across sessions: ensuring tag-linked and newly-created work items remain accessible across tag switches and session changes
+-- Secondary AI tag UX refinement: _wiSecApprove stores doc_type/feature/phase/bug/task tags in ai_tags.confirmed[] array; items remain visible in work item list with ✓ button showing as permanent chip indicator
+-- Work item deletion UI: implemented _wiDeleteLinked handler with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
+-- Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
+-- AI suggestion chips UX: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip messaging for non-existent tags
+-- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject/create operations to reflect linked/unlinked status changes in planner view
+-- Work item persistence across sessions: ensuring tag-linked and newly-created work items remain accessible across tag switches and session changes
++- Work item row loading states: _wiRowLoading() helper with CSS pulsing animation during async operations (delete, approve, dismiss); integrated into _wiDeleteLinked, _wiUnlink, _wiPanelDelete, _wiPanelApproveTag, _wiPanelRemoveTag handlers
++- Secondary AI tag workflow refinement: _wiSecApprove now stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array instead of removing items from panel; items remain visible with permanent chip indicators
++- Work item panel consistency: error handling improved to restore loading state on catch; toast messaging clarified for approve (link to tag), remove (clear metadata), and secondary approve (save as metadata)
++- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates to reflect linked/unlinked status changes when category is selected
++- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
++- Work item deletion UI: confirmation dialogs + loading indicators for _wiDeleteLinked (tag-linked panel) and _wiPanelDelete (unlinked panel); delete operations remove items and refresh counts
 
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
-
-diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
-index ef5d2f0..e11df9a 100644
---- a/ui/frontend/views/entities.js
-+++ b/ui/frontend/views/entities.js
-@@ -183,8 +183,8 @@ export function renderEntities(container) {
-       const msg = `${agg.commit_count || 0} commits · ${(agg.all_files || []).length} files`;
-       toast(`Extracted · ${msg}`, 'success');
-       if (statusEl) statusEl.textContent = msg;
--      // Refresh ai_tags display
--      const aiTagsEl = document.getElementById(`wi-ai-tags-${id}`);
-+      // Refresh tags_ai display
-+      const tagsAiEl = document.getElementById(`wi-ai-tags-${id}`);
-       if (aiTagsEl) {
-         const cs = r.code_summary || {};
-         const tc = r.test_coverage || {};
-@@ -255,7 +255,7 @@ export function renderEntities(container) {
-   window._wiUnlink = async (id, proj) => {
-     _wiRowLoading(id, true);
-     try {
--      await api.workItems.patch(id, proj, { tag_id: '' });
-+      await api.workItems.patch(id, proj, { tag_id_user: '' });
-       toast('Unlinked', 'success');
-       _loadWiPanel(proj);
-       const { selectedCatName } = _plannerState;
-@@ -329,7 +329,7 @@ export function renderEntities(container) {
-     _dragWiData = null;
-     const proj = _plannerState.project;
-     try {
--      await api.workItems.patch(wi.id, proj, { tag_id: '' });
-+      await api.workItems.patch(wi.id, proj, { tag_id_user: '' });
-       toast(`Unlinked "${wi.ai_name}"`, 'success');
-       _loadWiPanel(proj);
-       _loadTagLinkedWorkItems(proj).catch(() => {});
-@@ -567,10 +567,10 @@ function _renderWiPanel(items, project) {
- 
-   window._wiPanelApproveTag = async (id, proj) => {
-     const wi = _wiPanelItems[id];
--    if (!wi || !wi.ai_tag_id) return;
-+    if (!wi || !wi.tag_id_ai) return;
-     _wiRowLoading(id, true);
-     try {
--      await api.workItems.patch(id, proj, { tag_id: wi.ai_tag_id });
-+      await api.workItems.patch(id, proj, { tag_id_user: wi.tag_id_ai });
-       delete _wiPanelItems[id];
-       const remaining = Object.values(_wiPanelItems);
-       _renderWiPanel(remaining, proj);
-@@ -585,13 +585,13 @@ function _renderWiPanel(items, project) {
-   window._wiPanelRemoveTag = async (id, proj) => {
-     _wiRowLoading(id, true);
-     try {
--      await api.workItems.patch(id, proj, { ai_tag_id: '', ai_tags: {} });
-+      await api.workItems.patch(id, proj, { tag_id_ai: '', tags_ai: {} });
-       if (_wiPanelItems[id]) {
--        _wiPanelItems[id].ai_tag_id = null;
-+        _wiPanelItems[id].tag_id_ai = null;
-         _wiPanelItems[id].ai_tag_name = null;
-         _wiPanelItems[id].ai_tag_category = null;
-         _wiPanelItems[id].ai_tag_color = null;
--        _wiPanelItems[id].ai_tags = {};
-+        _wiPanelItems[id].tags_ai = {};
-       }
-       _renderWiPanel(Object.values(_wiPanelItems), proj);
-     } catch(e) { toast('Remove failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
-@@ -602,28 +602,28 @@ function _renderWiPanel(items, project) {
-   window._wiSecApprove = async (id, proj, tagId, tagName, tagCat) => {
-     _wiRowLoading(id, true);
-     try {
--      const current = (_wiPanelItems[id]?.ai_tags) || {};
-+      const current = (_wiPanelItems[id]?.tags_ai) || {};
-       const confirmed = Array.isArray(current.confirmed) ? current.confirmed : [];
-       const updated = {
-         ...current,
-         secondary: null,
-         confirmed: [...confirmed, { tag_id: tagId, tag_name: tagName, category: tagCat }],
-       };
--      await api.workItems.patch(id, proj, { ai_tags: updated });
--      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
-+      await api.workItems.patch(id, proj, { tags_ai: updated });
-+      if (_wiPanelItems[id]) _wiPanelItems[id].tags_ai = updated;
-       _renderWiPanel(Object.values(_wiPanelItems), proj);
-       toast(`Saved ${tagCat ? tagCat + ':' : ''}${tagName || ''} as metadata`, 'success');
-     } catch(e) { toast('Failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
-   };
- 
--  // Secondary AI suggestion: dismiss = clear ai_tags.secondary only, item stays in list
-+  // Secondary AI suggestion: dismiss = clear tags_ai.secondary only, item stays in list
-   window._wiSecDismiss = async (id, proj) => {
-     _wiRowLoading(id, true);
-     try {
--      const current = (_wiPanelItems[id]?.ai_tags) || {};
-+      const current = (_wiPanelItems[id]?.tags_ai) || {};
-       const updated = { ...current, secondary: null };
--      await api.workItems.patch(id, proj, { ai_tags: updated });
--      if (_wiPanelItems[id]) _wiPanelItems[id].ai_tags = updated;
-+      await api.workItems.patch(id, proj, { tags_ai: updated });
-+      if (_wiPanelItems[id]) _wiPanelItems[id].tags_ai = updated;
-       _renderWiPanel(Object.values(_wiPanelItems), proj);
-     } catch(e) { toast('Dismiss failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
-   };
-@@ -635,7 +635,7 @@ function _renderWiPanel(items, project) {
-       const cats = await api.tags.categories.list(proj);
-       const catObj = cats.find(c => c.name === catLabel) || cats.find(c => c.name === 'task') || cats[0];
-       const newTag = await api.tags.create({ name: tagName, project: proj, category_id: catObj?.id });
--      await api.workItems.patch(id, proj, { tag_id: newTag.id });
-+      await api.workItems.patch(id, proj, { tag_id_user: newTag.id });
-       delete _wiPanelItems[id];
-       const remaining = Object.values(_wiPanelItems);
-       _renderWiPanel(remaining, proj);
-@@ -663,9 +663,9 @@ function _renderWiPanel(items, project) {
-     const aiTagLabel = wi.ai_tag_name
-       ? (wi.ai_tag_category ? wi.ai_tag_category + ':' + wi.ai_tag_name : wi.ai_tag_name)
-       : '';
--    // AI(NEW) — stored in ai_tags.suggested_new + suggested_category
--    const aiNew = (wi.ai_tags && wi.ai_tags.suggested_new) ? wi.ai_tags.suggested_new : '';
--    const aiNewCat = (wi.ai_tags && wi.ai_tags.suggested_category) ? wi.ai_tags.suggested_category : 'task';
-+    // AI(NEW) — stored in tags_ai.suggested_new + suggested_category
-+    const aiN
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
 diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
-index d7b3e98..fbb714e 100644
+index fbb714e..35ca241 100644
 --- a/backend/routers/route_work_items.py
 +++ b/backend/routers/route_work_items.py
-@@ -5,7 +5,7 @@ Endpoints:
-     GET    /work-items                    ?project=&category=&status=
-     GET    /work-items/unlinked           ?project=
-     POST   /work-items                    {ai_category, ai_name, ai_desc, ...}
--    PATCH  /work-items/{id}               {ai_name?, ai_desc?, tag_id?, ...}
-+    PATCH  /work-items/{id}               {ai_name?, ai_desc?, tag_id_user?, ...}
-     DELETE /work-items/{id}
-     GET    /work-items/{id}/interactions  ?limit=20
-     GET    /work-items/number/{seq_num}
-@@ -32,6 +32,8 @@ from data.dl_seq import next_seq
- 
- _SQL_LIST_WORK_ITEMS_BASE = (
-     """WITH ev_count AS (
-+         -- Count all events linked to each work item via work_item_id FK
-+         -- (populated by m022 backfill + ongoing backlink in memory_promotion.py)
-          SELECT work_item_id::text AS wi_id,
-                 COUNT(*) AS event_count,
-                 COUNT(*) FILTER (WHERE event_type = 'prompt_batch') AS prompt_count
-@@ -40,10 +42,14 @@ _SQL_LIST_WORK_ITEMS_BASE = (
-          GROUP BY 1
-        ),
-        cm_count AS (
--         SELECT e.work_item_id::text AS wi_id, COUNT(*) AS commit_count
--         FROM mem_mrr_commits c
--         JOIN mem_ai_events e ON e.id = c.event_id
--         WHERE c.project_id=%s AND e.work_item_id IS NOT NULL
-+         -- Commits in the same session as linked events (session-based, consistent
-+         -- with _SQL_UNLINKED_WORK_ITEMS; avoids relying on c.event_id which is sparse)
-+         SELECT e.work_item_id::text AS wi_id, COUNT(DISTINCT c.commit_hash) AS commit_count
-+         FROM mem_ai_events e
-+         JOIN mem_mrr_commits c ON c.project_id = e.project_id
-+                               AND c.session_id = e.session_id
-+                               AND c.session_id IS NOT NULL
-+         WHERE e.project_id=%s AND e.work_item_id IS NOT NULL
-          GROUP BY 1
-        ),
-        mcount AS (
-@@ -53,9 +59,9 @@ _SQL_LIST_WORK_ITEMS_BASE = (
-          GROUP BY 1
-        )
-        SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
--              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
--              w.requirements, w.code_summary, w.summary,
--              w.tags, w.ai_tags, w.tag_id, w.ai_tag_id, w.source_event_id,
-+              w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
-+              w.code_summary, w.summary,
-+              w.tags, w.tags_ai, w.tag_id_user, w.tag_id_ai, w.source_event_id,
-               w.merged_into, w.start_date,
-               w.created_at, w.updated_at, w.seq_num,
-               tc.color, tc.icon,
-@@ -77,15 +83,15 @@ _SQL_UNLINKED_WORK_ITEMS = """
-     WITH wi AS (
-         -- Base filter; join source event once to get session_id + event_type
-         SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
--               w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
-+               w.status_user, w.status_ai, w.summary, w.tags, w.tags_ai,
-                w.start_date, w.created_at, w.updated_at, w.seq_num,
--               w.ai_tag_id, w.source_event_id, w.project_id,
-+               w.tag_id_ai, w.source_event_id, w.project_id,
-                e.event_type  AS src_event_type,
-                e.session_id  AS src_session_id,
-                e.source_id   AS src_source_id
-         FROM mem_ai_work_items w
-         LEFT JOIN mem_ai_events e ON e.id = w.source_event_id
--        WHERE w.project_id = %s AND w.tag_id IS NULL AND w.status_user != 'done'
-+        WHERE w.project_id = %s AND w.tag_id_user IS NULL AND w.status_user != 'done'
-     ),
-     -- prompt_batch/session_summary events in the source session
-     -- (all items extracted from the same batch share this session → all get same count)
-@@ -132,9 +138,9 @@ _SQL_UNLINKED_WORK_ITEMS = """
-         GROUP BY 1
-     )
-     SELECT wi.id, wi.ai_category, wi.ai_name, wi.ai_desc,
--           wi.status_user, wi.status_ai, wi.requirements, wi.summary, wi.tags, wi.ai_tags,
-+           wi.status_user, wi.status_ai, wi.summary, wi.tags, wi.tags_ai,
-            wi.start_date, wi.created_at, wi.updated_at, wi.seq_num,
--           wi.ai_tag_id,
-+           wi.tag_id_ai,
-            pt.name   AS ai_tag_name,
-            ptc.name  AS ai_tag_category,
-            ptc.color AS ai_tag_color,
-@@ -143,7 +149,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
-            COALESCE(prompt_ct.cnt, 0) AS prompt_count,
-            COALESCE(commit_ct.cnt, 0) AS commit_count
-     FROM wi
--    LEFT JOIN planner_tags        pt  ON pt.id  = wi.ai_tag_id
-+    LEFT JOIN planner_tags        pt  ON pt.id  = wi.tag_id_ai
-     LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
-     LEFT JOIN event_ct  ON event_ct.wi_id  = wi.id::text
-     LEFT JOIN prompt_ct ON prompt_ct.wi_id = wi.id::text
-@@ -155,18 +161,18 @@ _SQL_UNLINKED_WORK_ITEMS = """
- _SQL_INSERT_WORK_ITEM = (
-     """INSERT INTO mem_ai_work_items
+@@ -163,7 +163,7 @@ _SQL_INSERT_WORK_ITEM = (
             (project_id, ai_category, ai_name, ai_desc,
--            requirements, acceptance_criteria, action_items,
-+            acceptance_criteria_ai, action_items_ai,
+             acceptance_criteria_ai, action_items_ai,
              code_summary, summary, tags, status_user, status_ai, seq_num)
--       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-+       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+-       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
++       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
         ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
         RETURNING id, ai_name, ai_category, created_at, seq_num"""
  )
- 
- _SQL_GET_WORK_ITEM = (
-     """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
--              w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
--              w.requirements, w.code_summary, w.summary,
--              w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
-+              w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
-+              w.code_summary, w.summary,
-+              w.ta
+@@ -550,9 +550,9 @@ async def list_work_items(
+                     row["tag_id_user"] = str(row["tag_id_user"])
+                 if row.get("tag_id_ai"):
+                     row["tag_id_ai"] = str(row["tag_id_ai"])
+-                if row.get("tags") is None:
+-                    row["tags"] = {}
+-                if row.get("tags_ai") is None:
++                if not isinstance(row.get("tags"), dict):
++                    row["tags"] = {}   # handles NULL and legacy TEXT[] values
++                if not isinstance(row.get("tags_ai"), dict):
+                     row["tags_ai"] = {}
+                 rows.append(row)
+     return {"work_items": rows, "project": p, "total": len(rows)}
+@@ -615,7 +615,7 @@ async def patch_work_item(
+     if body.summary             is not None: fields.append("summary=%s");             params.append(body.summary)
+     if body.tags                is not None:
+         import json as _json
+-        fields.append("tags=%s"); params.append(_json.dumps(body.tags))
++        fields.append("tags=%s::jsonb"); params.append(_json.dumps(body.tags))
+     if body.tags_ai             is not None:
+         import json as _json
+         fields.append("tags_ai = tags_ai || %s::jsonb"); params.append(_json.dumps(body.tags_ai))
+
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
-diff --git a/backend/memory/memory_tagging.py b/backend/memory/memory_tagging.py
-index ced3489..ccd29bb 100644
---- a/backend/memory/memory_tagging.py
-+++ b/backend/memory/memory_tagging.py
-@@ -216,7 +216,7 @@ class MemoryTagging:
-         """3-level matching: exact name → semantic (>0.85 auto) → Claude judgment (0.70–0.85).
+diff --git a/backend/prompts/memory/work_items/work_item_extraction.md b/backend/prompts/memory/work_items/work_item_extraction.md
+index d718b69..7acb499 100644
+--- a/backend/prompts/memory/work_items/work_item_extraction.md
++++ b/backend/prompts/memory/work_items/work_item_extraction.md
+@@ -4,7 +4,13 @@ identify actionable work items AND suggest session tags.
+ Return JSON only:
+ {
+   "items": [
+-    {"category": "bug|feature|task", "name": "short-slug", "description": "1-2 sentence explanation"}
++    {
++      "category": "bug|feature|task",
++      "name": "short-slug",
++      "description": "1-2 sentence explanation of what this is and why it matters",
++      "acceptance_criteria": "- [ ] Specific, testable outcome 1\n- [ ] Specific, testable outcome 2",
++      "action_items": "- First concrete step to take\n- Second concrete step\n- Third step if needed"
++    }
+   ],
+   "suggested_tags": {
+     "phase": "discovery|development|testing|review|production|maintenance|bugfix",
+@@ -14,6 +20,8 @@ Return JSON only:
  
-         Returns list of dicts: {tag_id, relation, confidence}.
--        Best match is auto-persisted to mem_ai_work_items.ai_tag_id.
-+        Best match is auto-persisted to mem_ai_work_items.tag_id_ai.
-         """
-         wi = self._load_work_item(work_item_id)
-         if not wi:
-@@ -226,7 +226,7 @@ class MemoryTagging:
-         tag = self._find_exact_tag(project, wi['name'])
-         if tag:
-             result = [{'tag_id': tag['id'], 'relation': 'exact', 'confidence': 1.0}]
--            self._persist_ai_tag_id(work_item_id, tag['id'])
-+            self._persist_tag_id_ai(work_item_id, tag['id'])
-             return result
- 
-         # Level 2 — semantic similarity
-@@ -273,26 +273,26 @@ class MemoryTagging:
-             except Exception:
-                 pass
- 
--        # Persist best match to ai_tag_id (highest confidence)
-+        # Persist best match to tag_id_ai (highest confidence)
-         if results:
-             best = max(results, key=lambda r: r.get('confidence', 0))
-             if best.get('tag_id'):
--                self._persist_ai_tag_id(work_item_id, best['tag_id'])
-+                self._persist_tag_id_ai(work_item_id, best['tag_id'])
- 
-         return results
- 
--    def _persist_ai_tag_id(self, work_item_id: str, tag_id: str) -> None:
--        """Update ai_tag_id on the work item (AI suggestion only — never overwrites tag_id)."""
-+    def _persist_tag_id_ai(self, work_item_id: str, tag_id: str) -> None:
-+        """Update tag_id_ai on the work item (AI suggestion only — never overwrites tag_id)."""
-         try:
-             with db.conn() as conn:
-                 with conn.cursor() as cur:
-                     cur.execute(
--                        "UPDATE mem_ai_work_items SET ai_tag_id=%s::uuid, updated_at=NOW() "
--                        "WHERE id=%s::uuid AND ai_tag_id IS DISTINCT FROM %s::uuid",
-+                        "UPDATE mem_ai_work_items SET tag_id_ai=%s::uuid, updated_at=NOW() "
-+                        "WHERE id=%s::uuid AND tag_id_ai IS DISTINCT FROM %s::uuid",
-                         (tag_id, work_item_id, tag_id),
-                     )
-         except Exception as e:
--            log.debug(f"_persist_ai_tag_id error: {e}")
-+            log.debug(f"_persist_tag_id_ai error: {e}")
- 
-     # ── Private helpers ─────────────────────────────────────────────────────
- 
+ Rules:
+ - items: at most 5 entries. Use lowercase-hyphenated slugs for name. Empty array if nothing actionable.
++- acceptance_criteria: 1-3 bullet lines, each starting with "- [ ]". Must be specific and testable. Short.
++- action_items: 1-4 bullet lines, each starting with "-". Concrete next steps. Short imperative phrases.
+ - suggested_tags.phase: pick the most fitting phase from the list above based on the activity.
+ - suggested_tags.feature: a slug matching the primary feature being worked on, or null if unclear.
+ - No preamble, no markdown fences, return ONLY valid JSON.
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
 diff --git a/backend/memory/memory_promotion.py b/backend/memory/memory_promotion.py
-index d2d5dee..79e20b6 100644
+index 79e20b6..f031c4a 100644
 --- a/backend/memory/memory_promotion.py
 +++ b/backend/memory/memory_promotion.py
-@@ -45,15 +45,15 @@ _SQL_GET_TAG_ID = """
+@@ -141,15 +141,29 @@ _SQL_UPDATE_EVENT_AI_TAGS = """
+ _SQL_INSERT_EXTRACTED_WORK_ITEM = """
+     INSERT INTO mem_ai_work_items
+         (project_id, ai_category, ai_name, ai_desc,
++         acceptance_criteria_ai, action_items_ai, tags,
+          source_event_id, seq_num)
+-    VALUES (%s, %s, %s, %s, %s::uuid,
++    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::uuid,
+             (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
+     ON CONFLICT (project_id, ai_category, ai_name) DO UPDATE SET
+-        ai_desc    = EXCLUDED.ai_desc,
+-        updated_at = NOW()
++        ai_desc              = EXCLUDED.ai_desc,
++        acceptance_criteria_ai = CASE WHEN EXCLUDED.acceptance_criteria_ai != ''
++                                      THEN EXCLUDED.acceptance_criteria_ai
++                                      ELSE mem_ai_work_items.acceptance_criteria_ai END,
++        action_items_ai      = CASE WHEN EXCLUDED.action_items_ai != ''
++                                    THEN EXCLUDED.action_items_ai
++                                    ELSE mem_ai_work_items.action_items_ai END,
++        tags                 = CASE WHEN EXCLUDED.tags != '{}'::jsonb
++                                    THEN mem_ai_work_items.tags || EXCLUDED.tags
++                                    ELSE mem_ai_work_items.tags END,
++        updated_at           = NOW()
+     RETURNING id
  """
  
- _SQL_GET_WORK_ITEM = """
--    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria
-+    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria_ai
-     FROM mem_ai_work_items wi
-     WHERE wi.project_id=%s
-     ORDER BY wi.created_at DESC LIMIT 10
- """
++# Keys considered "user intent" tags — copied from event tags to work item tags
++_USER_TAG_KEYS = frozenset({"source", "phase", "feature", "bug", "component",
++                             "doc_type", "design", "decision", "meeting", "customer"})
++
  
- _SQL_GET_WORK_ITEM_BY_NAME = """
--    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria,
--           wi.action_items, wi.status_ai, wi.tag_id
-+    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria_ai,
-+           wi.action_items_ai, wi.status_ai, wi.tag_id_user
-     FROM mem_ai_work_items wi
-     WHERE wi.project_id=%s AND wi.ai_name=%s
-     LIMIT 1
-@@ -254,7 +254,7 @@ class MemoryPromotion:
-             log.debug(f"promote_work_item: no work item found for '{tag_name}'")
-             return None
+ # ── Helpers ───────────────────────────────────────────────────────────────────
  
--        wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id = row
-+        wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id_user = row
+@@ -654,18 +668,25 @@ class MemoryPromotion:
+             if not items:
+                 continue
  
-         system_prompt = _prompts.content("work_item_promotion") or (
-             "Given a work item, produce a 2-4 sentence summary capturing what it is, "
-@@ -672,12 +672,17 @@ class MemoryPromotion:
-                             if row:
-                                 wi_id = str(row[0])
-                                 created += 1
--                                # Link event → first work item only (don't overwrite if already set)
--                                cur.execute(
--                                    "UPDATE mem_ai_events SET work_item_id=%s::uuid"
--                                    " WHERE id=%s::uuid AND work_item_id IS NULL",
--                                    (wi_id, str(ev_id)),
--                                )
-+                                # Backlink ALL events in the same session → one-to-many relationship
-+                                # Events without work_item_id get assigned to this work item.
-+                                cur.execute("""
-+                                    UPDATE mem_ai_events
-+                                    SET work_item_id = %s::uuid
-+                                    WHERE session_id = (
-+                                        SELECT session_id FROM mem_ai_events WHERE id = %s::uuid
-+                                    )
-+                                      AND project_id = %s
-+                                      AND work_item_id IS NULL
-+                                """, (wi_id, str(ev_id), project_id))
-                                 # Queue AI tag matching for the new work item
-                                 try:
-                                     import asyncio as _aio
++            # Build filtered tags from source event (user-intent keys only)
++            wi_tags = json.dumps({k: v for k, v in event_tags.items()
++                                  if k in _USER_TAG_KEYS and v})
++
+             for item in items[:5]:
+                 category = item.get("category", "task")
+                 name = (item.get("name") or "").strip().lower()[:200]
+                 description = (item.get("description") or "").strip()[:1000]
+                 if not name or not description:
+                     continue
++                ac = (item.get("acceptance_criteria") or "").strip()[:2000]
++                ai = (item.get("action_items") or "").strip()[:2000]
+                 try:
+                     with db.conn() as conn:
+                         with conn.cursor() as cur:
+                             cur.execute(
+                                 _SQL_INSERT_EXTRACTED_WORK_ITEM,
+                                 (project_id, category, name, description,
++                                 ac, ai, wi_tags,
+                                  str(ev_id), project_id),
+                             )
+                             row = cur.fetchone()
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
-diff --git a/backend/memory/memory_planner.py b/backend/memory/memory_planner.py
-index bf3ea5e..6746c72 100644
---- a/backend/memory/memory_planner.py
-+++ b/backend/memory/memory_planner.py
-@@ -36,10 +36,10 @@ _SQL_GET_TAG = """
+diff --git a/backend/core/db_migrations.py b/backend/core/db_migrations.py
+index b1e57b9..461100b 100644
+--- a/backend/core/db_migrations.py
++++ b/backend/core/db_migrations.py
+@@ -252,6 +252,62 @@ def m022_backfill_event_work_item_ids(conn) -> None:
+     log.info(f"m022_backfill_event_work_item_ids: {updated} events backlinked")
  
- _SQL_GET_WORK_ITEMS = """
-     SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.status_ai,
--           wi.acceptance_criteria, wi.action_items, wi.summary,
--           wi.requirements, wi.seq_num, wi.start_date
-+           wi.acceptance_criteria_ai, wi.action_items_ai, wi.summary,
-+           wi.seq_num, wi.start_date
-     FROM mem_ai_work_items wi
--    WHERE wi.tag_id = %s::uuid AND wi.project_id = %s
-+    WHERE wi.tag_id_user = %s::uuid AND wi.project_id = %s
-       AND wi.merged_into IS NULL
-     ORDER BY wi.created_at
- """
-@@ -66,7 +66,7 @@ _SQL_UPDATE_TAG = """
  
- _SQL_UPDATE_WORK_ITEM = """
-     UPDATE mem_ai_work_items
--    SET action_items = %s, acceptance_criteria = %s, summary = %s, updated_at = NOW()
-+    SET action_items_ai = %s, acceptance_criteria_ai = %s, summary = %s, updated_at = NOW()
-     WHERE id = %s::uuid AND project_id = %s
- """
++def m023_work_items_tags_to_jsonb(conn) -> None:
++    """Convert mem_ai_work_items.tags from TEXT[] to JSONB.
++
++    Old design stored tags as a text array {source:claude_cli, phase:dev} — never
++    populated and hard to query. New design: JSONB object {source, phase, feature, ...}
++    matching the tags on mem_mrr_* tables.
++
++    All existing rows have tags={} (empty array) so the USING clause just sets '{}'.
++    """
++    with conn.cursor() as cur:
++        # Step 1: drop the old TEXT[] default so PostgreSQL allows the type change
++        cur.execute("ALTER TABLE mem_ai_work_items ALTER COLUMN tags DROP DEFAULT")
++        # Step 2: alter type with explicit USING — all existing rows are empty arrays
++        cur.execute("""
++            ALTER TABLE mem_ai_work_items
++            ALTER COLUMN tags TYPE JSONB
++            USING CASE WHEN array_length(tags, 1) IS NULL THEN '{}'::jsonb
++                       ELSE array_to_json(tags)::jsonb END
++        """)
++        # Step 3: restore default and NOT NULL constraint for JSONB
++        cur.execute("ALTER TABLE mem_ai_work_items ALTER COLUMN tags SET DEFAULT '{}'::jsonb")
++        cur.execute("ALTER TABLE mem_ai_work_items ALTER COLUMN tags SET NOT NULL")
++    conn.commit()
++    log.info("m023_work_items_tags_to_jsonb: tags column converted TEXT[] → JSONB")
++
++
++def m024_backfill_work_item_tags(conn) -> None:
++    """Backfill work item tags from source event tags.
++
++    For each work item whose tags={} and has a source_event_id,
++    copies the user-intent keys (source, phase, feature, bug, component, doc_type)
++    from the source event's tags JSONB into the work item.
++
++    This is a one-time data migration for items created before m023/m024.
++    Going forward, tags are set at extraction time in memory_promotion.py.
++    """
++    _USER_KEYS = "source", "phase", "feature", "bug", "component", "doc_type"
++    key_filter = " OR ".join(f"e.tags ? '{k}'" for k in _USER_KEYS)
++    with conn.cursor() as cur:
++        cur.execute(f"""
++            UPDATE mem_ai_work_items wi
++            SET tags = (
++                SELECT jsonb_object_agg(kv.key, kv.value)
++                FROM jsonb_each_text(e.tags) AS kv(key, value)
++                WHERE kv.key = ANY(ARRAY['source','phase','feature','bug','component','doc_type'])
++            )
++            FROM mem_ai_events e
++            WHERE e.id = wi.source_event_id
++              AND wi.tags = '{{}}'::jsonb
++              AND ({key_filter})
++        """)
++        updated = cur.rowcount
++    conn.commit()
++    log.info(f"m024_backfill_work_item_tags: {updated} work items backfilled with event tags")
++
++
+ MIGRATIONS: list[tuple[str, Callable]] = [
+     # All migrations through m017 (ai_tags column) were applied via the legacy
+     # ALTER TABLE system in database.py and are tracked as:
+@@ -262,4 +318,6 @@ MIGRATIONS: list[tuple[str, Callable]] = [
+     ("m020_perf_indexes", m020_perf_indexes),
+     ("m021_rename_work_item_columns", m021_rename_work_item_columns),
+     ("m022_backfill_event_work_item_ids", m022_backfill_event_work_item_ids),
++    ("m023_work_items_tags_to_jsonb", m023_work_items_tags_to_jsonb),
++    ("m024_backfill_work_item_tags", m024_backfill_work_item_tags),
+ ]
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 48c2671..5448e58 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-10 15:45 UTC
++> Generated by aicli 2026-04-11 12:27 UTC
  
-@@ -314,9 +314,9 @@ class MemoryPlanner:
-             lines.append(f"ID: {wi['id']}")
-             lines.append(f"Status: {wi.get('status_user', 'active')}")
-             lines.append(f"Description: {wi.get('ai_desc') or '—'}")
--            lines.append(f"Requirements: {wi.get('requirements') or '—'}")
--            lines.append(f"Action items: {wi.get('action_items') or '—'}")
--            lines.append(f"Acceptance criteria: {wi.get('acceptance_criteria') or '—'}")
-+            lines.append(f"Requirements: —")
-+            lines.append(f"Action items: {wi.get('action_items_ai') or '—'}")
-+            lines.append(f"Acceptance criteria: {wi.get('acceptance_criteria_ai') or '—'}")
-             lines.append(f"Summary: {wi.get('summary') or '—'}")
-             lines.append(f"Prompts: {wi['n_prompts']} · ~{wi['words']} words · {wi['n_commits']} commits")
-             if wi["files"]:
-@@ -390,8 +390,8 @@ class MemoryPlanner:
-                 f"{wi['n_commits']} commits · Started: {start_str}_\n\n"
-                 f"{wi.get('summary') or wi.get('ai_desc') or ''}\n\n"
-                 + (
--                    f"**Remaining:** {wi.get('action_items') or '—'}\n"
--                    if wi.get("action_items")
-+                    f"**Remaining:** {wi.get('action_items_ai') or '—'}\n"
-+                    if wi.get("action_items_ai")
-                     else ""
-                 )
-             )
+ # aicli — Shared AI Memory Platform
+ 
+@@ -50,7 +50,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ ## Architectural Decisions
+ 
+ - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
+-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
++- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags_relations, project_facts, work_items, features
+ - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
+ - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
+ - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
+@@ -60,7 +60,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
+-- AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
+ - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category, secondary tags remain as chips
+ - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
+-- Session tagging: /stag command (replaced /tag due to Claude Code skill conflict) with immediate tag propagation via log_user_prompt.sh reading .agent-context
+\ No newline at end of file
++- Session tagging: /stag command (replaced /tag due to Claude Code skill conflict) with immediate tag propagation via log_user_prompt.sh reading .agent-context
++- UI state management: _wiPanelItems object-keyed cache; _renderWiPanel for unlinked items; tag-linked items persist across category switches
+\ No newline at end of file
 
