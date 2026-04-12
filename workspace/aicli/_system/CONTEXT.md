@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-11 23:03 UTC — do not edit manually.
+> Auto-generated 2026-04-12 00:03 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 477
-- **Last active**: 2026-04-11T23:02:57Z
+- **Sessions**: 478
+- **Last active**: 2026-04-12T00:03:20Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -54,12 +54,12 @@
 
 ## In Progress
 
-- Work item row loading states: _wiRowLoading() helper with CSS pulsing animation during async operations (delete, approve, dismiss); integrated into _wiDeleteLinked, _wiUnlink, _wiPanelDelete, _wiPanelApproveTag, _wiPanelRemoveTag handlers
-- Secondary AI tag workflow refinement: _wiSecApprove now stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array instead of removing items from panel; items remain visible with permanent chip indicators
-- Work item panel consistency: error handling improved to restore loading state on catch; toast messaging clarified for approve (link to tag), remove (clear metadata), and secondary approve (save as metadata)
-- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates to reflect linked/unlinked status changes when category is selected
-- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
-- Work item deletion UI: confirmation dialogs + loading indicators for _wiDeleteLinked (tag-linked panel) and _wiPanelDelete (unlinked panel); delete operations remove items and refresh counts
+- Work item column schema refactoring: renamed ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai for naming consistency; consolidated summary into desc_ai to reduce column redundancy
+- prompt_work_item() trigger refinement: integrated to run automatically during /memory command execution to ensure work item columns reflect latest AI naming conventions and data consolidation
+- Work item UI loading states: _wiRowLoading() CSS pulsing animation during async delete/approve/dismiss operations; integrated into tag-linked and unlinked panels with error state recovery
+- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
+- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject; planner table updates reflect linked/unlinked status changes when category selected
+- AI tag suggestion UX: clickable ✓ creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
 
 ## Key Decisions
 
@@ -74,10 +74,10 @@
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
-- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category, secondary tags remain as chips
+- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category
+- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai for consistency; summary merged into desc_ai
 - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
-- Session tagging: /stag command (replaced /tag due to Claude Code skill conflict) with immediate tag propagation via log_user_prompt.sh reading .agent-context
-- UI state management: _wiPanelItems object-keyed cache; _renderWiPanel for unlinked items; tag-linked items persist across category switches
+- Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context
 
 ---
 

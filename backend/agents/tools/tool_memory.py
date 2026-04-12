@@ -189,6 +189,27 @@ def _handle_search_memory(args: dict) -> str:
                             text = (row[2] or row[1] or "")[:400]
                             results.append(f"[{ts}] {row[0]}: {text}")
 
+                    # ── Work items vector search ───────────────────────────
+                    if vec:
+                        cur.execute(
+                            """SELECT category_ai, name_ai, desc_ai,
+                                      status_user, acceptance_criteria_ai, summary_ai
+                               FROM mem_ai_work_items
+                               WHERE project_id=%s
+                                 AND embedding IS NOT NULL
+                                 AND status_user NOT IN ('done', 'archived')
+                               ORDER BY embedding <=> %s::vector
+                               LIMIT %s""",
+                            (project_id, vs, max(2, limit // 2)),
+                        )
+                        for wi_row in cur.fetchall():
+                            cat, name, desc, st, ac, smry = wi_row
+                            body = (smry or desc or "")[:300]
+                            ac_line = f" | ac: {ac[:150]}" if ac else ""
+                            results.append(
+                                f"[work_item:{cat}] {name} (status: {st}): {body}{ac_line}"
+                            )
+
                     # ── Text fallback ─────────────────────────────────────
                     if not results:
                         if feature:

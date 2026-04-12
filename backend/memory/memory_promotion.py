@@ -89,6 +89,11 @@ _SQL_UPDATE_WORK_ITEM_STATUS_AI = """
     WHERE id=%s AND project_id=%s
 """
 
+_SQL_UPDATE_WORK_ITEM_EMBEDDING = """
+    UPDATE mem_ai_work_items SET embedding=%s::vector, updated_at=NOW()
+    WHERE id=%s AND project_id=%s
+"""
+
 _SQL_GET_MEMORY_EVENTS = """
     SELECT me.id, me.summary, me.event_type, me.created_at, me.action_items
     FROM mem_ai_events me
@@ -263,6 +268,27 @@ async def _embed_text(text: str) -> Optional[list]:
         return None
 
 
+async def _embed_work_item(project_id: int, wi_id: str, name_ai: str,
+                           desc_ai: str, summary_ai: str = "") -> None:
+    """Embed a work item's text fields and persist to embedding column."""
+    text = " ".join(filter(None, [name_ai, desc_ai, summary_ai])).strip()
+    if not text:
+        return
+    try:
+        vec = await _embed_text(text)
+        if vec is None:
+            return
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                import json as _json
+                cur.execute(
+                    _SQL_UPDATE_WORK_ITEM_EMBEDDING,
+                    (_json.dumps(vec), wi_id, project_id),
+                )
+    except Exception as e:
+        log.debug(f"_embed_work_item error ({wi_id[:8]}): {e}")
+
+
 # ── MemoryPromotion ───────────────────────────────────────────────────────────
 
 class MemoryPromotion:
@@ -363,6 +389,12 @@ class MemoryPromotion:
                         )
         except Exception as e:
             log.debug(f"promote_work_item: DB update failed: {e}")
+
+        # Re-embed with updated text fields
+        await _embed_work_item(
+            project_id, str(wi_id), wi_name,
+            new_desc_ai or desc, new_summary_ai,
+        )
 
         return {
             "work_item_id": str(wi_id),
@@ -808,12 +840,15 @@ class MemoryPromotion:
                                       AND project_id = %s
                                       AND work_item_id IS NULL
                                 """, (wi_id, str(ev_id), project_id))
-                                # Queue AI tag matching for the new work item
+                                # Queue AI tag matching + embedding for the new work item
                                 try:
                                     import asyncio as _aio
                                     loop = _aio.get_event_loop()
                                     if loop.is_running():
                                         loop.create_task(_match_new_work_item(project, wi_id))
+                                        loop.create_task(_embed_work_item(
+                                            project_id, wi_id, name, description,
+                                        ))
                                 except Exception:
                                     pass
                             else:

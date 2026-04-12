@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-11 23:02 UTC by aicli /memory_
+_Generated: 2026-04-12 00:03 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python CLI backend with PostgreSQL+pgvector semantic storage and an Electron desktop UI (Vanilla JS). It provides multi-user AI-assisted development workflows with LLM provider adapters, async DAG-based work orchestration, intelligent code chunking, and dual-layer memory synthesis (raw captures → AI-digested work items). Current focus is refactoring work item schema for clarity and ensuring AI tag workflows properly persist metadata during the memory synthesis cycle.
 
 ## Project Facts
 
@@ -166,19 +170,19 @@ Reviewer: ```json
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
-- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category, secondary tags remain as chips
+- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category
+- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai for consistency; summary merged into desc_ai
 - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
-- Session tagging: /stag command (replaced /tag due to Claude Code skill conflict) with immediate tag propagation via log_user_prompt.sh reading .agent-context
-- UI state management: _wiPanelItems object-keyed cache; _renderWiPanel for unlinked items; tag-linked items persist across category switches
+- Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context
 
 ## In Progress
 
-- Work item row loading states: _wiRowLoading() helper with CSS pulsing animation during async operations (delete, approve, dismiss); integrated into _wiDeleteLinked, _wiUnlink, _wiPanelDelete, _wiPanelApproveTag, _wiPanelRemoveTag handlers
-- Secondary AI tag workflow refinement: _wiSecApprove now stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array instead of removing items from panel; items remain visible with permanent chip indicators
-- Work item panel consistency: error handling improved to restore loading state on catch; toast messaging clarified for approve (link to tag), remove (clear metadata), and secondary approve (save as metadata)
-- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates to reflect linked/unlinked status changes when category is selected
-- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
-- Work item deletion UI: confirmation dialogs + loading indicators for _wiDeleteLinked (tag-linked panel) and _wiPanelDelete (unlinked panel); delete operations remove items and refresh counts
+- Work item column schema refactoring: renamed ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai for naming consistency; consolidated summary into desc_ai to reduce column redundancy
+- prompt_work_item() trigger refinement: integrated to run automatically during /memory command execution to ensure work item columns reflect latest AI naming conventions and data consolidation
+- Work item UI loading states: _wiRowLoading() CSS pulsing animation during async delete/approve/dismiss operations; integrated into tag-linked and unlinked panels with error state recovery
+- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
+- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject; planner table updates reflect linked/unlinked status changes when category selected
+- AI tag suggestion UX: clickable ✓ creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
 
 ## Active Features / Bugs / Tasks
 
@@ -230,6 +234,81 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 9ea3844..223746c 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-11 13:29 UTC
++> Generated by aicli 2026-04-11 23:00 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index f57fa67..936fb3d 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 13:29 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 23:00 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+ - [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
+ - [2026-04-10] I always get an error saying ynknow skill tag.
+ - [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
+-- [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
+\ No newline at end of file
++- [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
++- [2026-04-11] I still dont understand what is summery column used for . also tags - I do see that empty, and expected that to be updat
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index f57fa67..936fb3d 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 13:29 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 23:00 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+ - [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
+ - [2026-04-10] I always get an error saying ynknow skill tag.
+ - [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
+-- [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
+\ No newline at end of file
++- [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
++- [2026-04-11] I still dont understand what is summery column used for . also tags - I do see that empty, and expected that to be updat
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+Removed legacy _system context and memory files that were no longer needed after Claude session cleanup.
+
 ### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
 Fixed database migrations m023-m024 to properly backfill work_item tags from source events (phase/feature from sessions, ai_phase/ai_feature from commits), converting tags column from TEXT[] to JSONB; clarified that code_summary is manually triggered via commit tagging and tags should now populate correctly for 273+ work items.
@@ -265,125 +344,6 @@ index f031c4a..a0e0ff4 100644
                  category = item.get("category", "task")
 
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+## AI Synthesis
 
-diff --git a/backend/core/db_migrations.py b/backend/core/db_migrations.py
-index 461100b..4288055 100644
---- a/backend/core/db_migrations.py
-+++ b/backend/core/db_migrations.py
-@@ -285,23 +285,33 @@ def m024_backfill_work_item_tags(conn) -> None:
-     copies the user-intent keys (source, phase, feature, bug, component, doc_type)
-     from the source event's tags JSONB into the work item.
- 
-+    Handles both session events (phase/feature keys) and commit events
-+    (ai_phase/ai_feature keys) by using COALESCE to map ai_* variants.
-+
-     This is a one-time data migration for items created before m023/m024.
-     Going forward, tags are set at extraction time in memory_promotion.py.
-     """
--    _USER_KEYS = "source", "phase", "feature", "bug", "component", "doc_type"
--    key_filter = " OR ".join(f"e.tags ? '{k}'" for k in _USER_KEYS)
-     with conn.cursor() as cur:
--        cur.execute(f"""
-+        cur.execute("""
-             UPDATE mem_ai_work_items wi
--            SET tags = (
--                SELECT jsonb_object_agg(kv.key, kv.value)
--                FROM jsonb_each_text(e.tags) AS kv(key, value)
--                WHERE kv.key = ANY(ARRAY['source','phase','feature','bug','component','doc_type'])
--            )
-+            SET tags = jsonb_strip_nulls(jsonb_build_object(
-+                'phase',     COALESCE(e.tags->>'phase',   e.tags->>'ai_phase'),
-+                'feature',   COALESCE(e.tags->>'feature', e.tags->>'ai_feature'),
-+                'source',    e.tags->>'source',
-+                'bug',       e.tags->>'bug',
-+                'component', e.tags->>'component',
-+                'doc_type',  e.tags->>'doc_type'
-+            ))
-             FROM mem_ai_events e
-             WHERE e.id = wi.source_event_id
--              AND wi.tags = '{{}}'::jsonb
--              AND ({key_filter})
-+              AND wi.tags = '{}'::jsonb
-+              AND (
-+                    e.tags->>'phase'      IS NOT NULL
-+                 OR e.tags->>'ai_phase'   IS NOT NULL
-+                 OR e.tags->>'feature'    IS NOT NULL
-+                 OR e.tags->>'ai_feature' IS NOT NULL
-+                 OR e.tags->>'source'     IS NOT NULL
-+              )
-         """)
-         updated = cur.rowcount
-     conn.commit()
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 5448e58..9ea3844 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-11 12:27 UTC
-+> Generated by aicli 2026-04-11 13:29 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 7904e66..f57fa67 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 12:27 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 13:29 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
- - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
- - [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
- - [2026-04-10] I always get an error saying ynknow skill tag.
--- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
-\ No newline at end of file
-+- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
-+- [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
-\ No newline at end of file
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 7904e66..f57fa67 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 12:27 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 13:29 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
- - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
- - [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
- - [2026-04-10] I always get an error saying ynknow skill tag.
--- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
-\ No newline at end of file
-+- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
-+- [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
-\ No newline at end of file
-
+**[2026-04-11]** `cli_refactoring` — Renamed work item AI columns (ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai) for naming consistency and consolidated summary field into desc_ai to reduce schema redundancy. **[2026-04-11]** `memory_trigger` — Integrated prompt_work_item() to execute automatically during /memory command ensuring work items reflect latest AI column conventions. **[2026-04-10]** `ui_tag_workflow` — Refined secondary AI tag workflow: _wiSecApprove now stores confirmed metadata in ai_tags.confirmed[] array instead of removing items; items remain visible with permanent chip indicators for metadata tagging. **[2026-04-10]** `ui_loading_states` — Implemented _wiRowLoading() CSS pulsing animation for async work item operations (delete/approve/dismiss) with error state recovery in both tag-linked and unlinked panels. **[2026-04-10]** `tag_refresh_logic` — _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates to reflect linked/unlinked status changes when category is selected. **[2026-04-10]** `ai_tag_suggestions` — Clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip messaging from 'No existing tag' to 'Does not exist yet'. **[2026-04-10]** `user_feedback_integration` — Captured user confusion about work item columns (start_id, summary, tags) indicating need for clearer schema semantics and tag population workflow documentation.
