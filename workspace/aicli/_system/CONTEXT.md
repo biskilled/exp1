@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-12 20:32 UTC — do not edit manually.
+> Auto-generated 2026-04-12 21:15 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 486
-- **Last active**: 2026-04-12T20:32:05Z
+- **Sessions**: 487
+- **Last active**: 2026-04-12T21:15:16Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -27,7 +27,7 @@
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
-- **mcp**: Stdio MCP server with 12+ tools (semantic search with work_items vectors, work item management, session tagging)
+- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
 - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
@@ -51,16 +51,16 @@
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
 - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
-- **embeddings**: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
+- **embeddings**: text-embedding-3-small (1536-dim vectors)
 
 ## In Progress
 
-- planner_tags deliveries column implementation: adding JSONB field after action_items to store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
-- planner_tag schema finalization: m027 migration completed; removed summary, design, embedding, extra columns; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution with prompt_work_item() trigger
-- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items with category/name/description/status retrieval
-- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
-- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
+- mem_ai_feature_snapshot table design: new unified layer merging planner_tags user requirements with work_items; tracks summary, use cases, and delivery artifacts per use case
+- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
+- planner_tag schema finalization: m027 migration completed; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution
+- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items
+- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators
 
 ## Key Decisions
 
@@ -72,13 +72,13 @@
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
-- Work item column naming: name_ai, category_ai, desc_ai consolidated for consistency; embedding vectors persisted for semantic search in MCP tools
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- planner_tags schema: removed seq_num, summary, design, embedding, extra columns via m027 migration; creator consolidates user_name/ai designation; added updater/created_at/updated_at audit trail
-- planner_tags deliveries column: JSONB field after action_items for user-defined delivery artifacts (code, document, architect_design, ppt) with type specification per artifact
+- planner_tags schema: m027 migration removed seq_num/summary/design/embedding/extra; creator consolidates user_name/ai distinction; updater/created_at/updated_at audit trail added
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory execution with prompt_work_item() trigger
+- mem_ai_feature_snapshot planned: merge user requirements/tags with work_items; captures summary, use cases, delivery types for comprehensive feature tracking
 
 ---
 
