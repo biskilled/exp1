@@ -1,5 +1,5 @@
 # Project Context: aicli
-# Generated: 2026-04-12 21:20 UTC
+# Generated: 2026-04-12 23:22 UTC
 
 ## Project Facts
 
@@ -59,6 +59,13 @@ Reviewer: ```json
   "score": 4,
   "issues": [
     "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
+- pipeline_log_error_handling: graceful degradation: _insert_run/_finish_run return None/silently fail if db.is_available() false, logged at debug level
+- pipeline_logging_api_endpoint: GET /memory/{project}/pipeline-status dashboard exposes mem_pipeline_runs data
+- pipeline_logging_pattern: async context manager pipeline_run() and sync tuple-return pipeline_run_sync() wrapping background tasks with mem_pipeline_runs insert/update
+- pipeline_run_context_pattern: context dict with items_in/items_out keys, caller mutates ctx[key] inside async with block
+- pipeline_run_status_values: status column accepts 'running', 'ok', 'error'
+- pipeline_run_table_schema: mem_pipeline_runs: project_id, pipeline, source_id, status, items_in, items_out, duration_ms, error_msg (max 500 chars), finished_at, id (uuid)
+- pipeline_run_timing_method: time.monotonic() for duration calculation, stored as integer duration_ms
 - planner_tag_schema_consolidation_proposed: drop seq_num and source columns; keep creator only; reduce descriptors (short_desc, full_desc, requirements, acceptance_criteria, summary, action_items, design) to essential fields
 - planner_tags_core_columns: requirements, acceptance_criteria, action_items, status, priority, due_date, requester, creator, created_at, updater, updated_at retained
 - planner_tags_schema_cleanup: dropped summary, design, embedding (VECTOR 1536), extra columns; move to future merge-layer table (m027)
@@ -68,6 +75,7 @@ Reviewer: ```json
 - prompt_work_item_trigger_automation: _run_promote_all_work_items() integrated into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
 - rel:ai_tag_suggestion:user_tags: replaces
 - rel:ai_tag_suggestion:work_items_table: related_to
+- rel:background_tasks:pipeline_logging: depends_on
 - rel:commit_processing:exec_llm_flag: replaces
 - rel:db_migrations:planner_tags: implements
 - rel:embedding_integration:prompt_work_item_trigger: implements
@@ -81,6 +89,7 @@ Reviewer: ```json
 - rel:mem_ai_feature_snapshot:planner_tags: depends_on
 - rel:memory_endpoint:tag_detection: implements
 - rel:memory_system:session_tags: implements
+- rel:pipeline_run:mem_pipeline_runs: implements
 - rel:planner_tags:vector_embedding: replaces
 - rel:prompt_loader:mng_system_roles: replaces
 - rel:route_memory:prompt_loader: depends_on
@@ -139,41 +148,53 @@ Reviewer: ```json
 
 ## Active Work Items
 
+### #20506 deployment-lineage-visualization
+Category: task
+Dashboard that visualizes code lineage from requirements through events, work items, and deployments to production. Enab
+
+### #20505 mcp-state-sync-endpoints
+Category: task
+Expose project state management through MCP endpoints to allow external tools safe, auditable access to project context 
+
+### #20504 implement-project-history-queries
+Category: task
+Build query interfaces to retrieve project history across features, requirements, deployments, and work items using a mu
+
 ### #20503 feature-snapshot-tag
 Category: feature
-Add a 'feature_snapshot' tag to the tagging system for categorizing development work items. This allows developers to ma
+Add a 'feature_snapshot' tag to the work item system to help developers organize and filter development work items repre
 
 ### #20502 consolidate-descriptor-fields
 Category: task
-Consolidate overlapping descriptor fields (short_desc, full_desc, summary, requirements) in the work item schema to elim
+Consolidate redundant work item descriptor fields (short_desc, full_desc, summary, requirements) into a cleaner schema t
 
 ### #20501 remove-redundant-planner-tag-columns
 Category: task
-Remove redundant seq_num and source columns from planner_tag schema by consolidating their logic into the creator field.
+Remove seq_num and source columns from planner_tag schema by consolidating their logic into the creator field, reducing 
 
 ### #20500 audit-planner-tag-schema
 Category: task
-Audit the planner_tag table schema to identify and remove redundant columns (seq_num, source) and consolidate verbose de
+Audit and consolidate the planner_tag table schema by removing redundant columns (seq_num, source) and verbose descripto
 
 ### #20499 history-ui-testing
 Category: task
-Comprehensive testing suite for the new history navigation system and enhanced UI components. Validates proper functiona
+Comprehensive testing suite validating the new history navigation system and enhanced UI components across functionality
 
 ### #20498 history-router-navigation
 Category: feature
-History router feature enables seamless navigation between chat history views with enhanced UI components, core to impro
+History router feature enables seamless navigation between different chat history views with enhanced UI components. Cri
 
 ### #20497 validate-system-config-changes
 Category: task
-Review and validate system configuration file updates to ensure alignment with codebase, prevent inconsistencies, and id
+Review and validate system configuration file updates to ensure consistency with codebase, prevent breaking changes, and
 
 ### #20496 review-chat-view-component
 Category: task
-Comprehensive review and validation of the chat view component across mobile, tablet, and desktop devices to ensure prop
+Comprehensive review and validation of the chat view component across all device sizes (mobile, tablet, desktop) to ensu
 
 ### #20495 ui-components-styling-audit
 Category: task
-Comprehensive audit of all UI components to standardize styling, ensure responsive design, and achieve WCAG 2.1 AA acces
+Comprehensive audit and standardization of all UI components to ensure consistent styling, responsive design, and WCAG 2
 
 ### #20494 entities-view-feature
 Category: feature
@@ -181,19 +202,19 @@ Unified entities view feature enabling display, creation, editing, and deletion 
 
 ### #20493 history-export-download
 Category: feature
-Feature allowing users to download their historical data in CSV, JSON, and PDF formats. Essential for data portability, 
+Feature allowing users to download their historical data in multiple formats (CSV, JSON, PDF) to enable data portability
 
 ### #20492 history-filter-controls
 Category: feature
-Interactive filter UI for the history view that enables filtering by status, date, category, and other attributes. Reduc
+Interactive filter UI for history view enabling filtering by status, date, category, and other attributes. Reduces data 
 
 ### #20491 history-search-capability
 Category: feature
-A search capability for historical data enabling quick retrieval via keywords, date ranges, and metadata filters. Critic
+A search capability for historical data that enables users to quickly retrieve records via keywords, date ranges, and me
 
 ### #20490 history-display-ux-review
 Category: task
-UX review of the conversation history display component to ensure it handles large message volumes efficiently, maintain
+UX review of the conversation history display component to ensure it efficiently handles 100+ messages while maintaining
 
 ### #20489 session-persistence-verification
 Category: feature
@@ -201,15 +222,15 @@ Verification that session management correctly persists conversation state acros
 
 ### #20488 integrate-api-with-ui
 Category: task
-Integrate new CRUD APIs for entity/project management into the chat UI, enabling users to create, read, update, and dele
+Integrate new CRUD APIs for entity/project management into the chat UI, enabling users to perform create, read, update, 
 
 ### #20487 chat-ui-message-rendering
 Category: feature
-Enhanced message rendering system for the chat UI that improves visual presentation and interaction smoothness. Critical
+Enhanced message rendering system for chat UI that improves visual presentation and interaction smoothness. Critical for
 
 ### #20486 entity-project-crud-apis
 Category: feature
-Complete CRUD API implementation for entities and projects, enabling full lifecycle management of organizational units. 
+Backend CRUD API implementation for entities and projects, providing full lifecycle management of organizational units. 
 
 ### #20485 embedding-model-optimization
 Category: task
@@ -217,7 +238,7 @@ Fine-tune and optimize the embedding model to deliver fast, accurate vectorizati
 
 ### #20484 semantic-search-integration
 Category: feature
-Semantic search integration replaces keyword matching with embedding-based retrieval to improve result relevance. This e
+Semantic search integration replaces keyword matching with embedding-based retrieval to improve document discovery by un
 
 ### #20483 database-schema-migration
 Category: task
@@ -225,7 +246,7 @@ Critical database schema migration introducing new data structures with rollback
 
 ### #20482 history-ui-improvements
 Category: feature
-Enhance the history UI to improve discovery, access, and interaction with historical data across platforms while ensurin
+Enhancement initiative to improve history UI across platforms with better discovery, search/filtering, responsive design
 
 ### #20481 enhanced-entities-router
 Category: feature
@@ -233,19 +254,19 @@ Enhanced routing system for entity navigation that improves data flow and UX acr
 
 ### #20480 update-workflow-access-patterns
 Category: task
-Refactor workflow data access to replace legacy methods with a new filesystem-based storage API. This improves consisten
+Refactor workflow data access by replacing legacy methods with a filesystem-based storage API to improve consistency, pe
 
 ### #20479 validate-filesystem-storage-performance
 Category: task
-Performance validation for filesystem-based workflow storage to ensure production readiness. Confirms system meets throu
+Performance validation suite for filesystem-based workflow storage to confirm production readiness. Ensures the system m
 
 ### #20478 migrate-workflow-storage-db-to-filesystem
 Category: task
-Migrate workflow storage from database to filesystem to reduce operational overhead and improve scalability. This shift 
+Migrate workflow storage from database to filesystem to reduce operational overhead and improve scalability. This change
 
 ### #20477 remove-unused-database-api-code
 Category: task
-Remove unused database and API code throughout the codebase to reduce technical debt and cognitive load. This cleanup el
+Remove unused database and API code to reduce technical debt and simplify maintenance. This cleanup eliminates dead func
 
 ### #20476 expanded-router-endpoints
 Category: feature
@@ -253,87 +274,87 @@ Expand the projects router with complete CRUD and workflow management endpoints 
 
 ### #20475 expand-projects-router
 Category: feature
-Expand the projects router with new endpoints and improved route handling to support comprehensive project management op
+Expand the projects router with new endpoints and improved route handling to enable comprehensive project management ope
 
 ### #20474 log-session-stop-hook
 Category: feature
-A session termination logging hook that allows custom handlers to track session end events without modifying core code. 
+A session termination logging hook that enables custom handlers to track session end events without modifying core code.
 
 ### #20473 ai-assistant-config
 Category: feature
-Enable per-project AI assistant customization through persistent configuration, allowing teams to adapt assistant behavi
+Enable persistent, per-project AI assistant configuration through UI/API to support workflow customization without code 
 
 ### #20472 project-routing-logic
 Category: feature
-Enhanced routing logic that manages project navigation and state transitions with role-aware controls. Ensures consisten
+Enhanced routing logic manages project navigation and state transitions with role-aware controls, ensuring consistent an
 
 ### #20471 react-hooks-management
 Category: feature
-Refactors React hooks, project routing, and AI assistant configuration into reusable, customizable components. Improves 
+Refactors React hooks, project routing, and AI assistant configuration into reusable, customizable components. This impr
 
 ### #20470 projects-router
 Category: feature
-Centralized HTTP router for all project-related endpoints that improves code organization and reduces complexity in endp
+Centralized HTTP router consolidating all project-related endpoints to improve code organization and maintainability. Re
 
 ### #20469 history-view-layout-refactor
 Category: feature
-Restructure the history view's presentation layer to improve information architecture and reduce cognitive load. This re
+Restructure the history view's presentation layer to improve information architecture and reduce cognitive load. This en
 
 ### #20468 entities-router
 Category: feature
-A dedicated router module that consolidates entity-related routes to improve code organization and separation of concern
+A dedicated router module that consolidates all entity-related routes into a single, organized module to improve code ma
 
 ### #20467 history-ui-layout-improvements
 Category: feature
-Redesign the history UI layout to improve usability and visual clarity across all devices with responsive design and acc
+Redesign the history UI layout to improve usability, visual clarity, and accessibility across all devices with responsiv
 
 ### #20466 history-ui-filtering
 Category: feature
-Add filtering and search capabilities to the history UI so users can efficiently discover and navigate historical record
+Add filtering and search capabilities to the history UI to help users efficiently discover and navigate historical recor
 
 ### #20465 cleanup-artifact-files
 Category: task
-Cleanup task to remove temporary build and runtime artifact files from the aicli repository, reducing clutter while pres
+Cleanup task to remove temporary build and runtime artifact files from the aicli repository. This reduces clutter and im
 
 ### #20464 database-query-handling
 Category: feature
-Enhance database query handling with comprehensive exception management, structured logging, and performance metrics. Th
+Enhance database query handling with comprehensive exception management, structured logging, and performance metrics to 
 
-### #20463 restful-crud-endpoints
+### #20463 entity-routing
 Category: feature
-RESTful CRUD endpoints (POST, GET, PUT, DELETE) for complete entity management with an enhanced database layer providing
+Implementation of RESTful CRUD endpoints (POST, GET, PUT, DELETE) with enhanced database layer for robust query handling
 
-### #20462 test-work-item-movement-across-confirmations
+### #20462 test-picker-feature
 Category: task
 Comprehensive test suite validating work item movement and linking across all three confirmation workflow paths (existin
 
-### #20461 verify-tag-confirmation-workflows
+### #20461 tagging
 Category: task
 Comprehensive testing suite for tag confirmation workflows covering existing tag confirmation, new tag creation, and AI-
 
-### #20460 restart-claude-code-for-stag-skill
+### #20460 development
 Category: task
-Restart Claude Code IDE to load the /stag skill alias, which enables tagging workflows in staging by bypassing the /tag 
+Restart Claude Code IDE to load the /stag skill alias, enabling tag operations in staging by bypassing the /tag command 
 
-### #20459 refactor-chat-view-component
+### #20459 development
 Category: task
-Refactor the chat.js view component to eliminate code duplication and improve maintainability by extracting helper funct
+Refactoring chat.js to eliminate code duplication and reduce complexity, improving maintainability and extensibility of 
 
-### #20458 history-ui-entity-context
+### #20458 UI
 Category: feature
-Enhance the history UI to display entity information (name, type, status) alongside chat messages, giving users better c
+Enhancement to the history UI that displays entity metadata (name, type, status) alongside chat messages, providing user
 
-### #20457 chat-view-state-management
+### #20457 UI
 Category: feature
-Refactor chat view state management to eliminate stale state and data leaks during project/session switches, ensuring cl
+Refactor chat view state management to prevent stale state and data leaks during project/session transitions, ensuring c
 
 ### #20456 improved-routing-logic
 Category: feature
-Enhanced routing system that streamlines navigation between project and chat views while preserving application state. E
+Enhanced routing system that eliminates navigation friction between project and chat views while preserving application 
 
 ### #20455 UI
 Category: feature
-Enhancement of the chat UI focused on visual layout, readability, and interaction patterns to drive user engagement thro
+Enhancement of chat UI focused on visual layout, readability, and interaction patterns. Improves user engagement through
 
 ### #20454 development
 Category: feature
@@ -1324,13 +1345,17 @@ Category: bug
 Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
 History 
 
+### #20068 dropbox
+Category: bug
+Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
+
 ### #20069 mcp
 Category: bug
 History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
 
-### #20068 dropbox
+### #20067 auth
 Category: bug
-Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
+Multiple events from history table don't make sense and appear to be erroneous data that should be removed
 
 ### #20066 billing
 Category: bug
@@ -1340,9 +1365,9 @@ History view only shows prompts, not LLM responses. After fixes, only small text
 Category: bug
 aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
 
-### #20067 auth
+### #20061 billing
 Category: bug
-Multiple events from history table don't make sense and appear to be erroneous data that should be removed
+In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
 
 ### #20062 mcp
 Category: bug
@@ -1352,25 +1377,25 @@ History view shows only prompts but not LLM responses, or displays only small te
 Category: bug
 Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
 
-### #20061 billing
+### #20060 embeddings
 Category: bug
-In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
+llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
 
 ### #20057 auth
 Category: bug
 History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
 
+### #20056 SQL execute syntax error
+Category: bug
+Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
+
 ### #20059 Spurious history events in database
 Category: bug
 History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
 
-### #20060 embeddings
+### #20055 Spurious event records in history table
 Category: bug
-llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
-
-### #20056 SQL execute syntax error
-Category: bug
-Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
+The event history table contains many events that don't make sense and appear to be leftover data from previous history 
 
 ### #20053 Copy text functionality missing from history UI
 Category: bug
@@ -1379,10 +1404,6 @@ Users cannot copy text from the history section of the UI, which limits usabilit
 ### #20052 History UI only shows prompts, not LLM responses
 Category: bug
 The history display is not showing LLM responses, only prompts. Additionally, full prompt and LLM response text is trunc
-
-### #20055 Spurious event records in history table
-Category: bug
-The event history table contains many events that don't make sense and appear to be leftover data from previous history 
 
 ### #20054 Column order not applied in mem_ai_events table
 Category: bug
@@ -1404,6 +1425,10 @@ Prompts and LLM responses in history are displaying as small text instead of sho
 Category: bug
 Users are unable to copy text from the history section in the UI, indicating missing copy-to-clipboard functionality.
 
+### #20044 Column ordering not applied to mem_ai_events table
+Category: bug
+Developer noted that llm_source column was supposed to be moved after project column and embedding at the end, but chang
+
 ### #20045 Inconsistent data in mem_ai_events from history
 Category: bug
 Developer observed many events from history in the table that don't make logical sense and questioned if they should be 
@@ -1411,10 +1436,6 @@ Developer observed many events from history in the table that don't make logical
 ### #20046 database.py contains outdated table definitions
 Category: bug
 database.py is noted as being very long and containing old table definitions that are no longer in use, causing maintena
-
-### #20044 Column ordering not applied to mem_ai_events table
-Category: bug
-Developer noted that llm_source column was supposed to be moved after project column and embedding at the end, but chang
 
 ### #20042 Undefined column 'work_item_id' in work_item query
 Category: bug
@@ -1424,9 +1445,9 @@ psycopg2.errors.UndefinedColumn error in route_work_i: column p.work_item_id doe
 Category: bug
 Tags attached to prompts and commits are not visible after being saved. Additionally, new tag attachments are failing si
 
-### #20039 Undefined column p.work_item_id in route_work_i
+### #20041 Tagging system not persisting data
 Category: bug
-psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
+Tags attached to prompts and commits are not visible after being saved. No connection between tagging system and data re
 
 ### #20038 SQL execution error in /history/commits/sync endpoint
 Category: bug
@@ -1436,9 +1457,9 @@ Error occurred in route_history line 441 during execute_values() call with _SQL_
 Category: bug
 llm_source column was not placed after project column as requested, and embedding column was not moved to the last posit
 
-### #20041 Tagging system not persisting data
+### #20039 Undefined column p.work_item_id in route_work_i
 Category: bug
-Tags attached to prompts and commits are not visible after being saved. No connection between tagging system and data re
+psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
 
 ### #20033 Incorrect table name in implementation
 Category: bug
@@ -1448,17 +1469,13 @@ Table referenced as 'mng_ai_tags_relations' but should be named 'mem_ai_tags_rel
 Category: bug
 Columns 'language' and 'file_path' exist in tables but developer questions their relevance and whether they are actually
 
-### #20032 Missing llm_source column in mem_ai_events
-Category: bug
-The llm_source field is missing from the mem_ai_events table, which is required for proper event tracking in the memory 
-
 ### #20031 Database changes not visible
 Category: bug
 Developer reports inability to see changes in the database after DDL updates. The changes were supposedly applied but ar
 
-### #20028 Unused columns in mem_ai_events table
+### #20032 Missing llm_source column in mem_ai_events
 Category: bug
-Table mem_ai_events contains deprecated columns (language, file_path) that are no longer used but haven't been removed o
+The llm_source field is missing from the mem_ai_events table, which is required for proper event tracking in the memory 
 
 ### #20029 Incorrect table name mng_ai_tags_relations
 Category: bug
@@ -1468,6 +1485,10 @@ Table was incorrectly named mng_ai_tags_relations when it should be named mem_ai
 Category: bug
 Developer noted that llm_source column is missing from the mem_ai_events table where it should be present as part of the
 
+### #20028 Unused columns in mem_ai_events table
+Category: bug
+Table mem_ai_events contains deprecated columns (language, file_path) that are no longer used but haven't been removed o
+
 ### #20025 Incorrect table naming convention
 Category: bug
 Table was named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations' according to the memory structure naming c
@@ -1476,25 +1497,25 @@ Table was named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations' ac
 Category: bug
 pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table with an event_t
 
-### #20022 Incorrect table name: mng_ai_tags_relations
-Category: bug
-Developer explicitly identified that table is named 'mng_ai_tags_relations' but should be named 'mem_ai_tags_relations'.
-
 ### #20023 Tagging functionality not fully implemented
 Category: bug
 Developer reports uncertainty that all tagging functionality is implemented as described in previous prompts, specifical
+
+### #20022 Incorrect table name: mng_ai_tags_relations
+Category: bug
+Developer explicitly identified that table is named 'mng_ai_tags_relations' but should be named 'mem_ai_tags_relations'.
 
 ### #20020 Incorrect table name in tagging relations
 Category: bug
 Developer explicitly identified that the table name should be 'mem_ai_tags_relations' but was incorrectly named 'mng_ai_
 
-### #20019 Table merge not completed for embeddings and events
-Category: bug
-pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table, but this appea
-
 ### #20018 Incorrect table name in tags relations
 Category: bug
 Table is named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. Developer explicitly identified this error
+
+### #20019 Table merge not completed for embeddings and events
+Category: bug
+pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table, but this appea
 
 ### #20017 Table consolidation not completed
 Category: bug
@@ -1516,17 +1537,21 @@ The mng_ai_tags_relations table/functionality appears to not be fully implemente
 Category: bug
 Table name mismatch: code references 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. This naming inconsis
 
-### #20011 Missing tagging relations table implementation
-Category: bug
-Developer reports that mng_ai_tags_relations table is not implemented. The tagging functionality appears incomplete as e
-
 ### #20012 Embedding table merge not completed
 Category: bug
 pr_embeddings and pr_memory_events were supposed to be merged into a single mem_ai_events table, but this refactoring ap
 
+### #20011 Missing tagging relations table implementation
+Category: bug
+Developer reports that mng_ai_tags_relations table is not implemented. The tagging functionality appears incomplete as e
+
 ### #20010 Ambiguous embedding method behavior
 Category: bug
 Confusion about embedding and chunking methods - developer questions whether using 3 embedding methods creates 3 duplica
+
+### #20007 Data source confusion - JSONL vs database
+Category: bug
+Developer questions whether the system is loading history from pr_prompts table or from JSONL files, suggesting the appr
 
 ### #20009 Documentation accuracy issue
 Category: bug
@@ -1536,13 +1561,21 @@ The aicli_memory.md documentation file does not accurately reflect actual system
 Category: bug
 Developer states 'I would embedding to be connected to the tagging' indicating embeddings and tagging metadata are not p
 
-### #20007 Data source confusion - JSONL vs database
-Category: bug
-Developer questions whether the system is loading history from pr_prompts table or from JSONL files, suggesting the appr
-
 ### #20006 Potential duplicate tables in schema
 Category: bug
 Developer mentions concerns about duplicate tables in the database (pr_events and pr_interactions), questioning whether 
+
+### #20003 Documentation out of sync with implementation
+Category: bug
+File 'aicli_memory.md' does not reflect actual flows and recent changes made to the system, requiring complete rewrite a
+
+### #20000 Database table naming inconsistency
+Category: bug
+Table name 'pr_interation' (or 'pr_interaction') was not renamed to 'pr_prompts' in the database schema, causing mismatc
+
+### #20002 Unclear data loading source
+Category: bug
+System behavior unclear regarding whether it loads history from 'pr_prompts' table or from JSONL files, with developer n
 
 ### #20001 Missing table rename for junction table
 Category: bug
@@ -1551,18 +1584,6 @@ Associated junction table 'pr_interation_tags' was not renamed to 'pr_prompts_ta
 ### #20004 Ambiguous embedding and chunking behavior
 Category: bug
 Unclear whether embedding with 3 different methods creates 3 separate database rows per prompt, and whether this only oc
-
-### #20003 Documentation out of sync with implementation
-Category: bug
-File 'aicli_memory.md' does not reflect actual flows and recent changes made to the system, requiring complete rewrite a
-
-### #20002 Unclear data loading source
-Category: bug
-System behavior unclear regarding whether it loads history from 'pr_prompts' table or from JSONL files, with developer n
-
-### #20000 Database table naming inconsistency
-Category: bug
-Table name 'pr_interation' (or 'pr_interaction') was not renamed to 'pr_prompts' in the database schema, causing mismatc
 
 ### shared-memory
 Category: task
@@ -1600,13 +1621,11 @@ workflow-runner
 Category: feature
 auth
 
-## Recent Session (2026-04-12 21:20)
+## Recent Session (2026-04-12 23:22)
 
-• Designed comprehensive project history and audit system with multi-layer snapshot architecture (features, requirements, deployments, work items)
-• Created feature snapshot table with versioning, timestamps, and deployment tracking to maintain full project history
-• Built event-to-work-item mapping system with bidirectional links between user requirements and actual implementation
-• Established strong MCP (Model Context Protocol) foundation for unified project state management and history queries
-• Enabled deployment tracking with code lineage - linking requirements → events → work items → deployed code
+• UI displaying only 'work_item' category in planner, with bug/category filters missing
+• Clicking 'accepted' for AI tag causes work_item to disappear and leaves top screen empty
+• Backend verification needed to check current state for errors
 
 ## Feature Snapshots (Active)
 

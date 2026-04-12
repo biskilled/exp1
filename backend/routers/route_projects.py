@@ -22,7 +22,7 @@ from core.database import db
 _SQL_GET_ENTITY_SUMMARY = (
     """SELECT tc.name AS category, tc.icon,
               t.id::text, t.name,
-              COALESCE(t.short_desc, '') AS description,
+              COALESCE(t.description, '') AS description,
               t.status, t.due_date, t.parent_id::text,
               0 AS event_count,
               0 AS commit_count

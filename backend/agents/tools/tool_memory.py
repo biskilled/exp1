@@ -396,7 +396,7 @@ def _handle_get_tag_context(args: dict) -> str:
                 cur.execute(
                     """SELECT t.id, t.name, t.status, t.status,
                               c.name AS category,
-                              t.short_desc, t.requirements, t.due_date, t.priority
+                              t.description, t.requirements, t.due_date, t.priority
                        FROM planner_tags t
                        LEFT JOIN mng_tags_categories c ON c.id = t.category_id
                        WHERE t.project_id=%s AND t.name=%s

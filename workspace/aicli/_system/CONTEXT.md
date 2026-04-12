@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-12 22:11 UTC — do not edit manually.
+> Auto-generated 2026-04-12 22:47 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 489
-- **Last active**: 2026-04-12T22:11:22Z
+- **Sessions**: 490
+- **Last active**: 2026-04-12T22:39:37Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -24,10 +24,10 @@
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
-- **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
-- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
+- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging, vector search)
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
 - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
@@ -55,12 +55,12 @@
 
 ## In Progress
 
-- mem_ai_feature_snapshot table design: merge user requirements/tags with work_items; tracks summary, use cases, and delivery artifacts for comprehensive feature tracking
-- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt)
-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution
-- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items
-- Workflow visibility improvements: exploring options to give more visibility into all flows and decision paths in the system
-- Pipeline execution architecture: designing second workflow trigger model based on approved features to enable more flexible pipeline orchestration
+- Dashboard implementation: new tab showing all pipeline executions with visibility into flows and decision paths; accessible from planner, docs, and chat
+- Pipeline execution refactor: enabling triggers from planner (work_items), docs (feature snapshots), and chat (direct initiation) with unified orchestration
+- mem_ai_feature_snapshot table: design finalization merging user requirements (planner_tags) with work_items; includes summary, use cases, and delivery artifacts per use case
+- planner_tags deliveries column: JSONB implementation for storing selected delivery artifact types (code, document, architect_design, ppt) after action_items
+- Work item embedding persistence: _embed_work_item() function generating and storing 1536-dim vectors for concatenated name_ai + desc_ai fields
+- Project history archival: designing multi-layer storage strategy leveraging all 4 memory tiers (ephemeral → raw → digested → synthesized) for comprehensive project state tracking
 
 ## Key Decisions
 
@@ -74,11 +74,11 @@
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
+- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts (code, document, architect_design, ppt)
+- planner_tags deliveries column: JSONB field storing user-selected delivery artifact types after action_items
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- planner_tags schema: m027 migration removed seq_num/summary/design/embedding/extra; creator consolidates user_name/ai distinction; updater/created_at/updated_at audit trail
-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory execution with prompt_work_item() trigger
-- mem_ai_feature_snapshot planned: new unified layer merging planner_tags user requirements with work_items; captures summary, use cases, delivery artifacts per use case
+- Multi-workflow trigger model: pipelines executable from planner UI, docs (feature existence), or direct chat; dashboard as new UI tab for pipeline visibility
 
 ---
 

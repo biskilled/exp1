@@ -55,7 +55,6 @@ from pydantic import BaseModel
 from core.config import settings
 from core.database import db, build_update
 from core.tags import parse_tag, tags_to_list
-from data.dl_seq import next_seq
 
 log = logging.getLogger(__name__)
 
@@ -100,9 +99,9 @@ _SQL_GET_CATEGORY_ID = """
 # {where} is injected at call site; caller always provides at least "t.client_id=1"
 _SQL_LIST_VALUES = """
     SELECT t.id::text, t.category_id, t.name,
-           COALESCE(t.short_desc,'') AS description, t.status,
+           COALESCE(t.description,'') AS description, t.status,
            t.created_at, t.due_date, t.parent_id::text, t.status AS lifecycle_status,
-           t.seq_num,
+           NULL::int AS seq_num,
            0 AS event_count,
            tc.name AS category_name, tc.color, tc.icon,
            COALESCE(t.requirements,'') AS requirements,
@@ -118,7 +117,7 @@ _SQL_LIST_VALUES = """
 _SQL_LIST_VALUES_SUMMARY = """
     SELECT tc.id AS cat_id, tc.name AS category, tc.color, tc.icon,
            t.id::text, t.name,
-           COALESCE(t.short_desc,'') AS description, t.status,
+           COALESCE(t.description,'') AS description, t.status,
            t.due_date, t.parent_id::text, t.status AS lifecycle_status,
            0 AS event_count,
            0 AS commit_count
@@ -129,20 +128,12 @@ _SQL_LIST_VALUES_SUMMARY = """
 """
 
 _SQL_INSERT_VALUE = """
-    INSERT INTO planner_tags (project_id, name, category_id, parent_id, status, seq_num)
-    VALUES (%s, %s, %s, %s::uuid, %s, %s)
+    INSERT INTO planner_tags (project_id, name, category_id, parent_id, status)
+    VALUES (%s, %s, %s, %s::uuid, %s)
     RETURNING id::text
 """
 
-_SQL_GET_VALUE_BY_SEQ = """
-    SELECT t.id::text, t.name, COALESCE(t.short_desc,''), t.status, t.created_at,
-           t.due_date, t.parent_id::text, t.status AS lifecycle_status, t.seq_num,
-           tc.name AS category_name, tc.color, tc.icon
-    FROM planner_tags t
-    JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
-    WHERE t.project_id=%s AND t.seq_num=%s
-    LIMIT 1
-"""
+_SQL_GET_VALUE_BY_SEQ = None  # seq_num dropped from planner_tags in m026; endpoint returns 404
 
 _SQL_DELETE_VALUE = """
     DELETE FROM planner_tags WHERE id=%s::uuid RETURNING id
@@ -177,12 +168,12 @@ _SQL_GET_SESSION_TAGS_FROM_MRR = """
       AND (tags - 'source' - 'llm') != '{}'::jsonb
 """
 
-# GitHub sync: upsert tag by name+project including short_desc inline
+# GitHub sync: upsert tag by name+project including description inline
 _SQL_UPSERT_TAG_GITHUB = """
-    INSERT INTO planner_tags (project_id, name, category_id, short_desc, source, updated_at)
+    INSERT INTO planner_tags (project_id, name, category_id, description, source, updated_at)
     VALUES (%s, %s, %s, %s, 'github', NOW())
     ON CONFLICT (project_id, name, category_id) DO UPDATE SET
-        short_desc = EXCLUDED.short_desc,
+        description = EXCLUDED.description,
         source = EXCLUDED.source,
         updated_at = NOW()
     RETURNING (xmax = 0) AS was_inserted, id::text
@@ -233,10 +224,10 @@ _SQL_GET_TAG_BY_NAME = """
     SELECT id::text FROM planner_tags WHERE project_id=%s AND name=%s
 """
 
-# Insert session tag with short_desc
+# Insert session tag with description
 _SQL_INSERT_SESSION_TAG_WITH_DESC = """
-    INSERT INTO planner_tags (project_id, name, category_id, seq_num, short_desc)
-    VALUES (%s, %s, %s, %s, %s) RETURNING id::text
+    INSERT INTO planner_tags (project_id, name, category_id, description)
+    VALUES (%s, %s, %s, %s) RETURNING id::text
 """
 
 # Apply a JSONB tag to all prompts in a session
@@ -616,20 +607,12 @@ async def create_value(body: ValueCreate):
                 if not cur.fetchone():
                     raise HTTPException(404, "Category not found")
 
-            cat_name_for_seq = body.category_name or ""
-            if not cat_name_for_seq:
-                cur.execute(_SQL_GET_CATEGORY_NAME_BY_ID, (cat_id,))
-                r2 = cur.fetchone()
-                if r2:
-                    cat_name_for_seq = r2[0]
-
-            seq = next_seq(cur, p, cat_name_for_seq)
-            lc = body.lifecycle_status or "idea"
+            lc = body.lifecycle_status or "open"
 
             # Build inline fields for planner_tags INSERT
             inline_fields: dict[str, object] = {}
             if body.description:
-                inline_fields["short_desc"] = body.description
+                inline_fields["description"] = body.description
             if body.requirements is not None:
                 inline_fields["requirements"] = body.requirements
             if body.acceptance_criteria is not None:
@@ -640,53 +623,33 @@ async def create_value(body: ValueCreate):
                 inline_fields["requester"] = body.requester
             if body.priority is not None:
                 inline_fields["priority"] = body.priority
-            if body.source is not None:
-                inline_fields["source"] = body.source
             if body.creator is not None:
                 inline_fields["creator"] = body.creator
-            if body.is_reusable is not None:
-                inline_fields["is_reusable"] = body.is_reusable
-            if body.extra is not None:
-                inline_fields["extra"] = json.dumps(body.extra)
 
             if inline_fields:
                 extra_cols = ", ".join(inline_fields.keys())
                 extra_placeholders = ", ".join(["%s"] * len(inline_fields))
                 cur.execute(
-                    f"INSERT INTO planner_tags (project_id, name, category_id, parent_id, lifecycle, seq_num, {extra_cols}) "
-                    f"VALUES (%s, %s, %s, %s::uuid, %s, %s, {extra_placeholders}) "
+                    f"INSERT INTO planner_tags (project_id, name, category_id, parent_id, status, {extra_cols}) "
+                    f"VALUES (%s, %s, %s, %s::uuid, %s, {extra_placeholders}) "
                     f"RETURNING id::text",
-                    [project_id, body.name, cat_id, body.parent_id or None, lc, seq] + list(inline_fields.values()),
+                    [project_id, body.name, cat_id, body.parent_id or None, lc] + list(inline_fields.values()),
                 )
             else:
                 cur.execute(
                     _SQL_INSERT_VALUE,
-                    (project_id, body.name, cat_id, body.parent_id or None, lc, seq),
+                    (project_id, body.name, cat_id, body.parent_id or None, lc),
                 )
             new_id = cur.fetchone()[0]
 
-            return {"id": new_id, "name": body.name, "project": p, "category_id": cat_id, "seq_num": seq}
+            return {"id": new_id, "name": body.name, "project": p, "category_id": cat_id}
 
 
 @router.get("/values/number/{seq_num}")
 async def get_value_by_number(seq_num: int, project: str | None = Query(None)):
-    """Resolve a short sequential number (e.g. #10005) to the full tag/value."""
-    _require_db()
-    p = _project(project)
-    project_id = db.get_or_create_project_id(p)
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_SQL_GET_VALUE_BY_SEQ, (project_id, seq_num))
-            r = cur.fetchone()
-            if not r:
-                raise HTTPException(404, f"Tag #{seq_num} not found in project {p!r}")
-            cols = [d[0] for d in cur.description]
-            row = dict(zip(cols, r))
-            if row.get("created_at"):
-                row["created_at"] = row["created_at"].isoformat()
-            if row.get("due_date"):
-                row["due_date"] = row["due_date"].isoformat()
-            return row
+    """Resolve a short sequential number to the full tag/value.
+    Note: seq_num was removed from planner_tags in m026 — always returns 404."""
+    raise HTTPException(404, f"Tag #{seq_num} not found — seq_num lookup is deprecated for planner_tags")
 
 
 @router.patch("/values/{val_id}")
@@ -696,9 +659,9 @@ async def patch_value(val_id: str, body: ValuePatch):
     tag_updates: dict[str, object] = {}
     if body.name             is not None: tag_updates["name"] = body.name
     if body.status           is not None: tag_updates["status"] = body.status
-    if body.lifecycle_status is not None: tag_updates["lifecycle"] = body.lifecycle_status
+    if body.lifecycle_status is not None: tag_updates["status"] = body.lifecycle_status
     if body.parent_id        is not None: tag_updates["parent_id"] = body.parent_id or None
-    if body.description      is not None: tag_updates["short_desc"] = body.description
+    if body.description      is not None: tag_updates["description"] = body.description
     if body.due_date         is not None: tag_updates["due_date"] = body.due_date or None
     if body.requirements     is not None: tag_updates["requirements"] = body.requirements
     if body.acceptance_criteria is not None: tag_updates["acceptance_criteria"] = body.acceptance_criteria
@@ -955,16 +918,15 @@ async def session_bulk_tag(body: SessionTagBody):
                 if val_row:
                     tag_id = val_row[0]
                 else:
-                    seq = next_seq(cur, p, body.category_name)
                     if body.description:
                         cur.execute(
                             _SQL_INSERT_SESSION_TAG_WITH_DESC,
-                            (project_id, body.value_name, cat_id, seq, body.description),
+                            (project_id, body.value_name, cat_id, body.description),
                         )
                     else:
                         cur.execute(
                             _SQL_INSERT_VALUE,
-                            (project_id, body.value_name, cat_id, None, "idea", seq),
+                            (project_id, body.value_name, cat_id, None, "open"),
                         )
                     tag_id = cur.fetchone()[0]
 

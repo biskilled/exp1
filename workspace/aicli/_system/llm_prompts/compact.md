@@ -4,9 +4,9 @@ When working on a specific feature, ask for its snapshot before making decisions
 
 ## Active Features
 
-- feature-snapshot-tag [feature]: Add a 'feature_snapshot' tag to the tagging system for categorizing development 
-- consolidate-descriptor-fields [task]: Consolidate overlapping descriptor fields (short_desc, full_desc, summary, requi
-- remove-redundant-planner-tag-columns [task]: Remove redundant seq_num and source columns from planner_tag schema by consolida
+- deployment-lineage-visualization [task]: Dashboard that visualizes code lineage from requirements through events, work it
+- mcp-state-sync-endpoints [task]: Expose project state management through MCP endpoints to allow external tools sa
+- implement-project-history-queries [task]: Build query interfaces to retrieve project history across features, requirements
 
 ## Last Session
-• Designed comprehensive project history and audit system with multi-layer snapshot architecture (features, requirements, deployments, work items). • Created feature snapshot table with versioning, timestamps, and deployment tracking to maintain full project history.
+• UI displaying only 'work_item' category in planner, with bug/category filters missing. • Clicking 'accepted' for AI tag causes work_item to disappear and leaves top screen empty.

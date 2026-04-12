@@ -580,6 +580,16 @@ function _renderWiPanel(items, project) {
       const cnt = document.getElementById('wi-panel-count');
       if (cnt) cnt.textContent = remaining.length ? `(${remaining.length} unlinked)` : '(all linked ✓)';
       toast(`Linked to "${wi.ai_tag_name}"`, 'success');
+      // Auto-switch to the category of the linked tag so user can see it in the top pane
+      const targetCat = wi.ai_tag_category;
+      if (targetCat) {
+        const cats = getCacheCategories();
+        const linkedCat = cats.find(c => c.name === targetCat && c.id != null);
+        if (linkedCat && linkedCat.id !== _plannerState.selectedCat) {
+          await _plannerSelectCat(linkedCat.id, linkedCat.name);
+          return; // _renderTagTable calls _loadTagLinkedWorkItems internally
+        }
+      }
       const { selectedCatName } = _plannerState;
       if (selectedCatName) _loadTagLinkedWorkItems(proj, selectedCatName).catch(() => {});
     } catch(e) { toast('Approve failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
@@ -647,8 +657,15 @@ function _renderWiPanel(items, project) {
       toast(`Created ${catLabel} tag "${tagName}" and linked`, 'success');
       await loadTagCache(proj, true);
       _renderCategoryList();
-      if (_plannerState.selectedCat) _renderTagTableFromCache();
-      _loadTagLinkedWorkItems(proj, catLabel).catch(() => {});
+      // Auto-switch to the new tag's category
+      const cats = getCacheCategories();
+      const linkedCat = cats.find(c => c.name === catLabel && c.id != null);
+      if (linkedCat) {
+        await _plannerSelectCat(linkedCat.id, linkedCat.name);
+      } else {
+        if (_plannerState.selectedCat) _renderTagTableFromCache();
+        _loadTagLinkedWorkItems(proj, catLabel).catch(() => {});
+      }
     } catch(e) { toast('Create failed: ' + e.message, 'error'); _wiRowLoading(id, false); }
   };
 
