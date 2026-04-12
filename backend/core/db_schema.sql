@@ -468,17 +468,18 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_events_tags    ON mem_ai_events USING gin(
 -- tag_id_user = user-confirmed link to planner_tags (drag-drop in Planner UI)
 -- tag_id_ai   = AI-suggested best-match tag (confidence > 0.70)
 -- tags_ai     = AI-generated metadata JSONB (populated by extract_work_item_code_summary)
+-- summary_ai  = PM digest: what was done, what remains, test coverage (written by promote_work_item)
 CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id           INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id          INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-    ai_category         TEXT        NOT NULL,                           -- 'feature'|'bug'|'task'
-    ai_name             TEXT        NOT NULL,
-    ai_desc             TEXT        NOT NULL DEFAULT '',
+    category_ai         TEXT        NOT NULL,                           -- 'feature'|'bug'|'task'
+    name_ai             TEXT        NOT NULL,
+    desc_ai             TEXT        NOT NULL DEFAULT '',
     acceptance_criteria_ai TEXT     NOT NULL DEFAULT '',
     action_items_ai     TEXT        NOT NULL DEFAULT '',
     code_summary        TEXT        NOT NULL DEFAULT '',
-    summary             TEXT        NOT NULL DEFAULT '',
+    summary_ai          TEXT        NOT NULL DEFAULT '',
     tags                JSONB       NOT NULL DEFAULT '{}',
     tags_ai             JSONB       NOT NULL DEFAULT '{}',
     tag_id_ai           UUID        REFERENCES planner_tags(id),
@@ -492,10 +493,10 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     embedding           VECTOR(1536),
-    UNIQUE(project_id, ai_category, ai_name)
+    UNIQUE(project_id, category_ai, name_ai)
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid   ON mem_ai_work_items(project_id);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat   ON mem_ai_work_items(ai_category);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat   ON mem_ai_work_items(category_ai);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_suser ON mem_ai_work_items(status_user);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_sai   ON mem_ai_work_items(status_ai);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq   ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL;

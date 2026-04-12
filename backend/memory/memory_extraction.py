@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
 _SQL_GET_WORK_ITEM_NAME = """
-    SELECT ai_name FROM mem_ai_work_items
+    SELECT name_ai FROM mem_ai_work_items
     WHERE id=%s::uuid AND project_id=%s
 """
 

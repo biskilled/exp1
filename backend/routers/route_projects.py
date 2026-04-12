@@ -2022,6 +2022,7 @@ async def generate_memory(project_name: str):
             asyncio.create_task(_process_unembedded_items_messages(project_name))
             asyncio.create_task(_run_work_item_extraction(project_name))
             asyncio.create_task(_run_feature_snapshots(project_name))
+            asyncio.create_task(_run_promote_all_work_items(project_name))
         except Exception:
             pass
 
@@ -2232,6 +2233,18 @@ async def _run_feature_snapshots(project: str) -> None:
         _log.info(f"_run_feature_snapshots: processed {len(tag_names)} tags for '{project}'")
     except Exception as e:
         _log.debug(f"_run_feature_snapshots failed: {e}")
+
+
+async def _run_promote_all_work_items(project: str) -> None:
+    """Promote all active work items (refresh AI text fields + status)."""
+    if not db.is_available():
+        return
+    try:
+        from memory.memory_promotion import MemoryPromotion
+        result = await MemoryPromotion().promote_all_work_items(project)
+        logging.getLogger(__name__).debug(f"_run_promote_all_work_items: {result}")
+    except Exception as e:
+        logging.getLogger(__name__).debug(f"_run_promote_all_work_items failed: {e}")
 
 
 async def _run_work_item_extraction(project: str) -> None:

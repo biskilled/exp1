@@ -45,18 +45,43 @@ _SQL_GET_TAG_ID = """
 """
 
 _SQL_GET_WORK_ITEM = """
-    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria_ai
+    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user, wi.acceptance_criteria_ai
     FROM mem_ai_work_items wi
     WHERE wi.project_id=%s
     ORDER BY wi.created_at DESC LIMIT 10
 """
 
 _SQL_GET_WORK_ITEM_BY_NAME = """
-    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.acceptance_criteria_ai,
+    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user, wi.acceptance_criteria_ai,
            wi.action_items_ai, wi.status_ai, wi.tag_id_user
     FROM mem_ai_work_items wi
-    WHERE wi.project_id=%s AND wi.ai_name=%s
+    WHERE wi.project_id=%s AND wi.name_ai=%s
     LIMIT 1
+"""
+
+_SQL_PROMOTE_WORK_ITEM_FIELDS = """
+    UPDATE mem_ai_work_items SET
+        desc_ai                = CASE WHEN %s != '' THEN %s ELSE desc_ai END,
+        acceptance_criteria_ai = CASE WHEN %s != '' THEN %s ELSE acceptance_criteria_ai END,
+        action_items_ai        = CASE WHEN %s != '' THEN %s ELSE action_items_ai END,
+        summary_ai             = CASE WHEN %s != '' THEN %s ELSE summary_ai END,
+        updated_at             = NOW()
+    WHERE id=%s AND project_id=%s
+"""
+
+_SQL_LIST_ACTIVE_WORK_ITEMS = """
+    SELECT name_ai FROM mem_ai_work_items
+    WHERE project_id=%s AND status_user NOT IN ('done', 'archived')
+    ORDER BY created_at DESC
+    LIMIT 50
+"""
+
+_SQL_GET_LINKED_EVENTS = """
+    SELECT summary, action_items
+    FROM mem_ai_events
+    WHERE work_item_id=%s::uuid AND summary IS NOT NULL AND summary != ''
+    ORDER BY created_at DESC
+    LIMIT 5
 """
 
 _SQL_UPDATE_WORK_ITEM_STATUS_AI = """
@@ -140,13 +165,13 @@ _SQL_UPDATE_EVENT_AI_TAGS = """
 
 _SQL_INSERT_EXTRACTED_WORK_ITEM = """
     INSERT INTO mem_ai_work_items
-        (project_id, ai_category, ai_name, ai_desc,
+        (project_id, category_ai, name_ai, desc_ai,
          acceptance_criteria_ai, action_items_ai, tags,
          source_event_id, seq_num)
     VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::uuid,
             (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
-    ON CONFLICT (project_id, ai_category, ai_name) DO UPDATE SET
-        ai_desc              = EXCLUDED.ai_desc,
+    ON CONFLICT (project_id, category_ai, name_ai) DO UPDATE SET
+        desc_ai              = EXCLUDED.desc_ai,
         acceptance_criteria_ai = CASE WHEN EXCLUDED.acceptance_criteria_ai != ''
                                       THEN EXCLUDED.acceptance_criteria_ai
                                       ELSE mem_ai_work_items.acceptance_criteria_ai END,
@@ -249,11 +274,11 @@ class MemoryPromotion:
     """
 
     async def promote_work_item(
-        self, project: str, tag_name: str
+        self, project: str, name_ai: str
     ) -> Optional[dict]:
         """
-        Summarise the work item associated with tag_name into a 2-4 sentence digest.
-        Returns {summary, status} or None on failure.
+        Refresh all 4 AI text fields for a work item from its linked events + commits.
+        Returns {work_item_id, name_ai, summary_ai, status_ai} or None on failure.
         """
         if not db.is_available():
             return None
@@ -261,20 +286,40 @@ class MemoryPromotion:
         project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_GET_WORK_ITEM_BY_NAME, (project_id, tag_name))
+                cur.execute(_SQL_GET_WORK_ITEM_BY_NAME, (project_id, name_ai))
                 row = cur.fetchone()
 
         if not row:
-            log.debug(f"promote_work_item: no work item found for '{tag_name}'")
+            log.debug(f"promote_work_item: no work item found for '{name_ai}'")
             return None
 
         wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id_user = row
 
+        # Fetch up to 5 linked event summaries for richer context
+        linked_events: list[str] = []
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_GET_LINKED_EVENTS, (str(wi_id),))
+                    for ev_summary, ev_actions in cur.fetchall():
+                        parts = [p for p in [ev_summary, ev_actions] if p and p.strip()]
+                        if parts:
+                            linked_events.append(" | ".join(parts))
+        except Exception as e:
+            log.debug(f"promote_work_item: linked events fetch error: {e}")
+
         system_prompt = _prompts.content("work_item_promotion") or (
-            "Given a work item, produce a 2-4 sentence summary capturing what it is, "
-            "current status, and any notable progress. "
-            "Return JSON only: {\"summary\": \"...\", \"status_ai\": \"active|in_progress|done\"}"
+            "Given a work item, produce a structured PM update. "
+            "Return JSON only: {\"desc_ai\": \"...\", \"acceptance_criteria_ai\": \"...\", "
+            "\"action_items_ai\": \"...\", \"summary_ai\": \"...\", "
+            "\"status_ai\": \"active|in_progress|done\"}"
         )
+
+        events_section = ""
+        if linked_events:
+            events_section = "\n\nLinked Events (recent):\n" + "\n".join(
+                f"- {e[:200]}" for e in linked_events
+            )
 
         user_msg = (
             f"Work Item: {wi_name}\n"
@@ -282,32 +327,81 @@ class MemoryPromotion:
             f"Description: {desc or '(none)'}\n"
             f"Acceptance Criteria:\n{ac or '(none)'}\n"
             f"Action Items:\n{action_items or '(none)'}"
+            + events_section
         )
 
-        raw = await _call_llm(system_prompt, user_msg, max_tokens=300)
+        raw = await _call_llm(system_prompt, user_msg, max_tokens=600)
         parsed = _parse_json(raw)
         if not parsed:
-            log.debug(f"promote_work_item: LLM returned no JSON for '{tag_name}'")
+            log.debug(f"promote_work_item: LLM returned no JSON for '{name_ai}'")
             return None
 
-        new_status_ai = parsed.get("status_ai", status_ai)
-        # Persist AI status suggestion back to DB
-        if new_status_ai != status_ai:
-            project_id = db.get_or_create_project_id(tag_name)  # re-resolve not needed below
-            try:
-                with db.conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(_SQL_UPDATE_WORK_ITEM_STATUS_AI,
-                                    (new_status_ai, str(wi_id), project_id))
-            except Exception as e:
-                log.debug(f"promote_work_item: status_ai update failed: {e}")
+        new_desc_ai         = (parsed.get("desc_ai") or "").strip()
+        new_ac              = (parsed.get("acceptance_criteria_ai") or "").strip()
+        new_action_items    = (parsed.get("action_items_ai") or "").strip()
+        new_summary_ai      = (parsed.get("summary_ai") or "").strip()
+        new_status_ai       = (parsed.get("status_ai") or status_ai).strip()
+
+        # Persist all 4 text fields + status
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        _SQL_PROMOTE_WORK_ITEM_FIELDS,
+                        (
+                            new_desc_ai,      new_desc_ai,
+                            new_ac,           new_ac,
+                            new_action_items, new_action_items,
+                            new_summary_ai,   new_summary_ai,
+                            str(wi_id),       project_id,
+                        ),
+                    )
+                    if new_status_ai != status_ai:
+                        cur.execute(
+                            _SQL_UPDATE_WORK_ITEM_STATUS_AI,
+                            (new_status_ai, str(wi_id), project_id),
+                        )
+        except Exception as e:
+            log.debug(f"promote_work_item: DB update failed: {e}")
 
         return {
             "work_item_id": str(wi_id),
-            "tag_name": tag_name,
-            "summary": parsed.get("summary", ""),
-            "status_ai": new_status_ai,
+            "name_ai":      name_ai,
+            "summary_ai":   new_summary_ai,
+            "status_ai":    new_status_ai,
         }
+
+    async def promote_all_work_items(self, project: str) -> dict:
+        """
+        Refresh all active work items via promote_work_item().
+        Called automatically at the end of /memory POST.
+        Returns {"promoted": N, "total": M}.
+        """
+        if not db.is_available():
+            return {"promoted": 0, "total": 0}
+
+        project_id = db.get_or_create_project_id(project)
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_LIST_ACTIVE_WORK_ITEMS, (project_id,))
+                    names = [r[0] for r in cur.fetchall()]
+        except Exception as e:
+            log.debug(f"promote_all_work_items: list query failed: {e}")
+            return {"promoted": 0, "total": 0}
+
+        total = len(names)
+        promoted = 0
+        for name in names:
+            try:
+                result = await self.promote_work_item(project, name)
+                if result:
+                    promoted += 1
+            except Exception as e:
+                log.debug(f"promote_all_work_items: failed for '{name}': {e}")
+
+        log.info(f"promote_all_work_items: promoted={promoted}/{total} for '{project}'")
+        return {"promoted": promoted, "total": total}
 
     async def promote_feature_snapshot(
         self, project: str, tag_name: str

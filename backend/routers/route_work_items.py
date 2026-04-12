@@ -58,9 +58,9 @@ _SQL_LIST_WORK_ITEMS_BASE = (
          WHERE project_id=%s AND merged_into IS NOT NULL
          GROUP BY 1
        )
-       SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+       SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
               w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
-              w.code_summary, w.summary,
+              w.code_summary, w.summary_ai,
               w.tags, w.tags_ai, w.tag_id_user, w.tag_id_ai, w.source_event_id,
               w.merged_into, w.start_date,
               w.created_at, w.updated_at, w.seq_num,
@@ -70,7 +70,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               COALESCE(cm_count.commit_count, 0) AS commit_count,
               COALESCE(mcount.cnt, 0) AS merge_count
        FROM mem_ai_work_items w
-       LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.ai_category
+       LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.category_ai
        LEFT JOIN ev_count ON ev_count.wi_id = w.id::text
        LEFT JOIN cm_count ON cm_count.wi_id = w.id::text
        LEFT JOIN mcount ON mcount.wi_id = w.id::text
@@ -82,8 +82,8 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 _SQL_UNLINKED_WORK_ITEMS = """
     WITH wi AS (
         -- Base filter; join source event once to get session_id + event_type
-        SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
-               w.status_user, w.status_ai, w.summary, w.tags, w.tags_ai,
+        SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
+               w.status_user, w.status_ai, w.summary_ai, w.tags, w.tags_ai,
                w.start_date, w.created_at, w.updated_at, w.seq_num,
                w.tag_id_ai, w.source_event_id, w.project_id,
                e.event_type  AS src_event_type,
@@ -137,8 +137,8 @@ _SQL_UNLINKED_WORK_ITEMS = """
         WHERE project_id = %s AND merged_into IS NOT NULL
         GROUP BY 1
     )
-    SELECT wi.id, wi.ai_category, wi.ai_name, wi.ai_desc,
-           wi.status_user, wi.status_ai, wi.summary, wi.tags, wi.tags_ai,
+    SELECT wi.id, wi.category_ai, wi.name_ai, wi.desc_ai,
+           wi.status_user, wi.status_ai, wi.summary_ai, wi.tags, wi.tags_ai,
            wi.start_date, wi.created_at, wi.updated_at, wi.seq_num,
            wi.tag_id_ai,
            pt.name   AS ai_tag_name,
@@ -160,18 +160,18 @@ _SQL_UNLINKED_WORK_ITEMS = """
 
 _SQL_INSERT_WORK_ITEM = (
     """INSERT INTO mem_ai_work_items
-           (project_id, ai_category, ai_name, ai_desc,
+           (project_id, category_ai, name_ai, desc_ai,
             acceptance_criteria_ai, action_items_ai,
-            code_summary, summary, tags, status_user, status_ai, seq_num)
+            code_summary, summary_ai, tags, status_user, status_ai, seq_num)
        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
-       ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
-       RETURNING id, ai_name, ai_category, created_at, seq_num"""
+       ON CONFLICT (project_id, category_ai, name_ai) DO NOTHING
+       RETURNING id, name_ai, category_ai, created_at, seq_num"""
 )
 
 _SQL_GET_WORK_ITEM = (
-    """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+    """SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
               w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
-              w.code_summary, w.summary,
+              w.code_summary, w.summary_ai,
               w.tags, w.tag_id_user, w.tag_id_ai, w.source_event_id,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
@@ -190,9 +190,9 @@ _SQL_DELETE_WORK_ITEM = (
 )
 
 _SQL_GET_WORK_ITEM_BY_SEQ = (
-    """SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+    """SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
               w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
-              w.code_summary, w.summary,
+              w.code_summary, w.summary_ai,
               w.tags, w.tag_id_user, w.tag_id_ai,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
@@ -284,17 +284,17 @@ async def _trigger_memory_regen(project: str) -> None:
 
 async def _embed_work_item(
     project_id: int, item_id: str,
-    ai_name: str, ai_desc: str, summary: str,
+    name_ai: str, desc_ai: str, summary_ai: str,
     code_summary: str = "",
 ) -> None:
     """Embed work item content and store the vector on the row.
-    Embedding = ai_name + ai_desc + summary + code_summary.
+    Embedding = name_ai + desc_ai + summary_ai + code_summary.
     Used for: (1) semantic search, (2) cosine-similarity matching to planner_tags.
     planner_tags.embedding = summary + action_items_ai → same space, enabling cross-table match.
     """
     try:
         from memory.memory_embedding import _embed
-        text = f"{ai_name} {ai_desc} {summary} {code_summary}".strip()
+        text = f"{name_ai} {desc_ai} {summary_ai} {code_summary}".strip()
         vec = await _embed(text)
         if vec and db.is_available():
             vec_str = f"[{','.join(str(x) for x in vec)}]"
@@ -448,16 +448,16 @@ async def _backlink_tag_to_events(project_id: int, work_item_id: str, tag_id_use
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class WorkItemCreate(BaseModel):
-    ai_category:         str
-    ai_name:             str
-    ai_desc:             str = ""
+    category_ai:         str
+    name_ai:             str
+    desc_ai:             str = ""
     project:             Optional[str] = None
     status_user:         str = "active"
     status_ai:           str = "active"
     acceptance_criteria_ai: str = ""
     action_items_ai:        str = ""
     code_summary:        str = ""
-    summary:             str = ""
+    summary_ai:          str = ""
     tags:                dict = {}
 
 
@@ -466,14 +466,14 @@ class WorkItemMerge(BaseModel):
 
 
 class WorkItemPatch(BaseModel):
-    ai_name:             Optional[str] = None
-    ai_desc:             Optional[str] = None
+    name_ai:             Optional[str] = None
+    desc_ai:             Optional[str] = None
     status_user:         Optional[str] = None   # set by user: active / paused / done
     status_ai:           Optional[str] = None   # set by AI: active / in_progress / done
     acceptance_criteria_ai: Optional[str] = None
     action_items_ai:        Optional[str] = None
     code_summary:        Optional[str] = None
-    summary:             Optional[str] = None
+    summary_ai:          Optional[str] = None
     tags:                Optional[dict] = None
     tags_ai:             Optional[dict] = None
     tag_id_user:              Optional[str] = None
@@ -526,12 +526,12 @@ async def list_work_items(
     where = ["w.project_id=%s"]
     params: list = [p_id]
     if category:
-        where.append("w.ai_category=%s"); params.append(category)
+        where.append("w.category_ai=%s"); params.append(category)
     if status:
         where.append("w.status_user=%s"); params.append(status)
     where.append("w.merged_into IS NULL")   # exclude items absorbed into a merge
     if name:
-        where.append("w.ai_name=%s"); params.append(name)
+        where.append("w.name_ai=%s"); params.append(name)
 
     sql = _SQL_LIST_WORK_ITEMS_BASE.format(where=" AND ".join(where))
     with db.conn() as conn:
@@ -572,23 +572,23 @@ async def create_work_item(
     import json as _json
     with db.conn() as conn:
         with conn.cursor() as cur:
-            seq = next_seq(cur, p_id, body.ai_category)
+            seq = next_seq(cur, p_id, body.category_ai)
             cur.execute(
                 _SQL_INSERT_WORK_ITEM,
-                (p_id, body.ai_category, body.ai_name, body.ai_desc,
+                (p_id, body.category_ai, body.name_ai, body.desc_ai,
                  body.acceptance_criteria_ai, body.action_items_ai,
-                 body.code_summary, body.summary,
+                 body.code_summary, body.summary_ai,
                  _json.dumps(body.tags), body.status_user, body.status_ai, seq),
             )
             r = cur.fetchone()
     if not r:
-        raise HTTPException(409, f"Work item '{body.ai_name}' already exists in category '{body.ai_category}'")
+        raise HTTPException(409, f"Work item '{body.name_ai}' already exists in category '{body.category_ai}'")
     item_id = str(r[0])
-    asyncio.create_task(_embed_work_item(p_id, item_id, body.ai_name, body.ai_desc, body.summary))
+    asyncio.create_task(_embed_work_item(p_id, item_id, body.name_ai, body.desc_ai, body.summary_ai))
     asyncio.create_task(_trigger_memory_regen(p))
     background_tasks.add_task(_run_matching, p, item_id)
     return {
-        "id": item_id, "ai_name": r[1], "ai_category": r[2],
+        "id": item_id, "name_ai": r[1], "category_ai": r[2],
         "created_at": r[3].isoformat(), "project": p, "seq_num": r[4],
     }
 
@@ -605,14 +605,14 @@ async def patch_work_item(
     p = _project(project)
     p_id = db.get_or_create_project_id(p)
     fields, params = [], []
-    if body.ai_name             is not None: fields.append("ai_name=%s");             params.append(body.ai_name)
-    if body.ai_desc             is not None: fields.append("ai_desc=%s");             params.append(body.ai_desc)
+    if body.name_ai             is not None: fields.append("name_ai=%s");             params.append(body.name_ai)
+    if body.desc_ai             is not None: fields.append("desc_ai=%s");             params.append(body.desc_ai)
     if body.status_user         is not None: fields.append("status_user=%s");         params.append(body.status_user)
     if body.status_ai           is not None: fields.append("status_ai=%s");           params.append(body.status_ai)
     if body.acceptance_criteria_ai is not None: fields.append("acceptance_criteria_ai=%s"); params.append(body.acceptance_criteria_ai)
     if body.action_items_ai        is not None: fields.append("action_items_ai=%s");        params.append(body.action_items_ai)
     if body.code_summary        is not None: fields.append("code_summary=%s");        params.append(body.code_summary)
-    if body.summary             is not None: fields.append("summary=%s");             params.append(body.summary)
+    if body.summary_ai             is not None: fields.append("summary_ai=%s");             params.append(body.summary_ai)
     if body.tags                is not None:
         import json as _json
         fields.append("tags=%s::jsonb"); params.append(_json.dumps(body.tags))
@@ -652,12 +652,12 @@ async def patch_work_item(
                 raise HTTPException(404, "Work item not found")
 
     body_dict = body.model_dump(exclude_none=True)
-    content_fields = {"ai_name", "ai_desc", "summary", "code_summary"}
+    content_fields = {"name_ai", "desc_ai", "summary_ai", "code_summary"}
     if any(f in body_dict for f in content_fields):
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT ai_name, ai_desc, summary FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
+                    "SELECT name_ai, desc_ai, summary_ai FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
                     (item_id, p_id),
                 )
                 row = cur.fetchone()
@@ -827,8 +827,8 @@ async def merge_work_item_into(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, ai_category, ai_name, ai_desc, action_items_ai, "
-                "acceptance_criteria_ai, summary, tag_id_user, seq_num "
+                "SELECT id, category_ai, name_ai, desc_ai, action_items_ai, "
+                "acceptance_criteria_ai, summary_ai, tag_id_user, seq_num "
                 "FROM mem_ai_work_items WHERE project_id=%s AND id=ANY(%s::uuid[])",
                 (p_id, [item_id, body.merge_with]),
             )
@@ -837,18 +837,18 @@ async def merge_work_item_into(
     if len(rows) < 2:
         raise HTTPException(404, "One or both work items not found")
 
-    a = dict(zip(["id","ai_category","ai_name","ai_desc","action_items_ai",
-                  "acceptance_criteria_ai","summary","tag_id_user","seq_num"], rows[0]))
-    b = dict(zip(["id","ai_category","ai_name","ai_desc","action_items_ai",
-                  "acceptance_criteria_ai","summary","tag_id_user","seq_num"], rows[1]))
+    a = dict(zip(["id","category_ai","name_ai","desc_ai","action_items_ai",
+                  "acceptance_criteria_ai","summary_ai","tag_id_user","seq_num"], rows[0]))
+    b = dict(zip(["id","category_ai","name_ai","desc_ai","action_items_ai",
+                  "acceptance_criteria_ai","summary_ai","tag_id_user","seq_num"], rows[1]))
 
     # Build merged item — combine fields, prefer non-empty values
     import json as _json
-    new_name        = f"{a['ai_name']} + {b['ai_name']}"
-    new_desc        = f"{a['ai_desc'] or ''}\n{b['ai_desc'] or ''}".strip()
+    new_name        = f"{a['name_ai']} + {b['name_ai']}"
+    new_desc        = f"{a['desc_ai'] or ''}\n{b['desc_ai'] or ''}".strip()
     new_actions     = f"{a['action_items_ai'] or ''}\n{b['action_items_ai'] or ''}".strip()
     new_criteria    = f"{a['acceptance_criteria_ai'] or ''}\n{b['acceptance_criteria_ai'] or ''}".strip()
-    new_category    = a['ai_category']  # use first item's category
+    new_category    = a['category_ai']  # use first item's category
     linked_tag_id_user   = a['tag_id_user'] or b['tag_id_user']  # keep any linked tag
 
     with db.conn() as conn:
@@ -856,10 +856,10 @@ async def merge_work_item_into(
             seq = next_seq(cur, p_id, new_category)
             cur.execute(
                 """INSERT INTO mem_ai_work_items
-                       (project_id, ai_category, ai_name, ai_desc,
+                       (project_id, category_ai, name_ai, desc_ai,
                         action_items_ai, acceptance_criteria_ai, tag_id_user, status_user, status_ai, seq_num)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,'active','active',%s)
-                   ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
+                   ON CONFLICT (project_id, category_ai, name_ai) DO NOTHING
                    RETURNING id""",
                 (p_id, new_category, new_name, new_desc,
                  new_actions, new_criteria,
@@ -881,7 +881,7 @@ async def merge_work_item_into(
     asyncio.create_task(_trigger_memory_regen(p))
     background_tasks.add_task(_run_matching, p, new_id)
 
-    return {"id": new_id, "ai_name": new_name, "ai_category": new_category,
+    return {"id": new_id, "name_ai": new_name, "category_ai": new_category,
             "merged_from": [item_id, body.merge_with], "project": p}
 
 
@@ -989,12 +989,12 @@ async def search_work_items(
     where = "project_id=%s AND embedding IS NOT NULL"
     where_params: list = [p_id]
     if category:
-        where += " AND ai_category=%s"
+        where += " AND category_ai=%s"
         where_params.append(category)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""SELECT id, ai_name, ai_category, ai_desc, status_user,
+                f"""SELECT id, name_ai, category_ai, desc_ai, status_user,
                            acceptance_criteria_ai, seq_num,
                            1 - (embedding <=> %s::vector) AS score
                     FROM mem_ai_work_items
@@ -1007,8 +1007,8 @@ async def search_work_items(
     return {
         "results": [
             {
-                "id": str(r[0]), "ai_name": r[1], "category": r[2],
-                "ai_desc": (r[3] or "")[:300],
+                "id": str(r[0]), "name_ai": r[1], "category": r[2],
+                "desc_ai": (r[3] or "")[:300],
                 "status_user": r[4],
                 "criteria_preview": (r[5] or "")[:200],
                 "seq_num": r[6], "score": round(float(r[7]), 4),

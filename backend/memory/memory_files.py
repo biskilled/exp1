@@ -49,7 +49,7 @@ _SQL_FACTS = """
 """
 
 _SQL_ACTIVE_WORK_ITEMS = """
-    SELECT wi.ai_name, wi.ai_desc, wi.ai_category,
+    SELECT wi.name_ai, wi.desc_ai, wi.category_ai,
            wi.seq_num, t.name AS tag_name
     FROM mem_ai_work_items wi
     LEFT JOIN planner_tags t ON t.id = wi.tag_id_user

@@ -202,7 +202,7 @@ export function renderEntities(container) {
   };
 
   window._wiBotDragStart = (e, id, name, cat) => {
-    _dragWiData = { id, ai_name: name, ai_category: cat };
+    _dragWiData = { id, name_ai: name, category_ai: cat };
     e.dataTransfer.effectAllowed = 'link';
     e.dataTransfer.setData('text/plain', id);
     e.currentTarget.style.opacity = '0.5';
@@ -232,7 +232,7 @@ export function renderEntities(container) {
     el.style.outline = '';
     if (!_dragWiData || !targetId || targetId === _dragWiData.id) return;
     const sourceId = _dragWiData.id;
-    const sourceName = _dragWiData.ai_name;
+    const sourceName = _dragWiData.name_ai;
     _dragWiData = null;
     try {
       await api.workItems.merge(sourceId, targetId, proj);
@@ -272,7 +272,7 @@ export function renderEntities(container) {
     if (!cat) return;
     const name = prompt('Work item name:');
     if (!name) return;
-    api.workItems.create(project, { ai_category: cat.toLowerCase(), ai_name: name })
+    api.workItems.create(project, { category_ai: cat.toLowerCase(), name_ai: name })
       .then(() => { toast(`Created "${name}"`, 'success'); _loadWiPanel(project); })
       .catch(err => toast(err.message, 'error'));
   };
@@ -302,7 +302,7 @@ export function renderEntities(container) {
 
   // Drag from sub-row in top pane back to bottom panel (to unlink)
   window._wiSubRowDragStart = (e, id, name, cat) => {
-    _dragWiData = { id, ai_name: name, ai_category: cat };
+    _dragWiData = { id, name_ai: name, category_ai: cat };
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', id);
   };
@@ -330,7 +330,7 @@ export function renderEntities(container) {
     const proj = _plannerState.project;
     try {
       await api.workItems.patch(wi.id, proj, { tag_id_user: '' });
-      toast(`Unlinked "${wi.ai_name}"`, 'success');
+      toast(`Unlinked "${wi.name_ai}"`, 'success');
       _loadWiPanel(proj);
       _loadTagLinkedWorkItems(proj).catch(() => {});
     } catch(err) { toast('Unlink failed: ' + err.message, 'error'); }
@@ -440,7 +440,7 @@ async function _plannerSelectCat(catId, catName) {
 
 // ── Work Items bottom panel ────────────────────────────────────────────────────
 
-let _dragWiData = null;   // { id, ai_name, ai_category } — set while dragging a work item
+let _dragWiData = null;   // { id, name_ai, category_ai } — set while dragging a work item
 let _wiPanelItems = {};   // id → wi object, cache for bottom panel
 
 async function _loadWiPanel(project) {
@@ -655,9 +655,9 @@ function _renderWiPanel(items, project) {
   const LBL_USER = LBL_BASE + ';color:#4a90e2;border:1px solid #4a90e266;background:#4a90e212';   // blue — user
 
   const rows = sorted.map(wi => {
-    const icon = CAT_ICON[wi.ai_category] || '📋';
+    const icon = CAT_ICON[wi.category_ai] || '📋';
     const sc   = STATUS_C[wi.status_user] || '#888';
-    const desc = (wi.ai_desc || '').replace(/\n/g,' ').trim();
+    const desc = (wi.desc_ai || '').replace(/\n/g,' ').trim();
     // AI(EXISTS) — matched to an existing planner tag
     const aiTagColor = wi.ai_tag_color || '#27ae60';
     const aiTagLabel = wi.ai_tag_name
@@ -746,10 +746,10 @@ function _renderWiPanel(items, project) {
 
     return `<tr draggable="true"
         data-wi-id="${_esc(wi.id)}"
-        data-wi-name="${_esc(wi.ai_name)}"
-        ondragstart="window._wiBotDragStart(event,'${_esc(wi.id)}','${_esc(wi.ai_name)}','${_esc(wi.ai_category)}')"
+        data-wi-name="${_esc(wi.name_ai)}"
+        ondragstart="window._wiBotDragStart(event,'${_esc(wi.id)}','${_esc(wi.name_ai)}','${_esc(wi.category_ai)}')"
         ondragend="window._wiBotDragEnd(event)"
-        onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(wi.ai_category)}','${_esc(project)}')"
+        onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(wi.category_ai)}','${_esc(project)}')"
         style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
         onmouseenter="this.style.background='var(--surface2)'"
         onmouseleave="this.style.background=''">
@@ -762,7 +762,7 @@ function _renderWiPanel(items, project) {
           <span style="flex-shrink:0;font-size:0.78rem">${icon}</span>
           ${wi.seq_num ? `<span style="font-size:0.58rem;color:var(--muted);flex-shrink:0">#${wi.seq_num}</span>` : ''}
           <span style="font-size:0.72rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;
-                       white-space:nowrap;flex:1;min-width:0" title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
+                       white-space:nowrap;flex:1;min-width:0" title="${_esc(wi.name_ai)}">${_esc(wi.name_ai)}</span>
           <span style="font-size:0.56rem;color:${sc};background:${sc}1a;
                        padding:0 0.3rem;border-radius:6px;flex-shrink:0;white-space:nowrap">${wi.status_user||'active'}</span>
         </div>
@@ -807,7 +807,7 @@ function _renderWiPanel(items, project) {
 /** Load work items linked to tags in the current category, inject as sub-rows. */
 async function _loadTagLinkedWorkItems(project, catName) {
   try {
-    // Fetch all linked work items (no ai_category filter — a 'task' work item can be linked
+    // Fetch all linked work items (no category_ai filter — a 'task' work item can be linked
     // to a 'feature' tag; we rely on the DOM tr[data-tag-id] selector to scope to current view)
     const data = await api.workItems.list({ project });
     const linked = (data.work_items || []).filter(w => w.tag_id_user && !w.merged_into);
@@ -826,7 +826,7 @@ async function _loadTagLinkedWorkItems(project, catName) {
       // Insert sub-rows (in reverse so first item ends up first)
       [...wis].reverse().forEach(wi => {
         const sc = STATUS_UC[wi.status_user] || '#888';
-        const icon = CAT_ICON[wi.ai_category] || '📋';
+        const icon = CAT_ICON[wi.category_ai] || '📋';
         const tr = document.createElement('tr');
         tr.className = 'wi-sub-row';
         tr.dataset.wiId = wi.id;
@@ -840,7 +840,7 @@ async function _loadTagLinkedWorkItems(project, catName) {
               <span style="font-size:0.7rem;flex-shrink:0">${icon}</span>
               <span style="font-size:0.63rem;color:var(--text);flex:1;overflow:hidden;
                            text-overflow:ellipsis;white-space:nowrap"
-                    title="${_esc(wi.ai_desc||'')}">${_esc(wi.ai_name)}</span>
+                    title="${_esc(wi.desc_ai||'')}">${_esc(wi.name_ai)}</span>
               <span style="font-size:0.52rem;color:${sc};background:${sc}22;
                            padding:0.02rem 0.25rem;border-radius:8px;flex-shrink:0">${wi.status_user||'active'}</span>
               <button title="Delete work item"
@@ -859,10 +859,10 @@ async function _loadTagLinkedWorkItems(project, catName) {
         tr.addEventListener('mouseleave', () => tr.style.background = '');
         tr.addEventListener('click', (e) => {
           if (e.target.closest('button')) return;
-          window._plannerOpenWorkItemDrawer(wi.id, wi.ai_category, project);
+          window._plannerOpenWorkItemDrawer(wi.id, wi.category_ai, project);
         });
         tr.addEventListener('dragstart', (e) => {
-          _dragWiData = { id: wi.id, ai_name: wi.ai_name, ai_category: wi.ai_category };
+          _dragWiData = { id: wi.id, name_ai: wi.name_ai, category_ai: wi.category_ai };
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setData('text/plain', wi.id);
           tr.style.opacity = '0.45';
@@ -900,14 +900,14 @@ async function _renderWorkItemsPane(pane, project) {
             : '';
           return `<div draggable="true"
                        data-wi-id="${_esc(wi.id)}"
-                       data-wi-name="${_esc(wi.ai_name)}"
-                       data-wi-cat="${_esc(wi.ai_category)}"
-                       ondragstart="window._wiItemDragStart(event,'${_esc(wi.id)}','${_esc(wi.ai_name)}','${_esc(wi.ai_category)}')"
+                       data-wi-name="${_esc(wi.name_ai)}"
+                       data-wi-cat="${_esc(wi.category_ai)}"
+                       ondragstart="window._wiItemDragStart(event,'${_esc(wi.id)}','${_esc(wi.name_ai)}','${_esc(wi.category_ai)}')"
                        style="display:flex;align-items:center;gap:6px;padding:5px 8px;
                               border-bottom:1px solid var(--border);cursor:grab;user-select:none">
-                    <span style="font-size:0.75rem">${CAT_ICON[wi.ai_category] || '📋'}</span>
+                    <span style="font-size:0.75rem">${CAT_ICON[wi.category_ai] || '📋'}</span>
                     <span style="font-size:0.68rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                          title="${_esc(wi.ai_desc || '')}">${_esc(wi.ai_name)}</span>
+                          title="${_esc(wi.desc_ai || '')}">${_esc(wi.name_ai)}</span>
                     ${hintBadge}
                     <span style="font-size:0.6rem;color:var(--muted);flex-shrink:0">[drag to link ↓]</span>
                   </div>`;
@@ -955,8 +955,8 @@ async function _renderWorkItemsPane(pane, project) {
         </div>
       </div>`;
 
-    window._wiItemDragStart = (event, id, ai_name, ai_category) => {
-      _dragWiData = { id, ai_name, ai_category };
+    window._wiItemDragStart = (event, id, name_ai, category_ai) => {
+      _dragWiData = { id, name_ai, category_ai };
       event.dataTransfer.effectAllowed = 'link';
     };
     window._wiItemDrop = async (event, tagId, proj) => {
@@ -1032,7 +1032,7 @@ async function _renderWorkItemTable(pane, catName, catColor, catIcon, project) {
     const name = prompt(`New ${cn} name:`);
     if (!name) return;
     try {
-      await api.workItems.create(project, { ai_category: cn, ai_name: name });
+      await api.workItems.create(project, { category_ai: cn, name_ai: name });
       _renderWorkItemTable(pane, catName, catColor, catIcon, project);
     } catch (e) { toast('Create failed: ' + e.message, 'error'); }
   };
@@ -1122,7 +1122,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
   function rowFor(wi) {
     const su  = wi.status_user || 'active';
     const sc  = STATUS_C[su] || '#888';
-    const desc = (wi.ai_desc||'').replace(/\n/g,' ');
+    const desc = (wi.desc_ai||'').replace(/\n/g,' ');
     const descClip = desc.length > 90 ? desc.slice(0,90)+'…' : desc;
     const date = fmtDate(wi.updated_at || wi.created_at);
     const linked = wi.tag_id_user
@@ -1130,7 +1130,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
       : (wi.tag_id_ai ? `<span style="font-size:0.5rem;color:var(--muted);margin-left:4px">✦</span>` : '');
 
     return `
-      <tr draggable="true" data-wi-id="${wi.id}" data-wi-name="${_esc(wi.ai_name)}"
+      <tr draggable="true" data-wi-id="${wi.id}" data-wi-name="${_esc(wi.name_ai)}"
           style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
           onclick="window._plannerOpenWorkItemDrawer('${_esc(wi.id)}','${_esc(catName)}','${_esc(project)}')"
           onmouseenter="this.style.background='var(--surface2)'"
@@ -1140,7 +1140,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
             ${wi.seq_num ? `<span style="font-size:0.5rem;color:var(--muted);flex-shrink:0;white-space:nowrap">#${wi.seq_num}</span>` : ''}
             <span style="font-size:0.7rem;font-weight:500;color:var(--text);
                          overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${_esc(wi.ai_name)}">${_esc(wi.ai_name)}</span>
+                  title="${_esc(wi.name_ai)}">${_esc(wi.name_ai)}</span>
             <span style="font-size:0.5rem;color:${sc};background:${sc}22;
                          padding:0 0.3rem;border-radius:8px;flex-shrink:0;white-space:nowrap">${su}</span>
             ${linked}
@@ -1218,7 +1218,7 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
       <div style="padding:0.9rem 1rem;border-bottom:1px solid var(--border);
                   display:flex;align-items:center;gap:0.5rem">
         ${drawerSeqBadge}
-        <strong style="font-size:0.75rem;flex:1;overflow:hidden;text-overflow:ellipsis">${_esc(wi.ai_name)}</strong>
+        <strong style="font-size:0.75rem;flex:1;overflow:hidden;text-overflow:ellipsis">${_esc(wi.name_ai)}</strong>
         ${linkedTagBadge}
         <button onclick="window._plannerCloseDrawer()"
           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem">✕</button>
@@ -1304,8 +1304,8 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                    color:var(--text);font-family:var(--font);font-size:0.68rem;
                    padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                    resize:vertical;box-sizing:border-box;line-height:1.5"
-            onblur="api.workItems.patch('${id}','${project}',{ai_desc:this.value}).catch(e=>toast(e.message,'error'))"
-          >${_esc(wi.ai_desc || '')}</textarea>
+            onblur="api.workItems.patch('${id}','${project}',{desc_ai:this.value}).catch(e=>toast(e.message,'error'))"
+          >${_esc(wi.desc_ai || '')}</textarea>
         </div>
 
         <!-- Requirements -->
@@ -1350,14 +1350,14 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           >${_esc(wi.action_items_ai || '')}</textarea>
         </div>
 
-        ${wi.summary ? `
+        ${wi.summary_ai ? `
         <!-- AI Summary (read-only) -->
         <div>
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                       letter-spacing:.06em;margin-bottom:0.3rem">AI Progress Summary</div>
           <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;
                       background:var(--surface2);padding:0.35rem 0.45rem;
-                      border-radius:var(--radius)">${_esc(wi.summary)}</div>
+                      border-radius:var(--radius)">${_esc(wi.summary_ai)}</div>
         </div>` : ''}
 
         ${wi.code_summary ? `
@@ -1388,7 +1388,7 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                      font-family:var(--font);font-size:0.65rem;padding:0.22rem 0.45rem;
                      border-radius:var(--radius);outline:none;min-width:0">
               <option value="">— select work item —</option>
-              ${siblings.map(s => `<option value="${_esc(s.id)}">${_esc(s.ai_name)}</option>`).join('')}
+              ${siblings.map(s => `<option value="${_esc(s.id)}">${_esc(s.name_ai)}</option>`).join('')}
             </select>
             <button onclick="window._wiMergeInto('${id}','${project}')"
               style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);
@@ -2536,7 +2536,7 @@ function _attachTagTableDnd(pane, catName) {
       }
       api.workItems.patch(wi.id, proj, { tag_id_user: tagId })
         .then(() => {
-          toast(`Linked "${wi.ai_name}" → "${tagName}"`, 'success');
+          toast(`Linked "${wi.name_ai}" → "${tagName}"`, 'success');
           _loadWiPanel(proj);
           // Inject sub-rows directly (no full re-render needed)
           if (catName) _loadTagLinkedWorkItems(proj, catName).catch(() => {});

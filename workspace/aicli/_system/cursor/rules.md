@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 23:00 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 23:02 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
 - [2026-04-10] I always get an error saying ynknow skill tag.
 - [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
 - [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
 - [2026-04-11] I still dont understand what is summery column used for . also tags - I do see that empty, and expected that to be updat
+- [2026-04-11] What is summery used for, I do see ai_desc, what is summery for ?

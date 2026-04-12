@@ -35,8 +35,8 @@ _SQL_GET_TAG = """
 """
 
 _SQL_GET_WORK_ITEMS = """
-    SELECT wi.id, wi.ai_name, wi.ai_desc, wi.status_user, wi.status_ai,
-           wi.acceptance_criteria_ai, wi.action_items_ai, wi.summary,
+    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user, wi.status_ai,
+           wi.acceptance_criteria_ai, wi.action_items_ai, wi.summary_ai,
            wi.seq_num, wi.start_date
     FROM mem_ai_work_items wi
     WHERE wi.tag_id_user = %s::uuid AND wi.project_id = %s
@@ -66,7 +66,7 @@ _SQL_UPDATE_TAG = """
 
 _SQL_UPDATE_WORK_ITEM = """
     UPDATE mem_ai_work_items
-    SET action_items_ai = %s, acceptance_criteria_ai = %s, summary = %s, updated_at = NOW()
+    SET action_items_ai = %s, acceptance_criteria_ai = %s, summary_ai = %s, updated_at = NOW()
     WHERE id = %s::uuid AND project_id = %s
 """
 
@@ -310,14 +310,14 @@ class MemoryPlanner:
             f"WORK ITEMS ({len(wi_data)} total):",
         ]
         for wi in wi_data:
-            lines.append(f"\n--- Work Item #{wi.get('seq_num', '?')}: {wi['ai_name']} ---")
+            lines.append(f"\n--- Work Item #{wi.get('seq_num', '?')}: {wi['name_ai']} ---")
             lines.append(f"ID: {wi['id']}")
             lines.append(f"Status: {wi.get('status_user', 'active')}")
-            lines.append(f"Description: {wi.get('ai_desc') or '—'}")
+            lines.append(f"Description: {wi.get('desc_ai') or '—'}")
             lines.append(f"Requirements: —")
             lines.append(f"Action items: {wi.get('action_items_ai') or '—'}")
             lines.append(f"Acceptance criteria: {wi.get('acceptance_criteria_ai') or '—'}")
-            lines.append(f"Summary: {wi.get('summary') or '—'}")
+            lines.append(f"Summary: {wi.get('summary_ai') or '—'}")
             lines.append(f"Prompts: {wi['n_prompts']} · ~{wi['words']} words · {wi['n_commits']} commits")
             if wi["files"]:
                 lines.append(f"Files changed: {', '.join(wi['files'][:10])}")
@@ -385,10 +385,10 @@ class MemoryPlanner:
             sd = wi.get("start_date")
             start_str = sd[:10] if sd else "—"
             wi_sections.append(
-                f"### #{wi.get('seq_num', '?')} {wi['ai_name']} · {wi.get('status_user', 'active')}\n"
+                f"### #{wi.get('seq_num', '?')} {wi['name_ai']} · {wi.get('status_user', 'active')}\n"
                 f"_Prompts: {wi['n_prompts']} · ~{wi['words']:,} words · "
                 f"{wi['n_commits']} commits · Started: {start_str}_\n\n"
-                f"{wi.get('summary') or wi.get('ai_desc') or ''}\n\n"
+                f"{wi.get('summary_ai') or wi.get('desc_ai') or ''}\n\n"
                 + (
                     f"**Remaining:** {wi.get('action_items_ai') or '—'}\n"
                     if wi.get("action_items_ai")

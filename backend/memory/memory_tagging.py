@@ -300,7 +300,7 @@ class MemoryTagging:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT id, ai_name, ai_desc, summary, ai_category
+                    SELECT id, name_ai, desc_ai, summary_ai, category_ai
                     FROM mem_ai_work_items WHERE id = %s
                 """, (work_item_id,))
                 row = cur.fetchone()

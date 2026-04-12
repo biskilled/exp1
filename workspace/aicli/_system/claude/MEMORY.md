@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-11 23:00 UTC by aicli /memory_
+_Generated: 2026-04-11 23:02 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -230,278 +230,160 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+### `prompt_batch: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 67d006f..8890c87 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
--- Secondary AI tag UX refinement: _wiSecApprove stores doc_type/feature/phase/bug/task tags in ai_tags.confirmed[] array; items remain visible in work item list with ✓ button showing as permanent chip indicator
--- Work item deletion UI: implemented _wiDeleteLinked handler with confirmation dialog; delete button appears in tag-linked work items panel with opacity toggle hover effect
--- Tag creation with auto-link workflow: _wiPanelCreateTag creates new tags without confirmation, auto-links work item, refreshes tag cache + planner table + category tag list
--- AI suggestion chips UX: added clickable ✓ button to create missing ai_suggestion tags with category inference; improved tooltip messaging for non-existent tags
--- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject/create operations to reflect linked/unlinked status changes in planner view
--- Work item persistence across sessions: ensuring tag-linked and newly-created work items remain accessible across tag switches and session changes
-+- Work item row loading states: _wiRowLoading() helper with CSS pulsing animation during async operations (delete, approve, dismiss); integrated into _wiDeleteLinked, _wiUnlink, _wiPanelDelete, _wiPanelApproveTag, _wiPanelRemoveTag handlers
-+- Secondary AI tag workflow refinement: _wiSecApprove now stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array instead of removing items from panel; items remain visible with permanent chip indicators
-+- Work item panel consistency: error handling improved to restore loading state on catch; toast messaging clarified for approve (link to tag), remove (clear metadata), and secondary approve (save as metadata)
-+- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates to reflect linked/unlinked status changes when category is selected
-+- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
-+- Work item deletion UI: confirmation dialogs + loading indicators for _wiDeleteLinked (tag-linked panel) and _wiPanelDelete (unlinked panel); delete operations remove items and refresh counts
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
-
-diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
-index fbb714e..35ca241 100644
---- a/backend/routers/route_work_items.py
-+++ b/backend/routers/route_work_items.py
-@@ -163,7 +163,7 @@ _SQL_INSERT_WORK_ITEM = (
-            (project_id, ai_category, ai_name, ai_desc,
-             acceptance_criteria_ai, action_items_ai,
-             code_summary, summary, tags, status_user, status_ai, seq_num)
--       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-+       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
-        ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
-        RETURNING id, ai_name, ai_category, created_at, seq_num"""
- )
-@@ -550,9 +550,9 @@ async def list_work_items(
-                     row["tag_id_user"] = str(row["tag_id_user"])
-                 if row.get("tag_id_ai"):
-                     row["tag_id_ai"] = str(row["tag_id_ai"])
--                if row.get("tags") is None:
--                    row["tags"] = {}
--                if row.get("tags_ai") is None:
-+                if not isinstance(row.get("tags"), dict):
-+                    row["tags"] = {}   # handles NULL and legacy TEXT[] values
-+                if not isinstance(row.get("tags_ai"), dict):
-                     row["tags_ai"] = {}
-                 rows.append(row)
-     return {"work_items": rows, "project": p, "total": len(rows)}
-@@ -615,7 +615,7 @@ async def patch_work_item(
-     if body.summary             is not None: fields.append("summary=%s");             params.append(body.summary)
-     if body.tags                is not None:
-         import json as _json
--        fields.append("tags=%s"); params.append(_json.dumps(body.tags))
-+        fields.append("tags=%s::jsonb"); params.append(_json.dumps(body.tags))
-     if body.tags_ai             is not None:
-         import json as _json
-         fields.append("tags_ai = tags_ai || %s::jsonb"); params.append(_json.dumps(body.tags_ai))
-
-
-### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
-
-diff --git a/backend/prompts/memory/work_items/work_item_extraction.md b/backend/prompts/memory/work_items/work_item_extraction.md
-index d718b69..7acb499 100644
---- a/backend/prompts/memory/work_items/work_item_extraction.md
-+++ b/backend/prompts/memory/work_items/work_item_extraction.md
-@@ -4,7 +4,13 @@ identify actionable work items AND suggest session tags.
- Return JSON only:
- {
-   "items": [
--    {"category": "bug|feature|task", "name": "short-slug", "description": "1-2 sentence explanation"}
-+    {
-+      "category": "bug|feature|task",
-+      "name": "short-slug",
-+      "description": "1-2 sentence explanation of what this is and why it matters",
-+      "acceptance_criteria": "- [ ] Specific, testable outcome 1\n- [ ] Specific, testable outcome 2",
-+      "action_items": "- First concrete step to take\n- Second concrete step\n- Third step if needed"
-+    }
-   ],
-   "suggested_tags": {
-     "phase": "discovery|development|testing|review|production|maintenance|bugfix",
-@@ -14,6 +20,8 @@ Return JSON only:
- 
- Rules:
- - items: at most 5 entries. Use lowercase-hyphenated slugs for name. Empty array if nothing actionable.
-+- acceptance_criteria: 1-3 bullet lines, each starting with "- [ ]". Must be specific and testable. Short.
-+- action_items: 1-4 bullet lines, each starting with "-". Concrete next steps. Short imperative phrases.
- - suggested_tags.phase: pick the most fitting phase from the list above based on the activity.
- - suggested_tags.feature: a slug matching the primary feature being worked on, or null if unclear.
- - No preamble, no markdown fences, return ONLY valid JSON.
-
+Fixed database migrations m023-m024 to properly backfill work_item tags from source events (phase/feature from sessions, ai_phase/ai_feature from commits), converting tags column from TEXT[] to JSONB; clarified that code_summary is manually triggered via commit tagging and tags should now populate correctly for 273+ work items.
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
 diff --git a/backend/memory/memory_promotion.py b/backend/memory/memory_promotion.py
-index 79e20b6..f031c4a 100644
+index f031c4a..a0e0ff4 100644
 --- a/backend/memory/memory_promotion.py
 +++ b/backend/memory/memory_promotion.py
-@@ -141,15 +141,29 @@ _SQL_UPDATE_EVENT_AI_TAGS = """
- _SQL_INSERT_EXTRACTED_WORK_ITEM = """
-     INSERT INTO mem_ai_work_items
-         (project_id, ai_category, ai_name, ai_desc,
-+         acceptance_criteria_ai, action_items_ai, tags,
-          source_event_id, seq_num)
--    VALUES (%s, %s, %s, %s, %s::uuid,
-+    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::uuid,
-             (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
-     ON CONFLICT (project_id, ai_category, ai_name) DO UPDATE SET
--        ai_desc    = EXCLUDED.ai_desc,
--        updated_at = NOW()
-+        ai_desc              = EXCLUDED.ai_desc,
-+        acceptance_criteria_ai = CASE WHEN EXCLUDED.acceptance_criteria_ai != ''
-+                                      THEN EXCLUDED.acceptance_criteria_ai
-+                                      ELSE mem_ai_work_items.acceptance_criteria_ai END,
-+        action_items_ai      = CASE WHEN EXCLUDED.action_items_ai != ''
-+                                    THEN EXCLUDED.action_items_ai
-+                                    ELSE mem_ai_work_items.action_items_ai END,
-+        tags                 = CASE WHEN EXCLUDED.tags != '{}'::jsonb
-+                                    THEN mem_ai_work_items.tags || EXCLUDED.tags
-+                                    ELSE mem_ai_work_items.tags END,
-+        updated_at           = NOW()
-     RETURNING id
- """
- 
-+# Keys considered "user intent" tags — copied from event tags to work item tags
-+_USER_TAG_KEYS = frozenset({"source", "phase", "feature", "bug", "component",
-+                             "doc_type", "design", "decision", "meeting", "customer"})
-+
- 
- # ── Helpers ───────────────────────────────────────────────────────────────────
- 
-@@ -654,18 +668,25 @@ class MemoryPromotion:
+@@ -668,9 +668,19 @@ class MemoryPromotion:
              if not items:
                  continue
  
-+            # Build filtered tags from source event (user-intent keys only)
-+            wi_tags = json.dumps({k: v for k, v in event_tags.items()
-+                                  if k in _USER_TAG_KEYS and v})
-+
+-            # Build filtered tags from source event (user-intent keys only)
+-            wi_tags = json.dumps({k: v for k, v in event_tags.items()
+-                                  if k in _USER_TAG_KEYS and v})
++            # Build filtered tags from source event (user-intent keys only).
++            # Commit events use ai_phase/ai_feature; session events use phase/feature.
++            merged: dict = {}
++            for k, v in event_tags.items():
++                if not v:
++                    continue
++                if k in _USER_TAG_KEYS:
++                    merged[k] = v
++                elif k == "ai_phase":
++                    merged.setdefault("phase", v)
++                elif k == "ai_feature":
++                    merged.setdefault("feature", v)
++            wi_tags = json.dumps(merged)
+ 
              for item in items[:5]:
                  category = item.get("category", "task")
-                 name = (item.get("name") or "").strip().lower()[:200]
-                 description = (item.get("description") or "").strip()[:1000]
-                 if not name or not description:
-                     continue
-+                ac = (item.get("acceptance_criteria") or "").strip()[:2000]
-+                ai = (item.get("action_items") or "").strip()[:2000]
-                 try:
-                     with db.conn() as conn:
-                         with conn.cursor() as cur:
-                             cur.execute(
-                                 _SQL_INSERT_EXTRACTED_WORK_ITEM,
-                                 (project_id, category, name, description,
-+                                 ac, ai, wi_tags,
-                                  str(ev_id), project_id),
-                             )
-                             row = cur.fetchone()
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
 diff --git a/backend/core/db_migrations.py b/backend/core/db_migrations.py
-index b1e57b9..461100b 100644
+index 461100b..4288055 100644
 --- a/backend/core/db_migrations.py
 +++ b/backend/core/db_migrations.py
-@@ -252,6 +252,62 @@ def m022_backfill_event_work_item_ids(conn) -> None:
-     log.info(f"m022_backfill_event_work_item_ids: {updated} events backlinked")
+@@ -285,23 +285,33 @@ def m024_backfill_work_item_tags(conn) -> None:
+     copies the user-intent keys (source, phase, feature, bug, component, doc_type)
+     from the source event's tags JSONB into the work item.
  
- 
-+def m023_work_items_tags_to_jsonb(conn) -> None:
-+    """Convert mem_ai_work_items.tags from TEXT[] to JSONB.
++    Handles both session events (phase/feature keys) and commit events
++    (ai_phase/ai_feature keys) by using COALESCE to map ai_* variants.
 +
-+    Old design stored tags as a text array {source:claude_cli, phase:dev} — never
-+    populated and hard to query. New design: JSONB object {source, phase, feature, ...}
-+    matching the tags on mem_mrr_* tables.
-+
-+    All existing rows have tags={} (empty array) so the USING clause just sets '{}'.
-+    """
-+    with conn.cursor() as cur:
-+        # Step 1: drop the old TEXT[] default so PostgreSQL allows the type change
-+        cur.execute("ALTER TABLE mem_ai_work_items ALTER COLUMN tags DROP DEFAULT")
-+        # Step 2: alter type with explicit USING — all existing rows are empty arrays
+     This is a one-time data migration for items created before m023/m024.
+     Going forward, tags are set at extraction time in memory_promotion.py.
+     """
+-    _USER_KEYS = "source", "phase", "feature", "bug", "component", "doc_type"
+-    key_filter = " OR ".join(f"e.tags ? '{k}'" for k in _USER_KEYS)
+     with conn.cursor() as cur:
+-        cur.execute(f"""
 +        cur.execute("""
-+            ALTER TABLE mem_ai_work_items
-+            ALTER COLUMN tags TYPE JSONB
-+            USING CASE WHEN array_length(tags, 1) IS NULL THEN '{}'::jsonb
-+                       ELSE array_to_json(tags)::jsonb END
-+        """)
-+        # Step 3: restore default and NOT NULL constraint for JSONB
-+        cur.execute("ALTER TABLE mem_ai_work_items ALTER COLUMN tags SET DEFAULT '{}'::jsonb")
-+        cur.execute("ALTER TABLE mem_ai_work_items ALTER COLUMN tags SET NOT NULL")
-+    conn.commit()
-+    log.info("m023_work_items_tags_to_jsonb: tags column converted TEXT[] → JSONB")
-+
-+
-+def m024_backfill_work_item_tags(conn) -> None:
-+    """Backfill work item tags from source event tags.
-+
-+    For each work item whose tags={} and has a source_event_id,
-+    copies the user-intent keys (source, phase, feature, bug, component, doc_type)
-+    from the source event's tags JSONB into the work item.
-+
-+    This is a one-time data migration for items created before m023/m024.
-+    Going forward, tags are set at extraction time in memory_promotion.py.
-+    """
-+    _USER_KEYS = "source", "phase", "feature", "bug", "component", "doc_type"
-+    key_filter = " OR ".join(f"e.tags ? '{k}'" for k in _USER_KEYS)
-+    with conn.cursor() as cur:
-+        cur.execute(f"""
-+            UPDATE mem_ai_work_items wi
-+            SET tags = (
-+                SELECT jsonb_object_agg(kv.key, kv.value)
-+                FROM jsonb_each_text(e.tags) AS kv(key, value)
-+                WHERE kv.key = ANY(ARRAY['source','phase','feature','bug','component','doc_type'])
-+            )
-+            FROM mem_ai_events e
-+            WHERE e.id = wi.source_event_id
-+              AND wi.tags = '{{}}'::jsonb
-+              AND ({key_filter})
-+        """)
-+        updated = cur.rowcount
-+    conn.commit()
-+    log.info(f"m024_backfill_work_item_tags: {updated} work items backfilled with event tags")
-+
-+
- MIGRATIONS: list[tuple[str, Callable]] = [
-     # All migrations through m017 (ai_tags column) were applied via the legacy
-     # ALTER TABLE system in database.py and are tracked as:
-@@ -262,4 +318,6 @@ MIGRATIONS: list[tuple[str, Callable]] = [
-     ("m020_perf_indexes", m020_perf_indexes),
-     ("m021_rename_work_item_columns", m021_rename_work_item_columns),
-     ("m022_backfill_event_work_item_ids", m022_backfill_event_work_item_ids),
-+    ("m023_work_items_tags_to_jsonb", m023_work_items_tags_to_jsonb),
-+    ("m024_backfill_work_item_tags", m024_backfill_work_item_tags),
- ]
+             UPDATE mem_ai_work_items wi
+-            SET tags = (
+-                SELECT jsonb_object_agg(kv.key, kv.value)
+-                FROM jsonb_each_text(e.tags) AS kv(key, value)
+-                WHERE kv.key = ANY(ARRAY['source','phase','feature','bug','component','doc_type'])
+-            )
++            SET tags = jsonb_strip_nulls(jsonb_build_object(
++                'phase',     COALESCE(e.tags->>'phase',   e.tags->>'ai_phase'),
++                'feature',   COALESCE(e.tags->>'feature', e.tags->>'ai_feature'),
++                'source',    e.tags->>'source',
++                'bug',       e.tags->>'bug',
++                'component', e.tags->>'component',
++                'doc_type',  e.tags->>'doc_type'
++            ))
+             FROM mem_ai_events e
+             WHERE e.id = wi.source_event_id
+-              AND wi.tags = '{{}}'::jsonb
+-              AND ({key_filter})
++              AND wi.tags = '{}'::jsonb
++              AND (
++                    e.tags->>'phase'      IS NOT NULL
++                 OR e.tags->>'ai_phase'   IS NOT NULL
++                 OR e.tags->>'feature'    IS NOT NULL
++                 OR e.tags->>'ai_feature' IS NOT NULL
++                 OR e.tags->>'source'     IS NOT NULL
++              )
+         """)
+         updated = cur.rowcount
+     conn.commit()
 
 
 ### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 48c2671..5448e58 100644
+index 5448e58..9ea3844 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-10 15:45 UTC
-+> Generated by aicli 2026-04-11 12:27 UTC
+-> Generated by aicli 2026-04-11 12:27 UTC
++> Generated by aicli 2026-04-11 13:29 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -50,7 +50,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- ## Architectural Decisions
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 7904e66..f57fa67 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 12:27 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 13:29 UTC
  
- - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
--- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
-+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags_relations, project_facts, work_items, features
- - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
- - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
- - Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
-@@ -60,7 +60,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
- - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
--- AI tag backlinking: PATCH /work-items with tag_id triggers propagation to all events in source session via category→tag_key mapping
- - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category, secondary tags remain as chips
- - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
--- Session tagging: /stag command (replaced /tag due to Claude Code skill conflict) with immediate tag propagation via log_user_prompt.sh reading .agent-context
+ # aicli — Shared AI Memory Platform
+ 
+@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
+ - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+ - [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
+ - [2026-04-10] I always get an error saying ynknow skill tag.
+-- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
 \ No newline at end of file
-+- Session tagging: /stag command (replaced /tag due to Claude Code skill conflict) with immediate tag propagation via log_user_prompt.sh reading .agent-context
-+- UI state management: _wiPanelItems object-keyed cache; _renderWiPanel for unlinked items; tag-linked items persist across category switches
++- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
++- [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
+\ No newline at end of file
+
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-11
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 7904e66..f57fa67 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 12:27 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-11 13:29 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -67,8 +67,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-10] I still dont understand how there are work_items without any linked prompts. can you update all work_item using /mmeory 
+ - [2026-04-10] In the ui - when I accept AI tag - configrm should be remove (only delete suppose to stay). when I confirm existing tag 
+ - [2026-04-10] can I add tags  here for my prompts using /tag or I need to use a new session ?
+ - [2026-04-10] I always get an error saying ynknow skill tag.
+-- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
+\ No newline at end of file
++- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
++- [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
 \ No newline at end of file
 

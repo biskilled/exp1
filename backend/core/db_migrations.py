@@ -318,6 +318,23 @@ def m024_backfill_work_item_tags(conn) -> None:
     log.info(f"m024_backfill_work_item_tags: {updated} work items backfilled with event tags")
 
 
+def m025_rename_work_item_ai_columns(conn) -> None:
+    """Rename mem_ai_work_items columns for consistency — all AI-generated fields use _ai suffix.
+
+    - ai_name     → name_ai       (AI-extracted slug)
+    - ai_category → category_ai   (AI-extracted category)
+    - ai_desc     → desc_ai       (AI-extracted description)
+    - summary     → summary_ai    (PM digest, repurposed for promote_work_item output)
+    """
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME COLUMN ai_name     TO name_ai")
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME COLUMN ai_category TO category_ai")
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME COLUMN ai_desc     TO desc_ai")
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME COLUMN summary     TO summary_ai")
+    conn.commit()
+    log.info("m025_rename_work_item_ai_columns: 4 columns renamed")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -330,4 +347,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m022_backfill_event_work_item_ids", m022_backfill_event_work_item_ids),
     ("m023_work_items_tags_to_jsonb", m023_work_items_tags_to_jsonb),
     ("m024_backfill_work_item_tags", m024_backfill_work_item_tags),
+    ("m025_rename_work_item_ai_columns", m025_rename_work_item_ai_columns),
 ]
