@@ -52,12 +52,12 @@
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash",
-    "Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation",
+    "Work item column naming convention: ai_name \u2192 name_ai, ai_category \u2192 category_ai, ai_desc \u2192 desc_ai, summary \u2192 summary_ai for consistency; FK architecture links many events to one work item",
     "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation",
     "Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category",
-    "Work item column naming convention: ai_name \u2192 name_ai, ai_category \u2192 category_ai, ai_desc \u2192 desc_ai for consistency; summary merged into desc_ai",
     "Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)",
-    "Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context"
+    "Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context",
+    "Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -86,12 +86,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Work item column schema refactoring: renamed ai_name\u2192name_ai, ai_category\u2192category_ai, ai_desc\u2192desc_ai for naming consistency; consolidated summary into desc_ai to reduce column redundancy",
-    "prompt_work_item() trigger refinement: integrated to run automatically during /memory command execution to ensure work item columns reflect latest AI naming conventions and data consolidation",
+    "Work item column schema refactoring: completed renaming ai_name\u2192name_ai, ai_category\u2192category_ai, ai_desc\u2192desc_ai, summary\u2192summary_ai across frontend (entities.js) and backend (route_work_items.py, route_projects.py) for naming consistency",
+    "prompt_work_item() trigger integration: added _run_promote_all_work_items() to /memory command execution pipeline to refresh AI text fields and status during memory generation",
+    "Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion",
     "Work item UI loading states: _wiRowLoading() CSS pulsing animation during async delete/approve/dismiss operations; integrated into tag-linked and unlinked panels with error state recovery",
-    "Secondary AI tag workflow: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion",
-    "Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject; planner table updates reflect linked/unlinked status changes when category selected",
-    "AI tag suggestion UX: clickable \u2713 creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'"
+    "Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates reflect linked/unlinked status changes when category selected",
+    "AI tag suggestion UX: clickable \u2713 button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -123,7 +123,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-12T00:03:49Z",
+  "last_memory_run": "2026-04-12T11:08:50Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -135,20 +135,20 @@
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash",
-      "Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation",
+      "Work item column naming convention: ai_name \u2192 name_ai, ai_category \u2192 category_ai, ai_desc \u2192 desc_ai, summary \u2192 summary_ai for consistency; FK architecture links many events to one work item",
       "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation",
       "Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category",
-      "Work item column naming convention: ai_name \u2192 name_ai, ai_category \u2192 category_ai, ai_desc \u2192 desc_ai for consistency; summary merged into desc_ai",
       "Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)",
-      "Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context"
+      "Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context",
+      "Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
     ],
     "in_progress": [
-      "Work item column schema refactoring: renamed ai_name\u2192name_ai, ai_category\u2192category_ai, ai_desc\u2192desc_ai for naming consistency; consolidated summary into desc_ai to reduce column redundancy",
-      "prompt_work_item() trigger refinement: integrated to run automatically during /memory command execution to ensure work item columns reflect latest AI naming conventions and data consolidation",
+      "Work item column schema refactoring: completed renaming ai_name\u2192name_ai, ai_category\u2192category_ai, ai_desc\u2192desc_ai, summary\u2192summary_ai across frontend (entities.js) and backend (route_work_items.py, route_projects.py) for naming consistency",
+      "prompt_work_item() trigger integration: added _run_promote_all_work_items() to /memory command execution pipeline to refresh AI text fields and status during memory generation",
+      "Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion",
       "Work item UI loading states: _wiRowLoading() CSS pulsing animation during async delete/approve/dismiss operations; integrated into tag-linked and unlinked panels with error state recovery",
-      "Secondary AI tag workflow: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion",
-      "Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject; planner table updates reflect linked/unlinked status changes when category selected",
-      "AI tag suggestion UX: clickable \u2713 creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'"
+      "Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates reflect linked/unlinked status changes when category selected",
+      "AI tag suggestion UX: clickable \u2713 button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -156,21 +156,19 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database": "PostgreSQL 15+ with pgvector extensions",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "config_management": "config.py + YAML pipelines + pyproject.toml + aicli.yaml session tagging config",
+      "database": "PostgreSQL 15+ with pgvector extensions",
+      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)",
       "prompt_management": "core.prompt_loader module with centralized prompt caching",
-      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)"
+      "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend with PostgreSQL+pgvector semantic storage and an Electron desktop UI (Vanilla JS). It provides multi-user AI-assisted development workflows with LLM provider adapters, async DAG-based work orchestration, intelligent code chunking, and dual-layer memory synthesis (raw captures \u2192 AI-digested work items). Current focus is refactoring work item schema for clarity and ensuring AI tag workflows properly persist metadata during the memory synthesis cycle.",
-    "memory_digest": "**[2026-04-11]** `cli_refactoring` \u2014 Renamed work item AI columns (ai_name\u2192name_ai, ai_category\u2192category_ai, ai_desc\u2192desc_ai) for naming consistency and consolidated summary field into desc_ai to reduce schema redundancy. **[2026-04-11]** `memory_trigger` \u2014 Integrated prompt_work_item() to execute automatically during /memory command ensuring work items reflect latest AI column conventions. **[2026-04-10]** `ui_tag_workflow` \u2014 Refined secondary AI tag workflow: _wiSecApprove now stores confirmed metadata in ai_tags.confirmed[] array instead of removing items; items remain visible with permanent chip indicators for metadata tagging. **[2026-04-10]** `ui_loading_states` \u2014 Implemented _wiRowLoading() CSS pulsing animation for async work item operations (delete/approve/dismiss) with error state recovery in both tag-linked and unlinked panels. **[2026-04-10]** `tag_refresh_logic` \u2014 _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates to reflect linked/unlinked status changes when category is selected. **[2026-04-10]** `ai_tag_suggestions` \u2014 Clickable \u2713 button creates missing ai_suggestion tags with category inference; improved tooltip messaging from 'No existing tag' to 'Does not exist yet'. **[2026-04-10]** `user_feedback_integration` \u2014 Captured user confusion about work item columns (start_id, summary, tags) indicating need for clearer schema semantics and tag population workflow documentation."
+    "project_summary": "aicli is a shared AI memory platform that captures development session events, synthesizes them with Claude, and organizes insights into work items, project facts, and tagged entities. The system runs as a Python FastAPI backend with PostgreSQL+pgvector storage, a vanilla JS Electron desktop UI, and a CLI tool, supporting multi-user projects with semantic search, workflow automation via DAG executors, and integration with multiple LLM providers. Currently stabilizing the work item data model with consistent column naming (name_ai, category_ai, desc_ai, summary_ai) and enhancing the secondary AI tag workflow for metadata management.",
+    "memory_digest": "**[2026-03-14]** `entities.js, route_work_items.py, route_projects.py` \u2014 Completed work item column schema refactoring to enforce consistent naming: ai_name\u2192name_ai, ai_category\u2192category_ai, ai_desc\u2192desc_ai, summary\u2192summary_ai. Updated all frontend references in drag-and-drop handlers, work item creation, and panel rendering. Updated backend SQL queries, model definitions, and embedding logic to use new column names.\n\n**[2026-03-14]** `route_projects.py` \u2014 Integrated _run_promote_all_work_items() into the /memory command execution pipeline. New memory promotion task refreshes AI text fields and status for all active work items during memory generation, ensuring work item data stays current.\n\n**[2026-03-14]** `entities.js` \u2014 Secondary AI tag workflow now stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array. Tagged work items remain visible with permanent chip indicators instead of deletion, improving audit trail and re-evaluation capability.\n\n**[2026-03-14]** `entities.js` \u2014 Enhanced work item UI with _wiRowLoading() CSS pulsing animation during async delete/approve/dismiss operations. Error state recovery integrated into tag-linked and unlinked panels for better UX feedback.\n\n**[2026-03-14]** `entities.js` \u2014 Improved AI tag suggestion UX: clickable \u2713 button creates missing ai_suggestion tags with category inference. Tooltip messaging upgraded from 'No existing tag' to 'Does not exist yet' for clarity on tag creation workflow."
   }
 }
