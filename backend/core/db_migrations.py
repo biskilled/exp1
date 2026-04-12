@@ -422,6 +422,21 @@ def m026_planner_tags_cleanup(conn) -> None:
     log.info("m026_planner_tags_cleanup: table recreated — 5 cols dropped, short_desc→description, creator/updater enforced")
 
 
+def m027_planner_tags_drop_ai_cols(conn) -> None:
+    """Drop AI-generated and unused columns from planner_tags.
+
+    summary, design, embedding → move to the future merge-layer table
+    extra                      → never used, dead weight
+    """
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE planner_tags DROP COLUMN IF EXISTS summary")
+        cur.execute("ALTER TABLE planner_tags DROP COLUMN IF EXISTS design")
+        cur.execute("ALTER TABLE planner_tags DROP COLUMN IF EXISTS embedding")
+        cur.execute("ALTER TABLE planner_tags DROP COLUMN IF EXISTS extra")
+    conn.commit()
+    log.info("m027_planner_tags_drop_ai_cols: summary/design/embedding/extra dropped")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -436,4 +451,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m024_backfill_work_item_tags", m024_backfill_work_item_tags),
     ("m025_rename_work_item_ai_columns", m025_rename_work_item_ai_columns),
     ("m026_planner_tags_cleanup", m026_planner_tags_cleanup),
+    ("m027_planner_tags_drop_ai_cols", m027_planner_tags_drop_ai_cols),
 ]

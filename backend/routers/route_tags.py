@@ -72,8 +72,7 @@ _SQL_LIST_TAGS = """
            tc.name AS category_name, tc.color, tc.icon,
            t.description, t.due_date, t.priority,
            t.creator, t.requirements, t.acceptance_criteria,
-           t.action_items, t.summary, t.requester, t.extra,
-           t.embedding IS NOT NULL AS has_embedding,
+           t.action_items, t.requester,
            0 AS source_count,
            t.updater, t.updated_at
     FROM planner_tags t
@@ -87,8 +86,7 @@ _SQL_LIST_TAGS = """
 #  5 status  6 created_at  7 category_name  8 color  9 icon
 # 10 description  11 due_date  12 priority  13 creator
 # 14 requirements  15 acceptance_criteria  16 action_items
-# 17 summary  18 requester  19 extra  20 has_embedding
-# 21 source_count (list only)  22 updater  23 updated_at
+# 17 requester  18 source_count (list only)  19 updater  20 updated_at
 
 _SQL_GET_TAG = """
     SELECT t.id, t.name, t.category_id, t.parent_id, t.merged_into,
@@ -96,14 +94,14 @@ _SQL_GET_TAG = """
            tc.name AS category_name, tc.color, tc.icon,
            t.description, t.due_date, t.priority,
            t.creator, t.requirements, t.acceptance_criteria,
-           t.action_items, t.summary, t.requester, t.extra,
-           t.embedding IS NOT NULL AS has_embedding,
+           t.action_items, t.requester,
            t.updater, t.updated_at
     FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
     WHERE t.project_id = %s AND t.id = %s::uuid
 """
-# column indices for _row_to_tag_detail: same as above without source_count (idx 21)
+# column indices for _row_to_tag_detail:
+#  0-16 same as list; 17 requester  18 updater  19 updated_at
 
 _SQL_INSERT_TAG = """
     INSERT INTO planner_tags (project_id, name, category_id, parent_id, status, creator)
@@ -181,12 +179,9 @@ class TagUpdate(BaseModel):
     requirements: Optional[str] = None
     acceptance_criteria: Optional[str] = None
     action_items: Optional[str] = None
-    summary: Optional[str] = None
-    design: Optional[dict] = None
     priority: Optional[int] = None
     due_date: Optional[str] = None
     requester: Optional[str] = None
-    extra: Optional[dict] = None
     creator: Optional[str] = None
     updater: Optional[str] = None
 
@@ -234,8 +229,7 @@ def _row_to_tag(row: tuple) -> dict:
     #  5 status  6 created_at  7 category_name  8 color  9 icon
     # 10 description  11 due_date  12 priority  13 creator
     # 14 requirements  15 acceptance_criteria  16 action_items
-    # 17 summary  18 requester  19 extra  20 has_embedding
-    # 21 source_count  22 updater  23 updated_at
+    # 17 requester  18 source_count  19 updater  20 updated_at
     return {
         "id":                  str(row[0]),
         "name":                row[1],
@@ -254,13 +248,10 @@ def _row_to_tag(row: tuple) -> dict:
         "requirements":        row[14] or "",
         "acceptance_criteria": row[15] or "",
         "action_items":        row[16] or "",
-        "summary":             row[17] or "",
-        "requester":           row[18] or "",
-        "extra":               row[19] if row[19] is not None else {},
-        "has_embedding":       bool(row[20]) if row[20] is not None else False,
-        "source_count":        row[21] if len(row) > 21 else 0,
-        "updater":             row[22] or "user",
-        "updated_at":          row[23].isoformat() if len(row) > 23 and row[23] else None,
+        "requester":           row[17] or "",
+        "source_count":        row[18] if len(row) > 18 else 0,
+        "updater":             row[19] or "user",
+        "updated_at":          row[20].isoformat() if len(row) > 20 and row[20] else None,
         "children":            [],
     }
 
@@ -271,8 +262,7 @@ def _row_to_tag_detail(row: tuple) -> dict:
     #  5 status  6 created_at  7 category_name  8 color  9 icon
     # 10 description  11 due_date  12 priority  13 creator
     # 14 requirements  15 acceptance_criteria  16 action_items
-    # 17 summary  18 requester  19 extra  20 has_embedding
-    # 21 updater  22 updated_at
+    # 17 requester  18 updater  19 updated_at
     return {
         "id":                  str(row[0]),
         "name":                row[1],
@@ -291,12 +281,9 @@ def _row_to_tag_detail(row: tuple) -> dict:
         "requirements":        row[14] or "",
         "acceptance_criteria": row[15] or "",
         "action_items":        row[16] or "",
-        "summary":             row[17] or "",
-        "requester":           row[18] or "",
-        "extra":               row[19] if row[19] is not None else {},
-        "has_embedding":       bool(row[20]) if row[20] is not None else False,
-        "updater":             row[21] or "user",
-        "updated_at":          row[22].isoformat() if row[22] else None,
+        "requester":           row[17] or "",
+        "updater":             row[18] or "user",
+        "updated_at":          row[19].isoformat() if row[19] else None,
         "children":            [],
     }
 
@@ -367,18 +354,12 @@ async def update_tag(tag_id: str, body: TagUpdate):
         fields["acceptance_criteria"] = body.acceptance_criteria
     if body.action_items is not None:
         fields["action_items"] = body.action_items
-    if body.summary is not None:
-        fields["summary"] = body.summary
-    if body.design is not None:
-        fields["design"] = json.dumps(body.design)
     if body.priority is not None:
         fields["priority"] = body.priority
     if body.due_date is not None:
         fields["due_date"] = body.due_date
     if body.requester is not None:
         fields["requester"] = body.requester
-    if body.extra is not None:
-        fields["extra"] = json.dumps(body.extra)
     if body.creator is not None:
         fields["creator"] = body.creator
     # updater: explicit override or default to 'user'
@@ -722,7 +703,7 @@ async def get_tag_context(
             cur.execute(
                 """SELECT t.id, t.name, t.category_id, t.parent_id,
                           c.name AS category_name, c.color, c.icon,
-                          t.description, t.status, t.priority, t.summary
+                          t.description, t.status, t.priority
                    FROM planner_tags t
                    LEFT JOIN mng_tags_categories c ON c.id = t.category_id
                    WHERE t.project_id=%s AND t.name=%s
@@ -742,7 +723,6 @@ async def get_tag_context(
                 "description": tag_row[7] or "",
                 "status":      tag_row[8],
                 "priority":    tag_row[9] if tag_row[9] is not None else 3,
-                "summary":     tag_row[10] or "",
                 "parent_id":   str(tag_row[3]) if tag_row[3] else None,
             }
 

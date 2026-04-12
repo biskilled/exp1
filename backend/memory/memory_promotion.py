@@ -103,10 +103,7 @@ _SQL_GET_MEMORY_EVENTS = """
 
 _SQL_UPDATE_TAG_SNAPSHOT = """
     UPDATE planner_tags SET
-        summary      = %s,
         action_items = %s,
-        design       = %s,
-        embedding    = %s,
         updater      = 'ai',
         updated_at   = NOW()
     WHERE id = %s AND project_id = %s
@@ -550,25 +547,13 @@ class MemoryPromotion:
             return None
 
         ai_relations: list[dict] = parsed.pop("relations", []) or []
-        design = parsed.get("design", {})
-        requirements = parsed.get("requirements", "")
         action_items = parsed.get("action_items", "")
-
-        embed_text = " ".join(filter(None, [requirements, action_items]))
-        embedding = await _embed_text(embed_text) if embed_text.strip() else None
 
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_UPDATE_TAG_SNAPSHOT,
-                    (
-                        requirements,
-                        action_items,
-                        json.dumps(design),
-                        embedding,
-                        tag_id,
-                        project_id,
-                    ),
+                    (action_items, tag_id, project_id),
                 )
 
                 if event_ids:
@@ -593,10 +578,7 @@ class MemoryPromotion:
             "tag_id":             tag_id,
             "tag_name":           tag_name,
             "project":            project,
-            "summary":            requirements,
             "action_items":       action_items,
-            "design":             design,
-            "code_summary":       code_summary,
             "events_processed":   len(event_ids),
             "relations_upserted": relations_upserted,
             "relations":          ai_relations,

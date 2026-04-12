@@ -278,14 +278,10 @@ CREATE TABLE IF NOT EXISTS planner_tags (
     requirements        TEXT        NOT NULL DEFAULT '',              -- user: what needs to happen
     acceptance_criteria TEXT        NOT NULL DEFAULT '',              -- user: how to verify done
     action_items        TEXT        NOT NULL DEFAULT '',              -- user+AI: next steps
-    summary             TEXT        NOT NULL DEFAULT '',              -- AI: progress digest
-    design              JSONB,                                         -- AI: architectural decisions
     status              TEXT        NOT NULL DEFAULT 'open',          -- open|active|done|archived
     priority            SMALLINT    NOT NULL DEFAULT 3,
     due_date            DATE,
     requester           TEXT,
-    extra               JSONB       NOT NULL DEFAULT '{}',
-    embedding           VECTOR(1536),                                  -- from summary+action_items
     creator             TEXT        NOT NULL DEFAULT 'user',          -- who created (username or 'ai')
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updater             TEXT        NOT NULL DEFAULT 'user',          -- who last updated

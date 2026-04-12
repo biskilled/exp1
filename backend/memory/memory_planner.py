@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 
 _SQL_GET_TAG = """
     SELECT pt.id, pt.name, tc.name AS category_name,
-           pt.requirements, pt.action_items, pt.acceptance_criteria, pt.summary
+           pt.requirements, pt.action_items, pt.acceptance_criteria
     FROM planner_tags pt
     JOIN mng_tags_categories tc ON tc.id = pt.category_id
     WHERE pt.id = %s::uuid AND pt.project_id = %s
@@ -60,7 +60,7 @@ _SQL_GET_WI_INTERACTION_STATS = """
 
 _SQL_UPDATE_TAG = """
     UPDATE planner_tags
-    SET summary = %s, action_items = %s, acceptance_criteria = %s,
+    SET action_items = %s, acceptance_criteria = %s,
         updater = 'ai', updated_at = NOW()
     WHERE id = %s::uuid AND project_id = %s
 """
@@ -304,7 +304,6 @@ class MemoryPlanner:
         lines = [
             f"TAG: {tag['category_name'].upper()} / {tag['name']}",
             f"Requirements: {tag.get('requirements') or '—'}",
-            f"Existing summary: {tag.get('summary') or '—'}",
             f"Existing action_items: {tag.get('action_items') or '—'}",
             f"Existing acceptance_criteria: {tag.get('acceptance_criteria') or '—'}",
             "",
@@ -329,14 +328,13 @@ class MemoryPlanner:
         return "\n".join(lines)
 
     def _write_tag(self, p_id: int, tag_id: str, parsed: dict) -> None:
-        summary = parsed.get("use_case_summary") or ""
         action_items = "\n".join(parsed.get("remaining_items") or [])
         acceptance_criteria = "\n".join(
             f"- [ ] {c}" for c in (parsed.get("acceptance_criteria") or [])
         )
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_UPDATE_TAG, (summary, action_items, acceptance_criteria, tag_id, p_id))
+                cur.execute(_SQL_UPDATE_TAG, (action_items, acceptance_criteria, tag_id, p_id))
 
     def _write_work_items(self, p_id: int, updates: list[dict]) -> None:
         if not updates:

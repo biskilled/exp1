@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 14:05 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 18:35 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -68,8 +68,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-11] What is summery used for, I do see ai_desc, what is summery for ?
 - [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
 - [2026-04-12] I would like to woek on planner_tag. can you change the tag to feature:planner
 - [2026-04-12] I am looking on planner_tag table. seq_num - never populated. is it needed? source and creator are not the same one ? sh
 - [2026-04-12] Yes. please about createor - it must be woth a value . if user create it will be user name. if ai create it will be defa
+- [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
