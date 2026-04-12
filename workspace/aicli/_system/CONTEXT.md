@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-12 18:54 UTC — do not edit manually.
+> Auto-generated 2026-04-12 20:31 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 484
-- **Last active**: 2026-04-12T18:54:06Z
+- **Sessions**: 485
+- **Last active**: 2026-04-12T20:30:59Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -55,12 +55,12 @@
 
 ## In Progress
 
-- planner_tag schema finalization: m027 migration successfully dropped summary, design, embedding, extra columns; creator field now stores user_name (user-created) or 'ai' (AI-created) with updater tracking added
-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution
-- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
+- planner_tags deliveries column implementation: adding JSONB field after action_items to store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
+- planner_tag schema finalization: m027 migration completed; removed summary, design, embedding, extra columns; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution with prompt_work_item() trigger
+- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items with category/name/description/status retrieval
 - Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
-- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip messaging from 'No existing tag' to 'Does not exist yet'
-- planner_tag column ordering: project_id repositioned after client_id; creator field consolidates user/ai distinction; added updater, created_at, updated_at for audit trail
+- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
 
 ## Key Decisions
 
@@ -77,8 +77,8 @@
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- planner_tag schema consolidation: removed seq_num (always null), merged source into creator field, dropped summary/design/embedding/extra columns via m027 migration
-- Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- planner_tags schema: removed seq_num, summary, design, embedding, extra columns via m027 migration; creator consolidates user_name/ai designation; added updater/created_at/updated_at audit trail
+- planner_tags deliveries column: JSONB field after action_items for user-defined delivery artifacts (code, document, architect_design, ppt) with type specification per artifact
 
 ---
 

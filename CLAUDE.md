@@ -39,8 +39,8 @@ You are a senior Python software architect with deep expertise in:
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- planner_tag schema consolidation: removed seq_num (always null), merged source into creator field, dropped summary/design/embedding/extra columns via m027 migration
-- Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- planner_tags schema: removed seq_num, summary, design, embedding, extra columns via m027 migration; creator consolidates user_name/ai designation; added updater/created_at/updated_at audit trail
+- planner_tags deliveries column: JSONB field after action_items for user-defined delivery artifacts (code, document, architect_design, ppt) with type specification per artifact
 
 ---
 

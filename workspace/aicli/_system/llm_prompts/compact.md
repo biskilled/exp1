@@ -4,9 +4,9 @@ When working on a specific feature, ask for its snapshot before making decisions
 
 ## Active Features
 
-- history-ui-testing [task]: Comprehensive testing suite for the new history navigation system and enhanced U
-- history-router-navigation [feature]: History router feature enables seamless navigation between chat history views wi
-- validate-system-config-changes [task]: Review and validate system configuration file updates to ensure alignment with t
+- consolidate-descriptor-fields [task]: Consolidate overlapping descriptor fields (short_desc, full_desc, summary, requi
+- remove-redundant-planner-tag-columns [task]: Remove redundant seq_num and source columns from the planner_tag table by consol
+- audit-planner-tag-schema [task]: Audit the planner_tag table schema to identify and consolidate redundant columns
 
 ## Last Session
-• User requested to work on planner_tag and change the tag to feature:planner. • Session tags updated to phase: development and feature: planner.
+• User requested addition of a tag feature called 'feature_snapshot' to categorize or label development work.

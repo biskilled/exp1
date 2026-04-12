@@ -1,6 +1,6 @@
 {
-  "phase": "development",
-  "feature": "planner",
+  "phase": null,
+  "feature": "feature_snapshot",
   "bug_ref": null,
   "extra": {}
 }

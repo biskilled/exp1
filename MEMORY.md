@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-12 18:54 UTC by aicli /memory_
+_Generated: 2026-04-12 20:31 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python 3.12 FastAPI backend + PostgreSQL 15+ with pgvector for semantic search, an Electron desktop UI (Vanilla JS + xterm.js + Cytoscape.js), and a powerful MCP stdio server with 12+ tools. The system captures development sessions, synthesizes memory via Claude Haiku dual-layer processing, and stores work items with embeddings for intelligent retrieval. Current focus: finalizing planner_tag schema after m027 migration, integrating work item vector search into MCP tools, and refining secondary AI tag workflows with permanent chip indicators.
+aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL vector storage, a desktop Electron UI, and CLI tools for AI-assisted development workflows. It provides semantic search, memory synthesis, collaborative tagging, async DAG execution, and MCP integration for intelligent work item management and project context preservation. Current focus is enhancing planner_tags schema with user-defined delivery artifact tracking (code, documents, designs, PPTs) for comprehensive project deliverable management.
 
 ## Project Facts
 
@@ -24,6 +24,7 @@ aicli is a shared AI memory platform combining a Python 3.12 FastAPI backend + P
 - **data_persistence_issue**: tags_disappear_on_session_switch
 - **date_format_frontend**: YY/MM/DD-HH:MM format in work item panel
 - **db_engine**: PostgreSQL with SQL parameter binding
+- **db_migration_m027**: planner_tags_drop_ai_cols removes summary/design/embedding/extra via ALTER TABLE DROP IF EXISTS pattern
 - **db_schema_management**: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
 - **deployment_target**: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
@@ -59,6 +60,8 @@ Reviewer: ```json
   "issues": [
     "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
 - **planner_tag_schema_consolidation_proposed**: drop seq_num and source columns; keep creator only; reduce descriptors (short_desc, full_desc, requirements, acceptance_criteria, summary, action_items, design) to essential fields
+- **planner_tags_core_columns**: requirements, acceptance_criteria, action_items, status, priority, due_date, requester, creator, created_at, updater, updated_at retained
+- **planner_tags_schema_cleanup**: dropped summary, design, embedding (VECTOR 1536), extra columns; move to future merge-layer table (m027)
 - **prompt_architecture**: core.prompt_loader for centralization; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
 - **prompt_count_metric**: distinct metric tracked separately from event_count in work items API response
 - **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
@@ -66,6 +69,7 @@ Reviewer: ```json
 - **rel:ai_tag_suggestion:user_tags**: replaces
 - **rel:ai_tag_suggestion:work_items_table**: related_to
 - **rel:commit_processing:exec_llm_flag**: replaces
+- **rel:db_migrations:planner_tags**: implements
 - **rel:embedding_integration:prompt_work_item_trigger**: implements
 - **rel:embedding_vectors:semantic_search**: enables
 - **rel:event_filtering:noise_reduction**: implements
@@ -74,6 +78,7 @@ Reviewer: ```json
 - **rel:mem_ai_events:work_items**: depends_on
 - **rel:memory_endpoint:tag_detection**: implements
 - **rel:memory_system:session_tags**: implements
+- **rel:planner_tags:vector_embedding**: replaces
 - **rel:prompt_loader:mng_system_roles**: replaces
 - **rel:route_memory:prompt_loader**: depends_on
 - **rel:route_memory:sql_parameter_binding**: depends_on
@@ -185,259 +190,396 @@ Reviewer: ```json
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- planner_tag schema consolidation: removed seq_num (always null), merged source into creator field, dropped summary/design/embedding/extra columns via m027 migration
-- Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- planner_tags schema: removed seq_num, summary, design, embedding, extra columns via m027 migration; creator consolidates user_name/ai designation; added updater/created_at/updated_at audit trail
+- planner_tags deliveries column: JSONB field after action_items for user-defined delivery artifacts (code, document, architect_design, ppt) with type specification per artifact
 
 ## In Progress
 
-- planner_tag schema finalization: m027 migration successfully dropped summary, design, embedding, extra columns; creator field now stores user_name (user-created) or 'ai' (AI-created) with updater tracking added
-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution
-- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
+- planner_tags deliveries column implementation: adding JSONB field after action_items to store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
+- planner_tag schema finalization: m027 migration completed; removed summary, design, embedding, extra columns; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution with prompt_work_item() trigger
+- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items with category/name/description/status retrieval
 - Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
-- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip messaging from 'No existing tag' to 'Does not exist yet'
-- planner_tag column ordering: project_id repositioned after client_id; creator field consolidates user/ai distinction; added updater, created_at, updated_at for audit trail
+- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
 
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
+### `prompt_batch: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 8010207..0e394f8 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
--- planner_tag table schema cleanup: identified seq_num (always null, no auto-population) for removal; consolidating source + creator into single creator field; removing redundant code_summary column; verifying status column uniqueness vs. work_items.status_user/status_ai
--- Work item embedding integration: _embed_work_item() persists vectors for name_ai + desc_ai + summary_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution
-+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution
- - Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
-+- planner_tag schema cleanup: removing seq_num column (always null, no auto-population); consolidating source + creator into single creator field with user/ai distinction; verifying status column uniqueness against work_items.status_user/status_ai
- - Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
--- prompt_work_item() trigger automation: integrated _run_promote_all_work_items() into /memory command pipeline to refresh AI text fields and embedding vectors
- - AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
-+- planner_tag column ordering migration: repositioning project_id after client_id; adding creator (user/ai distinction), updater tracking, created_at/updated_at timestamps for audit trail
-
+Cleaned up planner_tags schema by dropping redundant columns (seq_num, source, summary, design, embedding, extra), consolidating creator field to store username/ai designation, adding updater field for audit trail, and reordering columns per database convention (project_id after client_id, timestamps last).
 
 ### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 321d42b..7a7c77d 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-12 11:19 UTC
-+> Generated by aicli 2026-04-12 14:05 UTC
+diff --git a/backend/routers/route_tags.py b/backend/routers/route_tags.py
+index cbeac5c..492e069 100644
+--- a/backend/routers/route_tags.py
++++ b/backend/routers/route_tags.py
+@@ -72,8 +72,7 @@ _SQL_LIST_TAGS = """
+            tc.name AS category_name, tc.color, tc.icon,
+            t.description, t.due_date, t.priority,
+            t.creator, t.requirements, t.acceptance_criteria,
+-           t.action_items, t.summary, t.requester, t.extra,
+-           t.embedding IS NOT NULL AS has_embedding,
++           t.action_items, t.requester,
+            0 AS source_count,
+            t.updater, t.updated_at
+     FROM planner_tags t
+@@ -87,8 +86,7 @@ _SQL_LIST_TAGS = """
+ #  5 status  6 created_at  7 category_name  8 color  9 icon
+ # 10 description  11 due_date  12 priority  13 creator
+ # 14 requirements  15 acceptance_criteria  16 action_items
+-# 17 summary  18 requester  19 extra  20 has_embedding
+-# 21 source_count (list only)  22 updater  23 updated_at
++# 17 requester  18 source_count (list only)  19 updater  20 updated_at
  
- # aicli — Shared AI Memory Platform
+ _SQL_GET_TAG = """
+     SELECT t.id, t.name, t.category_id, t.parent_id, t.merged_into,
+@@ -96,14 +94,14 @@ _SQL_GET_TAG = """
+            tc.name AS category_name, tc.color, tc.icon,
+            t.description, t.due_date, t.priority,
+            t.creator, t.requirements, t.acceptance_criteria,
+-           t.action_items, t.summary, t.requester, t.extra,
+-           t.embedding IS NOT NULL AS has_embedding,
++           t.action_items, t.requester,
+            t.updater, t.updated_at
+     FROM planner_tags t
+     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
+     WHERE t.project_id = %s AND t.id = %s::uuid
+ """
+-# column indices for _row_to_tag_detail: same as above without source_count (idx 21)
++# column indices for _row_to_tag_detail:
++#  0-16 same as list; 17 requester  18 updater  19 updated_at
  
-@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - workflow_ui: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
- - memory_synthesis: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
- - chunking: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
--- mcp: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
-+- mcp: Stdio MCP server with 12+ tools (semantic search with work_items vectors, work item management, session tagging)
- - deployment: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
- - database_schema: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
- - config_management: config.py + YAML pipelines + pyproject.toml + aicli.yaml
-@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - billing_storage: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - backend_modules: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - dev_environment: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- database: PostgreSQL 15+ with pgvector extensions
-+- database: PostgreSQL 15+ with pgvector extension
- - node_modules_build: npm 8+ with Electron-builder; Vite dev server
- - database_version: PostgreSQL 15+
- - build_tooling: npm 8+ with Electron-builder; Vite dev server
-@@ -46,7 +46,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - prompt_management: core.prompt_loader module with centralized prompt caching
- - schema_management: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
- - database_tables: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
--- embeddings: text-embedding-3-small (1536-dim vectors)
-+- embeddings: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
+ _SQL_INSERT_TAG = """
+     INSERT INTO planner_tags (project_id, name, category_id, parent_id, status, creator)
+@@ -181,12 +179,9 @@ class TagUpdate(BaseModel):
+     requirements: Optional[str] = None
+     acceptance_criteria: Optional[str] = None
+     action_items: Optional[str] = None
+-    summary: Optional[str] = None
+-    design: Optional[dict] = None
+     priority: Optional[int] = None
+     due_date: Optional[str] = None
+     requester: Optional[str] = None
+-    extra: Optional[dict] = None
+     creator: Optional[str] = None
+     updater: Optional[str] = None
  
- ## Architectural Decisions
+@@ -234,8 +229,7 @@ def _row_to_tag(row: tuple) -> dict:
+     #  5 status  6 created_at  7 category_name  8 color  9 icon
+     # 10 description  11 due_date  12 priority  13 creator
+     # 14 requirements  15 acceptance_criteria  16 action_items
+-    # 17 summary  18 requester  19 extra  20 has_embedding
+-    # 21 source_count  22 updater  23 updated_at
++    # 17 requester  18 source_count  19 updater  20 updated_at
+     return {
+         "id":                  str(row[0]),
+         "name":                row[1],
+@@ -254,13 +248,10 @@ def _row_to_tag(row: tuple) -> dict:
+         "requirements":        row[14] or "",
+         "acceptance_criteria": row[15] or "",
+         "action_items":        row[16] or "",
+-        "summary":             row[17] or "",
+-        "requester":           row[18] or "",
+-        "extra":               row[19] if row[19] is not None else {},
+-        "has_embedding":       bool(row[20]) if row[20] is not None else False,
+-        "source_count":        row[21] if len(row) > 21 else 0,
+-        "updater":             row[22] or "user",
+-        "updated_at":          row[23].isoformat() if len(row) > 23 and row[23] else None,
++        "requester":           row[17] or "",
++        "source_count":        row[18] if len(row) > 18 else 0,
++        "updater":             row[19] or "user",
++        "updated_at":          row[20].isoformat() if len(row) > 20 and row[20] else None,
+         "children":            [],
+     }
  
-@@ -58,10 +58,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
- - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
--- Work item column naming: name_ai, category_ai, desc_ai, summary_ai consolidated for consistency; FK architecture links mem_ai_events.work_item_id to work items
-+- Work item column naming: name_ai, category_ai, desc_ai consolidated for consistency; embedding vectors persisted for semantic search in MCP tools
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
- - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
--- Work item counters: prompt_count (raw prompts), event_count (prompt_batch/session_summary), commit_count (distinct commits per session)
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-+- planner_tag table schema consolidation: removing seq_num (always null), merging source into creator field, reducing descriptor columns
- - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-\ No newline at end of file
-
+@@ -271,8 +262,7 @@ def _row_to_tag_detail(row: tuple) -> dict:
+     #  5 status  6 created_at  7 category_name  8 color  9 icon
+     # 10 description  11 due_date  12 priority  13 creator
+     # 14 requirements  15 acceptance_criteria  16 action_items
+-    # 17 summary  18 requester  19 extra  20 has_embedding
+-    # 21 updater  22 updated_at
++    # 17 requester  18 updater  19 updated_at
+     return {
+         "id":                  str(row[0]),
+         "name":                row[1],
+@@ -291,12 +281,9 @@ def _row_to_tag_detail(row: tuple) -> dict:
+         "requirements":        row[14] or "",
+         "acceptance_criteria": row[15] or "",
+         "action_items":        row[16] or "",
+-        "summary":             row[17] or "",
+-        "requester":           row[18] or "",
+-        "extra":               row[19] if row[19] is not None else {},
+-        "has_embedding":       bool(row[20]) if row[20] is not None else False,
+-        "updater":             row[21] or "user",
+-        "updated_at":          row[22].isoformat() if row[22] else None,
++        "requester":           row[17] or "",
++        "updater":             row[18] or "user",
++        "updated_at":          row[19].isoformat() if row[19] else None,
+         "children":            [],
+     }
+ 
+@@ -367,18 +354,12 @@ async def update_tag(tag_id: str, body: TagUpdate):
+         fields["acceptance_criteria"] = body.acceptance_criteria
+     if body.action_items is not None:
+         fields["action_items"] = body.action_items
+-    if body.summary is not None:
+-        fields["summary"] = body.summary
+-    if body.design is not None:
+-        fields["design"] = json.dumps(body.design)
+     if body.priority is not None:
+         fields["priority"] = body.priority
+     if body.due_date is not None:
+         fields["due_date"] = body.due_date
+     if body.requester is not None:
+         fields["requester"] = body.requester
+-    if body.extra is not None:
+-        fields["extra"] = json.dumps(body.extra)
+     if body.creator is not None:
+         fields["creator"] = body.creator
+     # updat
 
 ### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 9a81beb..4b61211 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 11:19 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 14:05 UTC
+diff --git a/backend/memory/memory_promotion.py b/backend/memory/memory_promotion.py
+index 6c3738f..1e6eede 100644
+--- a/backend/memory/memory_promotion.py
++++ b/backend/memory/memory_promotion.py
+@@ -103,10 +103,7 @@ _SQL_GET_MEMORY_EVENTS = """
  
- # aicli — Shared AI Memory Platform
+ _SQL_UPDATE_TAG_SNAPSHOT = """
+     UPDATE planner_tags SET
+-        summary      = %s,
+         action_items = %s,
+-        design       = %s,
+-        embedding    = %s,
+         updater      = 'ai',
+         updated_at   = NOW()
+     WHERE id = %s AND project_id = %s
+@@ -550,25 +547,13 @@ class MemoryPromotion:
+             return None
  
-@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
- - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
- - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
--- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
-+- **mcp**: Stdio MCP server with 12+ tools (semantic search with work_items vectors, work item management, session tagging)
- - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
- - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
- - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
-@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- **database**: PostgreSQL 15+ with pgvector extensions
-+- **database**: PostgreSQL 15+ with pgvector extension
- - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
-@@ -46,7 +46,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **prompt_management**: core.prompt_loader module with centralized prompt caching
- - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
- - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
--- **embeddings**: text-embedding-3-small (1536-dim vectors)
-+- **embeddings**: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
+         ai_relations: list[dict] = parsed.pop("relations", []) or []
+-        design = parsed.get("design", {})
+-        requirements = parsed.get("requirements", "")
+         action_items = parsed.get("action_items", "")
  
- ## Key Decisions
+-        embed_text = " ".join(filter(None, [requirements, action_items]))
+-        embedding = await _embed_text(embed_text) if embed_text.strip() else None
+-
+         with db.conn() as conn:
+             with conn.cursor() as cur:
+                 cur.execute(
+                     _SQL_UPDATE_TAG_SNAPSHOT,
+-                    (
+-                        requirements,
+-                        action_items,
+-                        json.dumps(design),
+-                        embedding,
+-                        tag_id,
+-                        project_id,
+-                    ),
++                    (action_items, tag_id, project_id),
+                 )
  
-@@ -58,18 +58,18 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
- - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
--- Work item column naming: name_ai, category_ai, desc_ai, summary_ai consolidated for consistency; FK architecture links mem_ai_events.work_item_id to work items
-+- Work item column naming: name_ai, category_ai, desc_ai consolidated for consistency; embedding vectors persisted for semantic search in MCP tools
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
- - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
--- Work item counters: prompt_count (raw prompts), event_count (prompt_batch/session_summary), commit_count (distinct commits per session)
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-+- planner_tag table schema consolidation: removing seq_num (always null), merging source into creator field, reducing descriptor columns
- - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-11] I still dont understand what is summery column used for . also tags - I do see that empty, and expected that to be updat
- - [2026-04-11] What is summery used for, I do see ai_desc, what is summery for ?
- - [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
- - [2026-04-12] I would like to woek on planner_tag. can you change the tag to feature:planner
--- [2026-04-12] I am looking on planner_tag table. seq_num - never populated. is it needed? source and creator are not the same one ? sh
-\ No newline at end of file
-+- [2026-04-12] I am looking on planner_tag table. seq_num - never populated. is it needed? source and creator are not the same one ? sh
-+- [2026-04-12] Yes. please about createor - it must be woth a value . if user create it will be user name. if ai create it will be defa
-\ No newline at end of file
-
-
-### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 9a81beb..4b61211 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 11:19 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 14:05 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
- - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
- - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
--- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
-+- **mcp**: Stdio MCP server with 12+ tools (semantic search with work_items vectors, work item management, session tagging)
- - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
- - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
- - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
-@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- **database**: PostgreSQL 15+ with pgvector extensions
-+- **database**: PostgreSQL 15+ with pgvector extension
- - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
-@@ -46,7 +46,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **prompt_management**: core.prompt_loader module with centralized prompt caching
- - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
- - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
--- **embeddings**: text-embedding-3-small (1536-dim vectors)
-+- **embeddings**: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
- 
- ## Key Decisions
- 
-@@ -58,18 +58,18 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
- - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
--- Work item column naming: name_ai, category_ai, desc_ai, summary_ai consolidated for consistency; FK architecture links mem_ai_events.work_item_id to work items
-+- Work item column naming: name_ai, category_ai, desc_ai consolidated for consistency; embedding vectors persisted for semantic search in MCP tools
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
- - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
--- Work item counters: prompt_count (raw prompts), event_count (prompt_batch/session_summary), commit_count (distinct commits per session)
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-+- planner_tag table schema consolidation: removing seq_num (always null), merging source into creator field, reducing descriptor columns
- - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-11] I still dont understand what is summery column used for . also tags - I do see that empty, and expected that to be updat
- - [2026-04-11] What is summery used for, I do see ai_desc, what is summery for ?
- - [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
- - [2026-04-12] I would like to woek on planner_tag. can you change the tag to feature:planner
--- [2026-04-12] I am looking on planner_tag table. seq_num - never populated. is it needed? source and creator are not the same one ? sh
-\ No newline at end of file
-+- [2026-04-12] I am looking on planner_tag table. seq_num - never populated. is it needed? source and creator are not the same one ? sh
-+- [2026-04-12] Yes. please about createor - it must be woth a value . if user create it will be user name. if ai create it will be defa
-\ No newline at end of file
+                 if event_ids:
+@@ -593,10 +578,7 @@ class MemoryPromotion:
+             "tag_id":             tag_id,
+             "tag_name":           tag_name,
+             "project":            project,
+-            "summary":            requirements,
+             "action_items":       action_items,
+-            "design":             design,
+-            "code_summary":       code_summary,
+             "events_processed":   len(event_ids),
+             "relations_upserted": relations_upserted,
+             "relations":          ai_relations,
 
 
 ### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
-Removed legacy _system flat files that were generated after a Claude CLI session, cleaning up temporary or obsolete system files.
+diff --git a/backend/memory/memory_planner.py b/backend/memory/memory_planner.py
+index ab3ec1e..2dd9e14 100644
+--- a/backend/memory/memory_planner.py
++++ b/backend/memory/memory_planner.py
+@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
+ 
+ _SQL_GET_TAG = """
+     SELECT pt.id, pt.name, tc.name AS category_name,
+-           pt.requirements, pt.action_items, pt.acceptance_criteria, pt.summary
++           pt.requirements, pt.action_items, pt.acceptance_criteria
+     FROM planner_tags pt
+     JOIN mng_tags_categories tc ON tc.id = pt.category_id
+     WHERE pt.id = %s::uuid AND pt.project_id = %s
+@@ -60,7 +60,7 @@ _SQL_GET_WI_INTERACTION_STATS = """
+ 
+ _SQL_UPDATE_TAG = """
+     UPDATE planner_tags
+-    SET summary = %s, action_items = %s, acceptance_criteria = %s,
++    SET action_items = %s, acceptance_criteria = %s,
+         updater = 'ai', updated_at = NOW()
+     WHERE id = %s::uuid AND project_id = %s
+ """
+@@ -304,7 +304,6 @@ class MemoryPlanner:
+         lines = [
+             f"TAG: {tag['category_name'].upper()} / {tag['name']}",
+             f"Requirements: {tag.get('requirements') or '—'}",
+-            f"Existing summary: {tag.get('summary') or '—'}",
+             f"Existing action_items: {tag.get('action_items') or '—'}",
+             f"Existing acceptance_criteria: {tag.get('acceptance_criteria') or '—'}",
+             "",
+@@ -329,14 +328,13 @@ class MemoryPlanner:
+         return "\n".join(lines)
+ 
+     def _write_tag(self, p_id: int, tag_id: str, parsed: dict) -> None:
+-        summary = parsed.get("use_case_summary") or ""
+         action_items = "\n".join(parsed.get("remaining_items") or [])
+         acceptance_criteria = "\n".join(
+             f"- [ ] {c}" for c in (parsed.get("acceptance_criteria") or [])
+         )
+         with db.conn() as conn:
+             with conn.cursor() as cur:
+-                cur.execute(_SQL_UPDATE_TAG, (summary, action_items, acceptance_criteria, tag_id, p_id))
++                cur.execute(_SQL_UPDATE_TAG, (action_items, acceptance_criteria, tag_id, p_id))
+ 
+     def _write_work_items(self, p_id: int, updates: list[dict]) -> None:
+         if not updates:
+
 
 ### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 17507d5..8010207 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+diff --git a/backend/memory/memory_files.py b/backend/memory/memory_files.py
+index c5974f6..016bb5a 100644
+--- a/backend/memory/memory_files.py
++++ b/backend/memory/memory_files.py
+@@ -74,9 +74,9 @@ _SQL_ALL_RELATIONS = """
+ """
  
- ## Recent Work
+ _SQL_FEATURE_SNAPSHOTS = """
+-    SELECT t.id, t.name, t.summary, t.action_items, t.design
++    SELECT t.id, t.name, t.action_items
+     FROM planner_tags t
+-    WHERE t.project_id = %s AND (t.summary != '' OR t.action_items != '')
++    WHERE t.project_id = %s AND t.action_items != ''
+     ORDER BY t.updated_at DESC LIMIT 20
+ """
  
--- Work item embedding integration: _embed_work_item() function persists vectors for name_ai + desc_ai + summary_ai concatenation; integrated into prompt_work_item() trigger and new work item creation flow
--- Work item vector search in MCP: tool_memory.py semantic search now includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
--- Work item column consolidation: completed refactoring ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai; summary consolidated into desc_ai to reduce redundancy
--- prompt_work_item() trigger automation: integrated _run_promote_all_work_items() into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
-+- planner_tag table schema cleanup: identified seq_num (always null, no auto-population) for removal; consolidating source + creator into single creator field; removing redundant code_summary column; verifying status column uniqueness vs. work_items.status_user/status_ai
-+- Work item embedding integration: _embed_work_item() persists vectors for name_ai + desc_ai + summary_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution
-+- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
- - Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
-+- prompt_work_item() trigger automation: integrated _run_promote_all_work_items() into /memory command pipeline to refresh AI text fields and embedding vectors
- - AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
+@@ -103,7 +103,7 @@ _SQL_ACTIVE_TAGS = """
+ """
+ 
+ _SQL_FEATURE_SNAPSHOT_BY_TAG = """
+-    SELECT t.id, t.name, t.requirements, t.summary, t.action_items, t.design
++    SELECT t.id, t.name, t.requirements, t.action_items
+     FROM planner_tags t
+     WHERE t.id = %s AND t.project_id = %s
+ """
+@@ -201,11 +201,9 @@ class MemoryFiles:
+ 
+                     # Feature snapshots (inline on planner_tags)
+                     cur.execute(_SQL_FEATURE_SNAPSHOTS, (project_id,))
+-                    for t_id, t_name, summary, action, design in cur.fetchall():
++                    for t_id, t_name, action in cur.fetchall():
+                         ctx["features"][t_name] = {
+-                            "requirements":    summary or "",
+                             "action_items":    action or "",
+-                            "design":          design or {},
+                             "work_item_status": "",
+                         }
+ 
+@@ -215,11 +213,9 @@ class MemoryFiles:
+ 
+                     # Feature details: tags with embedding or summary (inline fields)
+                     cur.execute("""
+-                        SELECT t.id, t.name, t.description, t.requirements, t.summary,
+-                               t.action_items, t.design
++                        SELECT t.id, t.name, t.description, t.requirements, t.action_items
+                         FROM planner_tags t
+-                        WHERE t.project_id = %s
+-                          AND (t.embedding IS NOT NULL OR t.summary != '')
++                        WHERE t.project_id = %s AND t.action_items != ''
+                         ORDER BY t.updated_at DESC LIMIT 30
+                     """, (project_id,))
+                     ctx["feature_details"] = [
+@@ -228,9 +224,7 @@ class MemoryFiles:
+                             "name":         r[1] or "",
+                             "description":  r[2] or "",
+                             "requirements": r[3] or "",
+-                            "summary":      r[4] or "",
+-                            "action_items": r[5] or "",
+-                            "design":       r[6] or {},
++                            "action_items": r[4] or "",
+                         }
+                         for r in cur.fetchall()
+                     ]
+@@ -393,8 +387,8 @@ class MemoryFiles:
+                     # Look up tag by name to get its id, then read inline snapshot fields
+                     project_id = db.get_or_create_project_id(project)
+                     cur.execute("""
+-                        SELECT t.id, t.name, t.requirements, t.summary,
+-                               t.action_items, t.design, t.description
++                        SELECT t.id, t.name, t.requirements,
++                               t.action_items, t.description
+                         FROM planner_tags t
+                         WHERE t.project_id = %s AND t.name = %s
+                         LIMIT 1
+@@ -403,10 +397,9 @@ class MemoryFiles:
+                     if row:
+                         snap = {
+                             "tag_id":       str(row[0]),
+-                            "requirements": row[2] or row[3] or "",  # fall back to summary
+-                            "action_items": row[4] or "",
+-                            "design":       row[5] or {},
+-                            "description":  row[6] or "",
++                            "requirements": row[2] or "",
++                            "action_items": row[3] or "",
++                            "description":  row[4] or "",
+                         }
+         except Exception as e:
+             log.debug(f"render_feature_claude_md error for '{tag_name}': {e}")
+@@ -421,15 +414,7 @@ class MemoryFiles:
+         if snap.get("action_items"):
+             lines += ["## Action Items", "", snap["action_items"], ""]
+ 
+-        design = snap.get("design") or {}
+-        if isinstance(design, dict) and design.get("high_level"):
+-            lines += ["## Design", "", design["high_level"], ""]
+-            if design.get("patterns_used"):
+-                pts = design["patterns_used"]
+-                if isinstance(pts, list):
+-                    lines += ["**Patterns**: " + ", ".join(str(p) for p in pts), ""]
+-
+-        # code_summary removed from planner_tags (lives on work_items now)
++        # design + code_summary removed from planner_tags (lives on work_items / future merge layer)
+ 
+         lines += ["---", "_Auto-generated by aicli. Run `/memory` to refresh._"]
+         return "\n".join(lines)
+
+
+### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
+
+diff --git a/backend/core/db_schema.sql b/backend/core/db_schema.sql
+index 1f2800b..8de851f 100644
+--- a/backend/core/db_schema.sql
++++ b/backend/core/db_schema.sql
+@@ -278,14 +278,10 @@ CREATE TABLE IF NOT EXISTS planner_tags (
+     requirements        TEXT        NOT NULL DEFAULT '',              -- user: what needs to happen
+     acceptance_criteria TEXT        NOT NULL DEFAULT '',              -- user: how to verify done
+     action_items        TEXT        NOT NULL DEFAULT '',              -- user+AI: next steps
+-    summary             TEXT        NOT NULL DEFAULT '',              -- AI: progress digest
+-    design              JSONB,                                         -- AI: architectural decisions
+     status              TEXT        NOT NULL DEFAULT 'open',          -- open|active|done|archived
+     priority            SMALLINT    NOT NULL DEFAULT 3,
+     due_date            DATE,
+     requester           TEXT,
+-    extra               JSONB       NOT NULL DEFAULT '{}',
+-    embedding           VECTOR(1536),                                  -- from summary+action_items
+     creator             TEXT        NOT NULL DEFAULT 'user',          -- who created (username or 'ai')
+     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updater             TEXT        NOT NULL DEFAULT 'user',          -- who last updated
 
 
 ## AI Synthesis
 
-**[2026-04-12]** `db_migrations.py` — m027 migration successfully completed: dropped `summary`, `design`, `embedding`, `extra` columns from `planner_tags` table; API now returns clean schema with only `name`, `status`, `description`, `creator`, `requirements`, `action_items`, `updater`. **[2026-04-12]** `planner_tag schema` — creator field consolidated to store user_name (user-created) or 'ai' (AI-created); removed seq_num column (always null, never populated); added updater and timestamp tracking for audit trail. **[2026-04-11]** `work item columns` — clarified that summary_ai is redundant; consolidated work_item schema to name_ai, category_ai, desc_ai for consistency; removed summary/design/embedding bloat. **[2026-04-11]** `embedding vectors` — confirmed 1536-dim text-embedding-3-small stored in both mem_ai_events.embedding and mem_ai_work_items.embedding for semantic search in MCP tools. **[2026-04-11]** `secondary AI tags` — confirmed ai_tags.confirmed[] array stores metadata for doc_type/feature/phase; items remain visible with permanent chip indicators instead of hard deletion.
+**[2026-04-12]** `user_request` — Adding deliveries JSONB column to planner_tags table after action_items field; will store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions for project task management. **[2026-03-14]** `migration_m027` — Consolidated planner_tags schema by removing redundant columns (seq_num, summary, design, embedding, extra); creator field now stores user_name or 'ai' designation; added updater and timestamp audit trail (created_at, updated_at). **[prior]** `embedding_integration` — Implemented work item vector embeddings (1536-dim text-embedding-3-small) for semantic search on concatenated name_ai + desc_ai; integrated _embed_work_item() into /memory command workflow. **[prior]** `ai_tag_workflow` — Secondary AI tags stored as confirmed[] metadata array in ai_tags; removed deletion logic in favor of permanent chip indicators for non-destructive tag suggestion UX. **[prior]** `mcp_search_tools` — Added semantic search capability to MCP server using work_items embedding vectors with <=> operator, enabling non-archived item discovery by category/name/description/status. **[prior]** `schema_consolidation` — Unified event storage across projects using mem_ai_events, mem_ai_work_items, mem_ai_project_facts with event_type filtering (prompt_batch, session_summary) to exclude per-commit noise.

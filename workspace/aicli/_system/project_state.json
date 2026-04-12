@@ -57,8 +57,8 @@
     "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
     "Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion",
     "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
-    "planner_tag schema consolidation: removed seq_num (always null), merged source into creator field, dropped summary/design/embedding/extra columns via m027 migration",
-    "Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
+    "planner_tags schema: removed seq_num, summary, design, embedding, extra columns via m027 migration; creator consolidates user_name/ai designation; added updater/created_at/updated_at audit trail",
+    "planner_tags deliveries column: JSONB field after action_items for user-defined delivery artifacts (code, document, architect_design, ppt) with type specification per artifact"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -87,12 +87,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "planner_tag schema finalization: m027 migration successfully dropped summary, design, embedding, extra columns; creator field now stores user_name (user-created) or 'ai' (AI-created) with updater tracking added",
-    "Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution",
-    "Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items",
+    "planner_tags deliveries column implementation: adding JSONB field after action_items to store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions",
+    "planner_tag schema finalization: m027 migration completed; removed summary, design, embedding, extra columns; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail",
+    "Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution with prompt_work_item() trigger",
+    "Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items with category/name/description/status retrieval",
     "Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion",
-    "AI tag suggestion UX: clickable \u2713 button creates missing ai_suggestion tags with category inference; improved tooltip messaging from 'No existing tag' to 'Does not exist yet'",
-    "planner_tag column ordering: project_id repositioned after client_id; creator field consolidates user/ai distinction; added updater, created_at, updated_at for audit trail"
+    "AI tag suggestion UX: clickable \u2713 button creates missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -124,7 +124,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-12T18:54:31Z",
+  "last_memory_run": "2026-04-12T20:31:27Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -140,16 +140,16 @@
       "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
       "Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion",
       "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
-      "planner_tag schema consolidation: removed seq_num (always null), merged source into creator field, dropped summary/design/embedding/extra columns via m027 migration",
-      "Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
+      "planner_tags schema: removed seq_num, summary, design, embedding, extra columns via m027 migration; creator consolidates user_name/ai designation; added updater/created_at/updated_at audit trail",
+      "planner_tags deliveries column: JSONB field after action_items for user-defined delivery artifacts (code, document, architect_design, ppt) with type specification per artifact"
     ],
     "in_progress": [
-      "planner_tag schema finalization: m027 migration successfully dropped summary, design, embedding, extra columns; creator field now stores user_name (user-created) or 'ai' (AI-created) with updater tracking added",
-      "Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution",
-      "Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items",
+      "planner_tags deliveries column implementation: adding JSONB field after action_items to store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions",
+      "planner_tag schema finalization: m027 migration completed; removed summary, design, embedding, extra columns; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail",
+      "Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution with prompt_work_item() trigger",
+      "Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items with category/name/description/status retrieval",
       "Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion",
-      "AI tag suggestion UX: clickable \u2713 button creates missing ai_suggestion tags with category inference; improved tooltip messaging from 'No existing tag' to 'Does not exist yet'",
-      "planner_tag column ordering: project_id repositioned after client_id; creator field consolidates user/ai distinction; added updater, created_at, updated_at for audit trail"
+      "AI tag suggestion UX: clickable \u2713 button creates missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -157,22 +157,16 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "embeddings": "text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools (semantic search with work_items vectors, work item management, session tagging)",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "database": "PostgreSQL 15+ with pgvector extension",
-      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)",
-      "config_management": "config.py + YAML pipelines + pyproject.toml + aicli.yaml",
-      "prompt_management": "core.prompt_loader module with centralized prompt caching",
-      "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
+      "database_version": "PostgreSQL 15+",
       "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 FastAPI backend + PostgreSQL 15+ with pgvector for semantic search, an Electron desktop UI (Vanilla JS + xterm.js + Cytoscape.js), and a powerful MCP stdio server with 12+ tools. The system captures development sessions, synthesizes memory via Claude Haiku dual-layer processing, and stores work items with embeddings for intelligent retrieval. Current focus: finalizing planner_tag schema after m027 migration, integrating work item vector search into MCP tools, and refining secondary AI tag workflows with permanent chip indicators.",
-    "memory_digest": "**[2026-04-12]** `db_migrations.py` \u2014 m027 migration successfully completed: dropped `summary`, `design`, `embedding`, `extra` columns from `planner_tags` table; API now returns clean schema with only `name`, `status`, `description`, `creator`, `requirements`, `action_items`, `updater`. **[2026-04-12]** `planner_tag schema` \u2014 creator field consolidated to store user_name (user-created) or 'ai' (AI-created); removed seq_num column (always null, never populated); added updater and timestamp tracking for audit trail. **[2026-04-11]** `work item columns` \u2014 clarified that summary_ai is redundant; consolidated work_item schema to name_ai, category_ai, desc_ai for consistency; removed summary/design/embedding bloat. **[2026-04-11]** `embedding vectors` \u2014 confirmed 1536-dim text-embedding-3-small stored in both mem_ai_events.embedding and mem_ai_work_items.embedding for semantic search in MCP tools. **[2026-04-11]** `secondary AI tags` \u2014 confirmed ai_tags.confirmed[] array stores metadata for doc_type/feature/phase; items remain visible with permanent chip indicators instead of hard deletion."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL vector storage, a desktop Electron UI, and CLI tools for AI-assisted development workflows. It provides semantic search, memory synthesis, collaborative tagging, async DAG execution, and MCP integration for intelligent work item management and project context preservation. Current focus is enhancing planner_tags schema with user-defined delivery artifact tracking (code, documents, designs, PPTs) for comprehensive project deliverable management.",
+    "memory_digest": "**[2026-04-12]** `user_request` \u2014 Adding deliveries JSONB column to planner_tags table after action_items field; will store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions for project task management. **[2026-03-14]** `migration_m027` \u2014 Consolidated planner_tags schema by removing redundant columns (seq_num, summary, design, embedding, extra); creator field now stores user_name or 'ai' designation; added updater and timestamp audit trail (created_at, updated_at). **[prior]** `embedding_integration` \u2014 Implemented work item vector embeddings (1536-dim text-embedding-3-small) for semantic search on concatenated name_ai + desc_ai; integrated _embed_work_item() into /memory command workflow. **[prior]** `ai_tag_workflow` \u2014 Secondary AI tags stored as confirmed[] metadata array in ai_tags; removed deletion logic in favor of permanent chip indicators for non-destructive tag suggestion UX. **[prior]** `mcp_search_tools` \u2014 Added semantic search capability to MCP server using work_items embedding vectors with <=> operator, enabling non-archived item discovery by category/name/description/status. **[prior]** `schema_consolidation` \u2014 Unified event storage across projects using mem_ai_events, mem_ai_work_items, mem_ai_project_facts with event_type filtering (prompt_batch, session_summary) to exclude per-commit noise."
   }
 }
