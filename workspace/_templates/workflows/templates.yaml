@@ -1,0 +1,27 @@
+# Templates map delivery_category/type → workflow suggestion metadata.
+# Used by GET /memory/{project}/workflow-templates to suggest best-fit workflows.
+templates:
+  code/python:
+    name: "Python Code Delivery"
+    preferred_roles: [developer, tester, reviewer]
+  code/sql:
+    name: "SQL Migration"
+    preferred_roles: [developer, reviewer]
+  code/javascript:
+    name: "JavaScript Delivery"
+    preferred_roles: [developer, tester, reviewer]
+  code/typescript:
+    name: "TypeScript Delivery"
+    preferred_roles: [developer, tester, reviewer]
+  architecture_design/visio:
+    name: "Architecture Design"
+    preferred_roles: [architect, reviewer]
+  architecture_design/mermaid:
+    name: "Mermaid Diagram"
+    preferred_roles: [architect, developer]
+  document/markdown:
+    name: "Documentation"
+    preferred_roles: [developer, reviewer]
+  presentation/powerpoint:
+    name: "Presentation Deck"
+    preferred_roles: [architect]

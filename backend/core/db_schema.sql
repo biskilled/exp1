@@ -635,7 +635,9 @@ CREATE TABLE IF NOT EXISTS pr_graph_runs (
     finished_at    TIMESTAMPTZ,
     total_cost_usd NUMERIC(12, 8) NOT NULL DEFAULT 0,
     error          TEXT,
-    current_node   TEXT           DEFAULT NULL   -- node currently executing
+    current_node   TEXT           DEFAULT NULL,   -- node currently executing
+    snapshot_id    UUID           REFERENCES mem_ai_feature_snapshot(id) ON DELETE SET NULL,
+    use_case_num   INT            DEFAULT NULL    -- use case that triggered this run
 );
 CREATE INDEX IF NOT EXISTS idx_pr_gr_pid      ON pr_graph_runs(project_id);
 CREATE INDEX IF NOT EXISTS idx_pr_gr_workflow ON pr_graph_runs(workflow_id);
@@ -658,6 +660,24 @@ CREATE TABLE IF NOT EXISTS pr_graph_node_results (
 );
 CREATE INDEX IF NOT EXISTS idx_pr_gnr_run  ON pr_graph_node_results(run_id);
 CREATE INDEX IF NOT EXISTS idx_pr_gnr_node ON pr_graph_node_results(node_id);
+
+-- mem_pipeline_runs: background task observability — tracks every pipeline invocation
+-- Powers GET /memory/{project}/pipeline-status dashboard.
+CREATE TABLE IF NOT EXISTS mem_pipeline_runs (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id   INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    pipeline     TEXT        NOT NULL,
+    source_id    TEXT        NOT NULL DEFAULT '',
+    status       TEXT        NOT NULL DEFAULT 'running',
+    items_in     INT         NOT NULL DEFAULT 0,
+    items_out    INT         NOT NULL DEFAULT 0,
+    error_msg    TEXT,
+    duration_ms  INT,
+    started_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at  TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_mpr_project_started ON mem_pipeline_runs(project_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mpr_status ON mem_pipeline_runs(status) WHERE status = 'running';
 
 -- pr_seq_counters: atomic sequential ID generators (one row per project+category)
 -- Used to give work items human-readable numbers like #10001.

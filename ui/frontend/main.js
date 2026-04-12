@@ -14,6 +14,7 @@ import { renderGraphWorkflow, destroyGraphWorkflow } from './views/graph_workflo
 import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
 import { renderEntities } from './views/entities.js';
+import { renderPipeline, destroyPipeline } from './views/pipeline.js';
 import { loadTagCache } from './utils/tagCache.js';
 import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';
 
@@ -73,6 +74,7 @@ const PROJECT_TABS = [
   { id: 'code',      icon: '</>',label: 'Code'      },
   { id: 'documents', icon: '📋', label: 'Documents' },
   { id: 'workflow',  icon: '◈',  label: 'Pipelines' },
+  { id: 'pipeline',  icon: '⊕',  label: 'Pipeline'  },
   { id: 'history',  icon: '⏱',  label: 'History'  },
   { id: 'settings', icon: '⚙',  label: 'Settings' },
 ];
@@ -530,6 +532,7 @@ export function navigateTo(viewId, opts = {}) {
 
   // Clean up any running intervals from the pipeline view before tearing down its DOM.
   destroyGraphWorkflow();
+  destroyPipeline();
 
   const container = document.getElementById('views-container');
   if (!container) return;
@@ -561,6 +564,7 @@ export function navigateTo(viewId, opts = {}) {
     case 'code':      renderCode(view, proj?.name, proj);           break;
     case 'documents': renderDocuments(view, proj?.name);            break;
     case 'workflow':  renderGraphWorkflow(view);                     break;
+    case 'pipeline':  renderPipeline(view, proj?.name);              break;
     case 'history':  renderHistory(view);                     break;
     case 'settings': renderSettings(view);                    break;
     case 'admin':    _renderAdminView(view);                  break;

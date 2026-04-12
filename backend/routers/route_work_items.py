@@ -287,35 +287,40 @@ async def _embed_work_item(
     name_ai: str, desc_ai: str, summary_ai: str,
     code_summary: str = "",
 ) -> None:
-    """Embed work item content and store the vector on the row.
-    Embedding = name_ai + desc_ai + summary_ai + code_summary.
-    Used for: (1) semantic search, (2) cosine-similarity matching to planner_tags.
-    planner_tags.embedding = summary + action_items_ai → same space, enabling cross-table match.
-    """
-    try:
-        from memory.memory_embedding import _embed
-        text = f"{name_ai} {desc_ai} {summary_ai} {code_summary}".strip()
-        vec = await _embed(text)
-        if vec and db.is_available():
-            vec_str = f"[{','.join(str(x) for x in vec)}]"
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE mem_ai_work_items SET embedding = %s::vector WHERE id = %s::uuid AND project_id=%s",
-                        (vec_str, item_id, project_id),
-                    )
-    except Exception as e:
-        log.debug(f"_embed_work_item error: {e}")
+    """Embed work item content and store the vector on the row."""
+    from core.pipeline_log import pipeline_run
+    async with pipeline_run(project_id, "work_item_embed", item_id) as ctx:
+        ctx["items_in"] = 1
+        try:
+            from memory.memory_embedding import _embed
+            text = f"{name_ai} {desc_ai} {summary_ai} {code_summary}".strip()
+            vec = await _embed(text)
+            if vec and db.is_available():
+                vec_str = f"[{','.join(str(x) for x in vec)}]"
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE mem_ai_work_items SET embedding = %s::vector WHERE id = %s::uuid AND project_id=%s",
+                            (vec_str, item_id, project_id),
+                        )
+            ctx["items_out"] = 1
+        except Exception as e:
+            log.debug(f"_embed_work_item error: {e}")
+            raise
 
 
 async def _run_matching(project: str, work_item_id: str) -> None:
     """Background task: match a work item to planner tags; persist primary + secondary suggestions."""
     try:
-        from memory.memory_tagging import MemoryTagging
-        matches = await MemoryTagging().match_work_item_to_tags(project, work_item_id)
-        if not matches:
-            return
-        _persist_matches(work_item_id, matches)
+        p_id = db.get_project_id(project) or 0
+        from core.pipeline_log import pipeline_run
+        async with pipeline_run(p_id, "tag_match", work_item_id) as ctx:
+            ctx["items_in"] = 1
+            from memory.memory_tagging import MemoryTagging
+            matches = await MemoryTagging().match_work_item_to_tags(project, work_item_id)
+            if matches:
+                _persist_matches(work_item_id, matches)
+                ctx["items_out"] = len(matches)
     except Exception:
         pass  # non-critical background task
 

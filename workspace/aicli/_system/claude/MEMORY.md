@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-12 21:20 UTC by aicli /memory_
+_Generated: 2026-04-12 22:11 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform solving context loss across multiple AI tools by maintaining unified semantic memory of project architecture, decisions, and work items across sessions. It combines PostgreSQL with pgvector for semantic search, Claude Haiku for intelligent memory synthesis, async DAG workflows for multi-step automation, and a desktop Electron UI with web backend, enabling seamless knowledge sharing between users and AI agents throughout the development lifecycle.
 
 ## Project Facts
 
@@ -192,18 +196,18 @@ Reviewer: ```json
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- planner_tags schema: m027 migration removed seq_num/summary/design/embedding/extra; creator consolidates user_name/ai distinction; updater/created_at/updated_at audit trail added
+- planner_tags schema: m027 migration removed seq_num/summary/design/embedding/extra; creator consolidates user_name/ai distinction; updater/created_at/updated_at audit trail
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory execution with prompt_work_item() trigger
-- mem_ai_feature_snapshot planned: merge user requirements/tags with work_items; captures summary, use cases, delivery types for comprehensive feature tracking
+- mem_ai_feature_snapshot planned: new unified layer merging planner_tags user requirements with work_items; captures summary, use cases, delivery artifacts per use case
 
 ## In Progress
 
-- mem_ai_feature_snapshot table design: new unified layer merging planner_tags user requirements with work_items; tracks summary, use cases, and delivery artifacts per use case
-- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
-- planner_tag schema finalization: m027 migration completed; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
+- mem_ai_feature_snapshot table design: merge user requirements/tags with work_items; tracks summary, use cases, and delivery artifacts for comprehensive feature tracking
+- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt)
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution
 - Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items
-- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators
+- Workflow visibility improvements: exploring options to give more visibility into all flows and decision paths in the system
+- Pipeline execution architecture: designing second workflow trigger model based on approved features to enable more flexible pipeline orchestration
 
 ## Recent Memory
 
@@ -211,478 +215,218 @@ Reviewer: ```json
 
 ### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
 
-diff --git a/features/shared-memory/feature_final.md b/features/shared-memory/feature_final.md
-new file mode 100644
-index 0000000..49074df
---- /dev/null
-+++ b/features/shared-memory/feature_final.md
-@@ -0,0 +1,57 @@
-+# Feature Snapshot: shared-memory
-+> feature | Status: open | Priority: 3 | Due: not set
-+> Generated: 2026-04-12 21:15 UTC | Version: User Confirmed
-+
-+## (USER) Summary
-+The shared-memory feature enables safe inter-process/inter-thread communication through shared memory initialization, access, and concurrent operations. Currently in early planning phase with API specifications and synchronization mechanism design pending. Requires comprehensive testing to validate data integrity under stress and meet performance SLAs.
-+
-+---
-+
-+## Use Case 1: feature — python [code]
-+
-+### (USER) Use Case Summary
-+Implement core shared memory module with allocation and deallocation logic. This use case covers the foundational code implementation enabling processes/threads to initialize and access shared memory safely without resource leaks.
-+
-+### Requirements
-+| # | Requirement | Source | Score |
-+|---|-------------|--------|-------|
-+| 1 | Shared memory can be initialized and accessed safely across multiple processes/threads | (USER) | 2/10 |
-+| 2 | Memory allocation and deallocation complete without errors or resource leaks | (USER) | 2/10 |
-+| 3 | Define detailed shared memory API specifications and synchronization primitives design | (AI) | 1/10 |
-+
-+### Related Work Items
-+| Name | Status | Summary |
-+|------|--------|---------|
-+| memory | active | Work item for implementing shared memory functionality enabling inter-process/inter-thread communica |
-+
-+### Action Items & Acceptance Criteria
-+| # | Action Item | Acceptance Criteria | Score |
-+|---|-------------|---------------------|-------|
-+| 1 | Define detailed shared memory API specifications including initialization, access, and cleanup interfaces | API specification document completed with signatures, parameters, return types, and error handling defined | 1/10 |
-+| 2 | Design synchronization primitives (locks, mutexes, semaphores) for safe concurrent access | Synchronization design document approved with mechanism selection justified and edge cases documented | 1/10 |
-+| 3 | Implement core shared memory module with allocation/deallocation logic | Code merged with unit tests passing and resource tracking verified via memory profiler | 0/10 |
-+
-+
-+## Use Case 2: feature — markdown [document]
-+
-+### (USER) Use Case Summary
-+Create comprehensive testing suite covering concurrent read/write operations and stress testing. This deliverable validates data integrity under multiple access patterns and ensures performance benchmarks meet project SLAs.
-+
-+### Requirements
-+| # | Requirement | Source | Score |
-+|---|-------------|--------|-------|
-+| 1 | Concurrent read/write operations maintain data integrity under stress testing | (USER) | 0/10 |
-+| 2 | Performance benchmarks meet or exceed project SLAs | (USER) | 0/10 |
-+| 3 | Build comprehensive unit and integration testing across concurrent access patterns | (AI) | 0/10 |
-+
-+### Related Work Items
-+| Name | Status | Summary |
-+|------|--------|---------|
-+| memory | active | Work item for implementing shared memory functionality enabling inter-process/inter-thread communica |
-+
-+### Action Items & Acceptance Criteria
-+| # | Action Item | Acceptance Criteria | Score |
-+|---|-------------|---------------------|-------|
-+| 1 | Design test scenarios covering concurrent read/write operations, race conditions, and deadlock detection | Test plan document specifies minimum 5 concurrent access patterns with expected outcomes and success criteria | 1/10 |
-+| 2 | Implement unit tests validating shared memory initialization and resource cleanup | Unit tests pass with 100% code coverage on allocation/deallocation paths | 0/10 |
-+| 3 | Implement stress tests validating data integrity and performance under concurrent load | Stress tests execute successfully, maintain data integrity, and document latency/throughput metrics vs. SLAs | 0/10 |
-
-
-### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
-
-diff --git a/features/shared-memory/feature_ai.md b/features/shared-memory/feature_ai.md
-new file mode 100644
-index 0000000..09369e4
---- /dev/null
-+++ b/features/shared-memory/feature_ai.md
-@@ -0,0 +1,57 @@
-+# Feature Snapshot: shared-memory
-+> feature | Status: open | Priority: 3 | Due: not set
-+> Generated: 2026-04-12 21:14 UTC | Version: AI Generated
-+
-+## (AI) Summary
-+The shared-memory feature enables safe inter-process/inter-thread communication through shared memory initialization, access, and concurrent operations. Currently in early planning phase with API specifications and synchronization mechanism design pending. Requires comprehensive testing to validate data integrity under stress and meet performance SLAs.
-+
-+---
-+
-+## Use Case 1: feature — python [code]
-+
-+### (AI) Use Case Summary
-+Implement core shared memory module with allocation and deallocation logic. This use case covers the foundational code implementation enabling processes/threads to initialize and access shared memory safely without resource leaks.
-+
-+### Requirements
-+| # | Requirement | Source | Score |
-+|---|-------------|--------|-------|
-+| 1 | Shared memory can be initialized and accessed safely across multiple processes/threads | (USER) | 2/10 |
-+| 2 | Memory allocation and deallocation complete without errors or resource leaks | (USER) | 2/10 |
-+| 3 | Define detailed shared memory API specifications and synchronization primitives design | (AI) | 1/10 |
-+
-+### Related Work Items
-+| Name | Status | Summary |
-+|------|--------|---------|
-+| memory | active | Work item for implementing shared memory functionality enabling inter-process/inter-thread communica |
-+
-+### Action Items & Acceptance Criteria
-+| # | Action Item | Acceptance Criteria | Score |
-+|---|-------------|---------------------|-------|
-+| 1 | Define detailed shared memory API specifications including initialization, access, and cleanup interfaces | API specification document completed with signatures, parameters, return types, and error handling defined | 1/10 |
-+| 2 | Design synchronization primitives (locks, mutexes, semaphores) for safe concurrent access | Synchronization design document approved with mechanism selection justified and edge cases documented | 1/10 |
-+| 3 | Implement core shared memory module with allocation/deallocation logic | Code merged with unit tests passing and resource tracking verified via memory profiler | 0/10 |
-+
-+
-+## Use Case 2: feature — markdown [document]
-+
-+### (AI) Use Case Summary
-+Create comprehensive testing suite covering concurrent read/write operations and stress testing. This deliverable validates data integrity under multiple access patterns and ensures performance benchmarks meet project SLAs.
-+
-+### Requirements
-+| # | Requirement | Source | Score |
-+|---|-------------|--------|-------|
-+| 1 | Concurrent read/write operations maintain data integrity under stress testing | (USER) | 0/10 |
-+| 2 | Performance benchmarks meet or exceed project SLAs | (USER) | 0/10 |
-+| 3 | Build comprehensive unit and integration testing across concurrent access patterns | (AI) | 0/10 |
-+
-+### Related Work Items
-+| Name | Status | Summary |
-+|------|--------|---------|
-+| memory | active | Work item for implementing shared memory functionality enabling inter-process/inter-thread communica |
-+
-+### Action Items & Acceptance Criteria
-+| # | Action Item | Acceptance Criteria | Score |
-+|---|-------------|---------------------|-------|
-+| 1 | Design test scenarios covering concurrent read/write operations, race conditions, and deadlock detection | Test plan document specifies minimum 5 concurrent access patterns with expected outcomes and success criteria | 1/10 |
-+| 2 | Implement unit tests validating shared memory initialization and resource cleanup | Unit tests pass with 100% code coverage on allocation/deallocation paths | 0/10 |
-+| 3 | Implement stress tests validating data integrity and performance under concurrent load | Stress tests execute successfully, maintain data integrity, and document latency/throughput metrics vs. SLAs | 0/10 |
-
-
-### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
-
-diff --git a/backend/routers/route_tags.py b/backend/routers/route_tags.py
-index 7f32546..cf223b4 100644
---- a/backend/routers/route_tags.py
-+++ b/backend/routers/route_tags.py
-@@ -469,6 +469,85 @@ async def run_planner_for_tag(tag_id: str, project: str = Query(...)):
-     return result
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index 6ad7626..d4e16fd 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
+ ## Recent Work
  
-+@router.post("/{tag_id}/snapshot")
-+async def create_feature_snapshot(tag_id: str, project: str = Query(...)):
-+    """Run AI feature snapshot: merge tag + work items + events into use-case rows.
-+
-+    Overwrites all version='ai' rows for this tag and writes features/{tag}/feature_ai.md.
-+    """
-+    _require_db()
-+    from memory.memory_feature_snapshot import MemoryFeatureSnapshot
-+    return await MemoryFeatureSnapshot().run_snapshot(project, tag_id)
-+
-+
-+@router.get("/{tag_id}/snapshot")
-+async def get_feature_snapshot(
-+    tag_id: str,
-+    project: str = Query(...),
-+    version: str = Query("ai"),
-+):
-+    """Return snapshot rows for a tag as {tag_id, tag_name, version, summary, use_cases}."""
-+    _require_db()
-+    db.get_or_create_project_id(project)  # ensure project exists
-+    with db.conn() as conn:
-+        with conn.cursor() as cur:
-+            cur.execute(
-+                """
-+                SELECT id, use_case_num, name, category, status, priority, due_date,
-+                       summary, use_case_summary, use_case_type,
-+                       use_case_delivery_category, use_case_delivery_type,
-+                       related_work_items, requirements, action_items, version, created_at
-+                FROM mem_ai_feature_snapshot
-+                WHERE tag_id = %s::uuid AND version = %s
-+                ORDER BY use_case_num
-+                """,
-+                (tag_id, version),
-+            )
-+            rows = cur.fetchall()
-+
-+    if not rows:
-+        return {"tag_id": tag_id, "version": version, "summary": "", "use_cases": []}
-+
-+    first = rows[0]
-+    use_cases = []
-+    for r in rows:
-+        use_cases.append({
-+            "id":                       str(r[0]),
-+            "use_case_num":             r[1],
-+            "use_case_summary":         r[8] or "",
-+            "use_case_type":            r[9] or "",
-+            "use_case_delivery_category": r[10] or "",
-+            "use_case_delivery_type":   r[11] or "",
-+            "related_work_items":       r[12] if r[12] else [],
-+            "requirements":             r[13] if r[13] else [],
-+            "action_items":             r[14] if r[14] else [],
-+            "created_at":               r[16].isoformat() if r[16] else None,
-+        })
-+
-+    return {
-+        "tag_id":     tag_id,
-+        "tag_name":   first[2],
-+        "category":   first[3],
-+        "status":     first[4],
-+        "priority":   first[5],
-+        "due_date":   first[6].isoformat() if first[6] else None,
-+        "version":    version,
-+        "summary":    first[7] or "",
-+        "use_cases":  use_cases,
-+    }
-+
-+
-+@router.post("/{tag_id}/snapshot/promote")
-+async def promote_feature_snapshot(tag_id: str, project: str = Query(...)):
-+    """Promote AI snapshot to user version; writes features/{tag}/feature_final.md.
-+
-+    User version is never overwritten by AI on subsequent snapshot runs.
-+    """
-+    _require_db()
-+    from memory.memory_feature_snapshot import MemoryFeatureSnapshot
-+    return await MemoryFeatureSnapshot().promote_to_user(project, tag_id)
-+
-+
- @router.get("/{tag_id}/sources")
- async def get_tag_sources(tag_id: str, project: str = Query(...)):
-     """Return prompts and commits tagged with this tag via their tags[] array.
+-- planner_tags deliveries column implementation: adding JSONB field after action_items to store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
+-- planner_tag schema finalization: m027 migration completed; removed summary, design, embedding, extra columns; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
+-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution with prompt_work_item() trigger
+-- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items with category/name/description/status retrieval
+-- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
+-- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
++- mem_ai_feature_snapshot table design: new unified layer merging planner_tags user requirements with work_items; tracks summary, use cases, and delivery artifacts per use case
++- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
++- planner_tag schema finalization: m027 migration completed; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
++- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution
++- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items
++- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators
 
 
 ### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
 
-diff --git a/backend/prompts/prompts.yaml b/backend/prompts/prompts.yaml
-index b59b4f5..f121db7 100644
---- a/backend/prompts/prompts.yaml
-+++ b/backend/prompts/prompts.yaml
-@@ -68,6 +68,11 @@ prompts:
-     model: haiku
-     max_tokens: 2500
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 9df6394..0f7ae0a 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-12 20:32 UTC
++> Generated by aicli 2026-04-12 21:15 UTC
  
-+  feature_snapshot_v2:
-+    file: memory/feature_snapshot_v2.md
-+    model: haiku
-+    max_tokens: 3000
-+
-   conflict_detection:
-     file: memory/conflict_detection.md
-     model: haiku
+ # aicli — Shared AI Memory Platform
+ 
+@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - workflow_ui: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - memory_synthesis: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
+ - chunking: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+-- mcp: Stdio MCP server with 12+ tools (semantic search with work_items vectors, work item management, session tagging)
++- mcp: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
+ - deployment: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - database_schema: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+ - config_management: config.py + YAML pipelines + pyproject.toml + aicli.yaml
+@@ -46,7 +46,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - prompt_management: core.prompt_loader module with centralized prompt caching
+ - schema_management: db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)
+ - database_tables: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+-- embeddings: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
++- embeddings: text-embedding-3-small (1536-dim vectors)
+ 
+ ## Architectural Decisions
+ 
+@@ -58,10 +58,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+-- Work item column naming: name_ai, category_ai, desc_ai consolidated for consistency; embedding vectors persisted for semantic search in MCP tools
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+ - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
+ - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+-- planner_tags schema: removed seq_num, summary, design, embedding, extra columns via m027 migration; creator consolidates user_name/ai designation; added updater/created_at/updated_at audit trail
+-- planner_tags deliveries column: JSONB field after action_items for user-defined delivery artifacts (code, document, architect_design, ppt) with type specification per artifact
+\ No newline at end of file
++- planner_tags schema: m027 migration removed seq_num/summary/design/embedding/extra; creator consolidates user_name/ai distinction; updater/created_at/updated_at audit trail added
++- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory execution with prompt_work_item() trigger
++- mem_ai_feature_snapshot planned: merge user requirements/tags with work_items; captures summary, use cases, delivery types for comprehensive feature tracking
+\ No newline at end of file
 
 
 ### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
 
-diff --git a/backend/prompts/memory/feature_snapshot_v2.md b/backend/prompts/memory/feature_snapshot_v2.md
-new file mode 100644
-index 0000000..d486715
---- /dev/null
-+++ b/backend/prompts/memory/feature_snapshot_v2.md
-@@ -0,0 +1,37 @@
-+You are a senior technical project analyst. Given a feature tag with its requirements,
-+deliveries, linked work items, and recent AI event digests, produce a structured feature
-+snapshot broken down into use cases.
-+
-+## Rules
-+
-+1. Generate **one use case per delivery entry** from tag.deliveries.
-+   If no deliveries are set, infer use cases from the work item content (max 5).
-+2. Score fields: 0 = not started, 5 = partially done, 10 = fully done.
-+3. Label requirement source as "user" if it came from the tag's requirements/acceptance_criteria
-+   fields; "ai" if inferred from work items or events.
-+4. Keep use_case_summary concise: 2-4 sentences covering purpose and current state.
-+5. If a User-confirmed baseline section is provided, preserve its confirmed action items
-+   and scores unless AI evidence clearly contradicts them.
-+6. Return ONLY valid JSON — no preamble, no markdown fences.
-+
-+## Output schema
-+
-+{
-+  "summary": "2-4 sentence global feature summary",
-+  "use_cases": [
-+    {
-+      "use_case_num": 1,
-+      "use_case_summary": "what this use case does and its current state",
-+      "use_case_type": "feature|bug|task",
-+      "use_case_delivery_category": "code|document|architecture_design|presentation",
-+      "use_case_delivery_type": "python|markdown|visio|...",
-+      "related_work_item_ids": ["uuid1", "uuid2"],
-+      "requirements": [
-+        {"text": "requirement text", "source": "user|ai", "score": 8}
-+      ],
-+      "action_items": [
-+        {"action_item": "what to do", "acceptance": "how to verify", "score": 5}
-+      ]
-+    }
-+  ]
-+}
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index b389a43..5f5eeb4 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 20:32 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 21:15 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
+ - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+-- **mcp**: Stdio MCP server with 12+ tools (semantic search with work_items vectors, work item management, session tagging)
++- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
+ - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+ - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
+@@ -46,7 +46,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+ - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)
+ - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+-- **embeddings**: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
++- **embeddings**: text-embedding-3-small (1536-dim vectors)
+ 
+ ## Key Decisions
+ 
+@@ -58,18 +58,18 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+-- Work item column naming: name_ai, category_ai, desc_ai consolidated for consistency; embedding vectors persisted for semantic search in MCP tools
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+ - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
+ - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+-- planner_tags schema: removed seq_num, summary, design, embedding, extra columns via m027 migration; creator consolidates user_name/ai designation; added updater/created_at/updated_at audit trail
+-- planner_tags deliveries column: JSONB field after action_items for user-defined delivery artifacts (code, document, architect_design, ppt) with type specification per artifact
++- planner_tags schema: m027 migration removed seq_num/summary/design/embedding/extra; creator consolidates user_name/ai distinction; updater/created_at/updated_at audit trail added
++- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory execution with prompt_work_item() trigger
++- mem_ai_feature_snapshot planned: merge user requirements/tags with work_items; captures summary, use cases, delivery types for comprehensive feature tracking
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-12] Yes. please about createor - it must be woth a value . if user create it will be user name. if ai create it will be defa
+ - [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
+ - [2026-04-12] yes
+ - [2026-04-12] This start to look good. I would like to add one more column - deliveries that will be after actio_items, this column is
+-- [2026-04-12] can you add tag feature:feature_snapshot
+\ No newline at end of file
++- [2026-04-12] can you add tag feature:feature_snapshot
++- [2026-04-12] Feature_snapshot  I would like to create the final stage - mem_ai_feature_snapshot -  this table merge user requirements
+\ No newline at end of file
 
 
 ### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
 
-diff --git a/backend/memory/memory_feature_snapshot.py b/backend/memory/memory_feature_snapshot.py
-new file mode 100644
-index 0000000..359b57f
---- /dev/null
-+++ b/backend/memory/memory_feature_snapshot.py
-@@ -0,0 +1,597 @@
-+"""
-+memory_feature_snapshot.py — Per-tag, per-use-case feature snapshot pipeline.
-+
-+Merges planner_tags requirements + deliveries + linked work items + recent AI events
-+into structured mem_ai_feature_snapshot rows (one per use case per version).
-+
-+Triggered via POST /tags/{id}/snapshot.  AI version ('ai') is overwritten on each run;
-+user version ('user') is promoted from AI via POST /tags/{id}/snapshot/promote and is
-+never overwritten by AI.
-+
-+Output files:
-+    {code_dir}/features/{tag_name}/feature_ai.md
-+    {code_dir}/features/{tag_name}/feature_final.md
-+"""
-+from __future__ import annotations
-+
-+import json
-+import logging
-+import re
-+import uuid
-+from datetime import datetime, timezone
-+from pathlib import Path
-+from typing import Any
-+
-+from core.database import db
-+from core.prompt_loader import prompts as _prompts
-+
-+log = logging.getLogger(__name__)
-+
-+# ── SQL ────────────────────────────────────────────────────────────────────────
-+
-+_SQL_GET_TAG = """
-+    SELECT pt.id, pt.name, tc.name AS category_name,
-+           pt.status, pt.priority, pt.due_date,
-+           pt.requirements, pt.acceptance_criteria, pt.deliveries
-+    FROM planner_tags pt
-+    JOIN mng_tags_categories tc ON tc.id = pt.category_id
-+    WHERE pt.id = %s::uuid AND pt.project_id = %s
-+    LIMIT 1
-+"""
-+
-+_SQL_GET_WORK_ITEMS = """
-+    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user,
-+           wi.action_items_ai, wi.acceptance_criteria_ai, wi.summary_ai
-+    FROM mem_ai_work_items wi
-+    WHERE wi.tag_id_user = %s::uuid AND wi.project_id = %s
-+      AND wi.merged_into IS NULL
-+    ORDER BY wi.created_at
-+"""
-+
-+_SQL_GET_RECENT_EVENTS = """
-+    SELECT id, event_type, summary, action_items, created_at
-+    FROM mem_ai_events
-+    WHERE project_id = %s
-+      AND event_type IN ('session_summary', 'prompt_batch')
-+    ORDER BY created_at DESC
-+    LIMIT 20
-+"""
-+
-+_SQL_GET_CODE_DIR = """
-+    SELECT code_dir FROM mng_projects WHERE name = %s LIMIT 1
-+"""
-+
-+_SQL_DELETE_AI_ROWS = """
-+    DELETE FROM mem_ai_feature_snapshot
-+    WHERE project_id = %s AND tag_id = %s::uuid AND version = 'ai'
-+"""
-+
-+_SQL_DELETE_USER_ROWS = """
-+    DELETE FROM mem_ai_feature_snapshot
-+    WHERE project_id = %s AND tag_id = %s::uuid AND version = 'user'
-+"""
-+
-+_SQL_INSERT_ROW = """
-+    INSERT INTO mem_ai_feature_snapshot (
-+        id, client_id, project_id, tag_id, use_case_num,
-+        name, category, status, priority, due_date, summary,
-+        use_case_summary, use_case_type,
-+        use_case_delivery_category, use_case_delivery_type,
-+        related_work_items, requirements, action_items, version
-+    ) VALUES (
-+        %s, 1, %s, %s::uuid, %s,
-+        %s, %s, %s, %s, %s, %s,
-+        %s, %s,
-+        %s, %s,
-+        %s::jsonb, %s::jsonb, %s::jsonb, %s
-+    )
-+"""
-+
-+_SQL_GET_AI_ROWS = """
-+    SELECT id, use_case_num, name, category, status, priority, due_date, summary,
-+           use_case_summary, use_case_type,
-+           use_case_delivery_category, use_case_delivery_type,
-+           related_work_items, requirements, action_items, version, created_at
-+    FROM mem_ai_feature_snapshot
-+    WHERE tag_id = %s::uuid AND version = %s
-+    ORDER BY use_case_num
-+"""
-+
-+# ── Helpers ───────────────────────────────────────────────────────────────────
-+
-+_FALLBACK_SYSTEM = """
-+You are a technical project analyst. Given a feature tag with work items and events,
-+return ONLY valid JSON matching this schema:
-+{
-+  "summary": "2-4 sentence global feature summary",
-+  "use_cases": [
-+    {
-+      "use_case_num": 1,
-+      "use_case_summary": "purpose and current state",
-+      "use_case_type": "feature",
-+      "use_case_delivery_category": "code",
-+      "use_case_delivery_type": "python",
-+      "related_work_item_ids": [],
-+      "requirements": [{"text": "...", "source": "ai", "score": 0}],
-+      "action_items": [{"action_item": "...", "acceptance": "...", "score": 0}]
-+    }
-+  ]
-+}
-+""".strip()
-+
-+
-+def _parse_json(text: str) -> dict:
-+    clean = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`")
-+    m = re.search(r"\{[\s\S]*\}", clean)
-+    if not m:
-+        return {}
-+    try:
-+        return json.loads(m.group())
-+    except Exception:
-+        return {}
-+
-+
-+def _slugify(name: str) -> str:
-+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-+
-+
-+async def _call_llm(system_prompt: str, user_message: str, max_tokens: int = 3000) -> str:
-+    try:
-+        from data.dl_api_keys import get_key
-+        api_key = get_key("claude") or get_key("anthropic")
-+        if not api_key:
-+            log.warning("_call_llm: no claude/anthropic API key found")
-+            return ""
-+        import anthropic
-+        from core.config import settings
-+        model = getattr(settings, "claude_haiku_model", "claude-haiku-4-5-20251001")
-+        client = anthropic.AsyncAnthropic(api_key=api_key)
-+        resp = await client.messages.create(
-+            model=model,
-+            max_tokens=max_tokens,
-+            system=system_prompt,
-+            messages=[{"role": "user", "content": user_message}],
-+        )
-+        return resp.content[0].text if resp.content else ""
-+    except Exception as e:
-+        log.warning(f"_call_llm error: {e}")
-+        return ""
-+
-+
-+# ── MemoryFeatureSnapshot ──────────────────────────────────────────────────────
-+
-+class MemoryFeatureSnapshot:
-+    """
-+    Generates and persists per-use-case feature snapshots for a planner_tag.
-+
-+    AI rows are overwritten on each run; user rows are promoted once and never
-+    touched by AI.
-+    """
-+
-+    # ── Public entry points ───────────────────────────────────────────────────
-+
-+    async def run_snapshot(self, project: str, tag_id: str) -> dict:
-+        """Run AI snapshot for tag_id, write fea
+diff --git a/.ai/rules.md b/.ai/rules.md
+index b389a43..5f5eeb4 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 20:32 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 21:15 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
+ - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+-- **mcp**: Stdio MCP server with 12+ tools (semantic search with work_items vectors, work item management, session tagging)
++- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
+ - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+ - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
+@@ -46,7 +46,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+ - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)
+ - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+-- **embeddings**: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
++- **embeddings**: text-embedding-3-small (1536-dim vectors)
+ 
+ ## Key Decisions
+ 
+@@ -58,18 +58,18 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+-- Work item column naming: name_ai, category_ai, desc_ai consolidated for consistency; embedding vectors persisted for semantic search in MCP tools
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+ - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
+ - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+-- planner_tags schema: removed seq_num, summary, design, embedding, extra columns via m027 migration; creator consolidates user_name/ai designation; added updater/created_at/updated_at audit trail
+-- planner_tags deliveries column: JSONB field after action_items for user-defined delivery artifacts (code, document, architect_design, ppt) with type specification per artifact
++- planner_tags schema: m027 migration removed seq_num/summary/design/embedding/extra; creator consolidates user_name/ai distinction; updater/created_at/updated_at audit trail added
++- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory execution with prompt_work_item() trigger
++- mem_ai_feature_snapshot planned: merge user requirements/tags with work_items; captures summary, use cases, delivery types for comprehensive feature tracking
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-12] Yes. please about createor - it must be woth a value . if user create it will be user name. if ai create it will be defa
+ - [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
+ - [2026-04-12] yes
+ - [2026-04-12] This start to look good. I would like to add one more column - deliveries that will be after actio_items, this column is
+-- [2026-04-12] can you add tag feature:feature_snapshot
+\ No newline at end of file
++- [2026-04-12] can you add tag feature:feature_snapshot
++- [2026-04-12] Feature_snapshot  I would like to create the final stage - mem_ai_feature_snapshot -  this table merge user requirements
+\ No newline at end of file
+
+
+### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
+
+Removed stale agent context and system memory files that were left over from Claude integration work, cleaning up unnecessary artifacts.
+
+### `session_summary: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
+
+Summary:
+• Designed comprehensive project history and audit system with multi-layer snapshot architecture (features, requirements, deployments, work items)
+• Created feature snapshot table with versioning, timestamps, and deployment tracking to maintain full project history
+• Built event-to-work-item mapping system with bidirectional links between user requirements and actual implementation
+• Established strong MCP (Model Context Protocol) foundation for unified project state management and history queries
+• Enabled deployment tracking with code lineage - linking requirements → events → work items → deployed code
+
+## AI Synthesis
+
+**[2026-04-12]** `product_review` — Received feedback on workflow visibility and pipeline execution architecture. User seeking improved visibility into all decision flows and exploring second workflow trigger model based on approved features beyond the current single-workflow approach.
+
+**[2026-04-12]** `mem_ai_feature_snapshot` — Initiated design for new unified table merging planner_tags user requirements with work_items; will capture summary, use cases, and delivery artifacts per use case as final synthesis layer.
+
+**[2026-04-12]** `planner_tags_deliveries` — Planning JSONB deliveries column after action_items to store user-selected delivery artifact types (code, document, architect_design, ppt) with per-artifact type definitions.
+
+**[2026-04-12]** `work_item_embeddings` — Consolidating embedding strategy: _embed_work_item() function persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution; integrated into MCP semantic search tool_memory.py.
+
+**[2026-04-12]** `ai_tag_suggestion_workflow` — Refined secondary AI tag approval workflow storing confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion, improving audit trail.
+
+**[2026-04-12]** `planner_tags_schema_m027` — Completed m027 migration removing seq_num/summary/design/embedding/extra columns; creator field consolidates user_name/ai distinction; added updater/created_at/updated_at for full audit trail.

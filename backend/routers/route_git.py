@@ -20,6 +20,7 @@ from core.config import settings
 from core.database import db
 from core.prompt_loader import prompts as _prompts
 from agents.providers import call_claude
+from core.pipeline_log import pipeline_run, pipeline_run_sync, _finish_run
 
 log = logging.getLogger(__name__)
 
@@ -158,23 +159,36 @@ def _filter_diff_stat(diff_stat: str) -> tuple[str, str]:
 
 async def _embed_commit_background(project: str, commit_hash: str) -> None:
     """Run process_commit() to embed + extract symbols after commit is stored."""
-    try:
-        from memory.memory_embedding import MemoryEmbedding
-        await MemoryEmbedding().process_commit(project, commit_hash)
-        log.info(f"_embed_commit_background: embedded {commit_hash[:8]} for {project}")
-    except Exception as e:
-        log.debug(f"_embed_commit_background error ({commit_hash[:8]}): {e}")
+    from core.pipeline_log import pipeline_run
+    p_id = db.get_project_id(project)
+    if not p_id:
+        return
+    async with pipeline_run(p_id, "commit_embed", commit_hash) as ctx:
+        ctx["items_in"] = 1
+        try:
+            from memory.memory_embedding import MemoryEmbedding
+            await MemoryEmbedding().process_commit(project, commit_hash)
+            log.info(f"_embed_commit_background: embedded {commit_hash[:8]} for {project}")
+            ctx["items_out"] = 1
+        except Exception as e:
+            log.debug(f"_embed_commit_background error ({commit_hash[:8]}): {e}")
+            raise
 
 
 def _extract_commit_code_background(project: str, commit_hash: str) -> None:
     """Run tree-sitter symbol extraction and insert rows into mem_mrr_commits_code."""
     import asyncio
+    from core.pipeline_log import pipeline_run_sync, _finish_run
+    p_id = db.get_project_id(project)
+    run_id, t0 = pipeline_run_sync(p_id or 0, "commit_code_extract", commit_hash) if p_id else (None, 0)
     loop = asyncio.new_event_loop()
     try:
         from memory.memory_code_parser import extract_commit_code
         loop.run_until_complete(extract_commit_code(project, commit_hash))
+        _finish_run(run_id, "ok", 1, 1, t0)
     except Exception as e:
         log.debug(f"_extract_commit_code_background error ({commit_hash[:8]}): {e}")
+        _finish_run(run_id, "error", 1, 0, t0, str(e))
     finally:
         loop.close()
 
@@ -187,17 +201,13 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
                           commit_msg: str, committed_at: str,
                           diff_summary: str = "", analysis: dict | None = None,
                           author: str = "", author_email: str = "") -> None:
-    """Upsert the new commit into mem_mrr_commits and link it to its triggering prompt.
-
-    Linking uses mem_mrr_commits.prompt_id (UUID FK to mem_mrr_prompts) — the most recent
-    prompt in the same session that occurred before the commit timestamp.
-    Called as a background task from commit_and_push.
-    """
+    """Upsert the new commit into mem_mrr_commits and link it to its triggering prompt."""
     if not db.is_available():
         return
     project_id = db.get_or_create_project_id(project)
+    from core.pipeline_log import pipeline_run_sync, _finish_run
+    run_id, t0 = pipeline_run_sync(project_id, "commit_store", commit_hash)
     try:
-        # Read current session tags to auto-tag the commit
         tags_dict: dict = {}
         try:
             with db.conn() as conn:
@@ -214,10 +224,7 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
 
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # 1. Upsert the commit
-                # tags: user-intent only (source, phase, feature, bug, work-item)
                 tags_dict.setdefault("source", "commit_push")
-                # analysis goes to tags_ai (AI-generated metadata), not tags
                 tags_ai_dict: dict = {}
                 if analysis:
                     tags_ai_dict["analysis"] = analysis
@@ -228,14 +235,14 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
                      committed_at or datetime.now(timezone.utc),
                      json.dumps(tags_dict), json.dumps(tags_ai_dict)),
                 )
-
-                # 2. Link commit → last prompt in the session (via prompt_id FK)
                 if session_id:
                     cur.execute(_SQL_LINK_COMMIT_TO_PROMPT, (project_id, session_id, commit_hash))
                     if cur.rowcount:
                         log.info(f"Commit {commit_hash[:8]} linked to prompt (session {session_id[:8]})")
+        _finish_run(run_id, "ok", 1, 1, t0)
     except Exception as exc:
         log.warning(f"_sync_commit_and_link failed for {commit_hash}: {exc}")
+        _finish_run(run_id, "error", 1, 0, t0, str(exc))
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

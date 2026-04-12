@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.database import db
+from core.pipeline_log import _insert_run, _finish_run
 from core.prompt_loader import prompts as _prompts
 
 log = logging.getLogger(__name__)
@@ -218,6 +219,9 @@ async def create_session_summary(
     _require_db()
     project_id = db.get_or_create_project_id(project)
     session_id = body.session_id
+    import time as _time
+    _pl_t0 = _time.monotonic()
+    _pl_run_id = _insert_run(project_id, "session_summary", session_id)
 
     # Skip if already exists (unless force=True)
     if not body.force:
@@ -225,10 +229,12 @@ async def create_session_summary(
             with conn.cursor() as cur:
                 cur.execute(_SQL_GET_EXISTING_SUMMARY, (project_id, session_id))
                 if cur.fetchone():
+                    _finish_run(_pl_run_id, "skipped", 1, 0, _pl_t0)
                     return {"status": "already_exists", "session_id": session_id}
 
     result = await _generate_session_summary(project, session_id)
     if not result:
+        _finish_run(_pl_run_id, "skipped", 1, 0, _pl_t0)
         return {"status": "no_data", "session_id": session_id}
 
     summary_text = result["summary"]
@@ -258,6 +264,7 @@ async def create_session_summary(
     # Regenerate root files in background
     background.add_task(_trigger_root_regen, project)
 
+    _finish_run(_pl_run_id, "created", 1, 1, _pl_t0)
     log.info(f"Session summary stored in mem_ai_events for '{project}' session={session_id}")
     return {
         "status":       "created",
@@ -405,3 +412,131 @@ async def embed_commits(
             errors += 1
 
     return {"processed": processed, "errors": errors, "project": project}
+
+@router.get("/{project}/pipeline-status")
+async def get_pipeline_status(project: str):
+    """Return pipeline health dashboard: last-24h stats per pipeline, pending counts, recent errors."""
+    if not db.is_available():
+        return {"last_24h": {}, "pending": {}, "recent_errors": []}
+
+    project_id = db.get_or_create_project_id(project)
+
+    pipelines = ["commit_embed", "commit_store", "commit_code_extract",
+                 "session_summary", "tag_match", "work_item_embed"]
+    last_24h: dict = {}
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Per-pipeline counts in last 24h
+                cur.execute(
+                    """SELECT pipeline, status, COUNT(*) AS cnt,
+                              MAX(started_at) AS last_run
+                       FROM mem_pipeline_runs
+                       WHERE project_id = %s
+                         AND started_at > NOW() - INTERVAL '24 hours'
+                       GROUP BY pipeline, status""",
+                    (project_id,),
+                )
+                rows = cur.fetchall()
+                # Aggregate
+                agg: dict = {}
+                for pl, st, cnt, last_run in rows:
+                    if pl not in agg:
+                        agg[pl] = {"ok": 0, "error": 0, "skipped": 0, "last_run": None}
+                    key = st if st in ("ok", "error", "skipped") else "error"
+                    agg[pl][key] += cnt
+                    if last_run:
+                        existing = agg[pl]["last_run"]
+                        if not existing or last_run.isoformat() > existing:
+                            agg[pl]["last_run"] = last_run.isoformat()
+
+                for pl in pipelines:
+                    last_24h[pl] = agg.get(pl, {"ok": 0, "error": 0, "skipped": 0, "last_run": None})
+
+                # Pending commits (not embedded)
+                cur.execute(
+                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND exec_llm=FALSE",
+                    (project_id,),
+                )
+                commits_not_embedded = cur.fetchone()[0] or 0
+
+                # Pending work items (unmatched)
+                cur.execute(
+                    """SELECT COUNT(*) FROM mem_ai_work_items
+                       WHERE project_id=%s AND tag_id_ai IS NULL AND tag_id_user IS NULL
+                         AND status_user != 'done'""",
+                    (project_id,),
+                )
+                work_items_unmatched = cur.fetchone()[0] or 0
+
+                # Recent errors (last 10)
+                cur.execute(
+                    """SELECT pipeline, source_id, error_msg, started_at
+                       FROM mem_pipeline_runs
+                       WHERE project_id=%s AND status='error'
+                       ORDER BY started_at DESC LIMIT 10""",
+                    (project_id,),
+                )
+                recent_errors = [
+                    {
+                        "pipeline": r[0],
+                        "source_id": r[1] or "",
+                        "error_msg": r[2] or "",
+                        "at": r[3].isoformat() if r[3] else None,
+                    }
+                    for r in cur.fetchall()
+                ]
+
+    except Exception as e:
+        log.warning(f"get_pipeline_status error: {e}")
+        return {"last_24h": {pl: {"ok": 0, "error": 0, "skipped": 0, "last_run": None} for pl in pipelines},
+                "pending": {}, "recent_errors": []}
+
+    return {
+        "last_24h": last_24h,
+        "pending": {
+            "commits_not_embedded": commits_not_embedded,
+            "work_items_unmatched": work_items_unmatched,
+        },
+        "recent_errors": recent_errors,
+    }
+
+
+@router.get("/{project}/workflow-templates")
+async def get_workflow_templates(project: str):
+    """Return delivery-type → workflow mapping + available workflows for this project."""
+    from pathlib import Path
+    import yaml as _yaml
+
+    templates_path = Path(__file__).parent.parent.parent / "workspace" / "_templates" / "workflows" / "templates.yaml"
+    templates: dict = {}
+    if templates_path.exists():
+        try:
+            data = _yaml.safe_load(templates_path.read_text()) or {}
+            templates = data.get("templates", {})
+        except Exception:
+            pass
+
+    workflows: list = []
+    if db.is_available():
+        project_id = db.get_or_create_project_id(project)
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT w.id::text, w.name,
+                                  COUNT(n.id) AS node_count
+                           FROM pr_graph_workflows w
+                           LEFT JOIN pr_graph_nodes n ON n.workflow_id = w.id
+                           WHERE w.project_id = %s
+                           GROUP BY w.id, w.name
+                           ORDER BY w.name""",
+                        (project_id,),
+                    )
+                    for r in cur.fetchall():
+                        workflows.append({"id": r[0], "name": r[1], "node_count": r[2] or 0})
+        except Exception as e:
+            log.debug(f"get_workflow_templates workflows query error: {e}")
+
+    return {"templates": templates, "workflows": workflows}

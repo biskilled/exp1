@@ -10,6 +10,7 @@
 import { state } from '../stores/state.js';
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
+import { showWorkflowPicker } from '../utils/workflowPicker.js';
 import {
   loadTagCache, isCacheLoaded, getCacheProject,
   getCacheCategories, getCacheValues,
@@ -149,6 +150,8 @@ export function renderEntities(container) {
   window._plannerDrawerRemoveLink = _plannerDrawerRemoveLink;
   window._plannerGenerateSnapshot = _plannerGenerateSnapshot;
   window._plannerDrawerMerge      = _plannerDrawerMerge;
+  window._plannerWfPicker = (tagId, ucNum, ucSummary, project) =>
+    showWorkflowPicker(tagId, ucNum, ucSummary, project);
 
   window._plannerRunPlan = async (tagId, tagName, catName, project) => {
     const btn = document.getElementById('drawer-planner-btn');
@@ -1686,6 +1689,8 @@ function _plannerOpenDrawer(catId, valId) {
     const v = getCacheValues(catId).find(x => x.id === valId);
     if (v) _loadDrawerPipeline(selectedCatName, v.name, project);
   }
+  // Async: load feature snapshot use cases for workflow triggers
+  _loadDrawerSnapshot(valId, _plannerState.project);
 }
 
 function _plannerCloseDrawer() {
@@ -1693,6 +1698,40 @@ function _plannerCloseDrawer() {
   if (drawer) { drawer.style.width = '0'; drawer.style.borderLeftWidth = '0'; }
   _drawerValId = null;
   _drawerCatId = null;
+}
+
+async function _loadDrawerSnapshot(tagId, project) {
+  const el = document.getElementById('drawer-wf-uc-section');
+  if (!el) return;
+  try {
+    const snap = await api.tags.getSnapshot(tagId, project, 'user')
+      .catch(() => api.tags.getSnapshot(tagId, project, 'ai').catch(() => null));
+    if (!snap?.use_cases?.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+                    letter-spacing:.06em;margin-bottom:0.4rem">Use Cases</div>
+        ${snap.use_cases.map(uc => `
+          <div style="display:flex;align-items:center;justify-content:space-between;
+                      gap:0.4rem;margin-bottom:0.35rem">
+            <span style="font-size:0.67rem;color:var(--text2);overflow:hidden;
+                         text-overflow:ellipsis;white-space:nowrap;flex:1"
+                  title="${uc.use_case_summary||''}">
+              UC${uc.use_case_num}: ${uc.use_case_type||'feature'}
+            </span>
+            <button
+              onclick="window._plannerWfPicker('${tagId}',${uc.use_case_num},'${(uc.use_case_summary||'').replace(/'/g,'\\')}','${project}')"
+              style="font-size:0.6rem;padding:0.18rem 0.45rem;white-space:nowrap;
+                     background:var(--surface2);border:1px solid var(--border);
+                     border-radius:var(--radius);cursor:pointer;color:var(--accent);
+                     font-family:var(--font);outline:none;flex-shrink:0">
+              ▶ Workflow
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch { el.innerHTML = ''; }
 }
 
 function _renderDrawer() {
@@ -1919,6 +1958,9 @@ function _renderDrawer() {
           <span id="drawer-snapshot-msg" style="font-size:0.58rem;color:var(--muted)"></span>
         </div>
       </div>
+
+      <!-- Use Cases / Workflow -->
+      <div id="drawer-wf-uc-section"></div>
 
       <!-- Add sub-tag -->
       <div style="border-top:1px solid var(--border);padding-top:0.75rem">

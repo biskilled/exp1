@@ -703,6 +703,7 @@ const COMMANDS = [
   { cmd: '/analytics',   args: '',                 desc: 'Show usage and cost stats'                },
   { cmd: '/history',     args: '',                 desc: 'Show last 20 commits'                     },
   { cmd: '/reload',      args: '',                 desc: 'Reload system prompt'                     },
+  { cmd: '/pipeline',   args: '[status]',          desc: 'Show pipeline health dashboard'           },
   { cmd: '/clear',       args: '',                 desc: 'Clear conversation history'               },
 ];
 
@@ -1208,7 +1209,8 @@ window._chatSend = async () => {
       `| \`/analytics\` | Show usage and cost stats |\n` +
       `| \`/history\` | Show last 20 commits |\n` +
       `| \`/reload\` | Reload system prompt |\n` +
-      `| \`/clear\` | Clear conversation history |`
+      `| \`/clear\` | Clear conversation history |\n` +
+      `| \`/pipeline [status]\` | Show pipeline health dashboard |`
     );
     return;
   }
@@ -1306,6 +1308,43 @@ window._chatSend = async () => {
   }
 
   // Handle /clear command locally
+
+  // Handle /pipeline [status] — show pipeline health as formatted message
+  if (message === '/pipeline' || message === '/pipeline status') {
+    input.value = '';
+    input.style.height = 'auto';
+    const proj = state.currentProject?.name;
+    if (!proj) { toast('No project open', 'error'); return; }
+    _appendSystemMsg('Fetching pipeline status…');
+    try {
+      const data = await api.pipeline.status(proj);
+      const last24h = data?.last_24h || {};
+      const pending = data?.pending || {};
+      const pipelines = ['commit_embed','commit_store','commit_code_extract','session_summary','tag_match','work_item_embed'];
+      const labels    = { commit_embed:'commit_embed', commit_store:'commit_store',
+                          commit_code_extract:'commit_code', session_summary:'session_summary',
+                          tag_match:'tag_match', work_item_embed:'wi_embed' };
+      let table = `## Pipeline Health — last 24h\n\n`;
+      table += `| Pipeline | OK | Errors | Skipped | Last Run |\n`;
+      table += `|---|---|---|---|---|\n`;
+      for (const key of pipelines) {
+        const s = last24h[key] || { ok: 0, error: 0, skipped: 0, last_run: null };
+        const lastRun = s.last_run ? new Date(s.last_run).toLocaleTimeString() : '—';
+        table += `| \`${labels[key]}\` | ${s.ok} | ${s.error} | ${s.skipped} | ${lastRun} |\n`;
+      }
+      const pendingLines = [];
+      if (pending.commits_not_embedded > 0) pendingLines.push(`- ${pending.commits_not_embedded} commit(s) not embedded`);
+      if (pending.work_items_unmatched > 0) pendingLines.push(`- ${pending.work_items_unmatched} work item(s) unmatched`);
+      if (pendingLines.length) table += `\n**Pending:**\n${pendingLines.join('\n')}`;
+      _appendSystemMsg(table);
+      // Also navigate to the Pipeline tab
+      window._nav('pipeline');
+    } catch (e) {
+      _appendSystemMsg(`**Pipeline status error:** ${e.message}`);
+    }
+    return;
+  }
+
   if (message === '/clear') {
     input.value = '';
     input.style.height = 'auto';

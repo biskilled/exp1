@@ -548,6 +548,100 @@ async def promote_feature_snapshot(tag_id: str, project: str = Query(...)):
     return await MemoryFeatureSnapshot().promote_to_user(project, tag_id)
 
 
+@router.post("/{tag_id}/snapshot/{use_case_num}/run-workflow")
+async def run_workflow_from_snapshot(
+    tag_id: str,
+    use_case_num: int,
+    project: str = Query(...),
+    workflow_id: str = Query(...),
+):
+    """Trigger a graph workflow run pre-seeded with a feature snapshot use case as context."""
+    _require_db()
+    import uuid
+    import asyncio as _asyncio
+    from core.database import db as _db
+
+    project_id = _db.get_or_create_project_id(project)
+
+    # 1. Load snapshot row (version='user' preferred, fallback 'ai')
+    snapshot_row = None
+    with _db.conn() as conn:
+        with conn.cursor() as cur:
+            # Try user version first
+            for version in ("user", "ai"):
+                cur.execute(
+                    """SELECT id, name, summary, use_case_summary, use_case_type,
+                              requirements, action_items
+                       FROM mem_ai_feature_snapshot
+                       WHERE tag_id=%s::uuid AND use_case_num=%s AND version=%s
+                       LIMIT 1""",
+                    (tag_id, use_case_num, version),
+                )
+                row = cur.fetchone()
+                if row:
+                    snapshot_row = {
+                        "id": str(row[0]), "name": row[1], "summary": row[2] or "",
+                        "use_case_summary": row[3] or "", "use_case_type": row[4] or "",
+                        "requirements": row[5] or [], "action_items": row[6] or [],
+                    }
+                    break
+
+    if not snapshot_row:
+        raise HTTPException(status_code=404, detail=f"No snapshot found for tag={tag_id} use_case={use_case_num}")
+
+    # 2. Resolve tag name
+    tag_name = ""
+    with _db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM planner_tags WHERE id=%s::uuid", (tag_id,))
+            r = cur.fetchone()
+            if r:
+                tag_name = r[0]
+
+    # 3. Build user_input
+    reqs_text = "\n".join(f"- {r}" for r in snapshot_row["requirements"]) if isinstance(snapshot_row["requirements"], list) else str(snapshot_row["requirements"])
+    actions_text = "\n".join(f"- {a}" for a in snapshot_row["action_items"]) if isinstance(snapshot_row["action_items"], list) else str(snapshot_row["action_items"])
+    user_input = (
+        f"## Feature: {tag_name}\n"
+        f"### Use Case {use_case_num}: {snapshot_row['use_case_type']}\n"
+        f"{snapshot_row['use_case_summary']}\n\n"
+        f"### Requirements\n{reqs_text or '(none)'}\n\n"
+        f"### Action Items\n{actions_text or '(none)'}"
+    )
+
+    # 4. Verify workflow exists
+    with _db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM pr_graph_workflows WHERE id=%s", (workflow_id,))
+            wf_row = cur.fetchone()
+            if not wf_row:
+                raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
+            workflow_name = wf_row[0]
+
+    # 5. Insert pr_graph_run
+    run_id = str(uuid.uuid4())
+    with _db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO pr_graph_runs (id, project_id, workflow_id, status, user_input)
+                   VALUES (%s, %s, %s, 'running', %s)""",
+                (run_id, project_id, workflow_id, user_input),
+            )
+
+    # 6. Launch background workflow execution
+    from pipelines.pipeline_graph_runner import run_graph_workflow
+    _asyncio.create_task(run_graph_workflow(workflow_id, user_input, run_id, project))
+
+    return {
+        "run_id": run_id,
+        "workflow_id": workflow_id,
+        "workflow_name": workflow_name,
+        "tag_name": tag_name,
+        "use_case_num": use_case_num,
+        "status": "running",
+    }
+
+
 @router.get("/{tag_id}/sources")
 async def get_tag_sources(tag_id: str, project: str = Query(...)):
     """Return prompts and commits tagged with this tag via their tags[] array.

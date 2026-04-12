@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-12 21:21 UTC — do not edit manually.
+> Auto-generated 2026-04-12 22:11 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 488
-- **Last active**: 2026-04-12T21:20:32Z
+- **Sessions**: 489
+- **Last active**: 2026-04-12T22:11:22Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -55,12 +55,12 @@
 
 ## In Progress
 
-- mem_ai_feature_snapshot table design: new unified layer merging planner_tags user requirements with work_items; tracks summary, use cases, and delivery artifacts per use case
-- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
-- planner_tag schema finalization: m027 migration completed; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
+- mem_ai_feature_snapshot table design: merge user requirements/tags with work_items; tracks summary, use cases, and delivery artifacts for comprehensive feature tracking
+- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt)
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution
 - Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items
-- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators
+- Workflow visibility improvements: exploring options to give more visibility into all flows and decision paths in the system
+- Pipeline execution architecture: designing second workflow trigger model based on approved features to enable more flexible pipeline orchestration
 
 ## Key Decisions
 
@@ -76,9 +76,9 @@
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- planner_tags schema: m027 migration removed seq_num/summary/design/embedding/extra; creator consolidates user_name/ai distinction; updater/created_at/updated_at audit trail added
+- planner_tags schema: m027 migration removed seq_num/summary/design/embedding/extra; creator consolidates user_name/ai distinction; updater/created_at/updated_at audit trail
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory execution with prompt_work_item() trigger
-- mem_ai_feature_snapshot planned: merge user requirements/tags with work_items; captures summary, use cases, delivery types for comprehensive feature tracking
+- mem_ai_feature_snapshot planned: new unified layer merging planner_tags user requirements with work_items; captures summary, use cases, delivery artifacts per use case
 
 ---
 

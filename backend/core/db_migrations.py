@@ -539,6 +539,52 @@ def m029_feature_snapshot(conn) -> None:
     log.info("m029_feature_snapshot: mem_ai_feature_snapshot table + 3 indexes created")
 
 
+def m030_pipeline_runs(conn) -> None:
+    """Create mem_pipeline_runs table for background task observability.
+
+    Tracks every background pipeline invocation (commit_embed, commit_store,
+    commit_code_extract, session_summary, tag_match, work_item_embed) with status,
+    timing, and error message. Powers GET /memory/{project}/pipeline-status.
+
+    Also adds snapshot_id + use_case_num to pr_graph_runs for workflow-from-snapshot
+    triggering (POST /tags/{id}/snapshot/{n}/run-workflow).
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mem_pipeline_runs (
+                id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id   INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                pipeline     TEXT        NOT NULL,
+                source_id    TEXT        NOT NULL DEFAULT '',
+                status       TEXT        NOT NULL DEFAULT 'running',
+                items_in     INT         NOT NULL DEFAULT 0,
+                items_out    INT         NOT NULL DEFAULT 0,
+                error_msg    TEXT,
+                duration_ms  INT,
+                started_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                finished_at  TIMESTAMPTZ
+            )
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mpr_project_started "
+            "ON mem_pipeline_runs(project_id, started_at DESC)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mpr_status "
+            "ON mem_pipeline_runs(status) WHERE status = 'running'"
+        )
+        # Add snapshot_id and use_case_num to pr_graph_runs
+        cur.execute(
+            "ALTER TABLE pr_graph_runs ADD COLUMN IF NOT EXISTS snapshot_id UUID "
+            "REFERENCES mem_ai_feature_snapshot(id) ON DELETE SET NULL"
+        )
+        cur.execute(
+            "ALTER TABLE pr_graph_runs ADD COLUMN IF NOT EXISTS use_case_num INT"
+        )
+    conn.commit()
+    log.info("m030_pipeline_runs: mem_pipeline_runs table + pr_graph_runs new cols created")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -556,4 +602,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m027_planner_tags_drop_ai_cols", m027_planner_tags_drop_ai_cols),
     ("m028_add_deliveries", m028_add_deliveries),
     ("m029_feature_snapshot", m029_feature_snapshot),
+    ("m030_pipeline_runs", m030_pipeline_runs),
 ]
