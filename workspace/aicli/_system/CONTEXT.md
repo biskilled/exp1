@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-12 11:08 UTC — do not edit manually.
+> Auto-generated 2026-04-12 11:11 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 479
-- **Last active**: 2026-04-12T11:08:20Z
+- **Sessions**: 480
+- **Last active**: 2026-04-12T11:10:45Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -27,7 +27,7 @@
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
-- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
+- **mcp**: Stdio MCP server with 12+ tools (semantic search including work_items vector search, work item management, session tagging)
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
 - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml session tagging config
@@ -51,14 +51,15 @@
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
 - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+- **embeddings**: text-embedding-3-small (1536-dim vectors) persisted in mem_ai_events.embedding and mem_ai_work_items.embedding
 
 ## In Progress
 
-- Work item column schema refactoring: completed renaming ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai, summary→summary_ai across frontend (entities.js) and backend (route_work_items.py, route_projects.py) for naming consistency
-- prompt_work_item() trigger integration: added _run_promote_all_work_items() to /memory command execution pipeline to refresh AI text fields and status during memory generation
-- Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
-- Work item UI loading states: _wiRowLoading() CSS pulsing animation during async delete/approve/dismiss operations; integrated into tag-linked and unlinked panels with error state recovery
-- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates reflect linked/unlinked status changes when category selected
+- Work item embedding integration: _embed_work_item() function persists vectors for name_ai + desc_ai + summary_ai concatenation; integrated into prompt_work_item() trigger and new work item creation flow
+- Work item vector search in MCP: tool_memory.py semantic search now includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
+- Work item column consolidation: completed refactoring ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai; summary consolidated into desc_ai to reduce redundancy
+- prompt_work_item() trigger automation: integrated _run_promote_all_work_items() into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
+- Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
 - AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
 
 ## Key Decisions
@@ -71,12 +72,12 @@
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+- Work item column naming: name_ai, category_ai, desc_ai, summary_ai consolidated into desc_ai; embedding vector persisted for semantic search
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai, summary → summary_ai for consistency; FK architecture links many events to one work item
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
-- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category
-- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
-- Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
+- Work item counters: prompt_count (raw prompts), event_count (prompt_batch/session_summary), commit_count (distinct commits per session)
+- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ---

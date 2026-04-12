@@ -4,9 +4,9 @@ When working on a specific feature, ask for its snapshot before making decisions
 
 ## Active Features
 
-- UI [feature]: Improved chat UI view with better display and interaction patterns.
-- development [feature]: Enhanced history view UI with improved display and interaction patterns.
-- entity-routing [feature]: Implemented entity routing system to enable navigation to specific entities with
+- history-ui-testing [task]: Comprehensive testing suite for the new history navigation system and enhanced U
+- history-router-navigation [feature]: History router feature enables seamless navigation between chat history views wi
+- validate-system-config-changes [task]: Review and validate system configuration file updates to ensure alignment with t
 
 ## Last Session
-• Added `commit_short_hash` column to database schema. • `mem_mrr_commits_code` table now includes all 19 columns with `full_symbol` as a generated column.
+• User requested to work on planner_tag and change the tag to feature:planner. • Session tags updated to phase: development and feature: planner.

@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item column schema refactoring: completed renaming ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai, summary→summary_ai across frontend (entities.js) and backend (route_work_items.py, route_projects.py) for naming consistency
-- prompt_work_item() trigger integration: added _run_promote_all_work_items() to /memory command execution pipeline to refresh AI text fields and status during memory generation
-- Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
-- Work item UI loading states: _wiRowLoading() CSS pulsing animation during async delete/approve/dismiss operations; integrated into tag-linked and unlinked panels with error state recovery
-- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates reflect linked/unlinked status changes when category selected
+- Work item embedding integration: _embed_work_item() function persists vectors for name_ai + desc_ai + summary_ai concatenation; integrated into prompt_work_item() trigger and new work item creation flow
+- Work item vector search in MCP: tool_memory.py semantic search now includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
+- Work item column consolidation: completed refactoring ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai; summary consolidated into desc_ai to reduce redundancy
+- prompt_work_item() trigger automation: integrated _run_promote_all_work_items() into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
+- Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
 - AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
