@@ -68,6 +68,11 @@ prompts:
     model: haiku
     max_tokens: 2500
 
+  feature_snapshot_v2:
+    file: memory/feature_snapshot_v2.md
+    model: haiku
+    max_tokens: 3000
+
   conflict_detection:
     file: memory/conflict_detection.md
     model: haiku

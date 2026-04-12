@@ -493,6 +493,52 @@ def m028_add_deliveries(conn) -> None:
     log.info("m028_add_deliveries: mng_deliveries created + seeded (20 rows); planner_tags.deliveries added")
 
 
+def m029_feature_snapshot(conn) -> None:
+    """Create mem_ai_feature_snapshot: per-tag, per-use-case feature snapshot rows.
+
+    One row per (tag_id, use_case_num, version).  version='ai' is overwritten on each
+    snapshot run; version='user' is promoted from AI and never overwritten by AI.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mem_ai_feature_snapshot (
+                id                          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id                   INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+                project_id                  INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                tag_id                      UUID        NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
+                use_case_num                INT         NOT NULL,
+                name                        TEXT        NOT NULL DEFAULT '',
+                category                    TEXT        NOT NULL DEFAULT '',
+                status                      TEXT        NOT NULL DEFAULT 'open',
+                priority                    SMALLINT    NOT NULL DEFAULT 3,
+                due_date                    DATE,
+                summary                     TEXT        NOT NULL DEFAULT '',
+                use_case_summary            TEXT        NOT NULL DEFAULT '',
+                use_case_type               TEXT        NOT NULL DEFAULT 'feature',
+                use_case_delivery_category  TEXT        NOT NULL DEFAULT '',
+                use_case_delivery_type      TEXT        NOT NULL DEFAULT '',
+                related_work_items          JSONB       NOT NULL DEFAULT '[]',
+                requirements                JSONB       NOT NULL DEFAULT '[]',
+                action_items                JSONB       NOT NULL DEFAULT '[]',
+                version                     TEXT        NOT NULL DEFAULT 'ai',
+                created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(project_id, tag_id, use_case_num, version)
+            )
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mafs_project ON mem_ai_feature_snapshot(project_id)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mafs_tag ON mem_ai_feature_snapshot(tag_id)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mafs_tag_version ON mem_ai_feature_snapshot(tag_id, version)"
+        )
+    conn.commit()
+    log.info("m029_feature_snapshot: mem_ai_feature_snapshot table + 3 indexes created")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -509,4 +555,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m026_planner_tags_cleanup", m026_planner_tags_cleanup),
     ("m027_planner_tags_drop_ai_cols", m027_planner_tags_drop_ai_cols),
     ("m028_add_deliveries", m028_add_deliveries),
+    ("m029_feature_snapshot", m029_feature_snapshot),
 ]

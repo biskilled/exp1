@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-12 20:31 UTC by aicli /memory_
+_Generated: 2026-04-12 20:32 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL vector storage, a desktop Electron UI, and CLI tools for AI-assisted development workflows. It provides semantic search, memory synthesis, collaborative tagging, async DAG execution, and MCP integration for intelligent work item management and project context preservation. Current focus is enhancing planner_tags schema with user-defined delivery artifact tracking (code, documents, designs, PPTs) for comprehensive project deliverable management.
 
 ## Project Facts
 
@@ -206,6 +202,96 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit: c5927490-f38a-4284-b6dd-7f7149661d94` — 2026-04-12
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 2eb44e0..eaca420 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 18:35 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 18:54 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -44,7 +44,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - **deployment_local**: bash start_backend.sh + npm run dev
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
++- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)
+ - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+ - **embeddings**: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
+ 
+@@ -63,13 +63,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+ - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
+ - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+-- planner_tag table schema consolidation: removing seq_num (always null), merging source into creator field, reducing descriptor columns
++- planner_tag schema consolidation: removed seq_num (always null), merged source into creator field, dropped summary/design/embedding/extra columns via m027 migration
+ - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
+ - [2026-04-12] I would like to woek on planner_tag. can you change the tag to feature:planner
+ - [2026-04-12] I am looking on planner_tag table. seq_num - never populated. is it needed? source and creator are not the same one ? sh
+ - [2026-04-12] Yes. please about createor - it must be woth a value . if user create it will be user name. if ai create it will be defa
+-- [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
+\ No newline at end of file
++- [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
++- [2026-04-12] yes
+\ No newline at end of file
+
+
+### `commit: c5927490-f38a-4284-b6dd-7f7149661d94` — 2026-04-12
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 2eb44e0..eaca420 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 18:35 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 18:54 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -44,7 +44,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - **deployment_local**: bash start_backend.sh + npm run dev
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
++- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)
+ - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+ - **embeddings**: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
+ 
+@@ -63,13 +63,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+ - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
+ - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+-- planner_tag table schema consolidation: removing seq_num (always null), merging source into creator field, reducing descriptor columns
++- planner_tag schema consolidation: removed seq_num (always null), merged source into creator field, dropped summary/design/embedding/extra columns via m027 migration
+ - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
+ - [2026-04-12] I would like to woek on planner_tag. can you change the tag to feature:planner
+ - [2026-04-12] I am looking on planner_tag table. seq_num - never populated. is it needed? source and creator are not the same one ? sh
+ - [2026-04-12] Yes. please about createor - it must be woth a value . if user create it will be user name. if ai create it will be defa
+-- [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
+\ No newline at end of file
++- [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
++- [2026-04-12] yes
+\ No newline at end of file
+
+
+### `commit: c5927490-f38a-4284-b6dd-7f7149661d94` — 2026-04-12
+
+Removed legacy _system root context files that were created during Claude CLI sessions, cleaning up temporary/obsolete system context data.
+
 ### `prompt_batch: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
 Cleaned up planner_tags schema by dropping redundant columns (seq_num, source, summary, design, embedding, extra), consolidating creator field to store username/ai designation, adding updater field for audit trail, and reordering columns per database convention (project_id after client_id, timestamps last).
@@ -397,189 +483,3 @@ index 6c3738f..1e6eede 100644
              "relations_upserted": relations_upserted,
              "relations":          ai_relations,
 
-
-### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
-
-diff --git a/backend/memory/memory_planner.py b/backend/memory/memory_planner.py
-index ab3ec1e..2dd9e14 100644
---- a/backend/memory/memory_planner.py
-+++ b/backend/memory/memory_planner.py
-@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
- 
- _SQL_GET_TAG = """
-     SELECT pt.id, pt.name, tc.name AS category_name,
--           pt.requirements, pt.action_items, pt.acceptance_criteria, pt.summary
-+           pt.requirements, pt.action_items, pt.acceptance_criteria
-     FROM planner_tags pt
-     JOIN mng_tags_categories tc ON tc.id = pt.category_id
-     WHERE pt.id = %s::uuid AND pt.project_id = %s
-@@ -60,7 +60,7 @@ _SQL_GET_WI_INTERACTION_STATS = """
- 
- _SQL_UPDATE_TAG = """
-     UPDATE planner_tags
--    SET summary = %s, action_items = %s, acceptance_criteria = %s,
-+    SET action_items = %s, acceptance_criteria = %s,
-         updater = 'ai', updated_at = NOW()
-     WHERE id = %s::uuid AND project_id = %s
- """
-@@ -304,7 +304,6 @@ class MemoryPlanner:
-         lines = [
-             f"TAG: {tag['category_name'].upper()} / {tag['name']}",
-             f"Requirements: {tag.get('requirements') or '—'}",
--            f"Existing summary: {tag.get('summary') or '—'}",
-             f"Existing action_items: {tag.get('action_items') or '—'}",
-             f"Existing acceptance_criteria: {tag.get('acceptance_criteria') or '—'}",
-             "",
-@@ -329,14 +328,13 @@ class MemoryPlanner:
-         return "\n".join(lines)
- 
-     def _write_tag(self, p_id: int, tag_id: str, parsed: dict) -> None:
--        summary = parsed.get("use_case_summary") or ""
-         action_items = "\n".join(parsed.get("remaining_items") or [])
-         acceptance_criteria = "\n".join(
-             f"- [ ] {c}" for c in (parsed.get("acceptance_criteria") or [])
-         )
-         with db.conn() as conn:
-             with conn.cursor() as cur:
--                cur.execute(_SQL_UPDATE_TAG, (summary, action_items, acceptance_criteria, tag_id, p_id))
-+                cur.execute(_SQL_UPDATE_TAG, (action_items, acceptance_criteria, tag_id, p_id))
- 
-     def _write_work_items(self, p_id: int, updates: list[dict]) -> None:
-         if not updates:
-
-
-### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
-
-diff --git a/backend/memory/memory_files.py b/backend/memory/memory_files.py
-index c5974f6..016bb5a 100644
---- a/backend/memory/memory_files.py
-+++ b/backend/memory/memory_files.py
-@@ -74,9 +74,9 @@ _SQL_ALL_RELATIONS = """
- """
- 
- _SQL_FEATURE_SNAPSHOTS = """
--    SELECT t.id, t.name, t.summary, t.action_items, t.design
-+    SELECT t.id, t.name, t.action_items
-     FROM planner_tags t
--    WHERE t.project_id = %s AND (t.summary != '' OR t.action_items != '')
-+    WHERE t.project_id = %s AND t.action_items != ''
-     ORDER BY t.updated_at DESC LIMIT 20
- """
- 
-@@ -103,7 +103,7 @@ _SQL_ACTIVE_TAGS = """
- """
- 
- _SQL_FEATURE_SNAPSHOT_BY_TAG = """
--    SELECT t.id, t.name, t.requirements, t.summary, t.action_items, t.design
-+    SELECT t.id, t.name, t.requirements, t.action_items
-     FROM planner_tags t
-     WHERE t.id = %s AND t.project_id = %s
- """
-@@ -201,11 +201,9 @@ class MemoryFiles:
- 
-                     # Feature snapshots (inline on planner_tags)
-                     cur.execute(_SQL_FEATURE_SNAPSHOTS, (project_id,))
--                    for t_id, t_name, summary, action, design in cur.fetchall():
-+                    for t_id, t_name, action in cur.fetchall():
-                         ctx["features"][t_name] = {
--                            "requirements":    summary or "",
-                             "action_items":    action or "",
--                            "design":          design or {},
-                             "work_item_status": "",
-                         }
- 
-@@ -215,11 +213,9 @@ class MemoryFiles:
- 
-                     # Feature details: tags with embedding or summary (inline fields)
-                     cur.execute("""
--                        SELECT t.id, t.name, t.description, t.requirements, t.summary,
--                               t.action_items, t.design
-+                        SELECT t.id, t.name, t.description, t.requirements, t.action_items
-                         FROM planner_tags t
--                        WHERE t.project_id = %s
--                          AND (t.embedding IS NOT NULL OR t.summary != '')
-+                        WHERE t.project_id = %s AND t.action_items != ''
-                         ORDER BY t.updated_at DESC LIMIT 30
-                     """, (project_id,))
-                     ctx["feature_details"] = [
-@@ -228,9 +224,7 @@ class MemoryFiles:
-                             "name":         r[1] or "",
-                             "description":  r[2] or "",
-                             "requirements": r[3] or "",
--                            "summary":      r[4] or "",
--                            "action_items": r[5] or "",
--                            "design":       r[6] or {},
-+                            "action_items": r[4] or "",
-                         }
-                         for r in cur.fetchall()
-                     ]
-@@ -393,8 +387,8 @@ class MemoryFiles:
-                     # Look up tag by name to get its id, then read inline snapshot fields
-                     project_id = db.get_or_create_project_id(project)
-                     cur.execute("""
--                        SELECT t.id, t.name, t.requirements, t.summary,
--                               t.action_items, t.design, t.description
-+                        SELECT t.id, t.name, t.requirements,
-+                               t.action_items, t.description
-                         FROM planner_tags t
-                         WHERE t.project_id = %s AND t.name = %s
-                         LIMIT 1
-@@ -403,10 +397,9 @@ class MemoryFiles:
-                     if row:
-                         snap = {
-                             "tag_id":       str(row[0]),
--                            "requirements": row[2] or row[3] or "",  # fall back to summary
--                            "action_items": row[4] or "",
--                            "design":       row[5] or {},
--                            "description":  row[6] or "",
-+                            "requirements": row[2] or "",
-+                            "action_items": row[3] or "",
-+                            "description":  row[4] or "",
-                         }
-         except Exception as e:
-             log.debug(f"render_feature_claude_md error for '{tag_name}': {e}")
-@@ -421,15 +414,7 @@ class MemoryFiles:
-         if snap.get("action_items"):
-             lines += ["## Action Items", "", snap["action_items"], ""]
- 
--        design = snap.get("design") or {}
--        if isinstance(design, dict) and design.get("high_level"):
--            lines += ["## Design", "", design["high_level"], ""]
--            if design.get("patterns_used"):
--                pts = design["patterns_used"]
--                if isinstance(pts, list):
--                    lines += ["**Patterns**: " + ", ".join(str(p) for p in pts), ""]
--
--        # code_summary removed from planner_tags (lives on work_items now)
-+        # design + code_summary removed from planner_tags (lives on work_items / future merge layer)
- 
-         lines += ["---", "_Auto-generated by aicli. Run `/memory` to refresh._"]
-         return "\n".join(lines)
-
-
-### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
-
-diff --git a/backend/core/db_schema.sql b/backend/core/db_schema.sql
-index 1f2800b..8de851f 100644
---- a/backend/core/db_schema.sql
-+++ b/backend/core/db_schema.sql
-@@ -278,14 +278,10 @@ CREATE TABLE IF NOT EXISTS planner_tags (
-     requirements        TEXT        NOT NULL DEFAULT '',              -- user: what needs to happen
-     acceptance_criteria TEXT        NOT NULL DEFAULT '',              -- user: how to verify done
-     action_items        TEXT        NOT NULL DEFAULT '',              -- user+AI: next steps
--    summary             TEXT        NOT NULL DEFAULT '',              -- AI: progress digest
--    design              JSONB,                                         -- AI: architectural decisions
-     status              TEXT        NOT NULL DEFAULT 'open',          -- open|active|done|archived
-     priority            SMALLINT    NOT NULL DEFAULT 3,
-     due_date            DATE,
-     requester           TEXT,
--    extra               JSONB       NOT NULL DEFAULT '{}',
--    embedding           VECTOR(1536),                                  -- from summary+action_items
-     creator             TEXT        NOT NULL DEFAULT 'user',          -- who created (username or 'ai')
-     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-     updater             TEXT        NOT NULL DEFAULT 'user',          -- who last updated
-
-
-## AI Synthesis
-
-**[2026-04-12]** `user_request` — Adding deliveries JSONB column to planner_tags table after action_items field; will store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions for project task management. **[2026-03-14]** `migration_m027` — Consolidated planner_tags schema by removing redundant columns (seq_num, summary, design, embedding, extra); creator field now stores user_name or 'ai' designation; added updater and timestamp audit trail (created_at, updated_at). **[prior]** `embedding_integration` — Implemented work item vector embeddings (1536-dim text-embedding-3-small) for semantic search on concatenated name_ai + desc_ai; integrated _embed_work_item() into /memory command workflow. **[prior]** `ai_tag_workflow` — Secondary AI tags stored as confirmed[] metadata array in ai_tags; removed deletion logic in favor of permanent chip indicators for non-destructive tag suggestion UX. **[prior]** `mcp_search_tools` — Added semantic search capability to MCP server using work_items embedding vectors with <=> operator, enabling non-archived item discovery by category/name/description/status. **[prior]** `schema_consolidation` — Unified event storage across projects using mem_ai_events, mem_ai_work_items, mem_ai_project_facts with event_type filtering (prompt_batch, session_summary) to exclude per-commit noise.

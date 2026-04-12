@@ -469,6 +469,85 @@ async def run_planner_for_tag(tag_id: str, project: str = Query(...)):
     return result
 
 
+@router.post("/{tag_id}/snapshot")
+async def create_feature_snapshot(tag_id: str, project: str = Query(...)):
+    """Run AI feature snapshot: merge tag + work items + events into use-case rows.
+
+    Overwrites all version='ai' rows for this tag and writes features/{tag}/feature_ai.md.
+    """
+    _require_db()
+    from memory.memory_feature_snapshot import MemoryFeatureSnapshot
+    return await MemoryFeatureSnapshot().run_snapshot(project, tag_id)
+
+
+@router.get("/{tag_id}/snapshot")
+async def get_feature_snapshot(
+    tag_id: str,
+    project: str = Query(...),
+    version: str = Query("ai"),
+):
+    """Return snapshot rows for a tag as {tag_id, tag_name, version, summary, use_cases}."""
+    _require_db()
+    db.get_or_create_project_id(project)  # ensure project exists
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, use_case_num, name, category, status, priority, due_date,
+                       summary, use_case_summary, use_case_type,
+                       use_case_delivery_category, use_case_delivery_type,
+                       related_work_items, requirements, action_items, version, created_at
+                FROM mem_ai_feature_snapshot
+                WHERE tag_id = %s::uuid AND version = %s
+                ORDER BY use_case_num
+                """,
+                (tag_id, version),
+            )
+            rows = cur.fetchall()
+
+    if not rows:
+        return {"tag_id": tag_id, "version": version, "summary": "", "use_cases": []}
+
+    first = rows[0]
+    use_cases = []
+    for r in rows:
+        use_cases.append({
+            "id":                       str(r[0]),
+            "use_case_num":             r[1],
+            "use_case_summary":         r[8] or "",
+            "use_case_type":            r[9] or "",
+            "use_case_delivery_category": r[10] or "",
+            "use_case_delivery_type":   r[11] or "",
+            "related_work_items":       r[12] if r[12] else [],
+            "requirements":             r[13] if r[13] else [],
+            "action_items":             r[14] if r[14] else [],
+            "created_at":               r[16].isoformat() if r[16] else None,
+        })
+
+    return {
+        "tag_id":     tag_id,
+        "tag_name":   first[2],
+        "category":   first[3],
+        "status":     first[4],
+        "priority":   first[5],
+        "due_date":   first[6].isoformat() if first[6] else None,
+        "version":    version,
+        "summary":    first[7] or "",
+        "use_cases":  use_cases,
+    }
+
+
+@router.post("/{tag_id}/snapshot/promote")
+async def promote_feature_snapshot(tag_id: str, project: str = Query(...)):
+    """Promote AI snapshot to user version; writes features/{tag}/feature_final.md.
+
+    User version is never overwritten by AI on subsequent snapshot runs.
+    """
+    _require_db()
+    from memory.memory_feature_snapshot import MemoryFeatureSnapshot
+    return await MemoryFeatureSnapshot().promote_to_user(project, tag_id)
+
+
 @router.get("/{tag_id}/sources")
 async def get_tag_sources(tag_id: str, project: str = Query(...)):
     """Return prompts and commits tagged with this tag via their tags[] array.

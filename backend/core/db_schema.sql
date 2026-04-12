@@ -524,6 +524,40 @@ CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
 CREATE INDEX        IF NOT EXISTS idx_mem_ai_pf_pid     ON mem_ai_project_facts(project_id) WHERE valid_until IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_ai_pf_current ON mem_ai_project_facts(project_id, fact_key) WHERE valid_until IS NULL;
 
+-- mem_ai_feature_snapshot: per-tag, per-use-case feature snapshots (version='ai'|'user')
+-- version='ai' is overwritten on each snapshot run; version='user' is promoted by user.
+CREATE TABLE IF NOT EXISTS mem_ai_feature_snapshot (
+    id                          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id                   INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project_id                  INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    tag_id                      UUID        NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
+    use_case_num                INT         NOT NULL,
+    -- denorm from planner_tags (same across all rows for a tag+version)
+    name                        TEXT        NOT NULL DEFAULT '',
+    category                    TEXT        NOT NULL DEFAULT '',
+    status                      TEXT        NOT NULL DEFAULT 'open',
+    priority                    SMALLINT    NOT NULL DEFAULT 3,
+    due_date                    DATE,
+    -- global summary (identical on all rows for same tag+version)
+    summary                     TEXT        NOT NULL DEFAULT '',
+    -- per-use-case fields
+    use_case_summary            TEXT        NOT NULL DEFAULT '',
+    use_case_type               TEXT        NOT NULL DEFAULT 'feature',
+    use_case_delivery_category  TEXT        NOT NULL DEFAULT '',
+    use_case_delivery_type      TEXT        NOT NULL DEFAULT '',
+    -- JSONB payloads
+    related_work_items          JSONB       NOT NULL DEFAULT '[]',
+    requirements                JSONB       NOT NULL DEFAULT '[]',
+    action_items                JSONB       NOT NULL DEFAULT '[]',
+    version                     TEXT        NOT NULL DEFAULT 'ai',
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(project_id, tag_id, use_case_num, version)
+);
+CREATE INDEX IF NOT EXISTS idx_mafs_project     ON mem_ai_feature_snapshot(project_id);
+CREATE INDEX IF NOT EXISTS idx_mafs_tag         ON mem_ai_feature_snapshot(tag_id);
+CREATE INDEX IF NOT EXISTS idx_mafs_tag_version ON mem_ai_feature_snapshot(tag_id, version);
+
 -- ============================================================================
 -- SECTION 5: pr_* — Graph Workflow Engine
 -- ============================================================================

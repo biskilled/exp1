@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 20:31 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 20:32 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -68,8 +68,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-12] I am looking on planner_tag table. seq_num - never populated. is it needed? source and creator are not the same one ? sh
 - [2026-04-12] Yes. please about createor - it must be woth a value . if user create it will be user name. if ai create it will be defa
 - [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
 - [2026-04-12] yes
 - [2026-04-12] This start to look good. I would like to add one more column - deliveries that will be after actio_items, this column is
+- [2026-04-12] can you add tag feature:feature_snapshot
