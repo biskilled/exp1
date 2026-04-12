@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
+- planner_tag schema finalization: m027 migration successfully dropped summary, design, embedding, extra columns; creator field now stores user_name (user-created) or 'ai' (AI-created) with updater tracking added
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution
 - Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
-- planner_tag schema cleanup: removing seq_num column (always null, no auto-population); consolidating source + creator into single creator field with user/ai distinction; verifying status column uniqueness against work_items.status_user/status_ai
-- Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
-- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
-- planner_tag column ordering migration: repositioning project_id after client_id; adding creator (user/ai distinction), updater tracking, created_at/updated_at timestamps for audit trail
+- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
+- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip messaging from 'No existing tag' to 'Does not exist yet'
+- planner_tag column ordering: project_id repositioned after client_id; creator field consolidates user/ai distinction; added updater, created_at, updated_at for audit trail

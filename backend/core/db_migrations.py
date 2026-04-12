@@ -437,6 +437,62 @@ def m027_planner_tags_drop_ai_cols(conn) -> None:
     log.info("m027_planner_tags_drop_ai_cols: summary/design/embedding/extra dropped")
 
 
+_DELIVERY_SEED = [
+    ("code",                 "python",       "Python",           10),
+    ("code",                 "javascript",   "JavaScript",       20),
+    ("code",                 "typescript",   "TypeScript",       30),
+    ("code",                 "csharp",       "C#",               40),
+    ("code",                 "go",           "Go",               50),
+    ("code",                 "rust",         "Rust",             60),
+    ("code",                 "java",         "Java",             70),
+    ("code",                 "bash",         "Shell / Bash",     80),
+    ("code",                 "sql",          "SQL",              90),
+    ("document",             "markdown",     "Markdown",         10),
+    ("document",             "word",         "Word Document",    20),
+    ("document",             "pdf",          "PDF",              30),
+    ("document",             "html",         "HTML Page",        40),
+    ("architecture_design",  "visio",        "Visio",            10),
+    ("architecture_design",  "drawio",       "Draw.io",          20),
+    ("architecture_design",  "mermaid",      "Mermaid Diagram",  30),
+    ("architecture_design",  "excalidraw",   "Excalidraw",       40),
+    ("presentation",         "powerpoint",   "PowerPoint",       10),
+    ("presentation",         "google_slides","Google Slides",    20),
+    ("presentation",         "keynote",      "Keynote",          30),
+]
+
+
+def m028_add_deliveries(conn) -> None:
+    """Add mng_deliveries lookup table and planner_tags.deliveries JSONB column.
+
+    mng_deliveries: global admin-editable list of delivery output types
+    (code, document, architecture_design, presentation) seeded with 20 rows.
+    planner_tags.deliveries: JSONB array of selected delivery objects per tag.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mng_deliveries (
+                id          SERIAL  PRIMARY KEY,
+                category    TEXT    NOT NULL,
+                type        TEXT    NOT NULL,
+                label       TEXT    NOT NULL,
+                sort_order  INT     NOT NULL DEFAULT 0,
+                UNIQUE(category, type)
+            )
+        """)
+        cur.executemany(
+            """INSERT INTO mng_deliveries (category, type, label, sort_order)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (category, type) DO NOTHING""",
+            _DELIVERY_SEED,
+        )
+        cur.execute(
+            "ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS "
+            "deliveries JSONB NOT NULL DEFAULT '[]'"
+        )
+    conn.commit()
+    log.info("m028_add_deliveries: mng_deliveries created + seeded (20 rows); planner_tags.deliveries added")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -452,4 +508,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m025_rename_work_item_ai_columns", m025_rename_work_item_ai_columns),
     ("m026_planner_tags_cleanup", m026_planner_tags_cleanup),
     ("m027_planner_tags_drop_ai_cols", m027_planner_tags_drop_ai_cols),
+    ("m028_add_deliveries", m028_add_deliveries),
 ]

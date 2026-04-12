@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 18:35 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 18:54 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -44,7 +44,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
 
@@ -63,13 +63,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- planner_tag table schema consolidation: removing seq_num (always null), merging source into creator field, reducing descriptor columns
+- planner_tag schema consolidation: removed seq_num (always null), merged source into creator field, dropped summary/design/embedding/extra columns via m027 migration
 - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
 - [2026-04-12] I would like to woek on planner_tag. can you change the tag to feature:planner
 - [2026-04-12] I am looking on planner_tag table. seq_num - never populated. is it needed? source and creator are not the same one ? sh
 - [2026-04-12] Yes. please about createor - it must be woth a value . if user create it will be user name. if ai create it will be defa
 - [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
+- [2026-04-12] yes

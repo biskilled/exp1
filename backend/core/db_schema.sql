@@ -259,6 +259,18 @@ CREATE TABLE IF NOT EXISTS mng_tags_categories (
     UNIQUE(client_id, name)
 );
 
+-- mng_deliveries: global lookup table of delivery output types
+-- Admin-editable; used by planner_tags.deliveries picker in the UI.
+-- category: 'code' | 'document' | 'architecture_design' | 'presentation'
+CREATE TABLE IF NOT EXISTS mng_deliveries (
+    id          SERIAL  PRIMARY KEY,
+    category    TEXT    NOT NULL,
+    type        TEXT    NOT NULL,
+    label       TEXT    NOT NULL,
+    sort_order  INT     NOT NULL DEFAULT 0,
+    UNIQUE(category, type)
+);
+
 -- ============================================================================
 -- SECTION 2: planner_* — User-managed Tag Hierarchy
 -- ============================================================================
@@ -278,6 +290,7 @@ CREATE TABLE IF NOT EXISTS planner_tags (
     requirements        TEXT        NOT NULL DEFAULT '',              -- user: what needs to happen
     acceptance_criteria TEXT        NOT NULL DEFAULT '',              -- user: how to verify done
     action_items        TEXT        NOT NULL DEFAULT '',              -- user+AI: next steps
+    deliveries          JSONB       NOT NULL DEFAULT '[]',            -- selected delivery types [{category, type}]
     status              TEXT        NOT NULL DEFAULT 'open',          -- open|active|done|archived
     priority            SMALLINT    NOT NULL DEFAULT 3,
     due_date            DATE,
