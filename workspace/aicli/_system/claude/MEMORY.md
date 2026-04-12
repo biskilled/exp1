@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-12 11:19 UTC by aicli /memory_
+_Generated: 2026-04-12 14:05 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL with pgvector semantic search, Python CLI with rich formatting, and an Electron desktop UI (Vanilla JS + xterm.js + Monaco + Cytoscape). It captures development sessions via 4-layer architecture (ephemeral → raw commits → LLM-digested events → semantic work items), with Claude-powered dual-layer synthesis, async DAG workflows, MCP tool server, and multi-provider LLM support (Claude/OpenAI/DeepSeek). Current focus is completing schema cleanup (planner_tag table optimization), finalizing work item embedding integration, and refining secondary AI tag workflows for production use.
+aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL/pgvector), Electron desktop UI (Vanilla JS + xterm.js + Monaco), and CLI with LLM-powered semantic memory synthesis. The system captures raw events (commits, prompts, code), processes them through a 4-layer memory architecture with Claude Haiku digestion, stores 1536-dim embeddings for semantic search, and exposes 12+ MCP tools for extended LLM context. Current focus: integrating work item embeddings into MCP semantic search, consolidating planner_tag schema (removing redundant seq_num, adding creator/updater tracking), and refining secondary AI tag workflows with permanent indicator chips.
 
 ## Project Facts
 
@@ -33,6 +33,7 @@ aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL wit
 - **frontend_ui_pattern**: inline event handlers with event.stopPropagation(), CSS opacity/color hover states via onmouseenter/onmouseleave, escaped string interpolation in onclick via _esc()
 - **known_bug_active**: planner_tag_visibility: categories upload but individual tags don't display in UI bindings
 - **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
+- **mcp_tools_count**: 12+ tools including semantic search with work_items vector search, work item management, session tagging
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
 - **memory_management_pattern**: load_once_on_access_update_on_save
 - **memory_sync_workflow**: /memory endpoint executes embedding pipeline refresh to sync prompts with work_items and detect new tags
@@ -60,9 +61,11 @@ Reviewer: ```json
 - **prompt_architecture**: core.prompt_loader for centralization; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
 - **prompt_count_metric**: distinct metric tracked separately from event_count in work items API response
 - **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
+- **prompt_work_item_trigger_automation**: _run_promote_all_work_items() integrated into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
 - **rel:ai_tag_suggestion:user_tags**: replaces
 - **rel:ai_tag_suggestion:work_items_table**: related_to
 - **rel:commit_processing:exec_llm_flag**: replaces
+- **rel:embedding_integration:prompt_work_item_trigger**: implements
 - **rel:event_filtering:noise_reduction**: implements
 - **rel:frontend_ui_pattern:ai_tag_suggestion_feature**: implements
 - **rel:mem_ai_events:work_items**: depends_on
@@ -83,9 +86,11 @@ Reviewer: ```json
 - **rel:wiDeleteLinked:entities_js**: implements
 - **rel:wiUnlink:wiRowLoading**: depends_on
 - **rel:work_item_api:prompt_count**: depends_on
+- **rel:work_item_consolidation:desc_ai**: depends_on
 - **rel:work_item_deletion:api_endpoint**: depends_on
 - **rel:work_item_panel_sort:prompt_count**: implements
 - **rel:work_item_panel:state_management**: implements
+- **rel:work_item_vector_search:mcp_tools**: implements
 - **route_work_items_sql_errors**: line_249_cur_execute_missing_parameter_binding_line_288_incomplete_column_selection_in_merged_query
 - **session_context_prompt_counter**: prompt_count field added to session context JSON, initialized to 0, incremented on each prompt validation
 - **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
@@ -103,11 +108,13 @@ Reviewer: ```json
 - **unimplemented_features**: memory_items_and_project_facts_tables_not_updating
 - **unresolved_issues**: memory_endpoint_template_variable_scoping_and_backend_startup_race_condition
 - **user_tags_rendering**: removed from panel display (userTagsHtml variable deleted), stored in wi.user_tags array but no longer shown in UI
+- **work_item_column_consolidation**: summary consolidated into desc_ai to reduce redundancy; ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai refactoring completed
 - **work_item_deletion_endpoint**: DELETE /work-items/{id} with confirm dialog, cache clearing via window._wiPanelDelete, panel re-rendering
 - **work_item_deletion_handler**: _wiDeleteLinked in entities.js with confirmation dialog and _wiRowLoading state management
 - **work_item_deletion_pattern**: client-side confirmation dialog, async api.workItems.delete(), local state cleanup, re-render panel
 - **work_item_description_processing**: newlines replaced with spaces and trimmed (replace(/\n/g,' ').trim()), clipped to 70 chars with ellipsis
 - **work_item_display_fields**: ai_category icon mapping, status_user color mapping, seq_num sequence number, id identifier
+- **work_item_embedding_integration**: _embed_work_item() persists vectors for name_ai + desc_ai + summary_ai concatenation; integrated into prompt_work_item() trigger and new work item creation flow
 - **work_item_event_association**: two-path join: session_id match from source_event_id OR direct work_item_id link, both filtered by event_type
 - **work_item_panel_column_order**: Name, prompt_count, commit_count, event_count, updated_at (prompts column added before commits, events moved last)
 - **work_item_panel_column_widths**: prompt_count:46px, commit_count:46px, event_count:46px (resized from 52px event_count + 52px commit_count)
@@ -116,6 +123,7 @@ Reviewer: ```json
 - **work_item_ui_column_widths**: 56px–80px for multi-column sortable table headers
 - **work_item_ui_pattern**: multi-column sortable table with proper header styling, status color badges
 - **work_item_unlink_handler**: _wiUnlink uses _wiRowLoading(id, true) for loading state during patch operation
+- **work_item_vector_search**: MCP tool_memory.py semantic search includes work_items table with embedding <=> operator, returns category/name/description/status for non-archived items
 
 ## Tech Stack
 
@@ -132,7 +140,7 @@ Reviewer: ```json
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
-- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
+- **mcp**: Stdio MCP server with 12+ tools (semantic search with work_items vectors, work item management, session tagging)
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
 - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
@@ -143,7 +151,7 @@ Reviewer: ```json
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions
+- **database**: PostgreSQL 15+ with pgvector extension
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
@@ -156,7 +164,7 @@ Reviewer: ```json
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
 - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
-- **embeddings**: text-embedding-3-small (1536-dim vectors)
+- **embeddings**: text-embedding-3-small (1536-dim vectors) in mem_ai_events.embedding and mem_ai_work_items.embedding
 
 ## Key Decisions
 
@@ -168,196 +176,227 @@ Reviewer: ```json
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
-- Work item column naming: name_ai, category_ai, desc_ai, summary_ai consolidated for consistency; FK architecture links mem_ai_events.work_item_id to work items
+- Work item column naming: name_ai, category_ai, desc_ai consolidated for consistency; embedding vectors persisted for semantic search in MCP tools
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
-- Work item counters: prompt_count (raw prompts), event_count (prompt_batch/session_summary), commit_count (distinct commits per session)
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+- planner_tag table schema consolidation: removing seq_num (always null), merging source into creator field, reducing descriptor columns
 - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ## In Progress
 
-- planner_tag table schema cleanup: identified seq_num (always null, no auto-population) for removal; consolidating source + creator into single creator field; removing redundant code_summary column; verifying status column uniqueness vs. work_items.status_user/status_ai
-- Work item embedding integration: _embed_work_item() persists vectors for name_ai + desc_ai + summary_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation; integrated into prompt_work_item() trigger during /memory command execution
 - Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
+- planner_tag schema cleanup: removing seq_num column (always null, no auto-population); consolidating source + creator into single creator field with user/ai distinction; verifying status column uniqueness against work_items.status_user/status_ai
 - Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
-- prompt_work_item() trigger automation: integrated _run_promote_all_work_items() into /memory command pipeline to refresh AI text fields and embedding vectors
 - AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
-
-## Active Features / Bugs / Tasks
-
-### Ai_suggestion
-
-- **test123** `[open]`
-
-### Bug
-
-- **hooks** `[open]`
-
-### Doc_type
-
-- **high-level-design** `[open]`
-- **architecture-decision** `[open]`
-- **customer-meeting** `[open]`
-- **Test** `[open]`
-- **retrospective** `[open]`
-- **low-level-design** `[open]`
-
-### Feature
-
-- **pagination**
-- **entity-routing** `[open]`
-- **billing** `[open]`
-- **embeddings** `[open]`
-- **tagging** `[open]`
-- **mcp** `[open]`
-- **workflow-runner** `[open]`
-- **test-picker-feature** `[open]`
-- **UI** `[open]`
-- **auth** `[open]`
-- **dropbox** `[open]`
-- **shared-memory** `[open]`
-- **graph-workflow** `[open]`
-
-### Phase
-
-- **prod** `[open]`
-- **development** `[open]`
-- **discovery** `[open]`
-
-### Task
-
-- **memory** `[open]`
-- **implement-projects-tab** `[open]`
+- planner_tag column ordering migration: repositioning project_id after client_id; adding creator (user/ai distinction), updater tracking, created_at/updated_at timestamps for audit trail
 
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `prompt_batch: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
+
+Reviewed planner_tag table schema; identified redundant columns (seq_num, source) and overly verbose descriptor fields (short_desc, full_desc, requirements, acceptance_criteria, summary, action_items, design). Proposed consolidation: drop seq_num and source, keep creator only, reduce descriptors to essential fields.
+
 ### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 4eb4e1b..a84bfcc 100644
+index a84bfcc..17507d5 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
--- Work item column schema refactoring: renamed ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai for naming consistency; consolidated summary into desc_ai to reduce column redundancy
--- prompt_work_item() trigger refinement: integrated to run automatically during /memory command execution to ensure work item columns reflect latest AI naming conventions and data consolidation
-+- Work item column schema refactoring: completed renaming ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai, summary→summary_ai across frontend (entities.js) and backend (route_work_items.py, route_projects.py) for naming consistency
-+- prompt_work_item() trigger integration: added _run_promote_all_work_items() to /memory command execution pipeline to refresh AI text fields and status during memory generation
-+- Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
- - Work item UI loading states: _wiRowLoading() CSS pulsing animation during async delete/approve/dismiss operations; integrated into tag-linked and unlinked panels with error state recovery
--- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
--- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject; planner table updates reflect linked/unlinked status changes when category selected
--- AI tag suggestion UX: clickable ✓ creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
-+- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates reflect linked/unlinked status changes when category selected
-+- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
+-- Work item column schema refactoring: completed renaming ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai, summary→summary_ai across frontend (entities.js) and backend (route_work_items.py, route_projects.py) for naming consistency
+-- prompt_work_item() trigger integration: added _run_promote_all_work_items() to /memory command execution pipeline to refresh AI text fields and status during memory generation
+-- Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
+-- Work item UI loading states: _wiRowLoading() CSS pulsing animation during async delete/approve/dismiss operations; integrated into tag-linked and unlinked panels with error state recovery
+-- Tag-linked work item refresh: _loadTagLinkedWorkItems reloads after approve/reject operations; planner table updates reflect linked/unlinked status changes when category selected
++- Work item embedding integration: _embed_work_item() function persists vectors for name_ai + desc_ai + summary_ai concatenation; integrated into prompt_work_item() trigger and new work item creation flow
++- Work item vector search in MCP: tool_memory.py semantic search now includes work_items table with embedding <=> operator, returning category/name/description/status for non-archived items
++- Work item column consolidation: completed refactoring ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai; summary consolidated into desc_ai to reduce redundancy
++- prompt_work_item() trigger automation: integrated _run_promote_all_work_items() into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
++- Secondary AI tag workflow refinement: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
+ - AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip messaging improved from 'No existing tag' to 'Does not exist yet'
 
 
 ### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 1e4bc07..abdeea3 100644
+index abdeea3..86701e4 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-12 00:03 UTC
-+> Generated by aicli 2026-04-12 11:08 UTC
+-> Generated by aicli 2026-04-12 11:08 UTC
++> Generated by aicli 2026-04-12 11:10 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -58,9 +58,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - workflow_ui: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - memory_synthesis: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
+ - chunking: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+-- mcp: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
++- mcp: Stdio MCP server with 12+ tools (semantic search including work_items vector search, work item management, session tagging)
+ - deployment: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - database_schema: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+ - config_management: config.py + YAML pipelines + pyproject.toml + aicli.yaml session tagging config
+@@ -46,6 +46,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - prompt_management: core.prompt_loader module with centralized prompt caching
+ - schema_management: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+ - database_tables: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
++- embeddings: text-embedding-3-small (1536-dim vectors) persisted in mem_ai_events.embedding and mem_ai_work_items.embedding
+ 
+ ## Architectural Decisions
+ 
+@@ -57,10 +58,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
  - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
  - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
++- Work item column naming: name_ai, category_ai, desc_ai, summary_ai consolidated into desc_ai; embedding vector persisted for semantic search
  - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
--- Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
-+- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai, summary → summary_ai for consistency; FK architecture links many events to one work item
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
- - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category
--- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai for consistency; summary merged into desc_ai
- - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
+-- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai, summary → summary_ai for consistency; FK architecture links many events to one work item
+-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
+-- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category
+-- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
 -- Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context
-\ No newline at end of file
-+- Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context
-+- Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
++- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
++- Work item counters: prompt_count (raw prompts), event_count (prompt_batch/session_summary), commit_count (distinct commits per session)
++- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+ - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 \ No newline at end of file
 
 
 ### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index fbc7b43..d2538a6 100644
+index d2538a6..f2471ea 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 00:03 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 11:08 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 11:08 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 11:10 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -58,12 +58,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
+ - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+-- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
++- **mcp**: Stdio MCP server with 12+ tools (semantic search including work_items vector search, work item management, session tagging)
+ - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+ - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml session tagging config
+@@ -46,6 +46,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+ - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+ - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
++- **embeddings**: text-embedding-3-small (1536-dim vectors) persisted in mem_ai_events.embedding and mem_ai_work_items.embedding
+ 
+ ## Key Decisions
+ 
+@@ -57,18 +58,18 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
  - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
  - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
++- Work item column naming: name_ai, category_ai, desc_ai, summary_ai consolidated into desc_ai; embedding vector persisted for semantic search
  - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
--- Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
-+- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai, summary → summary_ai for consistency; FK architecture links many events to one work item
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
- - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category
--- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai for consistency; summary merged into desc_ai
- - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
- - Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context
-+- Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+-- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai, summary → summary_ai for consistency; FK architecture links many events to one work item
+-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
+-- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category
+-- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
+-- Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context
++- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
++- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
++- Work item counters: prompt_count (raw prompts), event_count (prompt_batch/session_summary), commit_count (distinct commits per session)
++- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+ - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
  
  ## Recent Context (last 5 changes)
  
+-- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
+ - [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
+ - [2026-04-11] I still dont understand what is summery column used for . also tags - I do see that empty, and expected that to be updat
+ - [2026-04-11] What is summery used for, I do see ai_desc, what is summery for ?
+-- [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
+\ No newline at end of file
++- [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
++- [2026-04-12] I would like to woek on planner_tag. can you change the tag to feature:planner
+\ No newline at end of file
 
 
 ### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index fbc7b43..d2538a6 100644
+index d2538a6..f2471ea 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 00:03 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 11:08 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 11:08 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 11:10 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -58,12 +58,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -22,7 +22,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
+ - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+-- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
++- **mcp**: Stdio MCP server with 12+ tools (semantic search including work_items vector search, work item management, session tagging)
+ - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+ - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml session tagging config
+@@ -46,6 +46,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **prompt_management**: core.prompt_loader module with centralized prompt caching
+ - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m019 framework)
+ - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
++- **embeddings**: text-embedding-3-small (1536-dim vectors) persisted in mem_ai_events.embedding and mem_ai_work_items.embedding
+ 
+ ## Key Decisions
+ 
+@@ -57,18 +58,18 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
  - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
  - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
++- Work item column naming: name_ai, category_ai, desc_ai, summary_ai consolidated into desc_ai; embedding vector persisted for semantic search
  - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
--- Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; source_event_id pivot for session-based aggregation
-+- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai, summary → summary_ai for consistency; FK architecture links many events to one work item
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
- - Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category
--- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai for consistency; summary merged into desc_ai
- - Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
- - Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context
-+- Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+-- Work item column naming convention: ai_name → name_ai, ai_category → category_ai, ai_desc → desc_ai, summary → summary_ai for consistency; FK architecture links many events to one work item
+-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
+-- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); primary tag_id links work item to category
+-- Work item counters: prompt_count (raw prompts in source session), event_count (prompt_batch/session_summary events), commit_count (distinct commits per session)
+-- Session tagging: /stag command with immediate tag propagation via log_user_prompt.sh reading .agent-context
++- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
++- Secondary AI tags stored in ai_tags.confirmed[] array (metadata for doc_type/feature/phase); permanent chip indicators without deletion
++- Work item counters: prompt_count (raw prompts), event_count (prompt_batch/session_summary), commit_count (distinct commits per session)
++- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+ - Railway cloud deployment (Dockerfile + railway.toml) + Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
  
  ## Recent Context (last 5 changes)
  
+-- [2026-04-10] ok. I do see it is possible to add AI tags, but when I add that, it seems that work_item disapper (and not added into an
+ - [2026-04-11] I am not sre what is start_id used for . Also code_summenry - what is it for ? tags suppose to have all tags from all mi
+ - [2026-04-11] I still dont understand what is summery column used for . also tags - I do see that empty, and expected that to be updat
+ - [2026-04-11] What is summery used for, I do see ai_desc, what is summery for ?
+-- [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
+\ No newline at end of file
++- [2026-04-11] I think summery suppose to be part of ai_desc as there are alreadt 3 column for work item - ai_desc, acceptance_crtireia
++- [2026-04-12] I would like to woek on planner_tag. can you change the tag to feature:planner
+\ No newline at end of file
 
 
 ### `commit: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
 
-Removed outdated agent context and system documentation files as part of cleanup work.
-
-### `session_summary: d535da3e-a9f3-44f3-80e0-4c18e0404f00` — 2026-04-12
-
-Summary:
-• User requested to work on planner_tag and change the tag to feature:planner
-• Session tags updated to phase: development and feature: planner
+Removed stale system context files left behind after a Claude CLI session, cleaning up temporary artifacts from development.
 
 ## AI Synthesis
 
-**[2026-04-12]** `claude_cli` — Comprehensive schema audit of planner_tag table identified three removal candidates: seq_num (never populated, no auto-logic), code_summary (unused), and source/creator consolidation (redundant dual-tracking). Recommended single status column instead of status/status_user/status_ai split. **[2026-04-12]** `work-item-embedding` — Completed work item column naming migration (ai_name→name_ai, ai_category→category_ai, ai_desc→desc_ai, summary→summary_ai) across frontend and backend. Integrated _embed_work_item() vector persistence into prompt_work_item() trigger during /memory command execution. **[2026-04-12]** `mcp-vector-search` — Enhanced MCP semantic search tool_memory.py to include work_items table vector queries using embedding <=> operator, enabling semantic work item discovery with category/status metadata filtering. **[2026-04-12]** `secondary-ai-tags` — Finalized secondary AI tag workflow storing confirmed metadata (doc_type/phase/component) in ai_tags.confirmed[] array as permanent chip indicators instead of deletions, improving audit trail and UX. **[2026-04-12]** `tag-suggestion-ux` — Refined AI tag suggestion panel with clickable ✓ buttons that auto-create missing ai_suggestion tags with category inference; improved tooltip messaging to clarify intent ("Does not exist yet" vs "No existing tag"). **[2026-04-12]** `tag-linked-refresh` — Completed tag-linked work item refresh workflow ensuring _loadTagLinkedWorkItems reloads after approve/reject operations with planner table status sync.
+**[2026-04-12]** `migration` — Added creator/updater tracking to planner_tag table with user/ai distinction; repositioned project_id after client_id for schema consistency; timestamps (created_at/updated_at) enable audit trail. **[recent]** `embedding_integration` — Implemented _embed_work_item() function persisting 1536-dim text-embedding-3-small vectors in mem_ai_work_items.embedding; integrated into prompt_work_item() trigger and /memory command pipeline. **[recent]** `mcp_enhancement` — Extended tool_memory.py semantic search to query work_items table using embedding <=> operator, returning non-archived items with category/name/description/status for LLM context. **[recent]** `schema_cleanup` — Identified seq_num as redundant (always null, never auto-populated) in planner_tag; consolidating source into creator field; verifying status column uniqueness against work_items dual-status design. **[recent]** `tag_workflow` — Secondary AI tags now persist in ai_tags.confirmed[] array with permanent chip indicators; removal mechanics refined to maintain visibility with metadata flags instead of hard deletion. **[recent]** `ai_suggestion_ux` — Clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet' for clarity.
