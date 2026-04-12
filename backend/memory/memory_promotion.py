@@ -106,8 +106,8 @@ _SQL_UPDATE_TAG_SNAPSHOT = """
         summary      = %s,
         action_items = %s,
         design       = %s,
-        code_summary = %s,
         embedding    = %s,
+        updater      = 'ai',
         updated_at   = NOW()
     WHERE id = %s AND project_id = %s
 """
@@ -551,7 +551,6 @@ class MemoryPromotion:
 
         ai_relations: list[dict] = parsed.pop("relations", []) or []
         design = parsed.get("design", {})
-        code_summary = parsed.get("code_summary", {})
         requirements = parsed.get("requirements", "")
         action_items = parsed.get("action_items", "")
 
@@ -566,7 +565,6 @@ class MemoryPromotion:
                         requirements,
                         action_items,
                         json.dumps(design),
-                        json.dumps(code_summary),
                         embedding,
                         tag_id,
                         project_id,

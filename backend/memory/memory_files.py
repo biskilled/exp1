@@ -74,14 +74,14 @@ _SQL_ALL_RELATIONS = """
 """
 
 _SQL_FEATURE_SNAPSHOTS = """
-    SELECT t.id, t.name, t.summary, t.action_items, t.design, t.code_summary
+    SELECT t.id, t.name, t.summary, t.action_items, t.design
     FROM planner_tags t
-    WHERE t.project_id = %s AND (t.summary IS NOT NULL OR t.action_items IS NOT NULL)
+    WHERE t.project_id = %s AND (t.summary != '' OR t.action_items != '')
     ORDER BY t.updated_at DESC LIMIT 20
 """
 
 _SQL_BLOCKED_TAGS = """
-    SELECT t.id, t.name, t.status, t.short_desc
+    SELECT t.id, t.name, t.status, t.description
     FROM planner_tags t
     WHERE t.project_id = %s AND t.status = 'active'
 """
@@ -96,14 +96,14 @@ _SQL_TOP_EVENTS = """
 """
 
 _SQL_ACTIVE_TAGS = """
-    SELECT t.id, t.name, t.status, t.short_desc, t.priority, t.due_date
+    SELECT t.id, t.name, t.status, t.description, t.priority, t.due_date
     FROM planner_tags t
     WHERE t.project_id = %s AND t.status IN ('open', 'active')
     ORDER BY t.priority ASC, t.updated_at DESC LIMIT 20
 """
 
 _SQL_FEATURE_SNAPSHOT_BY_TAG = """
-    SELECT t.id, t.name, t.requirements, t.summary, t.action_items, t.design, t.code_summary
+    SELECT t.id, t.name, t.requirements, t.summary, t.action_items, t.design
     FROM planner_tags t
     WHERE t.id = %s AND t.project_id = %s
 """
@@ -201,38 +201,36 @@ class MemoryFiles:
 
                     # Feature snapshots (inline on planner_tags)
                     cur.execute(_SQL_FEATURE_SNAPSHOTS, (project_id,))
-                    for t_id, t_name, t_project, summary, action, design, code_sum in cur.fetchall():
+                    for t_id, t_name, summary, action, design in cur.fetchall():
                         ctx["features"][t_name] = {
                             "requirements":    summary or "",
                             "action_items":    action or "",
                             "design":          design or {},
-                            "code_summary":    code_sum or {},
                             "work_item_status": "",
                         }
 
-                    # Blocked/active tags (short_desc inline on planner_tags)
+                    # Blocked/active tags (description inline on planner_tags)
                     cur.execute(_SQL_BLOCKED_TAGS, (project_id,))
                     ctx["blocked_tags"] = [(r[1], r[3] or "") for r in cur.fetchall()]
 
                     # Feature details: tags with embedding or summary (inline fields)
                     cur.execute("""
-                        SELECT t.id, t.name, t.short_desc, t.requirements, t.summary,
-                               t.action_items, t.design, t.code_summary
+                        SELECT t.id, t.name, t.description, t.requirements, t.summary,
+                               t.action_items, t.design
                         FROM planner_tags t
                         WHERE t.project_id = %s
-                          AND (t.embedding IS NOT NULL OR t.summary IS NOT NULL)
+                          AND (t.embedding IS NOT NULL OR t.summary != '')
                         ORDER BY t.updated_at DESC LIMIT 30
                     """, (project_id,))
                     ctx["feature_details"] = [
                         {
                             "id":           str(r[0]),
                             "name":         r[1] or "",
-                            "short_desc":   r[2] or "",
+                            "description":  r[2] or "",
                             "requirements": r[3] or "",
                             "summary":      r[4] or "",
                             "action_items": r[5] or "",
                             "design":       r[6] or {},
-                            "code_summary": r[7] or {},
                         }
                         for r in cur.fetchall()
                     ]
@@ -274,7 +272,7 @@ class MemoryFiles:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(_SQL_ACTIVE_TAGS, (project_id,))
-                    # _SQL_ACTIVE_TAGS returns (id, name, status, short_desc, priority, due_date)
+                    # _SQL_ACTIVE_TAGS returns (id, name, status, description, priority, due_date)
                     return [r[1] for r in cur.fetchall()]
         except Exception:
             return []
@@ -395,8 +393,8 @@ class MemoryFiles:
                     # Look up tag by name to get its id, then read inline snapshot fields
                     project_id = db.get_or_create_project_id(project)
                     cur.execute("""
-                        SELECT t.id, t.name, t.project, t.requirements, t.summary,
-                               t.action_items, t.design, t.code_summary, t.short_desc
+                        SELECT t.id, t.name, t.requirements, t.summary,
+                               t.action_items, t.design, t.description
                         FROM planner_tags t
                         WHERE t.project_id = %s AND t.name = %s
                         LIMIT 1
@@ -405,17 +403,16 @@ class MemoryFiles:
                     if row:
                         snap = {
                             "tag_id":       str(row[0]),
-                            "requirements": row[3] or row[4] or "",  # fall back to summary
-                            "action_items": row[5] or "",
-                            "design":       row[6] or {},
-                            "code_summary": row[7] or {},
-                            "short_desc":   row[8] or "",
+                            "requirements": row[2] or row[3] or "",  # fall back to summary
+                            "action_items": row[4] or "",
+                            "design":       row[5] or {},
+                            "description":  row[6] or "",
                         }
         except Exception as e:
             log.debug(f"render_feature_claude_md error for '{tag_name}': {e}")
 
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        desc = snap.get("short_desc") or ""
+        desc = snap.get("description") or ""
         header_line = f"_Feature: {tag_name}{' — ' + desc if desc else ''} | {ts}_"
         lines = [f"# Feature: {tag_name}", header_line, ""]
 
@@ -432,12 +429,7 @@ class MemoryFiles:
                 if isinstance(pts, list):
                     lines += ["**Patterns**: " + ", ".join(str(p) for p in pts), ""]
 
-        code = snap.get("code_summary") or {}
-        if isinstance(code, dict) and code.get("files"):
-            lines += ["## Files", ""]
-            for f in code["files"][:15]:
-                lines.append(f"- `{f}`")
-            lines.append("")
+        # code_summary removed from planner_tags (lives on work_items now)
 
         lines += ["---", "_Auto-generated by aicli. Run `/memory` to refresh._"]
         return "\n".join(lines)
@@ -636,10 +628,6 @@ class MemoryFiles:
                 design = snap.get("design") or {}
                 if isinstance(design, dict) and design.get("high_level"):
                     lines += ["**Design:**", design["high_level"], ""]
-                code = snap.get("code_summary") or {}
-                if isinstance(code, dict) and code.get("files"):
-                    files_str = ", ".join(f"`{f}`" for f in code["files"][:10])
-                    lines += [f"**Files:** {files_str}", ""]
 
         # All relationships
         if ctx["all_relations"]:

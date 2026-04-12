@@ -274,26 +274,22 @@ CREATE TABLE IF NOT EXISTS planner_tags (
     category_id         INT         REFERENCES mng_tags_categories(id),
     parent_id           UUID        REFERENCES planner_tags(id),      -- hierarchical parent
     merged_into         UUID        REFERENCES planner_tags(id),      -- points to merged result
-    seq_num             INT,
-    source              TEXT        NOT NULL DEFAULT 'user',          -- 'user'|'ai_extracted'
-    creator             TEXT,
-    short_desc          TEXT,
-    full_desc           TEXT,
-    requirements        TEXT,
-    acceptance_criteria TEXT,
+    description         TEXT        NOT NULL DEFAULT '',              -- user: what this item is
+    requirements        TEXT        NOT NULL DEFAULT '',              -- user: what needs to happen
+    acceptance_criteria TEXT        NOT NULL DEFAULT '',              -- user: how to verify done
+    action_items        TEXT        NOT NULL DEFAULT '',              -- user+AI: next steps
+    summary             TEXT        NOT NULL DEFAULT '',              -- AI: progress digest
+    design              JSONB,                                         -- AI: architectural decisions
     status              TEXT        NOT NULL DEFAULT 'open',          -- open|active|done|archived
     priority            SMALLINT    NOT NULL DEFAULT 3,
     due_date            DATE,
     requester           TEXT,
     extra               JSONB       NOT NULL DEFAULT '{}',
-    summary             TEXT,                                          -- AI-generated summary
-    action_items        TEXT,                                          -- AI-generated action items
-    design              JSONB,                                         -- AI-generated design notes
-    code_summary        JSONB,                                         -- distilled from linked commits
-    is_reusable         BOOLEAN     NOT NULL DEFAULT FALSE,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     embedding           VECTOR(1536),                                  -- from summary+action_items
+    creator             TEXT        NOT NULL DEFAULT 'user',          -- who created (username or 'ai')
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updater             TEXT        NOT NULL DEFAULT 'user',          -- who last updated
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(project_id, name, category_id)
 );
 CREATE INDEX IF NOT EXISTS idx_planner_tags_pid    ON planner_tags(project_id);

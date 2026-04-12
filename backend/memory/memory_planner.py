@@ -60,7 +60,8 @@ _SQL_GET_WI_INTERACTION_STATS = """
 
 _SQL_UPDATE_TAG = """
     UPDATE planner_tags
-    SET summary = %s, action_items = %s, acceptance_criteria = %s, updated_at = NOW()
+    SET summary = %s, action_items = %s, acceptance_criteria = %s,
+        updater = 'ai', updated_at = NOW()
     WHERE id = %s::uuid AND project_id = %s
 """
 

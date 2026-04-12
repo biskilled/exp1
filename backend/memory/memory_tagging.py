@@ -37,17 +37,17 @@ _SQL_GET_TAG = """
 """
 
 _SQL_INSERT_TAG = """
-    INSERT INTO planner_tags (project_id, name, category_id, status)
-    VALUES (%s, %s, %s, 'active')
+    INSERT INTO planner_tags (project_id, name, category_id, status, creator)
+    VALUES (%s, %s, %s, 'active', 'ai')
     ON CONFLICT (project_id, name, category_id) DO NOTHING
     RETURNING id
 """
 
 _SQL_LIST_TAGS = """
     SELECT t.id, t.name, t.category_id, t.parent_id, t.merged_into,
-           t.status, t.seq_num, t.created_at,
+           t.status, t.created_at,
            tc.name AS category_name, tc.color, tc.icon,
-           t.short_desc, t.due_date, t.priority, 0 AS source_count
+           t.description, t.due_date, t.priority, 0 AS source_count
     FROM planner_tags t
     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
     WHERE t.project_id = %s
@@ -329,7 +329,7 @@ class MemoryTagging:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT t.id, t.name, t.category_id, t.short_desc, tc.name AS category_name
+                    SELECT t.id, t.name, t.category_id, t.description, tc.name AS category_name
                     FROM planner_tags t
                     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
                     WHERE t.project_id = %s AND t.status != 'archived'
@@ -340,7 +340,7 @@ class MemoryTagging:
                 """, (project_id, limit))
                 rows = cur.fetchall()
                 return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
-                         'short_desc': r[3] or '', 'category_name': r[4] or '',
+                         'description': r[3] or '', 'category_name': r[4] or '',
                          'score': 0.0} for r in rows]
 
     def _vector_search_tags(self, project: str, embedding: list, limit: int = 15) -> list[dict]:
@@ -348,7 +348,7 @@ class MemoryTagging:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT id, name, category_id, short_desc,
+                    SELECT id, name, category_id, description,
                            1 - (embedding <=> %s::vector) AS score
                     FROM planner_tags
                     WHERE project_id = %s AND embedding IS NOT NULL AND status != 'archived'
@@ -356,7 +356,7 @@ class MemoryTagging:
                 """, (embedding, project_id, embedding, limit))
                 rows = cur.fetchall()
                 return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
-                         'short_desc': r[3], 'score': float(r[4])} for r in rows]
+                         'description': r[3], 'score': float(r[4])} for r in rows]
 
     async def _embed_text(self, text: str) -> list:
         """Embed text using OpenAI text-embedding-3-small."""
@@ -374,7 +374,7 @@ class MemoryTagging:
         Primary is ALWAYS populated — either an existing match or a suggested new tag name.
         """
         cand_text = '\n'.join(
-            f"- [{c.get('category_name','?')}] {c['name']} | {c.get('short_desc','')}"
+            f"- [{c.get('category_name','?')}] {c['name']} | {c.get('description','')}"
             for c in candidates
         )
         prompt = (

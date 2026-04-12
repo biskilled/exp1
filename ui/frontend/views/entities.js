@@ -1764,7 +1764,7 @@ function _renderDrawer() {
                  color:var(--text);font-family:var(--font);font-size:0.68rem;
                  padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
                  resize:vertical;box-sizing:border-box;line-height:1.5"
-          onblur="api.tags.update('${v.id}', {short_desc: this.value}).catch(e=>toast(e.message,'error'))"
+          onblur="api.tags.update('${v.id}', {description: this.value}).catch(e=>toast(e.message,'error'))"
         >${_esc(v.description || '')}</textarea>
       </div>
 

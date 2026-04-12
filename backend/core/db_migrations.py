@@ -335,6 +335,93 @@ def m025_rename_work_item_ai_columns(conn) -> None:
     log.info("m025_rename_work_item_ai_columns: 4 columns renamed")
 
 
+def m026_planner_tags_cleanup(conn) -> None:
+    """Rationalise planner_tags — clean column set, enforce creator/updater, fix order.
+
+    DROP:   seq_num, source, full_desc, code_summary, is_reusable
+    RENAME: short_desc → description
+    ADD:    updater TEXT NOT NULL DEFAULT 'user'
+    ALTER:  creator TEXT NOT NULL DEFAULT 'user'  (was nullable)
+    ORDER:  id, client_id, project_id, name, category_id, parent_id, merged_into,
+            description, requirements, acceptance_criteria, action_items,
+            summary, design, status, priority, due_date, requester, extra, embedding,
+            creator, created_at, updater, updated_at
+    """
+    with conn.cursor() as cur:
+        # Drop FK constraints on mem_ai_work_items that reference planner_tags
+        cur.execute("""
+            SELECT conname FROM pg_constraint
+            WHERE conrelid = 'mem_ai_work_items'::regclass
+              AND confrelid = 'planner_tags'::regclass
+        """)
+        fk_names = [r[0] for r in cur.fetchall()]
+        for fk in fk_names:
+            cur.execute(f"ALTER TABLE mem_ai_work_items DROP CONSTRAINT IF EXISTS {fk}")
+
+        cur.execute("ALTER TABLE planner_tags RENAME TO _bak_026_planner_tags")
+        cur.execute("""
+            CREATE TABLE planner_tags (
+                id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id           INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+                project_id          INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                name                TEXT        NOT NULL,
+                category_id         INT         REFERENCES mng_tags_categories(id),
+                parent_id           UUID        REFERENCES planner_tags(id),
+                merged_into         UUID        REFERENCES planner_tags(id),
+                description         TEXT        NOT NULL DEFAULT '',
+                requirements        TEXT        NOT NULL DEFAULT '',
+                acceptance_criteria TEXT        NOT NULL DEFAULT '',
+                action_items        TEXT        NOT NULL DEFAULT '',
+                summary             TEXT        NOT NULL DEFAULT '',
+                design              JSONB,
+                status              TEXT        NOT NULL DEFAULT 'open',
+                priority            SMALLINT    NOT NULL DEFAULT 3,
+                due_date            DATE,
+                requester           TEXT,
+                extra               JSONB       NOT NULL DEFAULT '{}',
+                embedding           VECTOR(1536),
+                creator             TEXT        NOT NULL DEFAULT 'user',
+                created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updater             TEXT        NOT NULL DEFAULT 'user',
+                updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(project_id, name, category_id)
+            )
+        """)
+        cur.execute("""
+            INSERT INTO planner_tags (
+                id, client_id, project_id, name, category_id, parent_id, merged_into,
+                description, requirements, acceptance_criteria, action_items,
+                summary, design, status, priority, due_date, requester, extra, embedding,
+                creator, created_at, updated_at
+            )
+            SELECT
+                id, client_id, project_id, name, category_id, parent_id, merged_into,
+                COALESCE(short_desc, ''),
+                COALESCE(requirements, ''),
+                COALESCE(acceptance_criteria, ''),
+                COALESCE(action_items, ''),
+                COALESCE(summary, ''),
+                design,
+                status, priority, due_date, requester, extra, embedding,
+                COALESCE(creator, 'user'),
+                created_at, updated_at
+            FROM _bak_026_planner_tags
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_planner_tags_pid    ON planner_tags(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_planner_tags_parent ON planner_tags(parent_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_planner_tags_project_name ON planner_tags(project_id, name)")
+        # Recreate FK constraints pointing to new planner_tags table
+        cur.execute("""ALTER TABLE mem_ai_work_items
+            ADD CONSTRAINT mem_ai_work_items_tag_id_ai_fkey
+            FOREIGN KEY (tag_id_ai) REFERENCES planner_tags(id) ON DELETE SET NULL""")
+        cur.execute("""ALTER TABLE mem_ai_work_items
+            ADD CONSTRAINT mem_ai_work_items_tag_id_user_fkey
+            FOREIGN KEY (tag_id_user) REFERENCES planner_tags(id) ON DELETE SET NULL""")
+    conn.commit()
+    log.info("m026_planner_tags_cleanup: table recreated — 5 cols dropped, short_desc→description, creator/updater enforced")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -348,4 +435,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m023_work_items_tags_to_jsonb", m023_work_items_tags_to_jsonb),
     ("m024_backfill_work_item_tags", m024_backfill_work_item_tags),
     ("m025_rename_work_item_ai_columns", m025_rename_work_item_ai_columns),
+    ("m026_planner_tags_cleanup", m026_planner_tags_cleanup),
 ]
