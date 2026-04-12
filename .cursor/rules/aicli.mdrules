@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 21:15 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 21:20 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -68,8 +68,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
 - [2026-04-12] yes
 - [2026-04-12] This start to look good. I would like to add one more column - deliveries that will be after actio_items, this column is
 - [2026-04-12] can you add tag feature:feature_snapshot
 - [2026-04-12] Feature_snapshot  I would like to create the final stage - mem_ai_feature_snapshot -  this table merge user requirements
+- [2026-04-12] Assuming all will work properly. having a way to store all project history using all the layers, stron mcp that can have
