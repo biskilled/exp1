@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- AI tag suggestion workflow debugging: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
-- Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility and recent workflow runs
-- Electron UI scope variable conflict fix: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed second instance to `cacheCats`
-- mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type
-- Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table
-- Pipeline template mapping: creating workflow-templates YAML with delivery_category/type → preferred_roles suggestions for code, architecture_design, document, and presentation deliveries
+- AI tag suggestion workflow: debugging missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
+- Dashboard/Pipeline Health tab: implementing 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility
+- Electron UI scope variable conflict: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed to `cacheCats`
+- mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items to track summary, use cases, and delivery artifacts
+- Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search
+- System memory file reorganization: cleaned up stale auto-generated context files and consolidated feature-specific memory into _system/ subdirectories

@@ -271,9 +271,22 @@ class _Database:
                 log.debug(f"⏩ skipping migration {version} (already applied)")
             else:
                 log.info(f"▶  applying migration {version}")
-                up_fn(conn)
-                _Database._record_migration(conn, version)
-                log.info(f"✅ migration {version} applied")
+                try:
+                    up_fn(conn)
+                    _Database._record_migration(conn, version)
+                    log.info(f"✅ migration {version} applied")
+                except Exception as mig_err:
+                    # Roll back the failed migration transaction so the DB stays clean.
+                    # Do NOT re-raise — DB remains fully available and the migration
+                    # will be retried on next restart (it won't be recorded as applied).
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    log.warning(
+                        f"⚠  migration {version} failed (will retry on next restart): "
+                        f"{mig_err!s:.200}"
+                    )
 
         self._shared_schema_ready = True
         log.info("✅ schema ready (mem_mrr_* | planner_* | mem_ai_* | pr_*)")

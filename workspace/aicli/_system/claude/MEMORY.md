@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-13 14:39 UTC by aicli /memory_
+_Generated: 2026-04-13 17:06 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL semantic storage with pgvector, and an Electron desktop UI to help teams capture, synthesize, and search development context. It features Claude-powered memory synthesis, async workflow DAG execution with approval panels, work item embeddings for semantic search, and MCP integration. The system is currently debuggingAI tag suggestion workflows, implementing pipeline health dashboards, and consolidating feature-specific memory organization.
 
 ## Project Facts
 
@@ -170,7 +174,7 @@ Reviewer: ```json
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging, vector search)
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+- **database_schema**: Unified (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features); Per-project (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}); Shared (users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories)
 - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
@@ -197,7 +201,7 @@ Reviewer: ```json
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags_relations, project_facts, work_items, features
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
@@ -205,21 +209,21 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- Multi-workflow trigger model: pipelines executable from planner UI, docs (feature snapshots), or direct chat; dashboard as new UI tab for pipeline visibility
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
+- Project facts + work items form unified semantic memory layer with embedding-based search and relationship tracking
 
 ## In Progress
 
-- AI tag suggestion workflow debugging: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
-- Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility and recent workflow runs
-- Electron UI scope variable conflict fix: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed second instance to `cacheCats`
-- mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type
-- Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table
-- Pipeline template mapping: creating workflow-templates YAML with delivery_category/type → preferred_roles suggestions for code, architecture_design, document, and presentation deliveries
+- AI tag suggestion workflow: debugging missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
+- Dashboard/Pipeline Health tab: implementing 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility
+- Electron UI scope variable conflict: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed to `cacheCats`
+- mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items to track summary, use cases, and delivery artifacts
+- Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search
+- System memory file reorganization: cleaned up stale auto-generated context files and consolidated feature-specific memory into _system/ subdirectories
 
 ## Active Features / Bugs / Tasks
 
@@ -233,28 +237,28 @@ Reviewer: ```json
 
 ### Doc_type
 
+- **high-level-design** `[open]`
 - **architecture-decision** `[open]`
 - **customer-meeting** `[open]`
-- **high-level-design** `[open]`
-- **low-level-design** `[open]`
-- **retrospective** `[open]`
 - **Test** `[open]`
+- **retrospective** `[open]`
+- **low-level-design** `[open]`
 
 ### Feature
 
 - **pagination**
-- **graph-workflow** `[open]`
-- **auth** `[open]`
-- **billing** `[open]`
-- **test-picker-feature** `[open]`
-- **mcp** `[open]`
-- **entity-routing** `[open]`
 - **shared-memory** `[open]`
-- **tagging** `[open]`
-- **workflow-runner** `[open]`
-- **dropbox** `[open]`
+- **billing** `[open]`
 - **embeddings** `[open]`
+- **tagging** `[open]`
+- **mcp** `[open]`
+- **workflow-runner** `[open]`
+- **test-picker-feature** `[open]`
 - **UI** `[open]`
+- **auth** `[open]`
+- **dropbox** `[open]`
+- **entity-routing** `[open]`
+- **graph-workflow** `[open]`
 
 ### Phase
 
@@ -270,6 +274,28 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `commit: 9315de75-b88b-4961-b13b-7acb9f07af17` — 2026-04-13
+
+Commits: chore: reorganize system memory files into feature-specific subdirectori | chore: remove stale auto-generated context and system prompt files from  | chore: remove stale auto-generated system context files after claude ses | chore: remove stale auto-generated system context and CLAUDE.md files af | chore: remove legacy flat CLAUDE.md and CONTEXT.md from aicli _system ro | chore: clean up stale agent context and legacy system files after claude
+Stats:  backend/core/database.py        |   7 ++
+ 6 files changed, 183 insertions(+), 55 deletions(-)
+
+### `commit: 0f976fad-b2e0-40f7-ad36-702093d8dda7` — 2026-04-13
+
+Commits: feat: improve hooks, project router, and ai assistant configs | feat: add log_session_stop hook template | chore: update AI assistant context and memory files | chore: remove aicli system files after session ffeb4281 | chore: remove stale system context and session artifacts | feat: enhance projects router with expanded functionality | docs: update system context, memory, and AI assistant config files | chore: update system files and workspace state after claude session | docs: update system context and AI assistant config files | chore: update system files and remove unused database/api code
+Changed: _summarize_feature_memory, build_update, MemoryEmbedding, generate_memory, PromptLoader.__init__, _Database.invalidate_project_cache, _parse_haiku_json, _Database._seed_client_defaults, MemoryPromotion.promote_feature_snapshot, _read_commit_min_diff_lines, _fire_background, MemoryPlanner, _do_ingest, PromptLoader.content, _call_model, generate_snapshot, extract_commit_code, build_where, _generate_session_summary, _Database.get_or_create_project_id
+Stats: CLAUDE.md                           |   12 +-
+ aicli_memory.md                     |    2 +-
+ backend/core/database.py            |    1 +
+ backend/memory/mem_embeddings.py    |   18 +-
+ backend/route
+
+### `commit` — 2026-04-13
+
+Commit: chore: clean up stale agent context and legacy system files after claude
+Hash: 79e56286
+Generated/internal files: workspace/aicli/_system/commit_log.jsonl
 
 ### `prompt_batch: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-13
 
@@ -313,197 +339,6 @@ index fcacc1e..3db65b5 100644
      ),
 
 
-### `commit: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-13
+## AI Synthesis
 
-diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
-index 4264ce9..0376399 100644
---- a/backend/routers/route_memory.py
-+++ b/backend/routers/route_memory.py
-@@ -372,8 +372,8 @@ async def embed_commits(
- ):
-     """Run process_commit() for commits that have no Haiku digest yet.
- 
--    Selects commits where exec_llm = FALSE (never processed), runs Haiku
--    digest + embedding for each, back-propagates summary and sets exec_llm=TRUE
-+    Selects commits where event_id IS NULL (never processed), runs Haiku
-+    digest + embedding for each, back-propagates summary and event_id
-     on mem_mrr_commits. Returns count processed.
-     """
-     if not db.is_available():
-@@ -386,7 +386,7 @@ async def embed_commits(
-                 cur.execute(
-                     """SELECT commit_hash FROM mem_mrr_commits
-                        WHERE project_id=%s
--                         AND exec_llm = FALSE
-+                         AND event_id IS NULL
-                        ORDER BY committed_at DESC NULLS LAST
-                        LIMIT %s""",
-                     (project_id, limit),
-@@ -454,9 +454,9 @@ async def get_pipeline_status(project: str):
-                 for pl in pipelines:
-                     last_24h[pl] = agg.get(pl, {"ok": 0, "error": 0, "skipped": 0, "last_run": None})
- 
--                # Pending commits (not embedded)
-+                # Pending commits (not embedded — event_id set by process_commit on completion)
-                 cur.execute(
--                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND exec_llm=FALSE",
-+                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL",
-                     (project_id,),
-                 )
-                 commits_not_embedded = cur.fetchone()[0] or 0
-
-
-### `commit: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-13
-
-diff --git a/backend/routers/route_history.py b/backend/routers/route_history.py
-index da8f333..1bbaaa7 100644
---- a/backend/routers/route_history.py
-+++ b/backend/routers/route_history.py
-@@ -29,7 +29,7 @@ from core.tags import tags_to_list, parse_tag
- 
- _SQL_LIST_COMMITS = """
-     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
--           c.tags->>'source' AS source, c.session_id, c.committed_at,
-+           c.session_id, c.committed_at,
-            p.source_id AS prompt_source_id
-     FROM mem_mrr_commits c
-     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
-@@ -40,17 +40,14 @@ _SQL_LIST_COMMITS = """
- 
- _SQL_UPSERT_COMMIT_FROM_LOG = """
-     INSERT INTO mem_mrr_commits
--        (project_id, commit_hash, commit_msg, session_id, committed_at,
--         tags)
--    VALUES (%s, %s, %s, %s, %s,
--            jsonb_build_object('source', %s))
-+        (project_id, commit_hash, commit_msg, session_id, committed_at, tags)
-+    VALUES (%s, %s, %s, %s, %s, '{}')
-     ON CONFLICT (commit_hash) DO UPDATE SET
-         session_id = CASE
-             WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
-             THEN EXCLUDED.session_id
-             ELSE mem_mrr_commits.session_id
--        END,
--        tags = mem_mrr_commits.tags || EXCLUDED.tags
-+        END
- """
- 
- _SQL_UPDATE_COMMIT_META = (
-@@ -61,14 +58,14 @@ _SQL_UPDATE_COMMIT_META = (
- # Base form matches by session_id only; extended form adds a committed_at range.
- # Build dynamically in the handler; see session_commits() below.
- _SQL_SESSION_COMMITS_BASE = """
--    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
-+    SELECT commit_hash, commit_msg, tags, committed_at
-           FROM mem_mrr_commits
-          WHERE project_id=%s AND session_id = %s
-          ORDER BY committed_at
- """
- 
- _SQL_SESSION_COMMITS_WITH_WINDOW = """
--    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
-+    SELECT commit_hash, commit_msg, tags, committed_at
-           FROM mem_mrr_commits
-          WHERE project_id=%s
-            AND (session_id = %s
-
-
-### `commit: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-13
-
-diff --git a/backend/routers/route_git.py b/backend/routers/route_git.py
-index 781ab0b..f164a04 100644
---- a/backend/routers/route_git.py
-+++ b/backend/routers/route_git.py
-@@ -29,8 +29,8 @@ log = logging.getLogger(__name__)
- _SQL_UPSERT_COMMIT = """
-     INSERT INTO mem_mrr_commits
-             (project_id, commit_hash, session_id, commit_msg, diff_summary,
--             author, author_email, committed_at, tags, tags_ai)
--        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-+             author, author_email, committed_at, tags)
-+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-         ON CONFLICT (commit_hash) DO UPDATE
-             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
-                 commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
-@@ -41,9 +41,7 @@ _SQL_UPSERT_COMMIT = """
-                                     ELSE mem_mrr_commits.author_email END,
-                 committed_at = COALESCE(EXCLUDED.committed_at, mem_mrr_commits.committed_at),
-                 tags         = CASE WHEN EXCLUDED.tags != '{}' THEN EXCLUDED.tags
--                                    ELSE mem_mrr_commits.tags END,
--                tags_ai      = CASE WHEN EXCLUDED.tags_ai != '{}' THEN EXCLUDED.tags_ai
--                                    ELSE mem_mrr_commits.tags_ai END
-+                                    ELSE mem_mrr_commits.tags END
- """
- 
- # Link commit → most-recent prompt in the same session that occurred before the commit.
-@@ -62,7 +60,7 @@ _SQL_LINK_COMMIT_TO_PROMPT = """
- 
- _SQL_LIST_COMMITS = """
-     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
--           c.tags->>'source' AS source, c.session_id, c.committed_at,
-+           c.session_id, c.committed_at,
-            p.source_id AS prompt_source_id
-     FROM mem_mrr_commits c
-     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
-@@ -72,7 +70,7 @@ _SQL_LIST_COMMITS = """
- """
- 
- _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
--    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
-+    SELECT commit_hash, commit_msg, tags, committed_at
-           FROM mem_mrr_commits
-          WHERE project_id=%s
-            AND (session_id = %s
-@@ -81,7 +79,7 @@ _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
- """
- 
- _SQL_GET_SESSION_COMMITS_BY_ID = """
--    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
-+    SELECT commit_hash, commit_msg, tags, committed_at
-           FROM mem_mrr_commits
-          WHERE project_id=%s AND session_id = %s
-          ORDER BY committed_at
-@@ -199,7 +197,7 @@ def _extract_commit_code_background(project: str, commit_hash: str) -> None:
- 
- def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
-                           commit_msg: str, committed_at: str,
--                          diff_summary: str = "", analysis: dict | None = None,
-+                          diff_summary: str = "",
-                           author: str = "", author_email: str = "") -> None:
-     """Upsert the new commit into mem_mrr_commits and link it to its triggering prompt."""
-     if not db.is_available():
-@@ -208,6 +206,7 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
-     from core.pipeline_log import pipeline_run_sync, _finish_run
-     run_id, t0 = pipeline_run_sync(project_id, "commit_store", commit_hash)
-     try:
-+        # tags = user intent only: phase/feature/bug from active session tags
-         tags_dict: dict = {}
-         try:
-             with db.conn() as conn:
-@@ -224,16 +223,12 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
- 
-         with db.conn() as conn:
-             with conn.cursor() as cur:
--                tags_dict.setdefault("source", "commit_push")
--                tags_ai_dict: dict = {}
--                if analysis:
--                    tags_ai_dict["analysis"] = analysis
-                 cur.execute(
-                     _SQL_UPSERT_COMMIT,
-                     (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
-                      author, author_email,
-                      committed_at or datetime.now(timezone.utc),
--                     json.dumps(tags_dict), json.dumps(tags_ai_dict)),
-+                     json.dumps(tags_dict)),
-                 )
-                 if session_id:
-                     cur.execute(_SQL_LINK_COMMIT_TO_PROMPT, (project_id, session_id, commit_hash))
-@@ -1153,7 +1148,6 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
-             commit_message,
-             datetime.now(timezone.utc).isoformat(),
-             code_stat,          # only code file stats stored
--            commit_analysis,    # structured LLM analysis → stored in tags_ai
-             commit_author,
-             commit_author_email,
-         )
-
+**[2026-03-14]** `git` — Reorganized system memory files into feature-specific subdirectories, removing stale auto-generated context and CLAUDE.md files to improve maintainability. **[2026-03-14]** `feature` — Enhanced projects router and AI assistant configuration with improved hooks and log_session_stop template support. **[2026-03-14]** `refactor` — Deprecated exec_llm boolean tracking in favor of event_id IS NULL sentinel pattern for cleaner commit processing state management. **[2026-03-14]** `bug` — Fixed Electron UI scope variable conflict by renaming duplicate `const cats` declaration to `cacheCats` in _wiPanelCreateTag, resolving empty Electron load issues. **[2026-03-14]** `feature` — Implemented AI tag suggestion workflow with ai_suggestion column, approve/remove buttons, and improved tooltip messaging for missing tags. **[2026-03-13]** `feature` — Finalized mem_ai_feature_snapshot table design merging planner_tags user requirements with work_items to track summary, use cases, and delivery artifacts. **[2026-03-13]** `feature` — Integrated work_item embedding vector persistence with _embed_work_item() for name_ai + desc_ai concatenation supporting MCP semantic search. **[2026-03-13]** `feature` — Established event filtering logic (event_type IN 'prompt_batch', 'session_summary') to exclude per-commit and diff_file noise from work item digests. **[2026-03-13]** `infrastructure` — Standardized column naming convention (prefix_noun_adjective order) across schema and completed db_migrations.py (m001-m027) framework. **[2026-03-13]** `dashboard` — Planned Dashboard/Pipeline Health tab with 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed pipeline status.

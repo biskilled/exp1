@@ -737,6 +737,72 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
 
 # ── Memory Layer Migration ────────────────────────────────────────────────────
 
+@router.post("/trim-events")
+async def trim_events(
+    older_than_days: int = 90,
+    max_importance: int = 5,
+    event_types: str = "prompt_batch,commit",
+    dry_run: bool = False,
+    _: dict = Depends(_require_admin),
+):
+    """Delete old mem_ai_events rows to free disk space.
+
+    Removes rows where:
+      - event_type IN (event_types)
+      - created_at < NOW() - older_than_days
+      - importance <= max_importance
+
+    Safe to run: session_summary and item events are excluded by default.
+    After trimming, run /admin/db-vacuum to reclaim the freed pages.
+
+    Returns count of rows deleted and estimated space freed.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+
+    types = [t.strip() for t in event_types.split(",") if t.strip()]
+    if not types:
+        raise HTTPException(status_code=400, detail="event_types must not be empty")
+
+    placeholders = ",".join(["%s"] * len(types))
+    count_sql = f"""
+        SELECT COUNT(*),
+               pg_size_pretty(SUM(pg_column_size(content) + pg_column_size(summary)
+                                  + COALESCE(pg_column_size(embedding::text), 0))::bigint)
+        FROM mem_ai_events
+        WHERE event_type IN ({placeholders})
+          AND created_at < NOW() - INTERVAL '%s days'
+          AND importance <= %s
+    """
+    delete_sql = f"""
+        DELETE FROM mem_ai_events
+        WHERE event_type IN ({placeholders})
+          AND created_at < NOW() - INTERVAL '%s days'
+          AND importance <= %s
+    """
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(count_sql, (*types, older_than_days, max_importance))
+            row = cur.fetchone()
+            row_count = row[0] if row else 0
+            size_est  = row[1] if row else "0 bytes"
+
+            if not dry_run and row_count > 0:
+                cur.execute(delete_sql, (*types, older_than_days, max_importance))
+
+    return {
+        "dry_run":          dry_run,
+        "deleted":          row_count if not dry_run else 0,
+        "would_delete":     row_count,
+        "size_estimate":    size_est,
+        "event_types":      types,
+        "older_than_days":  older_than_days,
+        "max_importance":   max_importance,
+        "next_step":        "Run POST /admin/db-vacuum to reclaim freed pages" if not dry_run and row_count > 0 else "",
+    }
+
+
 @router.post("/db-vacuum")
 async def db_vacuum(
     dry_run: bool = False,

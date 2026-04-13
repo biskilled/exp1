@@ -651,6 +651,160 @@ def m034_reorder_mem_ai_events(conn) -> None:
     log.info("m034: event_cnt added to mem_ai_events")
 
 
+def m035_reorder_mem_mrr_commits(conn) -> None:
+    """Reorder mem_mrr_commits columns to match db_schema.sql and drop the _old backup.
+
+    New order:
+        commit_hash, commit_hash_short (GENERATED), client_id, project_id,
+        commit_msg, summary, diff_summary, tags, prompt_id, event_id,
+        session_id, author, author_email, llm, created_at, committed_at
+
+    m033 was a no-op (skipped due to disk space). This migration runs the same
+    reorder now that VACUUM FULL has freed space, and drops _old at the end.
+    """
+    with conn.cursor() as cur:
+        # 1. Drop any leftover _old from a previous attempt
+        cur.execute("DROP TABLE IF EXISTS mem_mrr_commits_old CASCADE")
+
+        # 2. Drop FK on mem_mrr_commits_code → mem_mrr_commits
+        cur.execute("""
+            SELECT conname FROM pg_constraint
+            WHERE conrelid  = 'mem_mrr_commits_code'::regclass
+              AND confrelid = 'mem_mrr_commits'::regclass
+        """)
+        for (fk_name,) in cur.fetchall():
+            cur.execute(f'ALTER TABLE mem_mrr_commits_code DROP CONSTRAINT IF EXISTS "{fk_name}"')
+
+        # 3. Rename current → _old
+        cur.execute("ALTER TABLE mem_mrr_commits RENAME TO mem_mrr_commits_old")
+
+        # 4. Create new table (exact column order from db_schema.sql)
+        cur.execute("""
+            CREATE TABLE mem_mrr_commits (
+                commit_hash       VARCHAR(64)  PRIMARY KEY,
+                commit_hash_short VARCHAR(8)   GENERATED ALWAYS AS (LEFT(commit_hash, 8)) STORED,
+                client_id         INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+                project_id        INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                commit_msg        TEXT         NOT NULL DEFAULT '',
+                summary           TEXT         NOT NULL DEFAULT '',
+                diff_summary      TEXT         NOT NULL DEFAULT '',
+                tags              JSONB        NOT NULL DEFAULT '{}',
+                prompt_id         UUID         REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
+                event_id          UUID,
+                session_id        VARCHAR(255),
+                author            TEXT         NOT NULL DEFAULT '',
+                author_email      TEXT         NOT NULL DEFAULT '',
+                llm               TEXT,
+                created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                committed_at      TIMESTAMPTZ
+            )
+        """)
+
+        # 5. Copy data (commit_hash_short is GENERATED — omit from list)
+        _cols = (
+            "commit_hash, client_id, project_id, commit_msg, summary, diff_summary, "
+            "tags, prompt_id, event_id, session_id, author, author_email, llm, "
+            "created_at, committed_at"
+        )
+        cur.execute(
+            f"INSERT INTO mem_mrr_commits ({_cols}) SELECT {_cols} FROM mem_mrr_commits_old"
+        )
+
+        # 6. Recreate indexes
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid            ON mem_mrr_commits(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm           ON mem_mrr_commits(committed_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_session        ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt         ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags           ON mem_mrr_commits USING gin(tags)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_event          ON mem_mrr_commits(event_id) WHERE event_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrrc_project_session ON mem_mrr_commits(project_id, session_id) WHERE session_id IS NOT NULL")
+
+        # 7. Restore FK on mem_mrr_commits_code
+        cur.execute("""
+            ALTER TABLE mem_mrr_commits_code
+            ADD CONSTRAINT mem_mrr_commits_code_commit_hash_fkey
+            FOREIGN KEY (commit_hash) REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE
+        """)
+
+        # 8. Drop backup table (saves ~1 MB; data is safe in new table)
+        cur.execute("DROP TABLE mem_mrr_commits_old CASCADE")
+
+    conn.commit()
+    log.info("m035: mem_mrr_commits reordered and _old dropped")
+
+
+def m036_reorder_mem_ai_events(conn) -> None:
+    """Reorder mem_ai_events columns to match db_schema.sql and drop the _old backup.
+
+    New order:
+        id, client_id, project_id, event_type, event_cnt, source_id,
+        work_item_id, session_id, chunk, chunk_type, content, summary,
+        action_items, tags, importance, created_at, processed_at, embedding
+
+    m032/m034 added the new columns (event_id on prompts, event_cnt) but skipped
+    the reorder. This migration applies the reorder and drops _old to save space.
+    The _old backup is dropped immediately — 75 MB reclaimed on Railway.
+    """
+    with conn.cursor() as cur:
+        # 1. Drop any leftover _old from a previous attempt
+        cur.execute("DROP TABLE IF EXISTS mem_ai_events_old CASCADE")
+
+        # 2. Rename current → _old
+        cur.execute("ALTER TABLE mem_ai_events RENAME TO mem_ai_events_old")
+
+        # 3. Create new table (exact column order from db_schema.sql)
+        cur.execute("""
+            CREATE TABLE mem_ai_events (
+                id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id    INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+                project_id   INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                event_type   TEXT        NOT NULL,
+                event_cnt    INT         NOT NULL DEFAULT 0,
+                source_id    TEXT        NOT NULL,
+                work_item_id UUID,
+                session_id   TEXT,
+                chunk        INT         NOT NULL DEFAULT 0,
+                chunk_type   TEXT        NOT NULL DEFAULT 'full',
+                content      TEXT        NOT NULL DEFAULT '',
+                summary      TEXT,
+                action_items TEXT        NOT NULL DEFAULT '',
+                tags         JSONB       NOT NULL DEFAULT '{}',
+                importance   SMALLINT    NOT NULL DEFAULT 1,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                processed_at TIMESTAMPTZ,
+                embedding    VECTOR(1536),
+                UNIQUE(project_id, event_type, source_id, chunk)
+            )
+        """)
+
+        # 4. Copy all data (event_cnt already exists in _old from m034)
+        _cols = (
+            "id, client_id, project_id, event_type, event_cnt, source_id, "
+            "work_item_id, session_id, chunk, chunk_type, content, summary, "
+            "action_items, tags, importance, created_at, processed_at, embedding"
+        )
+        cur.execute(
+            f"INSERT INTO mem_ai_events ({_cols}) SELECT {_cols} FROM mem_ai_events_old"
+        )
+
+        # 5. Recreate indexes
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_pid             ON mem_ai_events(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_session         ON mem_ai_events(session_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_type            ON mem_ai_events(event_type)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_pending         ON mem_ai_events(processed_at) WHERE processed_at IS NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_tags            ON mem_ai_events USING gin(tags)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_embed           ON mem_ai_events USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_project_session ON mem_ai_events(project_id, session_id) WHERE session_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_project_etype   ON mem_ai_events(project_id, event_type)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_events_wi    ON mem_ai_events(work_item_id) WHERE work_item_id IS NOT NULL")
+
+        # 6. Drop backup table (reclaims ~75 MB on Railway)
+        cur.execute("DROP TABLE mem_ai_events_old CASCADE")
+
+    conn.commit()
+    log.info("m036: mem_ai_events reordered and _old dropped (~75 MB reclaimed)")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -673,4 +827,6 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m032_events_and_prompts_event_id", m032_events_and_prompts_event_id),
     ("m033_reorder_mem_mrr_commits", m033_reorder_mem_mrr_commits),
     ("m034_reorder_mem_ai_events", m034_reorder_mem_ai_events),
+    ("m035_reorder_mem_mrr_commits", m035_reorder_mem_mrr_commits),
+    ("m036_reorder_mem_ai_events", m036_reorder_mem_ai_events),
 ]
