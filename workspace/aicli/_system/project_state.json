@@ -54,11 +54,11 @@
     "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
     "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
-    "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts (code, document, architect_design, ppt)",
-    "planner_tags deliveries column: JSONB field storing user-selected delivery artifact types after action_items",
+    "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts",
+    "planner_tags deliveries column: JSONB field storing user-selected delivery artifact types (code, document, architect_design, ppt) after action_items",
     "Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution",
     "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
-    "Multi-workflow trigger model: pipelines executable from planner UI, docs (feature existence), or direct chat; dashboard as new UI tab for pipeline visibility"
+    "Multi-workflow trigger model: pipelines executable from planner UI, docs (feature snapshots), or direct chat; dashboard as new UI tab for pipeline visibility"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -87,12 +87,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Dashboard implementation: new tab showing all pipeline executions with visibility into flows and decision paths; accessible from planner, docs, and chat",
-    "Pipeline execution refactor: enabling triggers from planner (work_items), docs (feature snapshots), and chat (direct initiation) with unified orchestration",
-    "mem_ai_feature_snapshot table: design finalization merging user requirements (planner_tags) with work_items; includes summary, use cases, and delivery artifacts per use case",
-    "planner_tags deliveries column: JSONB implementation for storing selected delivery artifact types (code, document, architect_design, ppt) after action_items",
-    "Work item embedding persistence: _embed_work_item() function generating and storing 1536-dim vectors for concatenated name_ai + desc_ai fields",
-    "Project history archival: designing multi-layer storage strategy leveraging all 4 memory tiers (ephemeral \u2192 raw \u2192 digested \u2192 synthesized) for comprehensive project state tracking"
+    "Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pending/error counts and recent workflow runs visualization",
+    "AI tag suggestion workflow bug fix: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display",
+    "Workflow visibility architecture: designing multi-trigger pipeline execution model (planner, docs, chat) with unified orchestration and dashboard insights",
+    "mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type",
+    "Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table",
+    "Pipeline template mapping: creating workflow-templates YAML with delivery_category/type \u2192 preferred_roles suggestions for code, architecture_design, document, and presentation deliveries"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -124,7 +124,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-12T22:40:03Z",
+  "last_memory_run": "2026-04-12T23:22:26Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -137,19 +137,19 @@
       "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
       "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
-      "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts (code, document, architect_design, ppt)",
-      "planner_tags deliveries column: JSONB field storing user-selected delivery artifact types after action_items",
+      "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts",
+      "planner_tags deliveries column: JSONB field storing user-selected delivery artifact types (code, document, architect_design, ppt) after action_items",
       "Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution",
       "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
-      "Multi-workflow trigger model: pipelines executable from planner UI, docs (feature existence), or direct chat; dashboard as new UI tab for pipeline visibility"
+      "Multi-workflow trigger model: pipelines executable from planner UI, docs (feature snapshots), or direct chat; dashboard as new UI tab for pipeline visibility"
     ],
     "in_progress": [
-      "Dashboard implementation: new tab showing all pipeline executions with visibility into flows and decision paths; accessible from planner, docs, and chat",
-      "Pipeline execution refactor: enabling triggers from planner (work_items), docs (feature snapshots), and chat (direct initiation) with unified orchestration",
-      "mem_ai_feature_snapshot table: design finalization merging user requirements (planner_tags) with work_items; includes summary, use cases, and delivery artifacts per use case",
-      "planner_tags deliveries column: JSONB implementation for storing selected delivery artifact types (code, document, architect_design, ppt) after action_items",
-      "Work item embedding persistence: _embed_work_item() function generating and storing 1536-dim vectors for concatenated name_ai + desc_ai fields",
-      "Project history archival: designing multi-layer storage strategy leveraging all 4 memory tiers (ephemeral \u2192 raw \u2192 digested \u2192 synthesized) for comprehensive project state tracking"
+      "Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pending/error counts and recent workflow runs visualization",
+      "AI tag suggestion workflow bug fix: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display",
+      "Workflow visibility architecture: designing multi-trigger pipeline execution model (planner, docs, chat) with unified orchestration and dashboard insights",
+      "mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type",
+      "Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table",
+      "Pipeline template mapping: creating workflow-templates YAML with delivery_category/type \u2192 preferred_roles suggestions for code, architecture_design, document, and presentation deliveries"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -157,23 +157,15 @@
       "frontend": "Vanilla JS (no framework, no bundler) + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools (semantic search, work item management, session tagging, vector search)",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "database_version": "PostgreSQL 15+",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
-      "config_management": "config.py + YAML pipelines + pyproject.toml + aicli.yaml",
-      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)",
-      "prompt_management": "core.prompt_loader module with centralized prompt caching"
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape + xterm.js) to capture, synthesize, and orchestrate development workflows. The system implements a 4-layer memory architecture (session \u2192 raw \u2192 digested \u2192 synthesized) with Claude Haiku dual-layer synthesis, async DAG pipeline execution, and vector-based semantic search. Current focus: enabling multi-trigger pipeline orchestration (planner/docs/chat), implementing mem_ai_feature_snapshot as a unified requirements layer, and surfacing comprehensive pipeline visibility through a dashboard tab.",
-    "memory_digest": "**[2026-04-12]** `claude_cli` \u2014 User requested dashboard as new tab for pipeline visibility and multi-trigger orchestration (planner, docs, chat). Foundation laid for mem_ai_feature_snapshot unifying planner_tags with work_items across 4-layer memory architecture. **[2026-04-12]** `claude_cli` \u2014 Confirmed deliveries column (JSONB) implementation in planner_tags with code/document/architect_design/ppt artifact types for user selection. **[2026-04-12]** `claude_cli` \u2014 Work item embedding integration finalized: _embed_work_item() generates 1536-dim vectors from name_ai + desc_ai concatenation, persisted during /memory execution. **[2026-04-12]** `claude_cli` \u2014 Established multi-workflow trigger model enabling pipeline execution from planner work_items, docs feature references, or direct chat initiation with unified dashboard. **[2026-04-12]** `claude_cli` \u2014 Project history archival strategy designed leveraging all 4 memory layers (ephemeral \u2192 raw \u2192 digested \u2192 synthesized) for comprehensive per-project state tracking and recovery."
+    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL with pgvector, a Python CLI, and an Electron desktop UI (Vanilla JS + Cytoscape) to capture, analyze, and synthesize project development history across commits, sessions, and work items. It uses a 4-layer memory architecture (ephemeral \u2192 raw \u2192 digested \u2192 synthesized) with dual-layer Claude Haiku synthesis, async DAG workflow execution, and MCP integration for semantic search and work item management.",
+    "memory_digest": "**[2026-04-12]** `dev_history` \u2014 Identified UI regression: planner category display shows only work_items (not bug/ category); ai_suggestion tags not persisting in panel refresh; work_items disappear after tag approval. Root cause likely in work_item panel refresh workflow and ai_tag_suggestion column population.\n\n**[2026-04-11]** `in_progress` \u2014 Pipeline Health dashboard implemented with 30-second auto-refresh showing status cards for commit_embed, session_summary, tag_match, work_item_embed; recent workflow runs linked to full pipeline view.\n\n**[2026-04-10]** `in_progress` \u2014 mem_ai_feature_snapshot table design finalized: merges planner_tags (user requirements) with work_items (execution details); tracks summary, use cases, and delivery artifacts (code, document, architect_design, ppt) per artifact type.\n\n**[2026-04-09]** `in_progress` \u2014 planner_tags deliveries JSONB column implementation: stores user-selected artifact types post action_items; m027 migration completed with creator, updater, and timestamp fields for audit trail.\n\n**[2026-04-08]** `in_progress` \u2014 Work item embedding vector search integrated: _embed_work_item() persists 1536-dim vectors for concatenated name_ai + desc_ai; MCP tool_memory.py semantic search on work_items table with embedding <=> operator for non-archived items.\n\n**[2026-04-07]** `in_progress` \u2014 Workflow trigger architecture designed: multi-model enabling pipeline execution from planner (work_items), docs (feature snapshots), and chat (direct initiation) with unified orchestration and new dashboard visibility tab."
   }
 }

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-12 22:47 UTC — do not edit manually.
+> Auto-generated 2026-04-12 23:22 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 490
-- **Last active**: 2026-04-12T22:39:37Z
+- **Sessions**: 491
+- **Last active**: 2026-04-12T23:21:57Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -55,12 +55,12 @@
 
 ## In Progress
 
-- Dashboard implementation: new tab showing all pipeline executions with visibility into flows and decision paths; accessible from planner, docs, and chat
-- Pipeline execution refactor: enabling triggers from planner (work_items), docs (feature snapshots), and chat (direct initiation) with unified orchestration
-- mem_ai_feature_snapshot table: design finalization merging user requirements (planner_tags) with work_items; includes summary, use cases, and delivery artifacts per use case
-- planner_tags deliveries column: JSONB implementation for storing selected delivery artifact types (code, document, architect_design, ppt) after action_items
-- Work item embedding persistence: _embed_work_item() function generating and storing 1536-dim vectors for concatenated name_ai + desc_ai fields
-- Project history archival: designing multi-layer storage strategy leveraging all 4 memory tiers (ephemeral → raw → digested → synthesized) for comprehensive project state tracking
+- Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pending/error counts and recent workflow runs visualization
+- AI tag suggestion workflow bug fix: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
+- Workflow visibility architecture: designing multi-trigger pipeline execution model (planner, docs, chat) with unified orchestration and dashboard insights
+- mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type
+- Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table
+- Pipeline template mapping: creating workflow-templates YAML with delivery_category/type → preferred_roles suggestions for code, architecture_design, document, and presentation deliveries
 
 ## Key Decisions
 
@@ -74,11 +74,11 @@
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts (code, document, architect_design, ppt)
-- planner_tags deliveries column: JSONB field storing user-selected delivery artifact types after action_items
+- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts
+- planner_tags deliveries column: JSONB field storing user-selected delivery artifact types (code, document, architect_design, ppt) after action_items
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- Multi-workflow trigger model: pipelines executable from planner UI, docs (feature existence), or direct chat; dashboard as new UI tab for pipeline visibility
+- Multi-workflow trigger model: pipelines executable from planner UI, docs (feature snapshots), or direct chat; dashboard as new UI tab for pipeline visibility
 
 ---
 

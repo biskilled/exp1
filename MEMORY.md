@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-12 22:39 UTC by aicli /memory_
+_Generated: 2026-04-12 23:22 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape + xterm.js) to capture, synthesize, and orchestrate development workflows. The system implements a 4-layer memory architecture (session → raw → digested → synthesized) with Claude Haiku dual-layer synthesis, async DAG pipeline execution, and vector-based semantic search. Current focus: enabling multi-trigger pipeline orchestration (planner/docs/chat), implementing mem_ai_feature_snapshot as a unified requirements layer, and surfacing comprehensive pipeline visibility through a dashboard tab.
+aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL with pgvector, a Python CLI, and an Electron desktop UI (Vanilla JS + Cytoscape) to capture, analyze, and synthesize project development history across commits, sessions, and work items. It uses a 4-layer memory architecture (ephemeral → raw → digested → synthesized) with dual-layer Claude Haiku synthesis, async DAG workflow execution, and MCP integration for semantic search and work item management.
 
 ## Project Facts
 
@@ -63,6 +63,13 @@ Reviewer: ```json
   "score": 4,
   "issues": [
     "Implementation is incomplete — cuts off mid-file in EmailService.ts without finishing AWS SES client setup, email template loading, or the
+- **pipeline_log_error_handling**: graceful degradation: _insert_run/_finish_run return None/silently fail if db.is_available() false, logged at debug level
+- **pipeline_logging_api_endpoint**: GET /memory/{project}/pipeline-status dashboard exposes mem_pipeline_runs data
+- **pipeline_logging_pattern**: async context manager pipeline_run() and sync tuple-return pipeline_run_sync() wrapping background tasks with mem_pipeline_runs insert/update
+- **pipeline_run_context_pattern**: context dict with items_in/items_out keys, caller mutates ctx[key] inside async with block
+- **pipeline_run_status_values**: status column accepts 'running', 'ok', 'error'
+- **pipeline_run_table_schema**: mem_pipeline_runs: project_id, pipeline, source_id, status, items_in, items_out, duration_ms, error_msg (max 500 chars), finished_at, id (uuid)
+- **pipeline_run_timing_method**: time.monotonic() for duration calculation, stored as integer duration_ms
 - **planner_tag_schema_consolidation_proposed**: drop seq_num and source columns; keep creator only; reduce descriptors (short_desc, full_desc, requirements, acceptance_criteria, summary, action_items, design) to essential fields
 - **planner_tags_core_columns**: requirements, acceptance_criteria, action_items, status, priority, due_date, requester, creator, created_at, updater, updated_at retained
 - **planner_tags_schema_cleanup**: dropped summary, design, embedding (VECTOR 1536), extra columns; move to future merge-layer table (m027)
@@ -72,6 +79,7 @@ Reviewer: ```json
 - **prompt_work_item_trigger_automation**: _run_promote_all_work_items() integrated into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
 - **rel:ai_tag_suggestion:user_tags**: replaces
 - **rel:ai_tag_suggestion:work_items_table**: related_to
+- **rel:background_tasks:pipeline_logging**: depends_on
 - **rel:commit_processing:exec_llm_flag**: replaces
 - **rel:db_migrations:planner_tags**: implements
 - **rel:embedding_integration:prompt_work_item_trigger**: implements
@@ -85,6 +93,7 @@ Reviewer: ```json
 - **rel:mem_ai_feature_snapshot:planner_tags**: depends_on
 - **rel:memory_endpoint:tag_detection**: implements
 - **rel:memory_system:session_tags**: implements
+- **rel:pipeline_run:mem_pipeline_runs**: implements
 - **rel:planner_tags:vector_embedding**: replaces
 - **rel:prompt_loader:mng_system_roles**: replaces
 - **rel:route_memory:prompt_loader**: depends_on
@@ -194,128 +203,554 @@ Reviewer: ```json
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts (code, document, architect_design, ppt)
-- planner_tags deliveries column: JSONB field storing user-selected delivery artifact types after action_items
+- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts
+- planner_tags deliveries column: JSONB field storing user-selected delivery artifact types (code, document, architect_design, ppt) after action_items
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- Multi-workflow trigger model: pipelines executable from planner UI, docs (feature existence), or direct chat; dashboard as new UI tab for pipeline visibility
+- Multi-workflow trigger model: pipelines executable from planner UI, docs (feature snapshots), or direct chat; dashboard as new UI tab for pipeline visibility
 
 ## In Progress
 
-- Dashboard implementation: new tab showing all pipeline executions with visibility into flows and decision paths; accessible from planner, docs, and chat
-- Pipeline execution refactor: enabling triggers from planner (work_items), docs (feature snapshots), and chat (direct initiation) with unified orchestration
-- mem_ai_feature_snapshot table: design finalization merging user requirements (planner_tags) with work_items; includes summary, use cases, and delivery artifacts per use case
-- planner_tags deliveries column: JSONB implementation for storing selected delivery artifact types (code, document, architect_design, ppt) after action_items
-- Work item embedding persistence: _embed_work_item() function generating and storing 1536-dim vectors for concatenated name_ai + desc_ai fields
-- Project history archival: designing multi-layer storage strategy leveraging all 4 memory tiers (ephemeral → raw → digested → synthesized) for comprehensive project state tracking
+- Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pending/error counts and recent workflow runs visualization
+- AI tag suggestion workflow bug fix: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
+- Workflow visibility architecture: designing multi-trigger pipeline execution model (planner, docs, chat) with unified orchestration and dashboard insights
+- mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type
+- Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table
+- Pipeline template mapping: creating workflow-templates YAML with delivery_category/type → preferred_roles suggestions for code, architecture_design, document, and presentation deliveries
+
+## Active Features / Bugs / Tasks
+
+### Ai_suggestion
+
+- **test123** `[open]`
+
+### Bug
+
+- **hooks** `[open]`
+
+### Doc_type
+
+- **architecture-decision** `[open]`
+- **customer-meeting** `[open]`
+- **high-level-design** `[open]`
+- **low-level-design** `[open]`
+- **retrospective** `[open]`
+- **Test** `[open]`
+
+### Feature
+
+- **pagination**
+- **graph-workflow** `[open]`
+- **auth** `[open]`
+- **billing** `[open]`
+- **test-picker-feature** `[open]`
+- **mcp** `[open]`
+- **entity-routing** `[open]`
+- **shared-memory** `[open]`
+- **tagging** `[open]`
+- **workflow-runner** `[open]`
+- **dropbox** `[open]`
+- **embeddings** `[open]`
+- **UI** `[open]`
+
+### Phase
+
+- **prod** `[open]`
+- **development** `[open]`
+- **discovery** `[open]`
+
+### Task
+
+- **memory** `[open]`
+- **implement-projects-tab** `[open]`
 
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `prompt_batch: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
-
-User seeking to improve prompt visibility/management (point 4) and workflow orchestration (point 5). For point 4: leverage existing separate prompt files with dashboard/audit view. For point 5: evolve from single pipeline to multi-workflow engine supporting parallel reviewer/tester/developer paths plus extensible use-case handlers (design, cloud maintenance).
-
-### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 0f7ae0a..87a57cf 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-12 21:15 UTC
-+> Generated by aicli 2026-04-12 21:20 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 5f5eeb4..40948e6 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 21:15 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 21:20 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -68,8 +68,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
- - [2026-04-12] yes
- - [2026-04-12] This start to look good. I would like to add one more column - deliveries that will be after actio_items, this column is
- - [2026-04-12] can you add tag feature:feature_snapshot
--- [2026-04-12] Feature_snapshot  I would like to create the final stage - mem_ai_feature_snapshot -  this table merge user requirements
-\ No newline at end of file
-+- [2026-04-12] Feature_snapshot  I would like to create the final stage - mem_ai_feature_snapshot -  this table merge user requirements
-+- [2026-04-12] Assuming all will work properly. having a way to store all project history using all the layers, stron mcp that can have
-\ No newline at end of file
-
-
-### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 5f5eeb4..40948e6 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 21:15 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 21:20 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -68,8 +68,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-12] I am planning to add a layer that will merge planner_tags with wor_item - this layer will have summery and design as thi
- - [2026-04-12] yes
- - [2026-04-12] This start to look good. I would like to add one more column - deliveries that will be after actio_items, this column is
- - [2026-04-12] can you add tag feature:feature_snapshot
--- [2026-04-12] Feature_snapshot  I would like to create the final stage - mem_ai_feature_snapshot -  this table merge user requirements
-\ No newline at end of file
-+- [2026-04-12] Feature_snapshot  I would like to create the final stage - mem_ai_feature_snapshot -  this table merge user requirements
-+- [2026-04-12] Assuming all will work properly. having a way to store all project history using all the layers, stron mcp that can have
-\ No newline at end of file
-
-
-### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
-
-Cleaned up stale agent context files and auto-generated system files from the repository.
-
-### `commit: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-12
+### `commit: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-12
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 6ad7626..d4e16fd 100644
+index d4e16fd..a1be707 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
--- planner_tags deliveries column implementation: adding JSONB field after action_items to store user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
--- planner_tag schema finalization: m027 migration completed; removed summary, design, embedding, extra columns; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
--- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution with prompt_work_item() trigger
--- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items with category/name/description/status retrieval
--- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators instead of deletion
--- AI tag suggestion UX: clickable ✓ button creates missing ai_suggestion tags with category inference; improved tooltip from 'No existing tag' to 'Does not exist yet'
-+- mem_ai_feature_snapshot table design: new unified layer merging planner_tags user requirements with work_items; tracks summary, use cases, and delivery artifacts per use case
-+- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
-+- planner_tag schema finalization: m027 migration completed; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
-+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution
-+- Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items
-+- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators
+-- mem_ai_feature_snapshot table design: new unified layer merging planner_tags user requirements with work_items; tracks summary, use cases, and delivery artifacts per use case
+-- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt) with per-artifact type definitions
+-- planner_tag schema finalization: m027 migration completed; creator field consolidates user/ai distinction; updater and timestamp fields added for audit trail
++- mem_ai_feature_snapshot table design: merge user requirements/tags with work_items; tracks summary, use cases, and delivery artifacts for comprehensive feature tracking
++- planner_tags deliveries column implementation: adding JSONB field after action_items for user-selected delivery artifacts (code, document, architect_design, ppt)
+ - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation during /memory command execution
+ - Work item vector search in MCP: tool_memory.py semantic search includes work_items table with embedding <=> operator for non-archived items
+-- Secondary AI tag workflow: _wiSecApprove stores confirmed metadata in ai_tags.confirmed[] array; items remain visible with permanent chip indicators
++- Workflow visibility improvements: exploring options to give more visibility into all flows and decision paths in the system
++- Pipeline execution architecture: designing second workflow trigger model based on approved features to enable more flexible pipeline orchestration
+
+
+### `commit: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-12
+
+diff --git a/workspace/_templates/workflows/templates.yaml b/workspace/_templates/workflows/templates.yaml
+new file mode 100644
+index 0000000..232994d
+--- /dev/null
++++ b/workspace/_templates/workflows/templates.yaml
+@@ -0,0 +1,27 @@
++# Templates map delivery_category/type → workflow suggestion metadata.
++# Used by GET /memory/{project}/workflow-templates to suggest best-fit workflows.
++templates:
++  code/python:
++    name: "Python Code Delivery"
++    preferred_roles: [developer, tester, reviewer]
++  code/sql:
++    name: "SQL Migration"
++    preferred_roles: [developer, reviewer]
++  code/javascript:
++    name: "JavaScript Delivery"
++    preferred_roles: [developer, tester, reviewer]
++  code/typescript:
++    name: "TypeScript Delivery"
++    preferred_roles: [developer, tester, reviewer]
++  architecture_design/visio:
++    name: "Architecture Design"
++    preferred_roles: [architect, reviewer]
++  architecture_design/mermaid:
++    name: "Mermaid Diagram"
++    preferred_roles: [architect, developer]
++  document/markdown:
++    name: "Documentation"
++    preferred_roles: [developer, reviewer]
++  presentation/powerpoint:
++    name: "Presentation Deck"
++    preferred_roles: [architect]
+
+
+### `commit: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-12
+
+diff --git a/ui/frontend/views/pipeline.js b/ui/frontend/views/pipeline.js
+new file mode 100644
+index 0000000..59f5051
+--- /dev/null
++++ b/ui/frontend/views/pipeline.js
+@@ -0,0 +1,192 @@
++/**
++ * pipeline.js — Pipeline Health Dashboard view.
++ *
++ * Renders background task health stats (commit_embed, session_summary, tag_match, etc.)
++ * with 30-second auto-refresh and links to recent workflow runs.
++ */
++
++import { api } from '../utils/api.js';
++import { toast } from '../utils/toast.js';
++
++let _refreshTimer = null;
++let _currentProject = null;
++
++export function destroyPipeline() {
++  if (_refreshTimer) {
++    clearInterval(_refreshTimer);
++    _refreshTimer = null;
++  }
++}
++
++export async function renderPipeline(container, project) {
++  destroyPipeline();
++  _currentProject = project;
++  container.innerHTML = `
++    <div style="padding:1.5rem;max-width:900px;margin:0 auto;overflow-y:auto;height:100%">
++      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem">
++        <h2 style="margin:0;font-size:1.1rem">Pipeline Health</h2>
++        <button id="pipeline-refresh-btn" class="btn btn-ghost btn-sm" onclick="window._pipelineRefresh()">↻ Refresh</button>
++      </div>
++      <div id="pipeline-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1.5rem">
++        <div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">Loading…</div>
++      </div>
++      <div id="pipeline-pending" style="margin-bottom:1.2rem"></div>
++      <div id="pipeline-errors" style="margin-bottom:1.5rem"></div>
++      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
++        <h3 style="margin:0;font-size:0.95rem">Recent Workflow Runs</h3>
++        <button class="btn btn-ghost btn-sm" onclick="window._nav('workflow')">→ Pipelines</button>
++      </div>
++      <div id="pipeline-runs">
++        <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
++      </div>
++    </div>
++  `;
++
++  window._pipelineRefresh = () => _loadAll(container, project);
++  await _loadAll(container, project);
++
++  // Auto-refresh every 30s
++  _refreshTimer = setInterval(() => {
++    if (_currentProject === project) {
++      _loadAll(container, project);
++    }
++  }, 30_000);
++}
++
++const _PIPELINE_LABELS = {
++  commit_embed:         'commit_embed',
++  commit_store:         'commit_store',
++  commit_code_extract:  'commit_code',
++  session_summary:      'session_summary',
++  tag_match:            'tag_match',
++  work_item_embed:      'wi_embed',
++};
++
++function _fmtTime(iso) {
++  if (!iso) return '—';
++  const d = new Date(iso);
++  const now = new Date();
++  const diff = now - d;
++  if (diff < 60_000)  return `${Math.floor(diff/1000)}s ago`;
++  if (diff < 3600_000) return `${Math.floor(diff/60_000)}m ago`;
++  if (diff < 86400_000) return `${Math.floor(diff/3600_000)}h ago`;
++  return d.toLocaleDateString();
++}
++
++async function _loadAll(container, project) {
++  if (!project) {
++    container.querySelector('#pipeline-cards').innerHTML =
++      '<div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">No project selected</div>';
++    return;
++  }
++
++  try {
++    const [statusData, runsData] = await Promise.all([
++      api.pipeline.status(project).catch(() => null),
++      api.graphWorkflows.recentRuns(project, 10).catch(() => null),
++    ]);
++
++    _renderCards(container, statusData);
++    _renderPending(container, statusData);
++    _renderErrors(container, statusData);
++    _renderRuns(container, runsData);
++  } catch (e) {
++    console.warn('Pipeline load error:', e);
++  }
++}
++
++function _renderCards(container, data) {
++  const el = container.querySelector('#pipeline-cards');
++  if (!el) return;
++  if (!data) {
++    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">Pipeline data unavailable</div>';
++    return;
++  }
++
++  const last24h = data.last_24h || {};
++  const pipelines = Object.keys(_PIPELINE_LABELS);
++
++  el.innerHTML = pipelines.map(key => {
++    const stats = last24h[key] || { ok: 0, error: 0, skipped: 0, last_run: null };
++    const hasData = stats.ok > 0 || stats.error > 0 || stats.skipped > 0;
++    const dotColor = !hasData ? 'var(--muted)' : stats.error > 0 ? 'var(--red, #e74c3c)' : 'var(--green, #27ae60)';
++    const label = _PIPELINE_LABELS[key] || key;
++    return `
++      <div style="background:var(--surface2);border-radius:var(--radius);padding:0.75rem;
++                  border:1px solid var(--border)">
++        <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.5rem">
++          <div style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0"></div>
++          <span style="font-size:0.72rem;font-weight:600;color:var(--text);font-family:monospace">${label}</span>
++        </div>
++        <div style="font-size:0.72rem;color:var(--muted);display:flex;gap:0.6rem">
++          <span style="color:var(--green,#27ae60)">&#10003;${stats.ok}</span>
++          <span style="color:${stats.error>0?'var(--red,#e74c3c)':'var(--muted)'}">&#10007;${stats.error}</span>
++          <span>&#9197;${stats.skipped}</span>
++        </div>
++        <div style="font-size:0.65rem;color:var(--muted);margin-top:0.3rem">${_fmtTime(stats.last_run)}</div>
++      </div>
++    `;
++  }).join('');
++}
++
++function _renderPending(container, data) {
++  const el = container.querySelector('#pipeline-pending');
++  if (!el) return;
++  const pending = data?.pending || {};
++  const items = [];
++  if (pending.commits_not_embedded > 0)
++    items.push(`&#9888; Pending: ${pending.commits_not_embedded} commit${pending.commits_not_embedded !== 1 ? 's' : ''} not embedded`);
++  if (pending.work_items_unmatched > 0)
++    items.push(`&#9888; Pending: ${pending.work_items_unmatched} work item${pending.work_items_unmatched !== 1 ? 's' : ''} unmatched`);
++  el.innerHTML = items.map(t =>
++    `<div style="font-size:0.78rem;color:var(--accent);margin-bottom:0.
+
+### `commit: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-12
+
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index e1cd405..6c6f27a 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -10,6 +10,7 @@
+ import { state } from '../stores/state.js';
+ import { api } from '../utils/api.js';
+ import { toast } from '../utils/toast.js';
++import { showWorkflowPicker } from '../utils/workflowPicker.js';
+ import {
+   loadTagCache, isCacheLoaded, getCacheProject,
+   getCacheCategories, getCacheValues,
+@@ -149,6 +150,8 @@ export function renderEntities(container) {
+   window._plannerDrawerRemoveLink = _plannerDrawerRemoveLink;
+   window._plannerGenerateSnapshot = _plannerGenerateSnapshot;
+   window._plannerDrawerMerge      = _plannerDrawerMerge;
++  window._plannerWfPicker = (tagId, ucNum, ucSummary, project) =>
++    showWorkflowPicker(tagId, ucNum, ucSummary, project);
+ 
+   window._plannerRunPlan = async (tagId, tagName, catName, project) => {
+     const btn = document.getElementById('drawer-planner-btn');
+@@ -1686,6 +1689,8 @@ function _plannerOpenDrawer(catId, valId) {
+     const v = getCacheValues(catId).find(x => x.id === valId);
+     if (v) _loadDrawerPipeline(selectedCatName, v.name, project);
+   }
++  // Async: load feature snapshot use cases for workflow triggers
++  _loadDrawerSnapshot(valId, _plannerState.project);
+ }
+ 
+ function _plannerCloseDrawer() {
+@@ -1695,6 +1700,40 @@ function _plannerCloseDrawer() {
+   _drawerCatId = null;
+ }
+ 
++async function _loadDrawerSnapshot(tagId, project) {
++  const el = document.getElementById('drawer-wf-uc-section');
++  if (!el) return;
++  try {
++    const snap = await api.tags.getSnapshot(tagId, project, 'user')
++      .catch(() => api.tags.getSnapshot(tagId, project, 'ai').catch(() => null));
++    if (!snap?.use_cases?.length) { el.innerHTML = ''; return; }
++    el.innerHTML = `
++      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
++        <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
++                    letter-spacing:.06em;margin-bottom:0.4rem">Use Cases</div>
++        ${snap.use_cases.map(uc => `
++          <div style="display:flex;align-items:center;justify-content:space-between;
++                      gap:0.4rem;margin-bottom:0.35rem">
++            <span style="font-size:0.67rem;color:var(--text2);overflow:hidden;
++                         text-overflow:ellipsis;white-space:nowrap;flex:1"
++                  title="${uc.use_case_summary||''}">
++              UC${uc.use_case_num}: ${uc.use_case_type||'feature'}
++            </span>
++            <button
++              onclick="window._plannerWfPicker('${tagId}',${uc.use_case_num},'${(uc.use_case_summary||'').replace(/'/g,'\\')}','${project}')"
++              style="font-size:0.6rem;padding:0.18rem 0.45rem;white-space:nowrap;
++                     background:var(--surface2);border:1px solid var(--border);
++                     border-radius:var(--radius);cursor:pointer;color:var(--accent);
++                     font-family:var(--font);outline:none;flex-shrink:0">
++              ▶ Workflow
++            </button>
++          </div>
++        `).join('')}
++      </div>
++    `;
++  } catch { el.innerHTML = ''; }
++}
++
+ function _renderDrawer() {
+   const inner = document.getElementById('planner-drawer-inner');
+   if (!inner || !_drawerValId) return;
+@@ -1920,6 +1959,9 @@ function _renderDrawer() {
+         </div>
+       </div>
+ 
++      <!-- Use Cases / Workflow -->
++      <div id="drawer-wf-uc-section"></div>
++
+       <!-- Add sub-tag -->
+       <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+         <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
+
+
+### `commit: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-12
+
+diff --git a/ui/frontend/views/documents.js b/ui/frontend/views/documents.js
+index dedb0da..457bd23 100644
+--- a/ui/frontend/views/documents.js
++++ b/ui/frontend/views/documents.js
+@@ -10,6 +10,7 @@
+ import { api } from '../utils/api.js';
+ import { toast } from '../utils/toast.js';
+ import { renderMd } from '../utils/markdown.js';
++import { showWorkflowPicker } from '../utils/workflowPicker.js';
+ 
+ const TREE_W_KEY = 'aicli_docs_tree_w';
+ 
+@@ -249,6 +250,10 @@ function _renderViewer(path, content) {
+   const viewer = document.getElementById('doc-viewer');
+   if (!viewer) return;
+   const isMd = path.endsWith('.md') || path.endsWith('.markdown');
++
++  // Detect feature snapshot files: features/<slug>/feature_ai.md or feature_final.md
++  const featureMatch = path.match(/^features\/([^/]+)\/(feature_ai|feature_final)\.md$/);
++
+   viewer.innerHTML = `
+     <div style="display:flex;align-items:center;justify-content:space-between;
+                 padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);flex-shrink:0">
+@@ -256,6 +261,8 @@ function _renderViewer(path, content) {
+         ${_esc(path)}
+       </span>
+       <div style="display:flex;gap:0.4rem;flex-shrink:0">
++        ${featureMatch ? `<button class="btn btn-ghost btn-sm" id="doc-workflow-btn"
++                style="font-size:0.65rem;padding:0.15rem 0.5rem;color:var(--accent)">▶ Workflow</button>` : ''}
+         <button class="btn btn-ghost btn-sm" id="doc-edit-btn"
+                 style="font-size:0.65rem;padding:0.15rem 0.5rem">Edit</button>
+         <button class="btn btn-ghost btn-sm" id="doc-delete-btn"
+@@ -271,6 +278,71 @@ function _renderViewer(path, content) {
+   `;
+   document.getElementById('doc-edit-btn').addEventListener('click', () => _editDoc(path, content));
+   document.getElementById('doc-delete-btn').addEventListener('click', () => _deleteDoc(path));
++
++  if (featureMatch) {
++    const tagSlug = featureMatch[1];
++    document.getElementById('doc-workflow-btn').addEventListener('click', async () => {
++      try {
++        // Find tag by slug match (slugify tag name and compare)
++        const tags = await api.tags.list(_project);
++        const flatTags = [];
++        const flatten = (arr) => arr.forEach(t => { flatTags.push(t); if (t.children) flatten(t.children); });
++        flatten(tags);
++        const _slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
++        const tag = flatTags.find(t => _slugify(t.name) === tagSlug);
++        if (!tag) { toast('Feature tag not found', 'warning'); return; }
++
++        const snap = await api.tags.getSnapshot(tag.id, _project, 'user')
++          .catch(() => api.tags.getSnapshot(tag.id, _project, 'ai').catch(() => null));
++        if (!snap?.use_cases?.length) { toast('No use cases found in snapshot', 'warning'); return; }
++
++        if (snap.use_cases.length === 1) {
++          const uc = snap.use_cases[0];
++          await showWorkflowPicker(tag.id, uc.use_case_num, uc.use_case_summary, _project);
++        } else {
++          // Multiple use cases — show a quick picker
++          const choice = await _pickUseCase(snap.use_cases);
++          if (choice) await showWorkflowPicker(tag.id, choice.use_case_num, choice.use_case_summary, _project);
++        }
++      } catch (e) {
++        toast(`Workflow error: ${e.message}`, 'error');
++      }
++    });
++  }
++}
++
++async function _pickUseCase(useCases) {
++  return new Promise(resolve => {
++    const overlay = document.createElement('div');
++    overlay.style.cssText = 'position:fixed;inset:0;z-index:9400;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55)';
++    overlay.innerHTML = `
++      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
++                  padding:1.2rem;width:340px;max-width:95vw">
++        <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.75rem">Select Use Case</div>
++        ${useCases.map(uc => `
++          <div data-uc="${uc.use_case_num}" style="padding:0.5rem 0.65rem;border-radius:var(--radius);
++               border:1px solid var(--border);margin-bottom:0.35rem;cursor:pointer;font-size:0.78rem;
++               background:var(--surface2)" onmouseenter="this.style.borderColor='var(--accent)'"
++               onmouseleave="this.style.borderColor='var(--border)'">
++            UC${uc.use_case_num}: ${uc.use_case_type||'feature'} — ${(uc.use_case_summary||'').slice(0,60)}
++          </div>
++        `).join('')}
++        <button style="margin-top:0.5rem;width:100%;background:none;border:1px solid var(--border);
++                border-radius:var(--radius);padding:0.35rem;cursor:pointer;font-size:0.75rem;color:var(--muted)"
++                id="uc-cancel-btn">Cancel</button>
++      </div>
++    `;
++    document.body.appendChild(overlay);
++    overlay.querySelectorAll('[data-uc]').forEach(el => {
++      el.addEventListener('click', () => {
++        const ucNum = parseInt(el.dataset.uc, 10);
++        const uc = useCases.find(u => u.use_case_num === ucNum);
++        overlay.remove(); resolve(uc || null);
++      });
++    });
++    overlay.querySelector('#uc-cancel-btn').onclick = () => { overlay.remove(); resolve(null); };
++    overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(null); }});
++  });
+ }
+ 
+ function _editDoc(path, content) {
+
+
+### `commit: 6036bb3e-bf2f-49c8-9873-2d1cc5637f79` — 2026-04-12
+
+diff --git a/ui/frontend/views/chat.js b/ui/frontend/views/chat.js
+index d67dc08..6e4ceeb 100644
+--- a/ui/frontend/views/chat.js
++++ b/ui/frontend/views/chat.js
+@@ -703,6 +703,7 @@ const COMMANDS = [
+   { cmd: '/analytics',   args: '',                 desc: 'Show usage and cost stats'                },
+   { cmd: '/history',     args: '',                 desc: 'Show last 20 commits'                     },
+   { cmd: '/reload',      args: '',                 desc: 'Reload system prompt'                     },
++  { cmd: '/pipeline',   args: '[status]',          desc: 'Show pipeline health dashboard'           },
+   { cmd: '/clear',       args: '',                 desc: 'Clear conversation history'               },
+ ];
+ 
+@@ -1208,7 +1209,8 @@ window._chatSend = async () => {
+       `| \`/analytics\` | Show usage and cost stats |\n` +
+       `| \`/history\` | Show last 20 commits |\n` +
+       `| \`/reload\` | Reload system prompt |\n` +
+-      `| \`/clear\` | Clear conversation history |`
++      `| \`/clear\` | Clear conversation history |\n` +
++      `| \`/pipeline [status]\` | Show pipeline health dashboard |`
+     );
+     return;
+   }
+@@ -1306,6 +1308,43 @@ window._chatSend = async () => {
+   }
+ 
+   // Handle /clear command locally
++
++  // Handle /pipeline [status] — show pipeline health as formatted message
++  if (message === '/pipeline' || message === '/pipeline status') {
++    input.value = '';
++    input.style.height = 'auto';
++    const proj = state.currentProject?.name;
++    if (!proj) { toast('No project open', 'error'); return; }
++    _appendSystemMsg('Fetching pipeline status…');
++    try {
++      const data = await api.pipeline.status(proj);
++      const last24h = data?.last_24h || {};
++      const pending = data?.pending || {};
++      const pipelines = ['commit_embed','commit_store','commit_code_extract','session_summary','tag_match','work_item_embed'];
++      const labels    = { commit_embed:'commit_embed', commit_store:'commit_store',
++                          commit_code_extract:'commit_code', session_summary:'session_summary',
++                          tag_match:'tag_match', work_item_embed:'wi_embed' };
++      let table = `## Pipeline Health — last 24h\n\n`;
++      table += `| Pipeline | OK | Errors | Skipped | Last Run |\n`;
++      table += `|---|---|---|---|---|\n`;
++      for (const key of pipelines) {
++        const s = last24h[key] || { ok: 0, error: 0, skipped: 0, last_run: null };
++        const lastRun = s.last_run ? new Date(s.last_run).toLocaleTimeString() : '—';
++        table += `| \`${labels[key]}\` | ${s.ok} | ${s.error} | ${s.skipped} | ${lastRun} |\n`;
++      }
++      const pendingLines = [];
++      if (pending.commits_not_embedded > 0) pendingLines.push(`- ${pending.commits_not_embedded} commit(s) not embedded`);
++      if (pending.work_items_unmatched > 0) pendingLines.push(`- ${pending.work_items_unmatched} work item(s) unmatched`);
++      if (pendingLines.length) table += `\n**Pending:**\n${pendingLines.join('\n')}`;
++      _appendSystemMsg(table);
++      // Also navigate to the Pipeline tab
++      window._nav('pipeline');
++    } catch (e) {
++      _appendSystemMsg(`**Pipeline status error:** ${e.message}`);
++    }
++    return;
++  }
++
+   if (message === '/clear') {
+     input.value = '';
+     input.style.height = 'auto';
 
 
 ## AI Synthesis
 
-**[2026-04-12]** `claude_cli` — User requested dashboard as new tab for pipeline visibility and multi-trigger orchestration (planner, docs, chat). Foundation laid for mem_ai_feature_snapshot unifying planner_tags with work_items across 4-layer memory architecture. **[2026-04-12]** `claude_cli` — Confirmed deliveries column (JSONB) implementation in planner_tags with code/document/architect_design/ppt artifact types for user selection. **[2026-04-12]** `claude_cli` — Work item embedding integration finalized: _embed_work_item() generates 1536-dim vectors from name_ai + desc_ai concatenation, persisted during /memory execution. **[2026-04-12]** `claude_cli` — Established multi-workflow trigger model enabling pipeline execution from planner work_items, docs feature references, or direct chat initiation with unified dashboard. **[2026-04-12]** `claude_cli` — Project history archival strategy designed leveraging all 4 memory layers (ephemeral → raw → digested → synthesized) for comprehensive per-project state tracking and recovery.
+**[2026-04-12]** `dev_history` — Identified UI regression: planner category display shows only work_items (not bug/ category); ai_suggestion tags not persisting in panel refresh; work_items disappear after tag approval. Root cause likely in work_item panel refresh workflow and ai_tag_suggestion column population.
+
+**[2026-04-11]** `in_progress` — Pipeline Health dashboard implemented with 30-second auto-refresh showing status cards for commit_embed, session_summary, tag_match, work_item_embed; recent workflow runs linked to full pipeline view.
+
+**[2026-04-10]** `in_progress` — mem_ai_feature_snapshot table design finalized: merges planner_tags (user requirements) with work_items (execution details); tracks summary, use cases, and delivery artifacts (code, document, architect_design, ppt) per artifact type.
+
+**[2026-04-09]** `in_progress` — planner_tags deliveries JSONB column implementation: stores user-selected artifact types post action_items; m027 migration completed with creator, updater, and timestamp fields for audit trail.
+
+**[2026-04-08]** `in_progress` — Work item embedding vector search integrated: _embed_work_item() persists 1536-dim vectors for concatenated name_ai + desc_ai; MCP tool_memory.py semantic search on work_items table with embedding <=> operator for non-archived items.
+
+**[2026-04-07]** `in_progress` — Workflow trigger architecture designed: multi-model enabling pipeline execution from planner (work_items), docs (feature snapshots), and chat (direct initiation) with unified orchestration and new dashboard visibility tab.

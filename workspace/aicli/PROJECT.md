@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Dashboard implementation: new tab showing all pipeline executions with visibility into flows and decision paths; accessible from planner, docs, and chat
-- Pipeline execution refactor: enabling triggers from planner (work_items), docs (feature snapshots), and chat (direct initiation) with unified orchestration
-- mem_ai_feature_snapshot table: design finalization merging user requirements (planner_tags) with work_items; includes summary, use cases, and delivery artifacts per use case
-- planner_tags deliveries column: JSONB implementation for storing selected delivery artifact types (code, document, architect_design, ppt) after action_items
-- Work item embedding persistence: _embed_work_item() function generating and storing 1536-dim vectors for concatenated name_ai + desc_ai fields
-- Project history archival: designing multi-layer storage strategy leveraging all 4 memory tiers (ephemeral → raw → digested → synthesized) for comprehensive project state tracking
+- Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pending/error counts and recent workflow runs visualization
+- AI tag suggestion workflow bug fix: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
+- Workflow visibility architecture: designing multi-trigger pipeline execution model (planner, docs, chat) with unified orchestration and dashboard insights
+- mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type
+- Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table
+- Pipeline template mapping: creating workflow-templates YAML with delivery_category/type → preferred_roles suggestions for code, architecture_design, document, and presentation deliveries
