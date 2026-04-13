@@ -48,7 +48,7 @@
     "Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags_relations, project_facts, work_items, features",
     "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients \u2192 Users with login_as_first_level_hierarchy pattern",
     "LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) \u2192 str contract",
-    "Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development",
+    "Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development",
     "Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication",
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
@@ -124,14 +124,14 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-13T13:23:42Z",
+  "last_memory_run": "2026-04-13T13:53:50Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
       "Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags_relations, project_facts, work_items, features",
       "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients \u2192 Users with login_as_first_level_hierarchy pattern",
       "LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) \u2192 str contract",
-      "Electron desktop UI: Vanilla JS (no framework/bundler) + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development",
+      "Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development",
       "Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication",
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
@@ -160,14 +160,13 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools (semantic search, work item management, session tagging, vector search)",
-      "database": "PostgreSQL 15+ with pgvector extension",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
+      "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
+      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend with PostgreSQL pgvector, Python 3.12 CLI, and Electron desktop UI to capture, synthesize, and organize project work through semantic embeddings and LLM digestion. It features a 4-layer memory architecture, async DAG workflow execution, multi-provider LLM support, and MCP server integration for seamless AI tool access. Currently stabilizing tag suggestion workflows, implementing dashboard pipeline health monitoring, and finalizing feature snapshot delivery artifact tracking.",
-    "memory_digest": "**[2026-03-14]** `architecture` \u2014 Unified 4-layer memory architecture established: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts with event filtering on prompt_batch and session_summary types. **[2026-03-14]** `ui-fix` \u2014 Resolved Electron scope variable conflict (duplicate `const cats` in _wiPanelCreateTag) causing empty Electron loads; renamed to `cacheCats` for proper category caching. **[2026-03-14]** `features` \u2014 mem_ai_feature_snapshot table finalized to merge planner_tags user requirements with work_items, capturing summary, use cases, and delivery artifacts (code, document, architect_design, ppt) per type. **[2026-03-14]** `embeddings` \u2014 Work item embedding integration complete: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai concatenation with MCP semantic search on work_items table. **[2026-03-14]** `dashboard` \u2014 Dashboard/Pipeline Health tab in progress with 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed pipeline status and recent workflow runs. **[2026-03-14]** `workflow-debugging` \u2014 AI tag suggestion workflow debugging ongoing: investigating missing ai_suggestion tags in UI, work item panel refresh issues, and empty planner category display after tag approval. **[2026-03-14]** `mcp-tools` \u2014 MCP stdio server expanded with 12+ tools including semantic search, work item management, session tagging, and vector search capabilities. **[2026-03-14]** `deployment` \u2014 Dual deployment model: Railway for FastAPI backend (Dockerfile + railway.toml) and Electron-builder for desktop clients (Mac, Windows, Linux). **[2026-03-14]** `llm-providers` \u2014 Multi-provider adapter architecture supporting Claude (Haiku/Sonnet/Opus), OpenAI (GPT-4/mini), DeepSeek, Gemini, and Grok with unified send(prompt, system) \u2192 str contract. **[2026-03-14]** `pipeline-templates` \u2014 Pipeline template mapping in progress: creating workflow-templates YAML with delivery_category/type \u2192 preferred_roles suggestions for code, architecture_design, document, and presentation artifacts."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL pgvector storage and an Electron desktop UI, enabling teams to capture, embed, and intelligently query development context across projects. The system synthesizes AI-driven memory through a 4-layer architecture with semantic search, multi-LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), and workflow automation via DAG-based pipelines. Currently stabilizing AI tag suggestion workflows, implementing dashboard pipeline health monitoring, and finalizing work item vector embeddings with MCP integration.",
+    "memory_digest": "**[2026-03-14]** `arch` \u2014 Established 4-layer memory pipeline: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts with event filtering (prompt_batch, session_summary only). **[2026-03-14]** `feature` \u2014 Implemented Claude Haiku dual-layer memory synthesis with 5 output files, LLM response summarization, auto-tag suggestions, timestamp tracking, and tag deduplication. **[2026-03-14]** `feature` \u2014 Deployed async DAG workflow executor via asyncio.gather with loop-back support, max_iterations cap, Cytoscape visualization, and 2-pane approval panel for chat negotiation. **[2026-03-14]** `feature` \u2014 Integrated work item embedding persistence via _embed_work_item() for name_ai + desc_ai concatenation with 1536-dim pgvector storage and MCP semantic search. **[2026-03-14]** `feature` \u2014 Finalized mem_ai_feature_snapshot unified layer merging planner_tags user requirements with work_items, capturing summary, use cases, and delivery artifacts per artifact type. **[2026-03-14]** `debug` \u2014 Fixed Electron UI scope conflict in _wiPanelCreateTag (duplicate const cats declaration); resolved AI tag suggestion workflow missing ui_suggestion tags and work_item disappearance after approval; implemented Dashboard/Pipeline Health tab with 30-second auto-refresh for pipeline visibility."
   }
 }
