@@ -312,6 +312,7 @@ CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
 
 -- mem_mrr_prompts: every prompt/response pair from all providers and UIs
 -- tags JSONB carries inline metadata: {source, phase, feature, bug, work-item, session_id}
+-- event_id: set after prompt batch digest in mem_ai_events (back-propagated by process_prompt_batch)
 CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id  INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -321,6 +322,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     prompt     TEXT        NOT NULL DEFAULT '',
     response   TEXT        NOT NULL DEFAULT '',
     tags       JSONB       NOT NULL DEFAULT '{}',
+    event_id   UUID,                            -- FK to mem_ai_events.id (set after digest)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_pid     ON mem_mrr_prompts(project_id);
@@ -328,6 +330,7 @@ CREATE INDEX        IF NOT EXISTS idx_mmrr_p_session ON mem_mrr_prompts(session_
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(project_id, source_id) WHERE source_id IS NOT NULL;
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC);
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_tags    ON mem_mrr_prompts USING gin(tags);
+CREATE INDEX        IF NOT EXISTS idx_mmrr_p_event   ON mem_mrr_prompts(event_id) WHERE event_id IS NOT NULL;
 
 -- mem_mrr_commits: git commits with AI-generated metadata
 -- commit_hash is the natural PK (git SHA).
@@ -437,6 +440,10 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING gin(t
 -- mem_ai_events: Haiku digest + OpenAI embedding for each batch/commit/session
 -- event_type: 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
 -- importance: 0-10 AI-scored relevance (used in relevance decay formula)
+-- source_id semantics (m032):
+--   commit batch: 'batch_{first_hash8}_{tagfp8}' — one event per tag-group of commits
+--   prompt_batch: last prompt UUID in the tag group
+--   item/session_summary: 1:1 with source record
 -- processed_at: NULL = not yet processed by work item extraction pipeline
 CREATE TABLE IF NOT EXISTS mem_ai_events (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -447,22 +454,26 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     session_id   TEXT,
     chunk        INT         NOT NULL DEFAULT 0,
     chunk_type   TEXT        NOT NULL DEFAULT 'full',
-    content      TEXT        NOT NULL,
+    content      TEXT        NOT NULL DEFAULT '',
     summary      TEXT,
     action_items TEXT        NOT NULL DEFAULT '',
     tags         JSONB       NOT NULL DEFAULT '{}',
     importance   SMALLINT    NOT NULL DEFAULT 1,  -- 0-10; foundational facts get higher scores
-    processed_at TIMESTAMPTZ,                      -- set by extract_work_items_from_events()
     work_item_id UUID,                             -- FK to mem_ai_work_items.id (set on extraction or tagging)
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMPTZ,                      -- set by extract_work_items_from_events()
     embedding    VECTOR(1536),
     UNIQUE(project_id, event_type, source_id, chunk)
 );
-CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pid     ON mem_ai_events(project_id);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_events_session ON mem_ai_events(session_id);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_events_type    ON mem_ai_events(event_type);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pending ON mem_ai_events(processed_at) WHERE processed_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_mem_ai_events_tags    ON mem_ai_events USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mae_pid            ON mem_ai_events(project_id);
+CREATE INDEX IF NOT EXISTS idx_mae_session        ON mem_ai_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_mae_type           ON mem_ai_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_mae_pending        ON mem_ai_events(processed_at) WHERE processed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mae_tags           ON mem_ai_events USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mae_embed          ON mem_ai_events USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mae_project_session ON mem_ai_events(project_id, session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mae_project_etype   ON mem_ai_events(project_id, event_type);
+CREATE INDEX IF NOT EXISTS idx_mem_ai_events_wi    ON mem_ai_events(work_item_id) WHERE work_item_id IS NOT NULL;
 
 -- mem_ai_work_items: AI-detected actionable items (tasks, bugs, features)
 -- Dual-status design:

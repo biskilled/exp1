@@ -155,22 +155,54 @@ def _filter_diff_stat(diff_stat: str) -> tuple[str, str]:
 
 # ── Commit embedding background task ───────────────────────────────────────────
 
+def _read_commit_batch_size(project: str) -> int:
+    """Read commit_embed.batch_size from project.yaml (default 5)."""
+    try:
+        cfg_path = Path(settings.workspace_dir) / project / "project.yaml"
+        cfg = yaml.safe_load(cfg_path.read_text()) if cfg_path.exists() else {}
+        return int(cfg.get("commit_embed", {}).get("batch_size", 5))
+    except Exception:
+        return 5
+
+
 async def _embed_commit_background(project: str, commit_hash: str) -> None:
-    """Run process_commit() to embed + extract symbols after commit is stored."""
-    from core.pipeline_log import pipeline_run
-    p_id = db.get_project_id(project)
-    if not p_id:
+    """Threshold-based commit batch embedding.
+
+    Counts pending commits (event_id IS NULL). When count >= batch_size (default 5,
+    configurable via project.yaml commit_embed.batch_size), runs process_commit_batch()
+    to digest all pending commits grouped by tag context into batch events.
+    Otherwise defers — the next commit push or /embed-commits call will process them.
+    """
+    if not db.is_available():
         return
-    async with pipeline_run(p_id, "commit_embed", commit_hash) as ctx:
-        ctx["items_in"] = 1
+    project_id = db.get_or_create_project_id(project)
+    async with pipeline_run(project_id, "commit_embed", commit_hash) as ctx:
         try:
-            from memory.memory_embedding import MemoryEmbedding
-            await MemoryEmbedding().process_commit(project, commit_hash)
-            log.info(f"_embed_commit_background: embedded {commit_hash[:8]} for {project}")
-            ctx["items_out"] = 1
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM mem_mrr_commits "
+                        "WHERE project_id=%s AND event_id IS NULL",
+                        (project_id,),
+                    )
+                    pending = cur.fetchone()[0] or 0
         except Exception as e:
-            log.debug(f"_embed_commit_background error ({commit_hash[:8]}): {e}")
-            raise
+            log.debug(f"_embed_commit_background pending count error: {e}")
+            return
+        ctx["items_in"] = pending
+        batch_size = _read_commit_batch_size(project)
+        if pending >= batch_size:
+            from memory.memory_embedding import MemoryEmbedding
+            n = await MemoryEmbedding().process_commit_batch(project)
+            log.info(
+                f"_embed_commit_background: {n} batch events from "
+                f"{pending} pending commits for {project}"
+            )
+            ctx["items_out"] = n
+        else:
+            log.debug(
+                f"_embed_commit_background: deferred ({pending} pending < batch_size={batch_size})"
+            )
 
 
 def _extract_commit_code_background(project: str, commit_hash: str) -> None:

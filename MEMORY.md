@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-13 09:59 UTC by aicli /memory_
+_Generated: 2026-04-13 11:56 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI backend (FastAPI), PostgreSQL semantic storage with pgvector, and an Electron desktop UI (vanilla JS). It synthesizes project events, commits, and sessions into structured work items via Claude Haiku LLM digestion, manages multi-step workflows as DAGs with approval panels, and provides MCP server integration for semantic search. Currently focused on stabilizing AI tag suggestion workflows, implementing pipeline visibility dashboards, and finalizing feature snapshot storage to merge user requirements with deliverable artifacts.
+aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI and CLI, enabling teams to capture, process, and retrieve contextual knowledge through a 4-layer memory architecture. The system synthesizes events into work items and project facts via Claude, executes DAG workflows for multi-step tasks, and provides semantic search via MCP tools. Current focus is debugging AI tag suggestion workflows, implementing a dashboard health-check tab, and finalizing the mem_ai_feature_snapshot layer that merges user requirements with work items.
 
 ## Project Facts
 
@@ -401,11 +401,4 @@ index a1be707..6f4befb 100644
 
 ## AI Synthesis
 
-**[2026-04-12]** `chat` — Investigated missing ai_suggestion tags in UI; found planner category display issues and work item disappearance after tag approval.
-**[2026-04-12]** `feature` — Finalized mem_ai_feature_snapshot table design merging planner_tags user requirements with work_items for delivery artifact tracking.
-**[2026-04-12]** `bug` — Fixed Electron UI scope conflict: duplicate `const cats` declaration in _wiPanelCreateTag renamed to `cacheCats` to resolve empty load state.
-**[2026-04-12]** `feature` — Integrated _embed_work_item() persistence for name_ai + desc_ai vector embeddings during /memory execution; enabled MCP semantic search on work_items.
-**[2026-04-12]** `feature` — Designed multi-workflow trigger model: pipelines executable from planner UI, feature snapshots, or direct chat with dashboard as new visibility tab.
-**[2026-04-12]** `planning` — Proposed pipeline template mapping: workflow-templates YAML with delivery_category/type → preferred_roles for code, architecture_design, document, presentation artifacts.
-**[2026-04-12]** `refactor` — Updated rules.md and removed legacy _system context files; cleaned up temporary artifacts from previous Claude CLI sessions.
-**[2026-04-12]** `feature` — Implemented Dashboard/Pipeline Health tab with 30-second auto-refresh tracking commit_embed, session_summary, tag_match, work_item_embed pipeline stages.
+**[2026-04-12]** `rules.md update` — Clarified mem_ai_feature_snapshot table merges planner_tags user requirements with work_items, capturing summary, use cases, and delivery artifacts; planner_tags deliveries column stores user-selected artifact types (code, document, architect_design, ppt). **[2026-04-12]** `feature_snapshot planning` — Initiated mem_ai_feature_snapshot as final unified layer merging user requirements with work items; designed to track delivery artifacts and enable strong MCP capabilities for project history. **[2026-04-12]** `dashboard implementation` — Confirmed dashboard as new UI tab separate from planner; pipelines triggerable from planner UI, docs (feature snapshots), or direct chat with 30-second auto-refresh for pipeline health visibility. **[2026-04-12]** `ai_tag_suggestion debugging` — Identified work_item disappearance after tag approval and empty planner category display; investigating missing ai_suggestion tags in ui_tags query and work item panel refresh workflow. **[2026-04-12]** `electron ui scope fix` — Resolved duplicate `const cats` variable declaration in _wiPanelCreateTag causing empty Electron load; refactored to `cacheCats` for proper scoping. **[2026-04-12]** `work_item_embedding integration` — Designed _embed_work_item() persistence for name_ai + desc_ai concatenation vectors; integrated with MCP semantic search on work_items table for unified vector search.

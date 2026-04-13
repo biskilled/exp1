@@ -607,6 +607,94 @@ def m031_commits_cleanup(conn) -> None:
     log.info("m031_commits_cleanup: dropped tags_ai, exec_llm; renamed commit_short_hash → commit_hash_short")
 
 
+def m032_events_and_prompts_event_id(conn) -> None:
+    """Add event_id to mem_mrr_prompts and reorder mem_ai_events columns.
+
+    Changes:
+    - mem_mrr_prompts: adds event_id UUID for back-propagation after prompt batch digest
+    - mem_ai_events: recreates table with new column order
+        (work_item_id moved before created_at; processed_at moved after work_item_id)
+      This enables tag-split batch grouping: source_id for commit events is now
+      'batch_{hash8}_{tagfp8}' and for prompt events is the last prompt UUID in each group.
+    """
+    with conn.cursor() as cur:
+        # Add event_id to mem_mrr_prompts for back-propagation
+        cur.execute("ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS event_id UUID")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mmrr_p_event "
+            "ON mem_mrr_prompts(event_id) WHERE event_id IS NOT NULL"
+        )
+
+        # Recreate mem_ai_events with new column order
+        # New order: ..., importance, work_item_id, created_at, processed_at, embedding
+        cur.execute("ALTER TABLE mem_ai_events RENAME TO _bak_032_mem_ai_events")
+        cur.execute("""
+            CREATE TABLE mem_ai_events (
+                id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id    INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+                project_id   INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                event_type   TEXT        NOT NULL,
+                source_id    TEXT        NOT NULL,
+                session_id   TEXT,
+                chunk        INT         NOT NULL DEFAULT 0,
+                chunk_type   TEXT        NOT NULL DEFAULT 'full',
+                content      TEXT        NOT NULL DEFAULT '',
+                summary      TEXT,
+                action_items TEXT        NOT NULL DEFAULT '',
+                tags         JSONB       NOT NULL DEFAULT '{}',
+                importance   SMALLINT    NOT NULL DEFAULT 1,
+                work_item_id UUID,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                processed_at TIMESTAMPTZ,
+                embedding    VECTOR(1536),
+                UNIQUE(project_id, event_type, source_id, chunk)
+            )
+        """)
+        cur.execute("""
+            INSERT INTO mem_ai_events
+              (id, client_id, project_id, event_type, source_id, session_id,
+               chunk, chunk_type, content, summary, action_items, tags, importance,
+               work_item_id, created_at, processed_at, embedding)
+            SELECT
+              id, client_id, project_id, event_type, source_id, session_id,
+              chunk, chunk_type, content, summary, action_items, tags, importance,
+              work_item_id, created_at, processed_at, embedding
+            FROM _bak_032_mem_ai_events
+        """)
+        # Recreate indexes
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_pid     ON mem_ai_events(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_session ON mem_ai_events(session_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_type    ON mem_ai_events(event_type)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mae_pending "
+            "ON mem_ai_events(processed_at) WHERE processed_at IS NULL"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mae_tags ON mem_ai_events USING gin(tags)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mae_embed "
+            "ON mem_ai_events USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mae_project_session "
+            "ON mem_ai_events(project_id, session_id) WHERE session_id IS NOT NULL"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mae_project_etype "
+            "ON mem_ai_events(project_id, event_type)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mem_ai_events_wi "
+            "ON mem_ai_events(work_item_id) WHERE work_item_id IS NOT NULL"
+        )
+    conn.commit()
+    log.info(
+        "m032_events_and_prompts_event_id: event_id added to mem_mrr_prompts; "
+        "mem_ai_events recreated with new column order"
+    )
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -626,4 +714,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m029_feature_snapshot", m029_feature_snapshot),
     ("m030_pipeline_runs", m030_pipeline_runs),
     ("m031_commits_cleanup", m031_commits_cleanup),
+    ("m032_events_and_prompts_event_id", m032_events_and_prompts_event_id),
 ]

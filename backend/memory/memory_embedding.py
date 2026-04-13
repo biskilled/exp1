@@ -29,6 +29,7 @@ Degrades silently if PostgreSQL or embedding key unavailable.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -56,6 +57,14 @@ _EXT_LANG: dict[str, str] = {
     ".sql": "sql", ".yaml": "yaml", ".yml": "yaml", ".json": "json",
     ".md": "markdown", ".html": "html", ".css": "css",
 }
+
+# ── Tag fingerprint helper ─────────────────────────────────────────────────────
+
+def _tag_fingerprint(tags: dict) -> str:
+    """Return a stable string key for grouping by user-intent tags (phase/feature/bug)."""
+    relevant = {k: tags[k] for k in ("phase", "feature", "bug") if k in tags and tags[k]}
+    return json.dumps(sorted(relevant.items()))
+
 
 # ── SQL constants ──────────────────────────────────────────────────────────────
 
@@ -115,6 +124,33 @@ _SQL_SEARCH_TPL = """
 _SQL_GET_NODE_OUTPUTS = (
     "SELECT node_id, node_name, output FROM pr_graph_node_results WHERE run_id=%s AND status='done'"
 )
+
+_SQL_GET_PENDING_COMMITS_WITH_SYMBOLS = """
+    SELECT c.commit_hash, c.commit_msg, c.summary, c.tags, c.session_id, c.diff_summary,
+           COALESCE(array_agg(DISTINCT cc.full_symbol)
+                    FILTER (WHERE cc.full_symbol IS NOT NULL), '{}') AS symbols
+    FROM mem_mrr_commits c
+    LEFT JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash
+    WHERE c.project_id = %s AND c.event_id IS NULL
+    GROUP BY c.commit_hash, c.commit_msg, c.summary, c.tags, c.session_id, c.diff_summary
+    ORDER BY c.committed_at ASC NULLS LAST
+"""
+
+_SQL_GET_PENDING_PROMPTS = """
+    SELECT id, prompt, response, tags
+    FROM mem_mrr_prompts
+    WHERE project_id = %s AND session_id = %s AND event_id IS NULL
+    ORDER BY created_at ASC
+"""
+
+_SQL_BACKPROP_COMMIT_EVENT = """
+    UPDATE mem_mrr_commits SET event_id=%s::uuid, summary=%s, llm=%s
+    WHERE commit_hash = ANY(%s)
+"""
+
+_SQL_BACKPROP_PROMPT_EVENT = """
+    UPDATE mem_mrr_prompts SET event_id=%s::uuid WHERE id = ANY(%s::uuid[])
+"""
 
 
 def _openai_key() -> Optional[str]:
@@ -294,92 +330,123 @@ class MemoryEmbedding:
         n: int,
         session_desc: Optional[str] = None,
     ) -> Optional[str]:
-        """Digest and embed the last N prompts of a session.
+        """Digest pending prompts in a session, grouped by tag context.
 
-        1. Load last N prompts from mem_mrr_prompts
-        2. Load prompt_batch_digest system role → Haiku digest
-        3. Embed digest → VECTOR(1536)
-        4. INSERT mem_ai_events (event_type='prompt_batch', cnt_prompts=n)
-        Returns the mem_ai_events UUID.
+        Queries all prompts with event_id IS NULL (unprocessed) for the session,
+        groups them by phase/feature/bug tag fingerprint, creates one mem_ai_events
+        row per group, and back-propagates event_id to mem_mrr_prompts.
+
+        The `n` parameter is kept for API compatibility but is no longer used as
+        a limit — all pending prompts are processed.
+
+        Returns the last event_id created (or None if nothing to process).
         """
-        prompts = self._mirroring.get_last_n_prompts(project, session_id, n)
-        if not prompts:
+        if not db.is_available():
             return None
+        project_id = db.get_or_create_project_id(project)
 
-        pairs = "\n\n".join(
-            f"Q: {(p['prompt'] or '')[:500]}\nA: {(p['response'] or '')[:800]}"
-            for p in prompts
-        )
-
-        raw = await _prompts.call("prompt_batch_digest", pairs)
-        if not raw:
-            return None
-        summary_text, action_items, importance = _parse_haiku_json(raw, pairs[:200])
-
-        embedding = await _embed(summary_text)
-        last_id   = prompts[-1]["id"]
-
-        # Fetch MRR tags from the most recent prompt in this session
-        mrr_tags: dict = {}
-        _pb_project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT tags FROM mem_mrr_prompts "
-                        "WHERE project_id=%s AND session_id=%s "
-                        "ORDER BY created_at DESC LIMIT 1",
-                        (_pb_project_id, session_id),
-                    )
-                    tr = cur.fetchone()
-                    if tr:
-                        mrr_tags = tr[0] or {}
-        except Exception:
-            pass
+                    cur.execute(_SQL_GET_PENDING_PROMPTS, (project_id, session_id))
+                    rows = cur.fetchall()
+        except Exception as e:
+            log.debug(f"process_prompt_batch DB query error: {e}")
+            return None
 
-        event_tags = {**mrr_tags, "llm": settings.haiku_model}
-        event_id = _upsert_event(
-            project, "prompt_batch", last_id, 0, "full", summary_text, embedding,
-            session_id=session_id,
-            summary=summary_text, action_items=action_items, tags=event_tags, importance=importance,
-        )
+        if not rows:
+            return None
 
-        # Chunk long responses (raw embed, no LLM)
-        chunk_idx = 1
-        for p in prompts:
-            resp = p.get("response", "")
-            if len(resp.split()) > 400:
-                resp_chunks = MemoryEmbedding.smart_chunk_text(resp)
-                if len(resp_chunks) > 1:
-                    for rc in resp_chunks:
-                        rc_emb = await _embed(rc["content"])
-                        _upsert_event(
-                            project, "prompt_batch", last_id, chunk_idx,
-                            rc.get("chunk_type", "section"), rc["content"], rc_emb,
-                            session_id=session_id, tags=mrr_tags, importance=importance,
-                        )
-                        chunk_idx += 1
+        # Group by tag fingerprint (phase/feature/bug) preserving insertion order
+        groups: dict[str, list] = {}
+        group_order: list[str] = []
+        for pid, prompt, response, tags in rows:
+            tags = tags or {}
+            fp = _tag_fingerprint(tags)
+            if fp not in groups:
+                groups[fp] = []
+                group_order.append(fp)
+            groups[fp].append({
+                "id": str(pid),
+                "prompt": prompt,
+                "response": response,
+                "tags": tags,
+            })
 
-        # Process any commits in this session that haven't been digested yet.
-        # This ensures commit events exist before work item extraction runs.
+        last_event_id: Optional[str] = None
+
+        for fp in group_order:
+            group = groups[fp]
+
+            pairs = "\n\n".join(
+                f"Q: {(p['prompt'] or '')[:500]}\nA: {(p['response'] or '')[:800]}"
+                for p in group
+            )
+
+            raw = await _prompts.call("prompt_batch_digest", pairs)
+            if not raw:
+                continue
+            summary_text, action_items, importance = _parse_haiku_json(raw, pairs[:200])
+
+            embedding = await _embed(summary_text)
+
+            # source_id = last prompt UUID in this tag group
+            source_id = group[-1]["id"]
+
+            # Merged tags = union of all tags in group + prompt_count + llm
+            merged_tags: dict = {}
+            for p in group:
+                for k, v in (p["tags"] or {}).items():
+                    if k not in merged_tags:
+                        merged_tags[k] = v
+            merged_tags["prompt_count"] = len(group)
+            merged_tags["llm"] = settings.haiku_model
+
+            event_id = _upsert_event(
+                project, "prompt_batch", source_id, 0, "full", summary_text, embedding,
+                session_id=session_id,
+                summary=summary_text, action_items=action_items,
+                tags=merged_tags, importance=importance,
+            )
+
+            if event_id:
+                last_event_id = event_id
+                # Back-propagate event_id to all prompts in this group
+                prompt_ids = [p["id"] for p in group]
+                try:
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(_SQL_BACKPROP_PROMPT_EVENT, (event_id, prompt_ids))
+                except Exception as _e:
+                    log.debug(f"process_prompt_batch back-propagation error: {_e}")
+
+                # Chunk long responses (raw embed, no LLM)
+                chunk_idx = 1
+                for p in group:
+                    resp = p.get("response", "")
+                    if len(resp.split()) > 400:
+                        resp_chunks = MemoryEmbedding.smart_chunk_text(resp)
+                        if len(resp_chunks) > 1:
+                            for rc in resp_chunks:
+                                rc_emb = await _embed(rc["content"])
+                                _upsert_event(
+                                    project, "prompt_batch", source_id, chunk_idx,
+                                    rc.get("chunk_type", "section"), rc["content"], rc_emb,
+                                    session_id=session_id, tags=merged_tags, importance=importance,
+                                )
+                                chunk_idx += 1
+
+        if not last_event_id:
+            return None
+
+        # Process pending commits as tag-grouped batch events.
+        # Runs after prompt digests so prompt events exist before work item extraction.
         try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT commit_hash FROM mem_mrr_commits "
-                        "WHERE project_id=%s AND session_id=%s AND event_id IS NULL",
-                        (_pb_project_id, session_id),
-                    )
-                    pending_commits = [r[0] for r in cur.fetchall()]
-            for _ch in pending_commits:
-                await self.process_commit(project, _ch)
-            if pending_commits:
-                log.info(f"process_prompt_batch: digested {len(pending_commits)} pending commits for session {session_id[:8]}")
+            await self.process_commit_batch(project)
         except Exception as _e:
-            log.debug(f"process_prompt_batch: pending commit processing error: {_e}")
+            log.debug(f"process_prompt_batch: commit batch error: {_e}")
 
         # Auto-trigger work item extraction in background (fire-and-forget).
-        # Runs after commits are processed so commit events are included.
         try:
             import asyncio
             from memory.memory_promotion import MemoryPromotion
@@ -387,7 +454,123 @@ class MemoryEmbedding:
         except Exception as _e:
             log.debug(f"process_prompt_batch: auto-extract skipped: {_e}")
 
-        return event_id
+        return last_event_id
+
+    async def process_commit_batch(
+        self,
+        project: str,
+        min_commits: int = 1,
+    ) -> int:
+        """Digest all pending commits as tag-grouped batch events.
+
+        Groups commits with identical phase/feature/bug tags into a single
+        mem_ai_events row per group. Back-propagates event_id + summary + llm
+        to all commits in each group.
+
+        Returns count of events created. Defers if fewer than min_commits pending.
+        """
+        if not db.is_available():
+            return 0
+        project_id = db.get_or_create_project_id(project)
+
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_GET_PENDING_COMMITS_WITH_SYMBOLS, (project_id,))
+                    rows = cur.fetchall()
+        except Exception as e:
+            log.debug(f"process_commit_batch DB query error: {e}")
+            return 0
+
+        if len(rows) < min_commits:
+            return 0
+
+        # Group by tag fingerprint (phase/feature/bug) preserving order
+        groups: dict[str, list] = {}
+        group_order: list[str] = []
+        for commit_hash, commit_msg, summary, tags, session_id, diff_summary, symbols in rows:
+            tags = tags or {}
+            fp = _tag_fingerprint(tags)
+            if fp not in groups:
+                groups[fp] = []
+                group_order.append(fp)
+            groups[fp].append({
+                "commit_hash": commit_hash,
+                "commit_msg": commit_msg,
+                "summary": summary,
+                "tags": tags,
+                "session_id": session_id,
+                "diff_summary": diff_summary,
+                "symbols": list(symbols) if symbols else [],
+            })
+
+        events_created = 0
+        for fp in group_order:
+            group = groups[fp]
+
+            # Build content: commit messages + changed symbols + diff stats
+            msg_parts = " | ".join(
+                (g["commit_msg"] or g["commit_hash"][:8]) for g in group[:10]
+            )
+            all_symbols = list({s for g in group for s in (g["symbols"] or [])})[:20]
+            diff_sum = next((g["diff_summary"] for g in group if g["diff_summary"]), "")
+
+            content = f"Commits: {msg_parts}"
+            if all_symbols:
+                content += f"\nChanged: {', '.join(all_symbols)}"
+            if diff_sum:
+                content += f"\nStats: {diff_sum[:200]}"
+
+            raw = await _prompts.call("commit_digest", content)
+            summary_text, action_items, importance = (
+                _parse_haiku_json(raw, msg_parts[:300]) if raw else (msg_parts[:300], "", 5)
+            )
+
+            embedding = await _embed(summary_text)
+
+            # source_id: batch_{first_hash8}_{tag_fingerprint_md5_8}
+            tag_fp8 = hashlib.md5(fp.encode()).hexdigest()[:8]
+            first_hash8 = group[0]["commit_hash"][:8]
+            source_id = f"batch_{first_hash8}_{tag_fp8}"
+
+            # Merged tags = union of user-intent tags from all commits in group
+            merged_tags: dict = {}
+            for g in group:
+                for k, v in (g["tags"] or {}).items():
+                    if k not in merged_tags:
+                        merged_tags[k] = v
+            merged_tags["commit_count"] = len(group)
+            merged_tags["llm"] = settings.haiku_model
+
+            # Use session_id from first commit (group may span sessions)
+            session_id = group[0].get("session_id")
+
+            event_id = _upsert_event(
+                project, "commit", source_id, 0, "full", content, embedding,
+                session_id=session_id,
+                summary=summary_text, action_items=action_items,
+                tags=merged_tags, importance=importance,
+            )
+
+            if event_id:
+                events_created += 1
+                # Back-propagate event_id + summary to all commits in group
+                hashes = [g["commit_hash"] for g in group]
+                try:
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                _SQL_BACKPROP_COMMIT_EVENT,
+                                (event_id, summary_text, settings.haiku_model, hashes),
+                            )
+                except Exception as _e:
+                    log.debug(f"process_commit_batch back-propagation error: {_e}")
+
+        log.info(
+            f"process_commit_batch: {events_created} events from "
+            f"{len(rows)} commits ({len(group_order)} tag groups) for {project}"
+        )
+        return events_created
 
     async def process_commit(
         self,

@@ -368,50 +368,22 @@ async def get_llm_prompt(
 @router.post("/{project}/embed-commits")
 async def embed_commits(
     project: str,
-    limit: int = Query(50, description="Max commits to process in one call"),
+    limit: int = Query(50),
 ):
-    """Run process_commit() for commits that have no Haiku digest yet.
+    """Process all pending commits as tag-grouped batch events.
 
-    Selects commits where event_id IS NULL (never processed), runs Haiku
-    digest + embedding for each, back-propagates summary and event_id
-    on mem_mrr_commits. Returns count processed.
+    Groups commits with identical phase/feature/bug tags into a single
+    mem_ai_events row per group. Processes all pending commits regardless
+    of the limit parameter (limit kept for API compatibility).
+    Returns count of batch events created.
     """
     if not db.is_available():
         raise HTTPException(status_code=503, detail="PostgreSQL not available")
 
-    project_id = db.get_or_create_project_id(project)
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT commit_hash FROM mem_mrr_commits
-                       WHERE project_id=%s
-                         AND event_id IS NULL
-                       ORDER BY committed_at DESC NULLS LAST
-                       LIMIT %s""",
-                    (project_id, limit),
-                )
-                hashes = [r[0] for r in cur.fetchall()]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    if not hashes:
-        return {"processed": 0, "project": project, "note": "all commits already processed"}
-
     from memory.memory_embedding import MemoryEmbedding
     emb = MemoryEmbedding()
-    processed = 0
-    errors = 0
-    for h in hashes:
-        try:
-            result = await emb.process_commit(project, h)
-            if result:
-                processed += 1
-        except Exception as e:
-            log.debug(f"embed_commits {h}: {e}")
-            errors += 1
-
-    return {"processed": processed, "errors": errors, "project": project}
+    n = await emb.process_commit_batch(project, min_commits=1)
+    return {"events_created": n, "project": project}
 
 @router.get("/{project}/pipeline-status")
 async def get_pipeline_status(project: str):
