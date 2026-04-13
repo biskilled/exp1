@@ -740,7 +740,6 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
 @router.post("/trim-events")
 async def trim_events(
     older_than_days: int = 90,
-    max_importance: int = 5,
     event_types: str = "prompt_batch,commit",
     dry_run: bool = False,
     _: dict = Depends(_require_admin),
@@ -750,7 +749,6 @@ async def trim_events(
     Removes rows where:
       - event_type IN (event_types)
       - created_at < NOW() - older_than_days
-      - importance <= max_importance
 
     Safe to run: session_summary and item events are excluded by default.
     After trimming, run /admin/db-vacuum to reclaim the freed pages.
@@ -772,34 +770,31 @@ async def trim_events(
         FROM mem_ai_events
         WHERE event_type IN ({placeholders})
           AND created_at < NOW() - INTERVAL '%s days'
-          AND importance <= %s
     """
     delete_sql = f"""
         DELETE FROM mem_ai_events
         WHERE event_type IN ({placeholders})
           AND created_at < NOW() - INTERVAL '%s days'
-          AND importance <= %s
     """
 
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(count_sql, (*types, older_than_days, max_importance))
+            cur.execute(count_sql, (*types, older_than_days))
             row = cur.fetchone()
             row_count = row[0] if row else 0
             size_est  = row[1] if row else "0 bytes"
 
             if not dry_run and row_count > 0:
-                cur.execute(delete_sql, (*types, older_than_days, max_importance))
+                cur.execute(delete_sql, (*types, older_than_days))
 
     return {
-        "dry_run":          dry_run,
-        "deleted":          row_count if not dry_run else 0,
-        "would_delete":     row_count,
-        "size_estimate":    size_est,
-        "event_types":      types,
-        "older_than_days":  older_than_days,
-        "max_importance":   max_importance,
-        "next_step":        "Run POST /admin/db-vacuum to reclaim freed pages" if not dry_run and row_count > 0 else "",
+        "dry_run":         dry_run,
+        "deleted":         row_count if not dry_run else 0,
+        "would_delete":    row_count,
+        "size_estimate":   size_est,
+        "event_types":     types,
+        "older_than_days": older_than_days,
+        "next_step":       "Run POST /admin/db-vacuum to reclaim freed pages" if not dry_run and row_count > 0 else "",
     }
 
 

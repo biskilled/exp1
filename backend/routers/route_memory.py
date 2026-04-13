@@ -44,10 +44,9 @@ _SQL_GET_SESSION_PROMPTS = """
 _SQL_UPSERT_SESSION_SUMMARY = """
     INSERT INTO mem_ai_events
         (project_id, event_type, source_id, session_id,
-         chunk, chunk_type, content, summary, action_items,
-         importance, tags, created_at)
+         chunk, chunk_type, content, summary, action_items, tags, created_at)
     VALUES (%s, 'session_summary', %s, %s,
-            0, 'full', %s, %s, %s, 2, %s::jsonb, NOW())
+            0, 'full', %s, %s, %s, %s::jsonb, NOW())
     ON CONFLICT (project_id, event_type, source_id, chunk)
     DO UPDATE SET
         content      = EXCLUDED.content,

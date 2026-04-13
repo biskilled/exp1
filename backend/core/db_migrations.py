@@ -805,6 +805,18 @@ def m036_reorder_mem_ai_events(conn) -> None:
     log.info("m036: mem_ai_events reordered and _old dropped (~75 MB reclaimed)")
 
 
+def m037_drop_events_importance(conn) -> None:
+    """Drop importance column from mem_ai_events.
+
+    importance is more meaningful on mem_ai_work_items where it drives prioritisation.
+    For events, pure recency ordering (EXP(-0.01 * age_days)) is sufficient.
+    """
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE mem_ai_events DROP COLUMN IF EXISTS importance")
+    conn.commit()
+    log.info("m037: importance dropped from mem_ai_events")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -829,4 +841,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m034_reorder_mem_ai_events", m034_reorder_mem_ai_events),
     ("m035_reorder_mem_mrr_commits", m035_reorder_mem_mrr_commits),
     ("m036_reorder_mem_ai_events", m036_reorder_mem_ai_events),
+    ("m037_drop_events_importance", m037_drop_events_importance),
 ]

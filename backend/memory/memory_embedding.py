@@ -85,8 +85,8 @@ def _user_tags(tags: dict) -> dict:
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
            (project_id, event_type, event_cnt, source_id, session_id,
-            chunk, chunk_type, content, embedding, summary, action_items, tags, importance)
-       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
+            chunk, chunk_type, content, embedding, summary, action_items, tags)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb)
        ON CONFLICT (project_id, event_type, source_id, chunk)
        DO UPDATE SET
            event_cnt    = EXCLUDED.event_cnt,
@@ -223,17 +223,15 @@ async def _haiku(system: str, user: str, max_tokens: int = 200) -> str:
         return ""
 
 
-def _parse_haiku_json(raw: str, fallback: str) -> tuple[str, str, int]:
-    """Return (summary, action_items, importance). Handles plain-text fallback gracefully."""
+def _parse_haiku_json(raw: str, fallback: str) -> tuple[str, str]:
+    """Return (summary, action_items). Handles plain-text fallback gracefully."""
     try:
         # Strip markdown fences if present
         clean = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`")
         parsed = json.loads(clean)
-        importance = int(parsed.get("importance") or 5)
-        importance = max(1, min(10, importance))
-        return parsed.get("summary", fallback), parsed.get("action_items", ""), importance
+        return parsed.get("summary", fallback), parsed.get("action_items", "")
     except (json.JSONDecodeError, AttributeError, ValueError):
-        return raw or fallback, "", 5
+        return raw or fallback, ""
 
 
 def _upsert_event(
@@ -249,7 +247,6 @@ def _upsert_event(
     summary: Optional[str] = None,
     action_items: str = "",
     tags: dict | None = None,
-    importance: int = 1,
     event_cnt: int = 1,
     # backward-compat kwargs — accepted but ignored for tags (system metadata, not stored)
     metadata: dict | None = None,
@@ -259,6 +256,7 @@ def _upsert_event(
     llm_source: Optional[str] = None,
     session_desc: Optional[str] = None,
     cnt_prompts: Optional[int] = None,
+    importance: int = 1,  # accepted but ignored — column dropped (m037)
 ) -> Optional[str]:
     """Insert or update a row in mem_ai_events. Returns UUID string.
 
@@ -280,7 +278,7 @@ def _upsert_event(
                     _SQL_UPSERT_EVENT,
                     (project_id, source_type, event_cnt, source_id, session_id,
                      chunk, chunk_type, content, vec_str, summary,
-                     action_items, json.dumps(clean_tags), importance),
+                     action_items, json.dumps(clean_tags)),
                 )
                 row = cur.fetchone()
         return str(row[0]) if row else None
@@ -388,7 +386,7 @@ class MemoryEmbedding:
             raw = await _prompts.call("prompt_batch_digest", pairs)
             if not raw:
                 continue
-            summary_text, action_items, importance = _parse_haiku_json(raw, pairs[:200])
+            summary_text, action_items = _parse_haiku_json(raw, pairs[:200])
 
             embedding = await _embed(summary_text)
 
@@ -407,8 +405,7 @@ class MemoryEmbedding:
                 project, "prompt_batch", source_id, 0, "full", summary_text, embedding,
                 session_id=session_id,
                 summary=summary_text, action_items=action_items,
-                tags=merged_tags, importance=importance,
-                event_cnt=len(group),
+                tags=merged_tags, event_cnt=len(group),
             )
 
             if event_id:
@@ -434,7 +431,7 @@ class MemoryEmbedding:
                                 _upsert_event(
                                     project, "prompt_batch", source_id, chunk_idx,
                                     rc.get("chunk_type", "section"), rc["content"], rc_emb,
-                                    session_id=session_id, tags=merged_tags, importance=importance,
+                                    session_id=session_id, tags=merged_tags,
                                 )
                                 chunk_idx += 1
 
@@ -524,8 +521,8 @@ class MemoryEmbedding:
                 content += f"\nStats: {diff_sum[:200]}"
 
             raw = await _prompts.call("commit_digest", content)
-            summary_text, action_items, importance = (
-                _parse_haiku_json(raw, msg_parts[:300]) if raw else (msg_parts[:300], "", 5)
+            summary_text, action_items = (
+                _parse_haiku_json(raw, msg_parts[:300]) if raw else (msg_parts[:300], "")
             )
 
             embedding = await _embed(summary_text)
@@ -550,8 +547,7 @@ class MemoryEmbedding:
                 project, "commit", source_id, 0, "full", content, embedding,
                 session_id=session_id,
                 summary=summary_text, action_items=action_items,
-                tags=merged_tags, importance=importance,
-                event_cnt=len(group),
+                tags=merged_tags, event_cnt=len(group),
             )
 
             if event_id:
@@ -614,7 +610,7 @@ class MemoryEmbedding:
             user_content += f"\nSummary: {existing_summary}"
 
         raw = await _prompts.call("commit_digest", user_content)
-        summary_text, action_items, importance = _parse_haiku_json(raw, commit_msg[:300]) if raw else (commit_msg[:300], "", 5)
+        summary_text, action_items = _parse_haiku_json(raw, commit_msg[:300]) if raw else (commit_msg[:300], "")
 
         embedding = await _embed(summary_text)
 
@@ -622,7 +618,7 @@ class MemoryEmbedding:
         event_id = _upsert_event(
             project, "commit", commit_hash_val, 0, "full", summary_text, embedding,
             session_id=session_id,
-            summary=summary_text, action_items=action_items, tags=mrr_tags, importance=importance,
+            summary=summary_text, action_items=action_items, tags=mrr_tags,
             event_cnt=1,
         )
 
@@ -749,12 +745,12 @@ class MemoryEmbedding:
             result_id = first_id
         else:
             raw = await _prompts.call("item_digest", raw_text[:3000])
-            item_summary, item_action_items, item_importance = _parse_haiku_json(raw, (summary or raw_text)[:300]) if raw else ((summary or raw_text)[:300], "", 5)
+            item_summary, item_action_items = _parse_haiku_json(raw, (summary or raw_text)[:300]) if raw else ((summary or raw_text)[:300], "")
             emb = await _embed(item_summary)
             result_id = _upsert_event(
                 project, "item", item_id, 0, "full", item_summary, emb,
                 summary=item_summary, action_items=item_action_items,
-                tags={**item_mrr_tags, "doc_type": item_type}, importance=item_importance,
+                tags={**item_mrr_tags, "doc_type": item_type},
             )
 
         if not result_id:

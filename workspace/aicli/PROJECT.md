@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
+- Importance column consolidation: deprecated importance from mem_ai_events table as it is more semantically relevant for work_items; evaluating removal to simplify event schema (2026-04-13)
 - Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
 - PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
 - History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
 - PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
 - Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)
-- Memory mechanism population: memory_items and project_facts tables exist but not actively populated; requires event-driven update implementation

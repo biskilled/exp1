@@ -450,8 +450,8 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING gin(t
 --   prompt_batch: UUID of the last mem_mrr_prompts row in the tag group
 --   item/session_summary: 1:1 with source record UUID
 -- tags: ONLY user-intent context — {phase, feature, bug, source}; no system metadata
--- importance: 0-10 AI-scored relevance (used in relevance decay formula)
 -- processed_at: NULL = not yet processed by work item extraction pipeline
+-- Relevance ordering: pure recency EXP(-0.01 * age_days); importance lives on mem_ai_work_items
 CREATE TABLE IF NOT EXISTS mem_ai_events (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id    INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -467,7 +467,6 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     summary      TEXT,
     action_items TEXT        NOT NULL DEFAULT '',
     tags         JSONB       NOT NULL DEFAULT '{}',              -- user-intent only: phase/feature/bug/source
-    importance   SMALLINT    NOT NULL DEFAULT 1,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     processed_at TIMESTAMPTZ,                                    -- set by extract_work_items_from_events()
     embedding    VECTOR(1536),

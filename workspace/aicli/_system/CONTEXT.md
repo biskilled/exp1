@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-13 17:56 UTC — do not edit manually.
+> Auto-generated 2026-04-13 18:02 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 500
-- **Last active**: 2026-04-13T17:54:56Z
+- **Sessions**: 501
+- **Last active**: 2026-04-13T18:02:14Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -55,12 +55,12 @@
 
 ## In Progress
 
+- Importance column consolidation: deprecated importance from mem_ai_events table as it is more semantically relevant for work_items; evaluating removal to simplify event schema (2026-04-13)
 - Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
 - PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
 - History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
 - PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
 - Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)
-- Memory mechanism population: memory_items and project_facts tables exist but not actively populated; requires event-driven update implementation
 
 ## Key Decisions
 

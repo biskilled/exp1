@@ -87,12 +87,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
+    "Importance column consolidation: deprecated importance from mem_ai_events table as it is more semantically relevant for work_items; evaluating removal to simplify event schema (2026-04-13)",
     "Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)",
     "PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)",
     "History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)",
     "PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)",
-    "Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)",
-    "Memory mechanism population: memory_items and project_facts tables exist but not actively populated; requires event-driven update implementation"
+    "Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -124,7 +124,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-13T17:56:54Z",
+  "last_memory_run": "2026-04-13T18:02:45Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -144,12 +144,12 @@
       "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m027); column naming: prefix_noun_adjective order"
     ],
     "in_progress": [
+      "Importance column consolidation: deprecated importance from mem_ai_events table as it is more semantically relevant for work_items; evaluating removal to simplify event schema (2026-04-13)",
       "Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)",
       "PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)",
       "History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)",
       "PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)",
-      "Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)",
-      "Memory mechanism population: memory_items and project_facts tables exist but not actively populated; requires event-driven update implementation"
+      "Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -157,16 +157,15 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "build_tooling": "npm 8+ + Electron-builder; Vite dev server",
-      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m027)"
+      "database": "PostgreSQL 15+ with pgvector extension",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
+      "build_tooling": "npm 8+ + Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform that combines a FastAPI backend with PostgreSQL+pgvector, a Python CLI, and an Electron desktop UI to capture, synthesize, and search development work across projects. The system uses Claude Haiku for dual-layer memory synthesis, async DAG workflows for automation, and semantic embeddings for intelligent retrieval\u2014currently focused on stabilizing table migrations, fixing history display rendering, and completing memory item population mechanisms.",
-    "memory_digest": "**[2026-04-13]** `claude_cli` \u2014 Table migration with column reordering initiated; stale nohup log file handle causing null byte output, switching to fresh log paths for clean execution and _old table cleanup. **[2026-04-06]** `development_session` \u2014 PostgreSQL JSONB operator conflict (line 466-470) in route_history batch upsert fixed; duplicate key conflict resolved by ensuring no constrained value duplicates in execute_values. **[2026-04-06]** `user_report` \u2014 History display incomplete (only prompt text shown, missing LLM response); copy-to-clipboard functionality requested for UI enhancement. **[2026-03-18]** `backend_fix` \u2014 Removed stale db.ensure_project_schema() call causing startup AttributeError; added retry logic in _continueToApp() for empty projects list race condition. **[2026-03-18]** `data_model_update` \u2014 Users now nested as client sub-entities (clients have multiple users); memory_items and project_facts tables exist but not actively populated\u2014requires event-driven implementation. **[2026-03-14]** `schema_decision` \u2014 Unified mem_ai_* table architecture finalized (events, tags_relations, project_facts, work_items, features) with per-project and shared table mirrors; column naming convention standardized to prefix_noun_adjective order."
+    "project_summary": "aicli is a shared AI memory platform that integrates with developer workflows via CLI and Electron desktop app, leveraging Claude/GPT for semantic memory synthesis and work item tracking. The project uses PostgreSQL 15+ with pgvector embeddings (1536-dim text-embedding-3-small), unified mem_ai_* event tables, and async DAG workflow execution with Cytoscape visualization. Current focus is on schema consolidation (removing redundant importance column from events), database migration robustness, and fixing UI/history rendering gaps.",
+    "memory_digest": "**[2026-04-13]** `schema_review` \u2014 Identified importance column as redundant in mem_ai_events table; consolidated to work_items where semantic relevance is higher, reducing event table bloat. **[2026-04-13]** `database_ops` \u2014 Ongoing table migration with column reordering to enforce prefix_noun_adjective naming convention; dropped _old tables post-migration to reclaim disk space. **[2026-04-13]** `devops` \u2014 Resolved PostgreSQL nohup logging issue by switching to fresh log file paths, eliminating stale file handle null byte output on startup. **[2026-04-06]** `ui_bug_fix` \u2014 Fixed PostgreSQL JSONB operator conflict in route_history (lines 466-470) that caused batch upsert failures during prompt/response log operations. **[2026-04-06]** `ux_enhancement` \u2014 User-reported gaps in history display: incomplete prompt + response rendering and missing copy-to-clipboard functionality; prioritized for next iteration. **[2026-03-18]** `backend_reliability` \u2014 Implemented retry logic for empty projects list during initial backend load; ensured aicli project visibility in main project list to prevent false startup failures. **[2026-03-14]** `project_baseline` \u2014 Established unified mem_ai_* event table schema with event_type filtering (prompt_batch, session_summary) to exclude per-commit noise from aggregation. **[2026-03-14]** `memory_architecture` \u2014 Formalized 4-layer memory progression: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events with LLM digests + embeddings \u2192 mem_ai_work_items/project_facts. **[2026-03-14]** `tagging_system` \u2014 Implemented ai_tag_suggestion feature with approve/remove buttons; auto-infer category on creation and deduplicate tags by timestamp. **[2026-03-14]** `code_analysis` \u2014 Configured smart chunking thresholds (min_lines: 5, min_diff_lines: 5) for Python/JS/TS per-symbol extraction and Markdown per-section chunking."
   }
 }

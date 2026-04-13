@@ -87,8 +87,8 @@ _SQL_BLOCKED_TAGS = """
 """
 
 _SQL_TOP_EVENTS = """
-    SELECT content, event_type, importance, created_at,
-           importance * EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance
+    SELECT content, event_type, created_at,
+           EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance
     FROM mem_ai_events
     WHERE project_id=%s
     ORDER BY relevance DESC
@@ -245,11 +245,10 @@ class MemoryFiles:
                     cur.execute(_SQL_TOP_EVENTS, (project_id, limit))
                     return [
                         {
-                            "content":     r[0],
+                            "content":    r[0],
                             "event_type": r[1],
-                            "importance":  r[2],
-                            "created_at":  r[3].isoformat() if r[3] else "",
-                            "relevance":   float(r[4]) if r[4] else 0.0,
+                            "created_at": r[2].isoformat() if r[2] else "",
+                            "relevance":  float(r[3]) if r[3] else 0.0,
                         }
                         for r in cur.fetchall()
                     ]

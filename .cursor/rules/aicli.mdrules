@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-13 17:55 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-13 18:02 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -68,8 +68,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-12] ok. can you implement that. make sure dashboard is a new tab. pipeline will be able to run from planner or from docs (wh
 - [2026-04-12] It looks like the ui not working properly. In planner I do see any bug/ category... only work_item. when I click accpete
 - [2026-04-13] Seems that electron is loadinng emtpty
 - [2026-04-13] Events - I would like to make sure events are working properly in order to have more meaningfull work_items.  Table stru
 - [2026-04-13] Can you try again the table migration (using the column order I have mention) this time when finished - drop the _old ta
+- [2026-04-13] In events table is there is any point to have importance ? I think its more relevant for work_items

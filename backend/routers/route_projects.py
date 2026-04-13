@@ -57,8 +57,8 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
 
 _SQL_INSERT_MEMORY_ITEM_SESSION = (
     """INSERT INTO mem_ai_events
-           (project_id, event_type, source_id, session_id, content, importance)
-       VALUES (%s, 'prompt_batch', %s, %s, %s, %s)
+           (project_id, event_type, source_id, session_id, content)
+       VALUES (%s, 'prompt_batch', %s, %s, %s)
        ON CONFLICT (project_id, event_type, source_id, chunk) DO NOTHING
        RETURNING id"""
 )
@@ -78,10 +78,10 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
 
 _SQL_INSERT_MEMORY_ITEM_FEATURE = (
     """INSERT INTO mem_ai_events
-           (project_id, event_type, source_id, session_id, content, importance)
-       VALUES (%s, 'feature_summary', %s::uuid, %s, %s, %s)
-       ON CONFLICT (project_id, event_type, source_id) DO UPDATE
-           SET content=EXCLUDED.content, importance=EXCLUDED.importance
+           (project_id, event_type, source_id, session_id, content)
+       VALUES (%s, 'feature_summary', %s::uuid, %s, %s)
+       ON CONFLICT (project_id, event_type, source_id, chunk) DO UPDATE
+           SET content=EXCLUDED.content
        RETURNING id"""
 )
 
@@ -1178,13 +1178,11 @@ async def _summarize_session_memory(project: str) -> int:
                 if not last_prompt_id:
                     continue  # no source_id available, skip
 
-                importance = min(5, max(1, (score + 1) // 2))  # convert 1-10 → 1-5
-
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
                             _SQL_INSERT_MEMORY_ITEM_SESSION,
-                            (project_id, last_prompt_id, session_id, final_summary, importance),
+                            (project_id, last_prompt_id, session_id, final_summary),
                         )
                         row = cur.fetchone()
                         if row:
@@ -1288,10 +1286,9 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # source_id = work_item UUID; session_id stores the feature/work-item name
-                importance = min(5, max(1, (score + 1) // 2))
                 cur.execute(
                     _SQL_INSERT_MEMORY_ITEM_FEATURE,
-                    (project_id, work_item_id, wi_name, final_summary, importance),
+                    (project_id, work_item_id, wi_name, final_summary),
                 )
                 row = cur.fetchone()
                 if not row:

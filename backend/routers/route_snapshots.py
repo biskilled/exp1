@@ -40,7 +40,7 @@ _SQL_GET_TAG_ID = """
 """
 
 _SQL_GET_MEMORY_EVENTS = """
-    SELECT me.id, me.event_type, me.source_id, me.session_id, me.content, me.importance
+    SELECT me.id, me.event_type, me.source_id, me.session_id, me.content
     FROM mem_ai_events me
     WHERE me.project_id = %s
     ORDER BY me.created_at
@@ -166,9 +166,9 @@ async def generate_snapshot(project: str, tag_name: str):
 
     by_type: dict[str, list[str]] = {}
     event_ids: list[str] = []
-    for ev_id, src_type, src_id, session_id, content, importance in events:
+    for ev_id, src_type, src_id, session_id, content in events:
         event_ids.append(str(ev_id))
-        by_type.setdefault(src_type, []).append(f"[importance={importance}] {content}")
+        by_type.setdefault(src_type, []).append(content)
 
     sections = []
     for stype, items in by_type.items():
