@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-13 13:53 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-13 14:39 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -65,3 +65,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Multi-workflow trigger model: pipelines executable from planner UI, docs (feature snapshots), or direct chat; dashboard as new UI tab for pipeline visibility
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+
+## Recent Context (last 5 changes)
+
+- [2026-04-12] How can I improve points 4 and 5 ? for point 4 - I did make prompts in sappasrete files so user can manage that. is it p
+- [2026-04-12] ok. can you implement that. make sure dashboard is a new tab. pipeline will be able to run from planner or from docs (wh
+- [2026-04-12] It looks like the ui not working properly. In planner I do see any bug/ category... only work_item. when I click accpete
+- [2026-04-13] Seems that electron is loadinng emtpty
+- [2026-04-13] Events - I would like to make sure events are working properly in order to have more meaningfull work_items.  Table stru

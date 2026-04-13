@@ -24,7 +24,7 @@ GET    /admin/provider-usage-history      → last N fetch results
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from core.auth import get_current_user
@@ -736,6 +736,26 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
 
 
 # ── Memory Layer Migration ────────────────────────────────────────────────────
+
+@router.post("/db-vacuum")
+async def db_vacuum(
+    dry_run: bool = False,
+    background: BackgroundTasks = BackgroundTasks(),
+    _: dict = Depends(_require_admin),
+):
+    """Run PostgreSQL maintenance: drop backup tables, VACUUM FULL, REINDEX, ANALYZE.
+
+    dry_run=true  → plan only, no changes made.
+    dry_run=false → runs in-process (blocks until complete; can take minutes on large DBs).
+
+    Returns a report with size_before, size_after, saved_mb, and per-table lists.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+    from data.clean_pg_db import run_maintenance_async
+    report = await run_maintenance_async(dry_run=dry_run)
+    return report
+
 
 @router.post("/migrate-to-memory-layers")
 async def migrate_to_memory_layers(project: str, _: dict = Depends(_require_admin)):
