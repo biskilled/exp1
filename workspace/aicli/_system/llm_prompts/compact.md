@@ -4,9 +4,9 @@ When working on a specific feature, ask for its snapshot before making decisions
 
 ## Active Features
 
-- deployment-lineage-visualization [task]: Dashboard that visualizes code lineage from requirements through events, work it
-- mcp-state-sync-endpoints [task]: Expose project state management through MCP endpoints to allow external tools sa
-- implement-project-history-queries [task]: Build query interfaces to retrieve project history across features, requirements
+- review-router-expanded-functionality [task]: Review and test expanded functionality in project router after major refactoring
+- validate-prompt-loader [task]: Test refactored prompt loader initialization and database caching mechanisms wor
+- test-memory-promotion-logic [task]: Validate improvements to memory embeddings and memory promotion logic work as in
 
 ## Last Session
-• UI displaying only 'work_item' category in planner, with bug/category filters missing. • Clicking 'accepted' for AI tag causes work_item to disappear and leaves top screen empty.
+• Retry table migration using specified column order • Monitor migration progress with fresh log file • Drop _old table upon successful completion to free disk space.

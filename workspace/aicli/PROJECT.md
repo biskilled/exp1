@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- AI tag suggestion workflow: debugging missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
-- Dashboard/Pipeline Health tab: implementing 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility
-- Electron UI scope variable conflict: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed to `cacheCats`
-- mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items to track summary, use cases, and delivery artifacts
-- Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search
-- System memory file reorganization: cleaned up stale auto-generated context files and consolidated feature-specific memory into _system/ subdirectories
+- Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
+- PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
+- History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
+- PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
+- Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)
+- Memory mechanism population: memory_items and project_facts tables exist but not actively populated; requires event-driven update implementation

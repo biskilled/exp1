@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-13 17:06 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-13 17:55 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -22,8 +22,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
-- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging, vector search)
-- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+- **mcp**: Stdio MCP server with 12+ tools
+- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)
 - **database_schema**: Unified (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features); Per-project (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}); Shared (users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories)
 - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
@@ -36,7 +36,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **database**: PostgreSQL 15+ with pgvector extension
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
-- **build_tooling**: npm 8+ with Electron-builder; Vite dev server
+- **build_tooling**: npm 8+ + Electron-builder; Vite dev server
 - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 - **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
 - **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
@@ -44,7 +44,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)
+- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors)
 
@@ -64,12 +64,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
-- Project facts + work items form unified semantic memory layer with embedding-based search and relationship tracking
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m027); column naming: prefix_noun_adjective order
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-12] How can I improve points 4 and 5 ? for point 4 - I did make prompts in sappasrete files so user can manage that. is it p
 - [2026-04-12] ok. can you implement that. make sure dashboard is a new tab. pipeline will be able to run from planner or from docs (wh
 - [2026-04-12] It looks like the ui not working properly. In planner I do see any bug/ category... only work_item. when I click accpete
 - [2026-04-13] Seems that electron is loadinng emtpty
 - [2026-04-13] Events - I would like to make sure events are working properly in order to have more meaningfull work_items.  Table stru
+- [2026-04-13] Can you try again the table migration (using the column order I have mention) this time when finished - drop the _old ta

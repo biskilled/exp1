@@ -17,8 +17,8 @@
     "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility",
     "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
     "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
-    "mcp": "Stdio MCP server with 12+ tools (semantic search, work item management, session tagging, vector search)",
-    "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+    "mcp": "Stdio MCP server with 12+ tools",
+    "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
     "database_schema": "Unified (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features); Per-project (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}); Shared (users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories)",
     "config_management": "config.py + YAML pipelines + pyproject.toml + aicli.yaml",
     "db_tables": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
@@ -31,7 +31,7 @@
     "database": "PostgreSQL 15+ with pgvector extension",
     "node_modules_build": "npm 8+ with Electron-builder; Vite dev server",
     "database_version": "PostgreSQL 15+",
-    "build_tooling": "npm 8+ with Electron-builder; Vite dev server",
+    "build_tooling": "npm 8+ + Electron-builder; Vite dev server",
     "db_consolidation": "mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)",
     "db_tables_unified": "mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features",
     "unified_tables": "mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features",
@@ -39,7 +39,7 @@
     "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
     "deployment_local": "bash start_backend.sh + npm run dev",
     "prompt_management": "core.prompt_loader module with centralized prompt caching",
-    "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m027 framework)",
+    "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m027)",
     "database_tables": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories",
     "embeddings": "text-embedding-3-small (1536-dim vectors)"
   },
@@ -58,7 +58,7 @@
     "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
     "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
     "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type",
-    "Project facts + work items form unified semantic memory layer with embedding-based search and relationship tracking"
+    "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m027); column naming: prefix_noun_adjective order"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -87,12 +87,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "AI tag suggestion workflow: debugging missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display",
-    "Dashboard/Pipeline Health tab: implementing 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility",
-    "Electron UI scope variable conflict: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed to `cacheCats`",
-    "mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items to track summary, use cases, and delivery artifacts",
-    "Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search",
-    "System memory file reorganization: cleaned up stale auto-generated context files and consolidated feature-specific memory into _system/ subdirectories"
+    "Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)",
+    "PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)",
+    "History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)",
+    "PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)",
+    "Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)",
+    "Memory mechanism population: memory_items and project_facts tables exist but not actively populated; requires event-driven update implementation"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -124,7 +124,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-13T17:07:22Z",
+  "last_memory_run": "2026-04-13T17:56:54Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -141,15 +141,15 @@
       "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
       "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type",
-      "Project facts + work items form unified semantic memory layer with embedding-based search and relationship tracking"
+      "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m027); column naming: prefix_noun_adjective order"
     ],
     "in_progress": [
-      "AI tag suggestion workflow: debugging missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display",
-      "Dashboard/Pipeline Health tab: implementing 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility",
-      "Electron UI scope variable conflict: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed to `cacheCats`",
-      "mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items to track summary, use cases, and delivery artifacts",
-      "Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search",
-      "System memory file reorganization: cleaned up stale auto-generated context files and consolidated feature-specific memory into _system/ subdirectories"
+      "Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)",
+      "PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)",
+      "History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)",
+      "PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)",
+      "Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)",
+      "Memory mechanism population: memory_items and project_facts tables exist but not actively populated; requires event-driven update implementation"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -157,16 +157,16 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database_schema": "Unified (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features); Per-project (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}); Shared (users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories)",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
-      "mcp": "Stdio MCP server with 12+ tools (semantic search, work item management, session tagging, vector search)",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)"
+      "mcp": "Stdio MCP server with 12+ tools",
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
+      "build_tooling": "npm 8+ + Electron-builder; Vite dev server",
+      "schema_management": "db_schema.sql (single source of truth) + db_migrations.py (m001-m027)"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL semantic storage with pgvector, and an Electron desktop UI to help teams capture, synthesize, and search development context. It features Claude-powered memory synthesis, async workflow DAG execution with approval panels, work item embeddings for semantic search, and MCP integration. The system is currently debuggingAI tag suggestion workflows, implementing pipeline health dashboards, and consolidating feature-specific memory organization.",
-    "memory_digest": "**[2026-03-14]** `git` \u2014 Reorganized system memory files into feature-specific subdirectories, removing stale auto-generated context and CLAUDE.md files to improve maintainability. **[2026-03-14]** `feature` \u2014 Enhanced projects router and AI assistant configuration with improved hooks and log_session_stop template support. **[2026-03-14]** `refactor` \u2014 Deprecated exec_llm boolean tracking in favor of event_id IS NULL sentinel pattern for cleaner commit processing state management. **[2026-03-14]** `bug` \u2014 Fixed Electron UI scope variable conflict by renaming duplicate `const cats` declaration to `cacheCats` in _wiPanelCreateTag, resolving empty Electron load issues. **[2026-03-14]** `feature` \u2014 Implemented AI tag suggestion workflow with ai_suggestion column, approve/remove buttons, and improved tooltip messaging for missing tags. **[2026-03-13]** `feature` \u2014 Finalized mem_ai_feature_snapshot table design merging planner_tags user requirements with work_items to track summary, use cases, and delivery artifacts. **[2026-03-13]** `feature` \u2014 Integrated work_item embedding vector persistence with _embed_work_item() for name_ai + desc_ai concatenation supporting MCP semantic search. **[2026-03-13]** `feature` \u2014 Established event filtering logic (event_type IN 'prompt_batch', 'session_summary') to exclude per-commit and diff_file noise from work item digests. **[2026-03-13]** `infrastructure` \u2014 Standardized column naming convention (prefix_noun_adjective order) across schema and completed db_migrations.py (m001-m027) framework. **[2026-03-13]** `dashboard` \u2014 Planned Dashboard/Pipeline Health tab with 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed pipeline status."
+    "project_summary": "aicli is a shared AI memory platform that combines a FastAPI backend with PostgreSQL+pgvector, a Python CLI, and an Electron desktop UI to capture, synthesize, and search development work across projects. The system uses Claude Haiku for dual-layer memory synthesis, async DAG workflows for automation, and semantic embeddings for intelligent retrieval\u2014currently focused on stabilizing table migrations, fixing history display rendering, and completing memory item population mechanisms.",
+    "memory_digest": "**[2026-04-13]** `claude_cli` \u2014 Table migration with column reordering initiated; stale nohup log file handle causing null byte output, switching to fresh log paths for clean execution and _old table cleanup. **[2026-04-06]** `development_session` \u2014 PostgreSQL JSONB operator conflict (line 466-470) in route_history batch upsert fixed; duplicate key conflict resolved by ensuring no constrained value duplicates in execute_values. **[2026-04-06]** `user_report` \u2014 History display incomplete (only prompt text shown, missing LLM response); copy-to-clipboard functionality requested for UI enhancement. **[2026-03-18]** `backend_fix` \u2014 Removed stale db.ensure_project_schema() call causing startup AttributeError; added retry logic in _continueToApp() for empty projects list race condition. **[2026-03-18]** `data_model_update` \u2014 Users now nested as client sub-entities (clients have multiple users); memory_items and project_facts tables exist but not actively populated\u2014requires event-driven implementation. **[2026-03-14]** `schema_decision` \u2014 Unified mem_ai_* table architecture finalized (events, tags_relations, project_facts, work_items, features) with per-project and shared table mirrors; column naming convention standardized to prefix_noun_adjective order."
   }
 }
