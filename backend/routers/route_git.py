@@ -29,8 +29,8 @@ log = logging.getLogger(__name__)
 _SQL_UPSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
             (project_id, commit_hash, session_id, commit_msg, diff_summary,
-             author, author_email, committed_at, tags, tags_ai)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             author, author_email, committed_at, tags)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
                 commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
@@ -41,9 +41,7 @@ _SQL_UPSERT_COMMIT = """
                                     ELSE mem_mrr_commits.author_email END,
                 committed_at = COALESCE(EXCLUDED.committed_at, mem_mrr_commits.committed_at),
                 tags         = CASE WHEN EXCLUDED.tags != '{}' THEN EXCLUDED.tags
-                                    ELSE mem_mrr_commits.tags END,
-                tags_ai      = CASE WHEN EXCLUDED.tags_ai != '{}' THEN EXCLUDED.tags_ai
-                                    ELSE mem_mrr_commits.tags_ai END
+                                    ELSE mem_mrr_commits.tags END
 """
 
 # Link commit → most-recent prompt in the same session that occurred before the commit.
@@ -62,7 +60,7 @@ _SQL_LINK_COMMIT_TO_PROMPT = """
 
 _SQL_LIST_COMMITS = """
     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
-           c.tags->>'source' AS source, c.session_id, c.committed_at,
+           c.session_id, c.committed_at,
            p.source_id AS prompt_source_id
     FROM mem_mrr_commits c
     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
@@ -72,7 +70,7 @@ _SQL_LIST_COMMITS = """
 """
 
 _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
-    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
+    SELECT commit_hash, commit_msg, tags, committed_at
           FROM mem_mrr_commits
          WHERE project_id=%s
            AND (session_id = %s
@@ -81,7 +79,7 @@ _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
 """
 
 _SQL_GET_SESSION_COMMITS_BY_ID = """
-    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
+    SELECT commit_hash, commit_msg, tags, committed_at
           FROM mem_mrr_commits
          WHERE project_id=%s AND session_id = %s
          ORDER BY committed_at
@@ -199,7 +197,7 @@ def _extract_commit_code_background(project: str, commit_hash: str) -> None:
 
 def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
                           commit_msg: str, committed_at: str,
-                          diff_summary: str = "", analysis: dict | None = None,
+                          diff_summary: str = "",
                           author: str = "", author_email: str = "") -> None:
     """Upsert the new commit into mem_mrr_commits and link it to its triggering prompt."""
     if not db.is_available():
@@ -208,6 +206,7 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
     from core.pipeline_log import pipeline_run_sync, _finish_run
     run_id, t0 = pipeline_run_sync(project_id, "commit_store", commit_hash)
     try:
+        # tags = user intent only: phase/feature/bug from active session tags
         tags_dict: dict = {}
         try:
             with db.conn() as conn:
@@ -224,16 +223,12 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
 
         with db.conn() as conn:
             with conn.cursor() as cur:
-                tags_dict.setdefault("source", "commit_push")
-                tags_ai_dict: dict = {}
-                if analysis:
-                    tags_ai_dict["analysis"] = analysis
                 cur.execute(
                     _SQL_UPSERT_COMMIT,
                     (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
                      author, author_email,
                      committed_at or datetime.now(timezone.utc),
-                     json.dumps(tags_dict), json.dumps(tags_ai_dict)),
+                     json.dumps(tags_dict)),
                 )
                 if session_id:
                     cur.execute(_SQL_LINK_COMMIT_TO_PROMPT, (project_id, session_id, commit_hash))
@@ -1153,7 +1148,6 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
             commit_message,
             datetime.now(timezone.utc).isoformat(),
             code_stat,          # only code file stats stored
-            commit_analysis,    # structured LLM analysis → stored in tags_ai
             commit_author,
             commit_author_email,
         )

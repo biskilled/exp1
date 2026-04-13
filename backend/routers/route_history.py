@@ -29,7 +29,7 @@ from core.tags import tags_to_list, parse_tag
 
 _SQL_LIST_COMMITS = """
     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
-           c.tags->>'source' AS source, c.session_id, c.committed_at,
+           c.session_id, c.committed_at,
            p.source_id AS prompt_source_id
     FROM mem_mrr_commits c
     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
@@ -40,17 +40,14 @@ _SQL_LIST_COMMITS = """
 
 _SQL_UPSERT_COMMIT_FROM_LOG = """
     INSERT INTO mem_mrr_commits
-        (project_id, commit_hash, commit_msg, session_id, committed_at,
-         tags)
-    VALUES (%s, %s, %s, %s, %s,
-            jsonb_build_object('source', %s))
+        (project_id, commit_hash, commit_msg, session_id, committed_at, tags)
+    VALUES (%s, %s, %s, %s, %s, '{}')
     ON CONFLICT (commit_hash) DO UPDATE SET
         session_id = CASE
             WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
             THEN EXCLUDED.session_id
             ELSE mem_mrr_commits.session_id
-        END,
-        tags = mem_mrr_commits.tags || EXCLUDED.tags
+        END
 """
 
 _SQL_UPDATE_COMMIT_META = (
@@ -61,14 +58,14 @@ _SQL_UPDATE_COMMIT_META = (
 # Base form matches by session_id only; extended form adds a committed_at range.
 # Build dynamically in the handler; see session_commits() below.
 _SQL_SESSION_COMMITS_BASE = """
-    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
+    SELECT commit_hash, commit_msg, tags, committed_at
           FROM mem_mrr_commits
          WHERE project_id=%s AND session_id = %s
          ORDER BY committed_at
 """
 
 _SQL_SESSION_COMMITS_WITH_WINDOW = """
-    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
+    SELECT commit_hash, commit_msg, tags, committed_at
           FROM mem_mrr_commits
          WHERE project_id=%s
            AND (session_id = %s

@@ -372,8 +372,8 @@ async def embed_commits(
 ):
     """Run process_commit() for commits that have no Haiku digest yet.
 
-    Selects commits where exec_llm = FALSE (never processed), runs Haiku
-    digest + embedding for each, back-propagates summary and sets exec_llm=TRUE
+    Selects commits where event_id IS NULL (never processed), runs Haiku
+    digest + embedding for each, back-propagates summary and event_id
     on mem_mrr_commits. Returns count processed.
     """
     if not db.is_available():
@@ -386,7 +386,7 @@ async def embed_commits(
                 cur.execute(
                     """SELECT commit_hash FROM mem_mrr_commits
                        WHERE project_id=%s
-                         AND exec_llm = FALSE
+                         AND event_id IS NULL
                        ORDER BY committed_at DESC NULLS LAST
                        LIMIT %s""",
                     (project_id, limit),
@@ -454,9 +454,9 @@ async def get_pipeline_status(project: str):
                 for pl in pipelines:
                     last_24h[pl] = agg.get(pl, {"ok": 0, "error": 0, "skipped": 0, "last_run": None})
 
-                # Pending commits (not embedded)
+                # Pending commits (not embedded — event_id set by process_commit on completion)
                 cur.execute(
-                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND exec_llm=FALSE",
+                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL",
                     (project_id,),
                 )
                 commits_not_embedded = cur.fetchone()[0] or 0

@@ -1,6 +1,6 @@
 {
-  "phase": null,
-  "feature": "feature_snapshot",
+  "phase": "discovery",
+  "feature": null,
   "bug_ref": null,
   "extra": {}
 }

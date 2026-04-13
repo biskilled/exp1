@@ -127,7 +127,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
          AND (
                (wi.src_session_id IS NOT NULL AND mc.session_id = wi.src_session_id)
             OR (wi.src_event_type = 'commit' AND wi.src_source_id IS NOT NULL
-                AND mc.commit_short_hash = wi.src_source_id)
+                AND mc.commit_hash_short = wi.src_source_id)
          )
         GROUP BY wi.id
     ),

@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
 _SQL_GET_COMMIT_META = """
-    SELECT tags, exec_llm, project_id FROM mem_mrr_commits
+    SELECT tags, project_id FROM mem_mrr_commits
     WHERE commit_hash=%s AND project_id=%s
 """
 
@@ -410,7 +410,7 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
                 row = cur.fetchone()
         if not row:
             return 0
-        commit_tags, exec_llm_flag, _ = row
+        commit_tags, _ = row
         commit_tags = commit_tags or {}
     except Exception as e:
         log.debug(f"extract_commit_code DB error: {e}")

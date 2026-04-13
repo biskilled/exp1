@@ -331,26 +331,24 @@ CREATE INDEX        IF NOT EXISTS idx_mmrr_p_tags    ON mem_mrr_prompts USING gi
 
 -- mem_mrr_commits: git commits with AI-generated metadata
 -- commit_hash is the natural PK (git SHA).
--- tags  = user intent:  {source, phase, feature, bug, work-item}
--- tags_ai = AI metadata: {analysis, languages, phase (suggested)}
--- exec_llm: set TRUE after process_commit() runs the Haiku digest.
+-- tags = user intent: {phase, feature, bug} — sourced from mng_session_tags at push time.
+-- event_id IS NULL means process_commit() (Haiku digest + embed) has not run yet.
+-- Detailed per-symbol code data lives in mem_mrr_commits_code (one row per symbol).
 CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     commit_hash       VARCHAR(64)  PRIMARY KEY,
-    commit_short_hash VARCHAR(8)   GENERATED ALWAYS AS (LEFT(commit_hash, 8)) STORED,
+    commit_hash_short VARCHAR(8)   GENERATED ALWAYS AS (LEFT(commit_hash, 8)) STORED,
     client_id         INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id        INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     commit_msg        TEXT         NOT NULL DEFAULT '',
-    author            TEXT         NOT NULL DEFAULT '',
-    author_email      TEXT         NOT NULL DEFAULT '',
     summary           TEXT         NOT NULL DEFAULT '',
     diff_summary      TEXT         NOT NULL DEFAULT '',  -- git --stat output
     llm               TEXT,                              -- model name used for digest
-    exec_llm          BOOLEAN      NOT NULL DEFAULT FALSE,
+    tags              JSONB        NOT NULL DEFAULT '{}',
     session_id        VARCHAR(255),
     prompt_id         UUID         REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
     event_id          UUID,                              -- FK to mem_ai_events.id (set after digest)
-    tags              JSONB        NOT NULL DEFAULT '{}',
-    tags_ai           JSONB        NOT NULL DEFAULT '{}',
+    author            TEXT         NOT NULL DEFAULT '',
+    author_email      TEXT         NOT NULL DEFAULT '',
     committed_at      TIMESTAMPTZ,
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-13 09:17 UTC — do not edit manually.
+> Auto-generated 2026-04-13 11:35 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 492
-- **Last active**: 2026-04-13T09:05:44Z
+- **Sessions**: 493
+- **Last active**: 2026-04-13T09:18:05Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -55,9 +55,9 @@
 
 ## In Progress
 
-- Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pending/error counts and recent workflow runs visualization
-- AI tag suggestion workflow bug fix: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
-- Workflow visibility architecture: designing multi-trigger pipeline execution model (planner, docs, chat) with unified orchestration and dashboard insights
+- AI tag suggestion workflow debugging: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display
+- Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility and recent workflow runs
+- Electron UI scope variable conflict fix: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed second instance to `cacheCats`
 - mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type
 - Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table
 - Pipeline template mapping: creating workflow-templates YAML with delivery_category/type → preferred_roles suggestions for code, architecture_design, document, and presentation deliveries
@@ -74,7 +74,7 @@
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts
+- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
 - planner_tags deliveries column: JSONB field storing user-selected delivery artifact types (code, document, architect_design, ppt) after action_items
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table

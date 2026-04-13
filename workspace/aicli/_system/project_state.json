@@ -54,7 +54,7 @@
     "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
     "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
-    "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts",
+    "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type",
     "planner_tags deliveries column: JSONB field storing user-selected delivery artifact types (code, document, architect_design, ppt) after action_items",
     "Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution",
     "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
@@ -87,9 +87,9 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pending/error counts and recent workflow runs visualization",
-    "AI tag suggestion workflow bug fix: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display",
-    "Workflow visibility architecture: designing multi-trigger pipeline execution model (planner, docs, chat) with unified orchestration and dashboard insights",
+    "AI tag suggestion workflow debugging: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display",
+    "Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility and recent workflow runs",
+    "Electron UI scope variable conflict fix: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed second instance to `cacheCats`",
     "mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type",
     "Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table",
     "Pipeline template mapping: creating workflow-templates YAML with delivery_category/type \u2192 preferred_roles suggestions for code, architecture_design, document, and presentation deliveries"
@@ -124,7 +124,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-12T23:22:26Z",
+  "last_memory_run": "2026-04-13T09:59:57Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -137,16 +137,16 @@
       "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
       "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
-      "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts",
+      "mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type",
       "planner_tags deliveries column: JSONB field storing user-selected delivery artifact types (code, document, architect_design, ppt) after action_items",
       "Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution",
       "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
       "Multi-workflow trigger model: pipelines executable from planner UI, docs (feature snapshots), or direct chat; dashboard as new UI tab for pipeline visibility"
     ],
     "in_progress": [
-      "Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pending/error counts and recent workflow runs visualization",
-      "AI tag suggestion workflow bug fix: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display",
-      "Workflow visibility architecture: designing multi-trigger pipeline execution model (planner, docs, chat) with unified orchestration and dashboard insights",
+      "AI tag suggestion workflow debugging: investigating missing ai_suggestion tags in UI and work item panel refresh; addressing work_item disappearance after tag approval and empty planner category display",
+      "Dashboard/Pipeline Health tab implementation: 30-second auto-refresh showing commit_embed, session_summary, tag_match, work_item_embed status with pipeline visibility and recent workflow runs",
+      "Electron UI scope variable conflict fix: resolved duplicate `const cats` declaration in _wiPanelCreateTag causing empty Electron load; renamed second instance to `cacheCats`",
       "mem_ai_feature_snapshot table finalization: merging planner_tags user requirements with work_items tracking summary, use cases, and delivery artifacts per artifact type",
       "Work item embedding vector search: integrating _embed_work_item() persistence for name_ai + desc_ai concatenation with MCP semantic search on work_items table",
       "Pipeline template mapping: creating workflow-templates YAML with delivery_category/type \u2192 preferred_roles suggestions for code, architecture_design, document, and presentation deliveries"
@@ -160,12 +160,12 @@
       "embeddings": "text-embedding-3-small (1536-dim vectors)",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "mcp": "Stdio MCP server with 12+ tools (semantic search, work item management, session tagging, vector search)",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "database_version": "PostgreSQL 15+",
-      "build_tooling": "npm 8+ with Electron-builder; Vite dev server"
+      "config_management": "config.py + YAML pipelines + pyproject.toml + aicli.yaml",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
+      "mcp": "Stdio MCP server with 12+ tools (semantic search, work item management, session tagging, vector search)"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL with pgvector, a Python CLI, and an Electron desktop UI (Vanilla JS + Cytoscape) to capture, analyze, and synthesize project development history across commits, sessions, and work items. It uses a 4-layer memory architecture (ephemeral \u2192 raw \u2192 digested \u2192 synthesized) with dual-layer Claude Haiku synthesis, async DAG workflow execution, and MCP integration for semantic search and work item management.",
-    "memory_digest": "**[2026-04-12]** `dev_history` \u2014 Identified UI regression: planner category display shows only work_items (not bug/ category); ai_suggestion tags not persisting in panel refresh; work_items disappear after tag approval. Root cause likely in work_item panel refresh workflow and ai_tag_suggestion column population.\n\n**[2026-04-11]** `in_progress` \u2014 Pipeline Health dashboard implemented with 30-second auto-refresh showing status cards for commit_embed, session_summary, tag_match, work_item_embed; recent workflow runs linked to full pipeline view.\n\n**[2026-04-10]** `in_progress` \u2014 mem_ai_feature_snapshot table design finalized: merges planner_tags (user requirements) with work_items (execution details); tracks summary, use cases, and delivery artifacts (code, document, architect_design, ppt) per artifact type.\n\n**[2026-04-09]** `in_progress` \u2014 planner_tags deliveries JSONB column implementation: stores user-selected artifact types post action_items; m027 migration completed with creator, updater, and timestamp fields for audit trail.\n\n**[2026-04-08]** `in_progress` \u2014 Work item embedding vector search integrated: _embed_work_item() persists 1536-dim vectors for concatenated name_ai + desc_ai; MCP tool_memory.py semantic search on work_items table with embedding <=> operator for non-archived items.\n\n**[2026-04-07]** `in_progress` \u2014 Workflow trigger architecture designed: multi-model enabling pipeline execution from planner (work_items), docs (feature snapshots), and chat (direct initiation) with unified orchestration and new dashboard visibility tab."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI), PostgreSQL semantic storage with pgvector, and an Electron desktop UI (vanilla JS). It synthesizes project events, commits, and sessions into structured work items via Claude Haiku LLM digestion, manages multi-step workflows as DAGs with approval panels, and provides MCP server integration for semantic search. Currently focused on stabilizing AI tag suggestion workflows, implementing pipeline visibility dashboards, and finalizing feature snapshot storage to merge user requirements with deliverable artifacts.",
+    "memory_digest": "**[2026-04-12]** `chat` \u2014 Investigated missing ai_suggestion tags in UI; found planner category display issues and work item disappearance after tag approval.\n**[2026-04-12]** `feature` \u2014 Finalized mem_ai_feature_snapshot table design merging planner_tags user requirements with work_items for delivery artifact tracking.\n**[2026-04-12]** `bug` \u2014 Fixed Electron UI scope conflict: duplicate `const cats` declaration in _wiPanelCreateTag renamed to `cacheCats` to resolve empty load state.\n**[2026-04-12]** `feature` \u2014 Integrated _embed_work_item() persistence for name_ai + desc_ai vector embeddings during /memory execution; enabled MCP semantic search on work_items.\n**[2026-04-12]** `feature` \u2014 Designed multi-workflow trigger model: pipelines executable from planner UI, feature snapshots, or direct chat with dashboard as new visibility tab.\n**[2026-04-12]** `planning` \u2014 Proposed pipeline template mapping: workflow-templates YAML with delivery_category/type \u2192 preferred_roles for code, architecture_design, document, presentation artifacts.\n**[2026-04-12]** `refactor` \u2014 Updated rules.md and removed legacy _system context files; cleaned up temporary artifacts from previous Claude CLI sessions.\n**[2026-04-12]** `feature` \u2014 Implemented Dashboard/Pipeline Health tab with 30-second auto-refresh tracking commit_embed, session_summary, tag_match, work_item_embed pipeline stages."
   }
 }

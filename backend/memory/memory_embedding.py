@@ -92,12 +92,8 @@ _SQL_UPDATE_COMMIT_SUMMARY = """
     WHERE commit_hash = %s AND (summary IS NULL OR summary = '')
 """
 
-_SQL_SET_EXEC_LLM = """
-    UPDATE mem_mrr_commits SET llm=%s, exec_llm=TRUE WHERE commit_hash=%s
-"""
-
-_SQL_SET_TAGS_AI = """
-    UPDATE mem_mrr_commits SET tags_ai = tags_ai || %s::jsonb WHERE commit_hash = %s
+_SQL_SET_LLM = """
+    UPDATE mem_mrr_commits SET llm=%s WHERE commit_hash=%s
 """
 
 _SQL_GET_ITEM = """
@@ -371,7 +367,7 @@ class MemoryEmbedding:
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT commit_hash FROM mem_mrr_commits "
-                        "WHERE project_id=%s AND session_id=%s AND exec_llm=FALSE",
+                        "WHERE project_id=%s AND session_id=%s AND event_id IS NULL",
                         (_pb_project_id, session_id),
                     )
                     pending_commits = [r[0] for r in cur.fetchall()]
@@ -448,12 +444,12 @@ class MemoryEmbedding:
             summary=summary_text, action_items=action_items, tags=digest_tags, importance=importance,
         )
 
-        # Back-propagate summary + link event_id to mem_mrr_commits, set exec_llm flag
+        # Back-propagate summary + link event_id to mem_mrr_commits; set llm model name
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(_SQL_UPDATE_COMMIT_SUMMARY, (summary_text, commit_hash_val))
-                    cur.execute(_SQL_SET_EXEC_LLM, (settings.haiku_model, commit_hash_val))
+                    cur.execute(_SQL_SET_LLM, (settings.haiku_model, commit_hash_val))
                     if event_id:
                         cur.execute(
                             "UPDATE mem_mrr_commits SET event_id=%s::uuid WHERE commit_hash=%s",
@@ -491,20 +487,6 @@ class MemoryEmbedding:
                         diff_chunks = MemoryEmbedding.smart_chunk_diff(
                             diff_text, commit_hash_val, {"commit_msg": commit_msg}
                         )
-                        # Store suggested AI tags from first chunk into tags_ai
-                        if diff_chunks:
-                            first_chunk_tags = diff_chunks[0].get("tags", {})
-                            ai_tags: dict = {}
-                            if first_chunk_tags.get("languages"):
-                                ai_tags["languages"] = first_chunk_tags["languages"]
-                            if ai_tags:
-                                try:
-                                    with db.conn() as conn:
-                                        with conn.cursor() as cur:
-                                            cur.execute(_SQL_SET_TAGS_AI,
-                                                        (json.dumps(ai_tags), commit_hash_val))
-                                except Exception:
-                                    pass
                         # Skip chunk[0] (summary) — Haiku digest is already chunk=0
                         for i, dc in enumerate(diff_chunks[1:], start=1):
                             dc_content = dc.get("content", "")

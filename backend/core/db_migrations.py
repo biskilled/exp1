@@ -585,6 +585,28 @@ def m030_pipeline_runs(conn) -> None:
     log.info("m030_pipeline_runs: mem_pipeline_runs table + pr_graph_runs new cols created")
 
 
+def m031_commits_cleanup(conn) -> None:
+    """Simplify mem_mrr_commits: drop tags_ai + exec_llm, rename commit_short_hash → commit_hash_short.
+
+    tags_ai was used to store AI analysis and detected languages.  That data is now
+    fully covered by mem_mrr_commits_code (one row per symbol per commit) and the
+    mem_ai_events commit digest summary — no need to duplicate it here.
+
+    exec_llm tracked whether process_commit() had run; event_id IS NULL is the
+    cleaner sentinel (event_id is set by process_commit() on completion).
+
+    commit_short_hash is renamed commit_hash_short to follow consistent naming.
+    """
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS tags_ai")
+        cur.execute("ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS exec_llm")
+        cur.execute(
+            "ALTER TABLE mem_mrr_commits RENAME COLUMN commit_short_hash TO commit_hash_short"
+        )
+    conn.commit()
+    log.info("m031_commits_cleanup: dropped tags_ai, exec_llm; renamed commit_short_hash → commit_hash_short")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -603,4 +625,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m028_add_deliveries", m028_add_deliveries),
     ("m029_feature_snapshot", m029_feature_snapshot),
     ("m030_pipeline_runs", m030_pipeline_runs),
+    ("m031_commits_cleanup", m031_commits_cleanup),
 ]

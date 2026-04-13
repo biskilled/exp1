@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-12 23:22 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-13 09:59 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -60,7 +60,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts
+- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
 - planner_tags deliveries column: JSONB field storing user-selected delivery artifact types (code, document, architect_design, ppt) after action_items
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
@@ -68,8 +68,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-12] Feature_snapshot  I would like to create the final stage - mem_ai_feature_snapshot -  this table merge user requirements
 - [2026-04-12] Assuming all will work properly. having a way to store all project history using all the layers, stron mcp that can have
 - [2026-04-12] How can I improve points 4 and 5 ? for point 4 - I did make prompts in sappasrete files so user can manage that. is it p
 - [2026-04-12] ok. can you implement that. make sure dashboard is a new tab. pipeline will be able to run from planner or from docs (wh
 - [2026-04-12] It looks like the ui not working properly. In planner I do see any bug/ category... only work_item. when I click accpete
+- [2026-04-13] Seems that electron is loadinng emtpty
