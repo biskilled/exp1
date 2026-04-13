@@ -244,12 +244,10 @@ async def create_session_summary(
         f"Action Items:\n{action_items}" if action_items else "",
     ]))
 
-    haiku_model = getattr(settings, "haiku_model", "claude-haiku-4-5-20251001")
     import json as _json
-    auto_tags = _json.dumps({
-        "event": "session_summary", "chunk_type": "full",
-        "llm": haiku_model,
-    })
+    # Only user-intent tags belong in mem_ai_events.tags (phase/feature/bug/source)
+    # event, chunk_type, llm are system metadata — stripped by _user_tags filter
+    auto_tags = _json.dumps({})
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(

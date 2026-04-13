@@ -60,21 +60,36 @@ _EXT_LANG: dict[str, str] = {
 
 # ── Tag fingerprint helper ─────────────────────────────────────────────────────
 
+_USER_TAG_KEYS = frozenset({"phase", "feature", "bug", "source"})
+"""Keys allowed in mem_ai_events.tags. Only user-intent context; no system metadata."""
+
+
 def _tag_fingerprint(tags: dict) -> str:
     """Return a stable string key for grouping by user-intent tags (phase/feature/bug)."""
     relevant = {k: tags[k] for k in ("phase", "feature", "bug") if k in tags and tags[k]}
     return json.dumps(sorted(relevant.items()))
 
 
+def _user_tags(tags: dict) -> dict:
+    """Filter a tags dict to only user-intent keys (phase, feature, bug, source).
+
+    Strips system metadata (llm, chunk_type, event, file, languages, symbols,
+    commit_hash, commit_count, prompt_count, rows_changed, etc.) that should
+    never appear in the tags column of mem_ai_events.
+    """
+    return {k: v for k, v in tags.items() if k in _USER_TAG_KEYS and v}
+
+
 # ── SQL constants ──────────────────────────────────────────────────────────────
 
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
-           (project_id, event_type, source_id, session_id,
+           (project_id, event_type, event_cnt, source_id, session_id,
             chunk, chunk_type, content, embedding, summary, action_items, tags, importance)
-       VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
        ON CONFLICT (project_id, event_type, source_id, chunk)
        DO UPDATE SET
+           event_cnt    = EXCLUDED.event_cnt,
            content      = EXCLUDED.content,
            embedding    = EXCLUDED.embedding,
            summary      = EXCLUDED.summary,
@@ -234,41 +249,28 @@ def _upsert_event(
     summary: Optional[str] = None,
     action_items: str = "",
     tags: dict | None = None,
-    # backward-compat: callers may still pass these; merged into tags
+    importance: int = 1,
+    event_cnt: int = 1,
+    # backward-compat kwargs — accepted but ignored for tags (system metadata, not stored)
     metadata: dict | None = None,
     doc_type: Optional[str] = None,
     language: Optional[str] = None,
     file_path: Optional[str] = None,
-    importance: int = 1,
-    # ignored legacy params
-    llm_source: Optional[str] = None,  # deprecated — put in tags["llm"] instead
+    llm_source: Optional[str] = None,
     session_desc: Optional[str] = None,
     cnt_prompts: Optional[int] = None,
 ) -> Optional[str]:
     """Insert or update a row in mem_ai_events. Returns UUID string.
 
-    tags: unified dict — use tags["source"] for originating platform,
-          tags["llm"] for the model that produced digest content.
-    doc_type / language / file_path are accepted for backward-compat and merged into tags.
-    llm_source is accepted for backward-compat and merged into tags["llm"] if not already set.
+    tags: only user-intent context keys are stored — phase, feature, bug, source.
+          All system metadata (llm, chunk_type, event, file, symbols, etc.) is stripped
+          before insert so the column stays clean for filtering and work-item matching.
+    event_cnt: number of mirror rows this event aggregates (e.g. 5 prompts, 3 commits).
     """
     if not db.is_available():
         return None
-    # Accept legacy `metadata` kwarg — merge into tags
-    merged = {**(metadata or {}), **(tags or {})}
-    # Merge legacy individual column params into tags
-    if doc_type:
-        merged.setdefault("doc_type", doc_type)
-    if language:
-        merged.setdefault("language", language)
-    if file_path:
-        merged.setdefault("file", file_path)
-    # Backward-compat: if caller passed llm_source kwarg, fold into tags["llm"]
-    if llm_source:
-        merged.setdefault("llm", llm_source)
-    # Auto-add system classifiers so all events are consistently tagged
-    enriched: dict = {"event": source_type, "chunk_type": chunk_type}
-    enriched.update(merged)  # caller tags override system keys
+    # Keep only user-intent tags; strip all system/technical metadata
+    clean_tags = _user_tags({**(tags or {}), **(metadata or {})})
     vec_str = f"[{','.join(str(x) for x in embedding)}]" if embedding else None
     project_id = db.get_or_create_project_id(project)
     try:
@@ -276,9 +278,9 @@ def _upsert_event(
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_UPSERT_EVENT,
-                    (project_id, source_type, source_id, session_id,
+                    (project_id, source_type, event_cnt, source_id, session_id,
                      chunk, chunk_type, content, vec_str, summary,
-                     action_items, json.dumps(enriched), importance),
+                     action_items, json.dumps(clean_tags), importance),
                 )
                 row = cur.fetchone()
         return str(row[0]) if row else None
@@ -393,20 +395,20 @@ class MemoryEmbedding:
             # source_id = last prompt UUID in this tag group
             source_id = group[-1]["id"]
 
-            # Merged tags = union of all tags in group + prompt_count + llm
+            # Merged tags = union of user-intent tags from all prompts in group
+            # prompt_count and llm are system metadata → stored in event_cnt, not tags
             merged_tags: dict = {}
             for p in group:
                 for k, v in (p["tags"] or {}).items():
                     if k not in merged_tags:
                         merged_tags[k] = v
-            merged_tags["prompt_count"] = len(group)
-            merged_tags["llm"] = settings.haiku_model
 
             event_id = _upsert_event(
                 project, "prompt_batch", source_id, 0, "full", summary_text, embedding,
                 session_id=session_id,
                 summary=summary_text, action_items=action_items,
                 tags=merged_tags, importance=importance,
+                event_cnt=len(group),
             )
 
             if event_id:
@@ -534,13 +536,12 @@ class MemoryEmbedding:
             source_id = f"batch_{first_hash8}_{tag_fp8}"
 
             # Merged tags = union of user-intent tags from all commits in group
+            # commit_count and llm are system metadata → stored in event_cnt, not tags
             merged_tags: dict = {}
             for g in group:
                 for k, v in (g["tags"] or {}).items():
                     if k not in merged_tags:
                         merged_tags[k] = v
-            merged_tags["commit_count"] = len(group)
-            merged_tags["llm"] = settings.haiku_model
 
             # Use session_id from first commit (group may span sessions)
             session_id = group[0].get("session_id")
@@ -550,6 +551,7 @@ class MemoryEmbedding:
                 session_id=session_id,
                 summary=summary_text, action_items=action_items,
                 tags=merged_tags, importance=importance,
+                event_cnt=len(group),
             )
 
             if event_id:
@@ -616,15 +618,12 @@ class MemoryEmbedding:
 
         embedding = await _embed(summary_text)
 
-        # Merge MRR classification tags + commit-specific metadata
-        base_tags: dict = {**mrr_tags, "commit_hash": commit_hash_val}
-
-        # chunk=0: Haiku digest — carries tags["llm"]
-        digest_tags = {**base_tags, "llm": settings.haiku_model}
+        # Use only user-intent tags from MRR (commit_hash, llm are system metadata)
         event_id = _upsert_event(
             project, "commit", commit_hash_val, 0, "full", summary_text, embedding,
             session_id=session_id,
-            summary=summary_text, action_items=action_items, tags=digest_tags, importance=importance,
+            summary=summary_text, action_items=action_items, tags=mrr_tags, importance=importance,
+            event_cnt=1,
         )
 
         # Back-propagate summary + link event_id to mem_mrr_commits; set llm model name
@@ -673,12 +672,12 @@ class MemoryEmbedding:
                         # Skip chunk[0] (summary) — Haiku digest is already chunk=0
                         for i, dc in enumerate(diff_chunks[1:], start=1):
                             dc_content = dc.get("content", "")
-                            dc_tags = {**base_tags, **dc.get("tags", {})}
                             dc_emb = await _embed(dc_content)
                             _upsert_event(
                                 project, "commit", commit_hash_val, i, "diff_file",
                                 dc_content, dc_emb,
-                                session_id=session_id, tags=dc_tags,
+                                session_id=session_id, tags=mrr_tags,
+                                event_cnt=1,
                             )
         except Exception as e:
             log.debug(f"process_commit diff chunks error: {e}")
