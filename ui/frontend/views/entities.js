@@ -658,8 +658,8 @@ function _renderWiPanel(items, project) {
       await loadTagCache(proj, true);
       _renderCategoryList();
       // Auto-switch to the new tag's category
-      const cats = getCacheCategories();
-      const linkedCat = cats.find(c => c.name === catLabel && c.id != null);
+      const cacheCats = getCacheCategories();
+      const linkedCat = cacheCats.find(c => c.name === catLabel && c.id != null);
       if (linkedCat) {
         await _plannerSelectCat(linkedCat.id, linkedCat.name);
       } else {
