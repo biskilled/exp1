@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-13 11:56 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-13 13:09 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -65,11 +65,3 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 - Multi-workflow trigger model: pipelines executable from planner UI, docs (feature snapshots), or direct chat; dashboard as new UI tab for pipeline visibility
-
-## Recent Context (last 5 changes)
-
-- [2026-04-12] Assuming all will work properly. having a way to store all project history using all the layers, stron mcp that can have
-- [2026-04-12] How can I improve points 4 and 5 ? for point 4 - I did make prompts in sappasrete files so user can manage that. is it p
-- [2026-04-12] ok. can you implement that. make sure dashboard is a new tab. pipeline will be able to run from planner or from docs (wh
-- [2026-04-12] It looks like the ui not working properly. In planner I do see any bug/ category... only work_item. when I click accpete
-- [2026-04-13] Seems that electron is loadinng emtpty

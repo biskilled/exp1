@@ -335,7 +335,7 @@ CREATE INDEX        IF NOT EXISTS idx_mmrr_p_event   ON mem_mrr_prompts(event_id
 -- mem_mrr_commits: git commits with AI-generated metadata
 -- commit_hash is the natural PK (git SHA).
 -- tags = user intent: {phase, feature, bug} — sourced from mng_session_tags at push time.
--- event_id IS NULL means process_commit() (Haiku digest + embed) has not run yet.
+-- event_id IS NULL means process_commit_batch() has not processed this commit yet.
 -- Detailed per-symbol code data lives in mem_mrr_commits_code (one row per symbol).
 CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     commit_hash       VARCHAR(64)  PRIMARY KEY,
@@ -345,21 +345,23 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     commit_msg        TEXT         NOT NULL DEFAULT '',
     summary           TEXT         NOT NULL DEFAULT '',
     diff_summary      TEXT         NOT NULL DEFAULT '',  -- git --stat output
-    llm               TEXT,                              -- model name used for digest
     tags              JSONB        NOT NULL DEFAULT '{}',
-    session_id        VARCHAR(255),
     prompt_id         UUID         REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
-    event_id          UUID,                              -- FK to mem_ai_events.id (set after digest)
+    event_id          UUID,                              -- FK to mem_ai_events.id (set after batch digest)
+    session_id        VARCHAR(255),
     author            TEXT         NOT NULL DEFAULT '',
     author_email      TEXT         NOT NULL DEFAULT '',
-    committed_at      TIMESTAMPTZ,
-    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    llm               TEXT,                              -- model name used for digest
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    committed_at      TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid     ON mem_mrr_commits(project_id);
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm    ON mem_mrr_commits(committed_at DESC);
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_session ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt  ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags    ON mem_mrr_commits USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid            ON mem_mrr_commits(project_id);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm           ON mem_mrr_commits(committed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_session        ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt         ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags           ON mem_mrr_commits USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mmrr_c_event          ON mem_mrr_commits(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmrrc_project_session ON mem_mrr_commits(project_id, session_id) WHERE session_id IS NOT NULL;
 
 -- mem_mrr_commits_code: per-symbol code statistics for each commit
 -- Populated by memory_code_parser.extract_commit_code() using tree-sitter AST parsing.

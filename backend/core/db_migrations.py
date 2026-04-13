@@ -695,6 +695,109 @@ def m032_events_and_prompts_event_id(conn) -> None:
     )
 
 
+def m033_reorder_mem_mrr_commits(conn) -> None:
+    """Reorder columns in mem_mrr_commits for logical clarity.
+
+    Old order: commit_hash, commit_hash_short, client_id, project_id,
+               commit_msg, summary, diff_summary, llm, tags, session_id,
+               prompt_id, event_id, author, author_email, committed_at, created_at
+
+    New order: commit_hash, commit_hash_short, client_id, project_id,
+               commit_msg, summary, diff_summary, tags, prompt_id, event_id,
+               session_id, author, author_email, llm, created_at, committed_at
+
+    Pattern:
+      1. DROP mem_mrr_commits_old if it exists (clean slate for this migration)
+      2. DROP FK on mem_mrr_commits_code that references mem_mrr_commits
+      3. RENAME mem_mrr_commits → mem_mrr_commits_old
+      4. CREATE new mem_mrr_commits with new column order
+      5. INSERT all data from mem_mrr_commits_old (skipping GENERATED column)
+      6. Recreate indexes + FK on mem_mrr_commits_code
+    The _old table is kept as a rollback reference.
+    """
+    with conn.cursor() as cur:
+        # 1. Clean up any leftover _old table from a previous run of this migration
+        cur.execute("DROP TABLE IF EXISTS mem_mrr_commits_old CASCADE")
+
+        # 2. Find and drop the FK constraint on mem_mrr_commits_code → mem_mrr_commits
+        cur.execute("""
+            SELECT conname FROM pg_constraint
+            WHERE conrelid  = 'mem_mrr_commits_code'::regclass
+              AND confrelid = 'mem_mrr_commits'::regclass
+        """)
+        fk_rows = cur.fetchall()
+        for (fk_name,) in fk_rows:
+            cur.execute(f"ALTER TABLE mem_mrr_commits_code DROP CONSTRAINT IF EXISTS {fk_name}")
+
+        # 3. Rename current table to _old
+        cur.execute("ALTER TABLE mem_mrr_commits RENAME TO mem_mrr_commits_old")
+
+        # 4. Create new table with the requested column order
+        cur.execute("""
+            CREATE TABLE mem_mrr_commits (
+                commit_hash       VARCHAR(64)  PRIMARY KEY,
+                commit_hash_short VARCHAR(8)   GENERATED ALWAYS AS (LEFT(commit_hash, 8)) STORED,
+                client_id         INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+                project_id        INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                commit_msg        TEXT         NOT NULL DEFAULT '',
+                summary           TEXT         NOT NULL DEFAULT '',
+                diff_summary      TEXT         NOT NULL DEFAULT '',
+                tags              JSONB        NOT NULL DEFAULT '{}',
+                prompt_id         UUID         REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
+                event_id          UUID,
+                session_id        VARCHAR(255),
+                author            TEXT         NOT NULL DEFAULT '',
+                author_email      TEXT         NOT NULL DEFAULT '',
+                llm               TEXT,
+                created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                committed_at      TIMESTAMPTZ
+            )
+        """)
+
+        # 5. Copy all data (commit_hash_short is GENERATED — omit from INSERT)
+        _cols = (
+            "commit_hash, client_id, project_id, commit_msg, summary, diff_summary, "
+            "tags, prompt_id, event_id, session_id, author, author_email, llm, "
+            "created_at, committed_at"
+        )
+        cur.execute(f"INSERT INTO mem_mrr_commits ({_cols}) SELECT {_cols} FROM mem_mrr_commits_old")
+
+        # 6. Recreate indexes
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid     ON mem_mrr_commits(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm    ON mem_mrr_commits(committed_at DESC)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mmrr_c_session "
+            "ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt "
+            "ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL"
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags    ON mem_mrr_commits USING gin(tags)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mmrr_c_event "
+            "ON mem_mrr_commits(event_id) WHERE event_id IS NOT NULL"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mmrrc_project_session "
+            "ON mem_mrr_commits(project_id, session_id) WHERE session_id IS NOT NULL"
+        )
+
+        # 7. Recreate FK on mem_mrr_commits_code → mem_mrr_commits
+        cur.execute("""
+            ALTER TABLE mem_mrr_commits_code
+            ADD CONSTRAINT mem_mrr_commits_code_commit_hash_fkey
+            FOREIGN KEY (commit_hash) REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE
+        """)
+
+    conn.commit()
+    log.info(
+        "m033_reorder_mem_mrr_commits: columns reordered "
+        "(tags/prompt_id/event_id/session_id grouped; llm/created_at/committed_at at end); "
+        "old table kept as mem_mrr_commits_old"
+    )
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -715,4 +818,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m030_pipeline_runs", m030_pipeline_runs),
     ("m031_commits_cleanup", m031_commits_cleanup),
     ("m032_events_and_prompts_event_id", m032_events_and_prompts_event_id),
+    ("m033_reorder_mem_mrr_commits", m033_reorder_mem_mrr_commits),
 ]
