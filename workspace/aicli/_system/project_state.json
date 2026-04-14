@@ -126,7 +126,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T14:46:40Z",
+  "last_memory_run": "2026-04-14T14:47:42Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -159,14 +159,22 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database_version": "PostgreSQL 15+",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth"
+      "deployment_backend": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment_local": "bash start_backend.sh + npm run dev",
+      "build_tooling": "npm 8+ + Electron-builder; Vite dev server",
+      "config_management": "config.py + YAML pipelines + pyproject.toml + aicli.yaml",
+      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth",
+      "prompt_management": "core.prompt_loader module with centralized prompt caching"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python/FastAPI backend with Electron desktop UI, PostgreSQL storage with pgvector embeddings, and multi-LLM provider support (Claude/OpenAI/DeepSeek/Gemini/Grok). It synthesizes development context through 4-layer memory architecture, smart code chunking, and Claude Haiku dual-layer digestion into work items and project facts. Current focus is on schema consolidation (m038-m041 migrations), tag system cleanup, and work item merge functionality for improved entity management.",
-    "memory_digest": "**[2026-04-14]** `schema` \u2014 Completed migrations m038-m041 consolidating commit code extraction and event processing logic, dropping legacy embedding columns and diff_file_chunks references. **[2026-04-14]** `cleanup` \u2014 Removed system metadata tags (llm, event, chunk_type, commit_hash) from 1441 events across Pass 0-2, retaining user-facing tags (phase, feature, bug, source). **[2026-04-14]** `context` \u2014 Consolidated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ with .agent-context tracking for persistent agent state. **[2026-04-14]** `refactor` \u2014 Refactored MemoryEmbedding.process_item() and _haiku() to remove extract_commit_code and diff_file_chunks paths, simplifying event promotion pipeline. **[2026-04-14]** `bug-fixes` \u2014 Repaired 6 corrupt session_summary events with malformed JSON tag arrays, reset to empty {} baseline for data integrity. **[2026-04-14]** `features` \u2014 Implemented work item merge functionality with merged_into UUID tracking, persistent planner-wi-panel UI, and drag-drop merge support in entities.js."
+    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL vector database (pgvector 1536-dim), and Electron desktop UI to capture, synthesize, and retrieve project development history via semantic search and workflow automation. The system processes code commits and user sessions through a 4-layer memory pipeline (ephemeral \u2192 raw \u2192 digested events \u2192 work items/project facts) with Claude-powered synthesis, DAG-based workflow execution, and integrated MCP server for external tool access.",
+    "memory_digest": "**[2026-04-14]** `schema-consolidation` \u2014 Completed m038-m041 migrations removing legacy embedding columns and streamlining event/commit processing; unified event_type filtering to ('prompt_batch', 'session_summary') for mem_ai_events aggregation.\n\n**[2026-04-14]** `memory-synthesis-refactor` \u2014 Refactored Claude Haiku dual-layer processing (_haiku and MemoryEmbedding.process_item) to eliminate legacy diff_file_chunks and extract_commit_code code paths; implemented _embed_work_item() vector persistence for semantic search on name_ai/desc_ai fields.\n\n**[2026-04-14]** `context-file-migration` \u2014 Consolidated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ structure with .agent-context tracking for better project-level organization.\n\n**[2026-04-14]** `work-item-merge` \u2014 Implemented POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries to support work item consolidation in the planner UI.\n\n**[2026-04-14]** `ui-panel-completion` \u2014 Built persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI for bottom-panel work item management.\n\n**[2026-04-14]** `tag-system-cleanup` \u2014 Completed metadata cleanup Pass 0-2 across 1441 events, repaired 6 corrupt session_summary records, and removed system metadata (llm, chunk_type, commit_hash) while preserving user-facing tags (phase, feature, bug, source)."
   }
 }

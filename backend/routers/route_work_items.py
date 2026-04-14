@@ -249,7 +249,7 @@ _SQL_GET_FACTS = (
 )
 
 _SQL_GET_MEMORY_ITEMS = (
-    """SELECT id, event_type, source_id::text, content, importance, created_at
+    """SELECT id, event_type, source_id::text, content, created_at
        FROM mem_ai_events
        WHERE {where}
        ORDER BY created_at DESC LIMIT %s"""
@@ -597,6 +597,157 @@ async def create_work_item(
         "created_at": r[3].isoformat(), "project": p, "seq_num": r[4],
     }
 
+
+# ── Semantic search ───────────────────────────────────────────────────────────
+# NOTE: These must be declared BEFORE /{item_id} so FastAPI doesn't capture them.
+
+@router.get("/search")
+async def search_work_items(
+    query:    str            = Query(..., description="Natural language query"),
+    project:  str | None     = Query(None),
+    category: str | None     = Query(None, description="Filter by category: feature, bug, task"),
+    limit:    int            = Query(10, ge=1, le=50),
+):
+    """Semantic search over work items using pgvector cosine similarity."""
+    _require_db()
+    from memory.memory_embedding import _embed
+    p = _project(project)
+    vec = await _embed(query)
+    if not vec:
+        raise HTTPException(503, "Embedding unavailable — check OpenAI API key")
+    vec_str = f"[{','.join(str(x) for x in vec)}]"
+    p_id = db.get_or_create_project_id(p)
+    where = "project_id=%s AND embedding IS NOT NULL"
+    where_params: list = [p_id]
+    if category:
+        where += " AND category_ai=%s"
+        where_params.append(category)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT id, name_ai, category_ai, desc_ai, status_user,
+                           acceptance_criteria_ai, seq_num,
+                           1 - (embedding <=> %s::vector) AS score
+                    FROM mem_ai_work_items
+                    WHERE {where}
+                    ORDER BY embedding <=> %s::vector
+                    LIMIT %s""",
+                [vec_str] + where_params + [vec_str, limit],
+            )
+            rows = cur.fetchall()
+    return {
+        "results": [
+            {
+                "id": str(r[0]), "name_ai": r[1], "category": r[2],
+                "desc_ai": (r[3] or "")[:300],
+                "status_user": r[4],
+                "criteria_preview": (r[5] or "")[:200],
+                "seq_num": r[6], "score": round(float(r[7]), 4),
+            }
+            for r in rows
+        ],
+        "query": query, "project": p, "total": len(rows),
+    }
+
+
+# ── Project facts ─────────────────────────────────────────────────────────────
+
+@router.get("/facts/search")
+async def search_project_facts(
+    query:   str        = Query(..., description="Natural language query"),
+    project: str | None = Query(None),
+    limit:   int        = Query(10, ge=1, le=50),
+):
+    """Semantic search over current project facts using pgvector cosine similarity."""
+    _require_db()
+    from memory.memory_embedding import _embed
+    p = _project(project)
+    vec = await _embed(query)
+    if not vec:
+        raise HTTPException(503, "Embedding unavailable — check OpenAI API key")
+    vec_str = f"[{','.join(str(x) for x in vec)}]"
+    p_id = db.get_or_create_project_id(p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, fact_key, fact_value, category, valid_from,
+                          1 - (embedding <=> %s::vector) AS score
+                   FROM mem_ai_project_facts
+                   WHERE project_id=%s AND valid_until IS NULL AND embedding IS NOT NULL
+                   ORDER BY embedding <=> %s::vector
+                   LIMIT %s""",
+                (vec_str, p_id, vec_str, limit),
+            )
+            rows = cur.fetchall()
+    return {
+        "results": [
+            {
+                "id": str(r[0]), "fact_key": r[1], "fact_value": r[2],
+                "category": r[3],
+                "valid_from": r[4].isoformat() if r[4] else None,
+                "score": round(float(r[5]), 4),
+            }
+            for r in rows
+        ],
+        "query": query, "project": p, "total": len(rows),
+    }
+
+
+@router.get("/facts")
+async def get_project_facts(project: str | None = Query(None)):
+    """Return current (valid_until IS NULL) project facts."""
+    if not db.is_available():
+        return {"facts": [], "project": _project(project), "total": 0, "fallback": True}
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_GET_FACTS, (p_id,))
+            cols = [d[0] for d in cur.description]
+            facts = []
+            for r in cur.fetchall():
+                row = dict(zip(cols, r))
+                row["id"] = str(row["id"])
+                if row.get("valid_from"):
+                    row["valid_from"] = row["valid_from"].isoformat()
+                facts.append(row)
+    return {"facts": facts, "project": p, "total": len(facts)}
+
+
+# ── Memory items ──────────────────────────────────────────────────────────────
+
+@router.get("/memory-items")
+async def get_memory_items(
+    project: str | None = Query(None),
+    scope:   str | None = Query(None),   # "session" | "feature"
+    limit:   int        = Query(20),
+):
+    """Return recent memory events (distilled session/feature summaries)."""
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+    where_parts = ["project_id=%s"]
+    params: list = [p_id]
+    if scope:
+        where_parts.append("event_type=%s"); params.append(scope)
+
+    sql = _SQL_GET_MEMORY_ITEMS.format(where=" AND ".join(where_parts))
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params + [limit])
+            cols = [d[0] for d in cur.description]
+            items = []
+            for r in cur.fetchall():
+                row = dict(zip(cols, r))
+                row["id"] = str(row["id"])
+                if row.get("created_at"):
+                    row["created_at"] = row["created_at"].isoformat()
+                items.append(row)
+    return {"memory_items": items, "project": p, "total": len(items)}
+
+
+# ── Single item CRUD (must come after all static routes) ──────────────────────
 
 @router.patch("/{item_id}")
 async def patch_work_item(
@@ -972,150 +1123,3 @@ async def get_work_item_stats(
     stats = dict(zip(cols, row))
     return {"work_item_id": item_id, "project": p, "stats": stats}
 
-
-# ── Semantic search ───────────────────────────────────────────────────────────
-
-@router.get("/search")
-async def search_work_items(
-    query:    str            = Query(..., description="Natural language query"),
-    project:  str | None     = Query(None),
-    category: str | None     = Query(None, description="Filter by category: feature, bug, task"),
-    limit:    int            = Query(10, ge=1, le=50),
-):
-    """Semantic search over work items using pgvector cosine similarity."""
-    _require_db()
-    from memory.memory_embedding import _embed
-    p = _project(project)
-    vec = await _embed(query)
-    if not vec:
-        raise HTTPException(503, "Embedding unavailable — check OpenAI API key")
-    vec_str = f"[{','.join(str(x) for x in vec)}]"
-    p_id = db.get_or_create_project_id(p)
-    where = "project_id=%s AND embedding IS NOT NULL"
-    where_params: list = [p_id]
-    if category:
-        where += " AND category_ai=%s"
-        where_params.append(category)
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""SELECT id, name_ai, category_ai, desc_ai, status_user,
-                           acceptance_criteria_ai, seq_num,
-                           1 - (embedding <=> %s::vector) AS score
-                    FROM mem_ai_work_items
-                    WHERE {where}
-                    ORDER BY embedding <=> %s::vector
-                    LIMIT %s""",
-                [vec_str] + where_params + [vec_str, limit],
-            )
-            rows = cur.fetchall()
-    return {
-        "results": [
-            {
-                "id": str(r[0]), "name_ai": r[1], "category": r[2],
-                "desc_ai": (r[3] or "")[:300],
-                "status_user": r[4],
-                "criteria_preview": (r[5] or "")[:200],
-                "seq_num": r[6], "score": round(float(r[7]), 4),
-            }
-            for r in rows
-        ],
-        "query": query, "project": p, "total": len(rows),
-    }
-
-
-@router.get("/facts/search")
-async def search_project_facts(
-    query:   str        = Query(..., description="Natural language query"),
-    project: str | None = Query(None),
-    limit:   int        = Query(10, ge=1, le=50),
-):
-    """Semantic search over current project facts using pgvector cosine similarity."""
-    _require_db()
-    from memory.memory_embedding import _embed
-    p = _project(project)
-    vec = await _embed(query)
-    if not vec:
-        raise HTTPException(503, "Embedding unavailable — check OpenAI API key")
-    vec_str = f"[{','.join(str(x) for x in vec)}]"
-    p_id = db.get_or_create_project_id(p)
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """SELECT id, fact_key, fact_value, category, valid_from,
-                          1 - (embedding <=> %s::vector) AS score
-                   FROM mem_ai_project_facts
-                   WHERE project_id=%s AND valid_until IS NULL AND embedding IS NOT NULL
-                   ORDER BY embedding <=> %s::vector
-                   LIMIT %s""",
-                (vec_str, p_id, vec_str, limit),
-            )
-            rows = cur.fetchall()
-    return {
-        "results": [
-            {
-                "id": str(r[0]), "fact_key": r[1], "fact_value": r[2],
-                "category": r[3],
-                "valid_from": r[4].isoformat() if r[4] else None,
-                "score": round(float(r[5]), 4),
-            }
-            for r in rows
-        ],
-        "query": query, "project": p, "total": len(rows),
-    }
-
-
-# ── Project facts ─────────────────────────────────────────────────────────────
-
-@router.get("/facts")
-async def get_project_facts(project: str | None = Query(None)):
-    """Return current (valid_until IS NULL) project facts."""
-    if not db.is_available():
-        return {"facts": [], "project": _project(project), "total": 0, "fallback": True}
-    _require_db()
-    p = _project(project)
-    p_id = db.get_or_create_project_id(p)
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_SQL_GET_FACTS, (p_id,))
-            cols = [d[0] for d in cur.description]
-            facts = []
-            for r in cur.fetchall():
-                row = dict(zip(cols, r))
-                row["id"] = str(row["id"])
-                if row.get("valid_from"):
-                    row["valid_from"] = row["valid_from"].isoformat()
-                facts.append(row)
-    return {"facts": facts, "project": p, "total": len(facts)}
-
-
-# ── Memory items ──────────────────────────────────────────────────────────────
-
-@router.get("/memory-items")
-async def get_memory_items(
-    project: str | None = Query(None),
-    scope:   str | None = Query(None),   # "session" | "feature"
-    limit:   int        = Query(20),
-):
-    """Return recent memory events (distilled session/feature summaries)."""
-    _require_db()
-    p = _project(project)
-    p_id = db.get_or_create_project_id(p)
-    where_parts = ["project_id=%s"]
-    params: list = [p_id]
-    if scope:
-        where_parts.append("event_type=%s"); params.append(scope)
-
-    sql = _SQL_GET_MEMORY_ITEMS.format(where=" AND ".join(where_parts))
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params + [limit])
-            cols = [d[0] for d in cur.description]
-            items = []
-            for r in cur.fetchall():
-                row = dict(zip(cols, r))
-                row["id"] = str(row["id"])
-                if row.get("created_at"):
-                    row["created_at"] = row["created_at"].isoformat()
-                items.append(row)
-    return {"memory_items": items, "project": p, "total": len(items)}
