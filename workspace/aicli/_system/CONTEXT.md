@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 10:09 UTC — do not edit manually.
+> Auto-generated 2026-04-14 11:29 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 502
-- **Last active**: 2026-04-13T18:11:05Z
+- **Sessions**: 505
+- **Last active**: 2026-04-14T11:29:10Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -38,7 +38,7 @@
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extension
+- **database**: PostgreSQL 15+
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ + Electron-builder; Vite dev server
@@ -49,19 +49,19 @@
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027)
+- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m037)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 
 ## In Progress
 
-- Schema cleanup completed: m037 migration dropped deprecated importance column from mem_ai_events table (2026-04-13)
-- Table migration with column reordering: executing migrations using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
-- PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
-- History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
-- PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
-- Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)
+- Tag system metadata cleanup (2026-04-13): Stripped system metadata from 1441 events; retained only user tags (phase, feature, bug, source); fixed 6 corrupt session_summary events with JSON array→object conversion
+- mem_mrr_tags per-source UPSERT refactoring (2026-04-13): Implemented separate ON CONFLICT strategies for prompt/commit/item/message sources; added session context (session_src_id, session_src_desc) tracking
+- Event summary consolidation design: mem_ai_events unified table with event_summary schema replacing fragmented prompt + commit event handling
+- History display enhancement (2026-04-06): Fixing incomplete prompt + response rendering and copy-to-clipboard functionality in frontend history view
+- PostgreSQL schema migration stability: Execution of m001-m037 migration chain with nohup logging and column reordering validation
+- Backend startup race condition mitigation (2026-03-18): Retry logic for empty projects list; aicli project visibility in main list improved but selection blocking persists
 
 ## Key Decisions
 
@@ -74,12 +74,12 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
-- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+- mem_mrr_tags per-source UPSERT strategy: one row per (tag, source) combination with ON CONFLICT backfill of event_id/work_item_id when available
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata (llm, chunk_type, commit_hash, etc.) stripped; only phase/feature/bug/source user tags retained
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
 - mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
+- Session source tracking: session_src_id and session_src_desc (e.g., 'claude_cli') capture origin context in mem_mrr_tags for multi-client coordination
 
 ---
 
