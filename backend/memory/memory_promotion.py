@@ -787,8 +787,10 @@ class MemoryPromotion:
                 except Exception as e:
                     log.debug(f"extract_work_items tag-path insert error: {e}")
 
-            # ── Path 2: no user tag → limited AI extraction ──────────────────
-            else:
+            # ── Path 2: no user tag → limited AI extraction (prompt_batch/session_summary only) ──
+            # Commit events without explicit feature/bug tags are skipped — they generate noise.
+            # Only human-authored prompt batches and session summaries get AI extraction.
+            elif event_type in ("prompt_batch", "session_summary"):
                 user_msg = (
                     f"Event type: {event_type}\nDate: {str(created_at)[:10]}\n\n{content}"
                 )

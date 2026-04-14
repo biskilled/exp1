@@ -3,10 +3,6 @@ _Generated: 2026-04-14 18:26 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL pgvector) with an Electron desktop UI, enabling teams to capture, synthesize, and query project events through 4-layer memory architecture (session → raw capture → LLM digests → actionable facts). The system features async DAG workflow execution, multi-LLM provider support, semantic search via embeddings, and unified tag management, currently focused on consolidating UI components and normalizing database schema for stability.
-
 ## Project Facts
 
 - **ai_event_filtering_logic**: event_type IN ('prompt_batch', 'session_summary') filters mem_ai_events; excludes per-commit and diff_file noise from event_count aggregation
@@ -223,21 +219,21 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)
-- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt)
-- Tag system: unified planner_tags table with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater; clean category-based organization
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column ordering: client_id → project_id → created_at/processed_at/embedding
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped (llm, event, chunk_type, commit_hash retained only phase/feature/bug/source tags)
+- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt), and mapping to work items
+- Tag system: retained only user-facing tags (phase, feature, bug, source); planner_tags table now clean with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m039); column ordering: client_id → project_id → created_at/processed_at/embedding at end
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ## In Progress
 
 - Feature snapshot implementation (2026-04-12) — mem_ai_feature_snapshot table created; merges user requirements/tags with work items; includes summaries, use cases, and delivery type tracking
-- UI work items & planner refactor (2026-04-13) — Fixed duplicate const cats declaration breaking Electron load; planner now shows categories (bug/feature/task) with proper work item linking and tag acceptance flow
-- Events table restructuring (2026-04-13) — Dropped importance column; reordered columns (client_id → project_id → created_at/processed_at/embedding); removed old table after migration
+- UI work items & planner refactor (2026-04-13) — Fixed duplicate `const cats` declaration breaking Electron load; planner now shows categories (bug/feature/task) with proper work item linking and tag acceptance flow
+- Events table restructuring (2026-04-13) — Dropped importance column; reordered columns (client_id → project_id → created_at/processed_at/embedding); removed old table after migration to save space
 - Tag cleanup & consolidation (2026-04-13) — Stripped system metadata from 1441 events (llm, event, chunk_type, commit_hash); retained only user-facing tags (phase, feature, bug, source); fixed corrupt session_summary events
-- Memory mirror tables refactor (2026-04-14) — Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id); applying m037-m041 migrations for schema cleanup
-- Dashboard + pipeline UI planning (2026-04-12) — New dashboard tab for pipeline visibility; pipeline triggerable from planner/docs/chat; approval panel for workflow execution (design phase)
+- Memory mirror tables refactor (2026-04-14) — Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id); applying m037-m039 migrations for schema cleanup
+- Dashboard + pipeline UI planning (2026-04-12) — New dashboard tab for pipeline visibility; pipeline triggerable from planner/docs/chat; approval panel for workflow execution (in design phase)
 
 ## Active Features / Bugs / Tasks
 
@@ -289,6 +285,34 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit` — 2026-04-14
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 5efd956..d92c078 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 17:49 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 17:55 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit` — 2026-04-14
+
+Commit: chore: restructure _system memory files after claude cli session 2a6b600
+Hash: 8bf532b9
+Code files (6):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/memory/memory_files.py
+  - backend/routers/route_memory.py
+  - ui/frontend/views/entities.js
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
+
 ### `prompt_batch: 05e9af57-76f6-4aef-bb28-8347693f4099` — 2026-04-14
 
 User requested consolidating Planer's 4 tabs (Feature, Tag, Bugs, Tags) into a single unified tag management system with categories, tag properties (status, description, due date, assigned user), and quick access to active tags via chat (+) listbox.
@@ -304,20 +328,3 @@ Verified that the client_id fix resolves the prompt handling issue; system now c
 ### `prompt_batch: test-schema-001` — 2026-04-14
 
 Test prompt submitted post-migration with no substantive content or decision to extract.
-
-### `prompt_batch: final-verify` — 2026-04-14
-
-User requested a final verification prompt but provided no prior conversation context or decisions to summarize.
-
-### `prompt_batch: 04d3b8ba-c786-4b24-b0d6-ed49009f369d` — 2026-04-14
-
-User requested three database schema updates: add llem_source column after project column, add embedding columns at the end of all tables that contain embeddings, and refactor database.py to remove unused tables and reduce file length.
-
-## AI Synthesis
-
-**[2026-04-14]** `migration` — Completed memory mirror tables refactor; reordered mem_mrr_prompts columns (project_id/event_id moved after client_id) to align schema convention (client_id → project_id → metadata).
-**[2026-04-13]** `event-schema` — Dropped importance column from mem_ai_events; restructured column ordering to client_id → project_id → created_at/processed_at/embedding; cleaned up orphaned old table after successful migration.
-**[2026-04-13]** `tag-consolidation` — Stripped system metadata (llm, event, chunk_type, commit_hash, etc.) from 1441 events; preserved only user-facing tags (phase, feature, bug, source); fixed corrupt session_summary events during backfill.
-**[2026-04-13]** `planner-ui` — Fixed duplicate const cats declaration breaking Electron app initialization; refactored planner UI to show categories (bug/feature/task) with proper work item linking and improved tag acceptance workflow.
-**[2026-04-12]** `feature-snapshot` — Implemented mem_ai_feature_snapshot table merging user requirements with work items; added summaries, use cases, and delivery type tracking (code/document/architecture/ppt).
-**[2026-04-12]** `dashboard-planning` — Designed new dashboard tab for pipeline visibility; enabled pipeline triggering from planner/docs/chat modules; created 2-pane approval panel for workflow execution negotiation (design phase).
