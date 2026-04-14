@@ -1013,6 +1013,71 @@ def m040_backfill_event_cnt_and_tags(conn) -> None:
     )
 
 
+def m046_reorder_work_items(conn) -> None:
+    """Reorder columns in mem_ai_work_items for logical grouping.
+
+    New order: id, client_id, project_id, seq_num, category_ai, name_ai,
+      summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
+      tags, tags_ai, tag_id_ai, tag_id_user, status_user,
+      merged_into, start_date, created_at, updated_at, embedding
+
+    (desc_ai was already dropped in m044)
+    """
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE mem_ai_work_items RENAME TO _bak_046_mem_ai_work_items")
+        cur.execute("""
+            CREATE TABLE mem_ai_work_items (
+                id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id              INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+                project_id             INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                seq_num                INT,
+                category_ai            TEXT        NOT NULL,
+                name_ai                TEXT        NOT NULL,
+                summary_ai             TEXT        NOT NULL DEFAULT '',
+                acceptance_criteria_ai TEXT        NOT NULL DEFAULT '',
+                action_items_ai        TEXT        NOT NULL DEFAULT '',
+                score_ai               SMALLINT    NOT NULL DEFAULT 0,
+                tags                   JSONB       NOT NULL DEFAULT '{}',
+                tags_ai                JSONB       NOT NULL DEFAULT '{}',
+                tag_id_ai              UUID        REFERENCES planner_tags(id),
+                tag_id_user            UUID        REFERENCES planner_tags(id),
+                status_user            VARCHAR(20) NOT NULL DEFAULT 'active',
+                merged_into            UUID,
+                start_date             TIMESTAMPTZ,
+                created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                embedding              VECTOR(1536),
+                UNIQUE(project_id, category_ai, name_ai)
+            )
+        """)
+        cur.execute("""
+            INSERT INTO mem_ai_work_items
+              (id, client_id, project_id, seq_num, category_ai, name_ai,
+               summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
+               tags, tags_ai, tag_id_ai, tag_id_user, status_user,
+               merged_into, start_date, created_at, updated_at, embedding)
+            SELECT
+              id, client_id, project_id, seq_num, category_ai, name_ai,
+              summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
+              tags, tags_ai, tag_id_ai, tag_id_user, status_user,
+              merged_into, start_date, created_at, updated_at, embedding
+            FROM _bak_046_mem_ai_work_items
+        """)
+        # Add self-referential FK after data is fully loaded
+        cur.execute("""
+            ALTER TABLE mem_ai_work_items
+            ADD CONSTRAINT fk_wi_merged_into
+            FOREIGN KEY (merged_into) REFERENCES mem_ai_work_items(id)
+            ON DELETE SET NULL NOT VALID
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid   ON mem_ai_work_items(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat   ON mem_ai_work_items(category_ai)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_suser ON mem_ai_work_items(status_user)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq   ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_embed ON mem_ai_work_items USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL")
+    conn.commit()
+
+
 def m045_add_score_ai(conn) -> None:
     """Add score_ai (0-5) to mem_ai_work_items.
 
@@ -1101,4 +1166,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m043_drop_status_ai_code_summary", m043_drop_status_ai_code_summary),
     ("m044_drop_desc_ai", m044_drop_desc_ai),
     ("m045_add_score_ai", m045_add_score_ai),
+    ("m046_reorder_work_items", m046_reorder_work_items),
 ]

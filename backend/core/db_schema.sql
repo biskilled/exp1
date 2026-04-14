@@ -481,41 +481,42 @@ CREATE INDEX IF NOT EXISTS idx_mae_project_etype   ON mem_ai_events(project_id, 
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_wi    ON mem_ai_events(work_item_id) WHERE work_item_id IS NOT NULL;
 
 -- mem_ai_work_items: AI-detected actionable items (tasks, bugs, features)
--- Dual-status design:
---   status_user = user-managed lifecycle (active|in_progress|paused|done)
---   status_ai   = AI-suggested status (auto-updated by promote_work_item())
+-- status_user = user-managed lifecycle (active|in_progress|paused|done)
 -- tag_id_user = user-confirmed link to planner_tags (drag-drop in Planner UI)
 -- tag_id_ai   = AI-suggested best-match tag (confidence > 0.70)
 -- tags_ai     = AI-generated metadata JSONB (populated by extract_work_item_code_summary)
--- summary_ai  = PM digest: what was done, what remains, test coverage (written by promote_work_item)
+-- summary_ai  = definition + progress digest (written by promote_work_item)
+-- score_ai    = 0=not started … 5=done (written by promote_work_item)
 CREATE TABLE IF NOT EXISTS mem_ai_work_items (
-    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id           INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-    project_id          INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-    category_ai         TEXT        NOT NULL,                           -- 'feature'|'bug'|'task'
-    name_ai             TEXT        NOT NULL,
-    acceptance_criteria_ai TEXT     NOT NULL DEFAULT '',
-    action_items_ai     TEXT        NOT NULL DEFAULT '',
-    summary_ai          TEXT        NOT NULL DEFAULT '',
-    score_ai            SMALLINT    NOT NULL DEFAULT 0,                  -- 0=not started … 5=done
-    tags                JSONB       NOT NULL DEFAULT '{}',
-    tags_ai             JSONB       NOT NULL DEFAULT '{}',
-    tag_id_ai           UUID        REFERENCES planner_tags(id),
-    tag_id_user         UUID        REFERENCES planner_tags(id),
-    merged_into         UUID        REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
-    status_user         VARCHAR(20) NOT NULL DEFAULT 'active',
-    seq_num             INT,
-    start_date          TIMESTAMPTZ,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    embedding           VECTOR(1536),
-    UNIQUE(project_id, category_ai, name_ai)
+    id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id              INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project_id             INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    seq_num                INT,
+    category_ai            TEXT        NOT NULL,                        -- 'feature'|'bug'|'task'
+    name_ai                TEXT        NOT NULL,
+    summary_ai             TEXT        NOT NULL DEFAULT '',
+    acceptance_criteria_ai TEXT        NOT NULL DEFAULT '',
+    action_items_ai        TEXT        NOT NULL DEFAULT '',
+    score_ai               SMALLINT    NOT NULL DEFAULT 0,
+    tags                   JSONB       NOT NULL DEFAULT '{}',
+    tags_ai                JSONB       NOT NULL DEFAULT '{}',
+    tag_id_ai              UUID        REFERENCES planner_tags(id),
+    tag_id_user            UUID        REFERENCES planner_tags(id),
+    status_user            VARCHAR(20) NOT NULL DEFAULT 'active',
+    merged_into            UUID,
+    start_date             TIMESTAMPTZ,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    embedding              VECTOR(1536),
+    UNIQUE(project_id, category_ai, name_ai),
+    CONSTRAINT fk_wi_merged_into FOREIGN KEY (merged_into)
+        REFERENCES mem_ai_work_items(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid   ON mem_ai_work_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat   ON mem_ai_work_items(category_ai);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_suser ON mem_ai_work_items(status_user);
-CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_sai   ON mem_ai_work_items(status_ai);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq   ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_embed ON mem_ai_work_items USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL;
 
 -- mem_ai_project_facts: durable facts extracted from project history
 -- valid_until NULL = currently valid fact; set to NOW() when superseded.
