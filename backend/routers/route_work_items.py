@@ -60,7 +60,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
        )
        SELECT w.id, w.category_ai, w.name_ai,
               w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
-              w.summary_ai,
+              w.summary_ai, w.score_ai,
               w.tags, w.tags_ai, w.tag_id_user, w.tag_id_ai,
               w.merged_into, w.start_date,
               w.created_at, w.updated_at, w.seq_num,
@@ -83,7 +83,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
     WITH wi AS (
         -- Base filter; get origin session from the earliest directly-linked event
         SELECT w.id, w.category_ai, w.name_ai,
-               w.status_user, w.summary_ai, w.tags, w.tags_ai,
+               w.status_user, w.summary_ai, w.score_ai, w.tags, w.tags_ai,
                w.start_date, w.created_at, w.updated_at, w.seq_num,
                w.tag_id_ai, w.project_id,
                e.event_type  AS src_event_type,
@@ -170,7 +170,7 @@ _SQL_INSERT_WORK_ITEM = (
 _SQL_GET_WORK_ITEM = (
     """SELECT w.id, w.category_ai, w.name_ai,
               w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
-              w.summary_ai,
+              w.summary_ai, w.score_ai,
               w.tags, w.tag_id_user, w.tag_id_ai,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
@@ -191,7 +191,7 @@ _SQL_DELETE_WORK_ITEM = (
 _SQL_GET_WORK_ITEM_BY_SEQ = (
     """SELECT w.id, w.category_ai, w.name_ai,
               w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
-              w.summary_ai,
+              w.summary_ai, w.score_ai,
               w.tags, w.tag_id_user, w.tag_id_ai,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
@@ -819,6 +819,30 @@ async def patch_work_item(
 
     asyncio.create_task(_trigger_memory_regen(p))
     return {"ok": True, "id": item_id, "status_user": result[1]}
+
+
+@router.post("/{item_id}/refresh")
+async def refresh_work_item(item_id: str, project: str | None = Query(None)):
+    """Re-run Haiku promotion on a single work item.
+    Updates summary_ai, acceptance_criteria_ai, action_items_ai, score_ai.
+    """
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT name_ai FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
+                (item_id, p_id),
+            )
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Work item not found")
+    from memory.memory_promotion import MemoryPromotion
+    result = await MemoryPromotion().promote_work_item(p, row[0])
+    if not result:
+        raise HTTPException(500, "Promotion failed — no linked events or LLM error")
+    return result
 
 
 @router.get("/{item_id}")

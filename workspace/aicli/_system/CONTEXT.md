@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 16:50 UTC — do not edit manually.
+> Auto-generated 2026-04-14 17:47 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 523
-- **Last active**: 2026-04-14T16:44:09Z
+- **Sessions**: 524
+- **Last active**: 2026-04-14T16:55:31Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Backend module restructure completion — Consolidated workflow/ imports to agents/providers/ and memory/embeddings/; fixed import paths in workflow_runner.py, work_item_pipeline.py, and graph_runner.py for LLM provider calls
-- Backend startup race condition fix — Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug
-- Memory items and project_facts table population — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
-- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow
+- Work item pipeline role integration (2026-03-20) — Fixed hardcoded Haiku/Anthropic; now queries mng_agent_roles and respects configured LLM provider per role
+- Work item auto-commit integration (2026-03-20) — Developer output parsed for ### File: blocks; changes automatically committed with work-item/{name} branch prefix
+- SQL query optimization backlog (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis identified; requires batch refactor and pagination
+- Backend startup race condition fix (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; fixed retry logic to handle empty project list during initialization
 - Backend port binding stability — Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing
-- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow
 
 ## Key Decisions
 

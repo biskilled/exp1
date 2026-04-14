@@ -64,6 +64,7 @@ _SQL_PROMOTE_WORK_ITEM_FIELDS = """
         summary_ai             = CASE WHEN %s != '' THEN %s ELSE summary_ai END,
         acceptance_criteria_ai = CASE WHEN %s != '' THEN %s ELSE acceptance_criteria_ai END,
         action_items_ai        = CASE WHEN %s != '' THEN %s ELSE action_items_ai END,
+        score_ai               = %s,
         updated_at             = NOW()
     WHERE id=%s AND project_id=%s
 """
@@ -392,6 +393,10 @@ class MemoryPromotion:
         new_summary_ai   = (parsed.get("summary_ai") or "").strip()
         new_ac           = (parsed.get("acceptance_criteria_ai") or "").strip()
         new_action_items = (parsed.get("action_items_ai") or "").strip()
+        try:
+            new_score_ai = max(0, min(5, int(parsed.get("score_ai") or 0)))
+        except (TypeError, ValueError):
+            new_score_ai = 0
 
         try:
             with db.conn() as conn:
@@ -402,6 +407,7 @@ class MemoryPromotion:
                             new_summary_ai,   new_summary_ai,
                             new_ac,           new_ac,
                             new_action_items, new_action_items,
+                            new_score_ai,
                             str(wi_id),       project_id,
                         ),
                     )
@@ -415,6 +421,7 @@ class MemoryPromotion:
             "work_item_id": str(wi_id),
             "name_ai":      name_ai,
             "summary_ai":   new_summary_ai,
+            "score_ai":     new_score_ai,
         }
 
     async def promote_all_work_items(self, project: str) -> dict:

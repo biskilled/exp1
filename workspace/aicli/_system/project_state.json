@@ -90,12 +90,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Backend module restructure completion \u2014 Consolidated workflow/ imports to agents/providers/ and memory/embeddings/; fixed import paths in workflow_runner.py, work_item_pipeline.py, and graph_runner.py for LLM provider calls",
-    "Backend startup race condition fix \u2014 Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug",
-    "Memory items and project_facts table population \u2014 Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism",
-    "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow",
+    "Work item pipeline role integration (2026-03-20) \u2014 Fixed hardcoded Haiku/Anthropic; now queries mng_agent_roles and respects configured LLM provider per role",
+    "Work item auto-commit integration (2026-03-20) \u2014 Developer output parsed for ### File: blocks; changes automatically committed with work-item/{name} branch prefix",
+    "SQL query optimization backlog (2026-03-20) \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis identified; requires batch refactor and pagination",
+    "Backend startup race condition fix (2026-03-18) \u2014 Project visibility bug where AiCli appears in Recent but not main view; fixed retry logic to handle empty project list during initialization",
     "Backend port binding stability \u2014 Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing",
-    "SQL query optimization backlog \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load"
+    "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T16:50:37Z",
+  "last_memory_run": "2026-04-14T16:56:00Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -147,12 +147,12 @@
       "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order"
     ],
     "in_progress": [
-      "Backend module restructure completion \u2014 Consolidated workflow/ imports to agents/providers/ and memory/embeddings/; fixed import paths in workflow_runner.py, work_item_pipeline.py, and graph_runner.py for LLM provider calls",
-      "Backend startup race condition fix \u2014 Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug",
-      "Memory items and project_facts table population \u2014 Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism",
-      "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow",
+      "Work item pipeline role integration (2026-03-20) \u2014 Fixed hardcoded Haiku/Anthropic; now queries mng_agent_roles and respects configured LLM provider per role",
+      "Work item auto-commit integration (2026-03-20) \u2014 Developer output parsed for ### File: blocks; changes automatically committed with work-item/{name} branch prefix",
+      "SQL query optimization backlog (2026-03-20) \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis identified; requires batch refactor and pagination",
+      "Backend startup race condition fix (2026-03-18) \u2014 Project visibility bug where AiCli appears in Recent but not main view; fixed retry logic to handle empty project list during initialization",
       "Backend port binding stability \u2014 Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing",
-      "SQL query optimization backlog \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load"
+      "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -160,20 +160,19 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
-      "llm_provider_location": "agents/providers/",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment_backend": "Railway (Dockerfile + railway.toml)",
       "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "database": "PostgreSQL 15+ with pgvector extensions",
-      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
+      "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL/pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape.js). It captures development events, synthesizes them via Claude Haiku into work items and project facts, and enables async DAG-based workflow execution with LLM provider orchestration (Claude/OpenAI/DeepSeek/Gemini/Grok). The platform is in active development, with recent work focused on stabilizing backend module organization, fixing startup race conditions, and optimizing SQL performance for memory synthesis at scale.",
-    "memory_digest": "**Recent** `refactor` \u2014 Migrated LLM provider imports from core.llm_clients to agents.providers across workflow_runner.py, work_item_pipeline.py, and graph_runner.py; standardized module organization for provider adapters. **Recent** `refactor` \u2014 Relocated embed_node_outputs import from core.embeddings to memory.embeddings module, aligning memory synthesis infrastructure. **Established** `architecture` \u2014 Event filtering logic established: event_type IN ('prompt_batch', 'session_summary') filters mem_ai_events table to exclude per-commit and diff_file noise from event aggregation. **Established** `design` \u2014 Tag system design finalized: only user-facing tags (phase, feature, bug, source) preserved in mem_ai_events.tags JSONB; system metadata (llm, event, chunk_type, commit_hash, etc.) stripped during backfill. **In-progress** `stability` \u2014 Backend startup race condition under investigation; retry logic for empty project list on first load implemented but AiCli project visibility bug diagnosis ongoing. **In-progress** `performance` \u2014 SQL optimization backlog identified: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load. **In-progress** `feature` \u2014 Memory items and project_facts table population logic pending implementation; tables defined in schema but update mechanisms not yet wired to event pipeline. **In-progress` `ui` \u2014 Data persistence investigation: user-saved tags disappearing on session switch; unclear whether root cause is UI rendering or database save failure in tag serialization."
+    "project_summary": "aicli is a shared AI memory platform combining a Python/FastAPI backend, PostgreSQL semantic storage, and Electron desktop UI to provide AI-powered development workflows with memory synthesis, work item pipelines, and graph-based automation. Current development focuses on role-based LLM provider configuration, auto-commit integration for work items, SQL performance optimization, and fixing startup race conditions to ensure reliable project visibility and tag persistence.",
+    "memory_digest": "**[2026-03-20]** `work_item_pipeline.py` \u2014 Refactored work item pipeline to query mng_agent_roles table and respect configured LLM provider per role, eliminating hardcoded Haiku/Anthropic assumption. **[2026-03-20]** `work_item_pipeline.py` \u2014 Integrated auto-commit feature where developer output is parsed for ### File: blocks; changes written to workspace and committed with work-item/{name} prefix and 8-char work_item_id. **[2026-03-20]** `PROJECT.md` \u2014 Identified SQL query optimization backlog: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch INSERT refactor and pagination to reduce database load. **[2026-03-20]** `work_item_pipeline.py` \u2014 Expanded developer token budget to 8000 (from 2000) to accommodate complete file content generation; added reviewer output truncation (4000 char preview) with middle ellipsis for long implementations. **[2026-03-19]** `PROJECT.md` \u2014 Documented UUID validation issue in pipeline run queries where string 'recent' passed to UUID field requires UUID object conversion. **[2026-03-18]** `PROJECT.md` \u2014 Fixed backend startup race condition where AiCli project appeared in Recent but not main view; root cause was empty project list during initialization, resolved with retry_logic_handles_empty_project_list_on_first_load pattern."
   }
 }

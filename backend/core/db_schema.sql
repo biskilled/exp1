@@ -497,6 +497,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     acceptance_criteria_ai TEXT     NOT NULL DEFAULT '',
     action_items_ai     TEXT        NOT NULL DEFAULT '',
     summary_ai          TEXT        NOT NULL DEFAULT '',
+    score_ai            SMALLINT    NOT NULL DEFAULT 0,                  -- 0=not started … 5=done
     tags                JSONB       NOT NULL DEFAULT '{}',
     tags_ai             JSONB       NOT NULL DEFAULT '{}',
     tag_id_ai           UUID        REFERENCES planner_tags(id),

@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 16:40 UTC by aicli /memory_
+_Generated: 2026-04-14 16:55 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL/pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape.js). It captures development events, synthesizes them via Claude Haiku into work items and project facts, and enables async DAG-based workflow execution with LLM provider orchestration (Claude/OpenAI/DeepSeek/Gemini/Grok). The platform is in active development, with recent work focused on stabilizing backend module organization, fixing startup race conditions, and optimizing SQL performance for memory synthesis at scale.
+aicli is a shared AI memory platform combining a Python/FastAPI backend, PostgreSQL semantic storage, and Electron desktop UI to provide AI-powered development workflows with memory synthesis, work item pipelines, and graph-based automation. Current development focuses on role-based LLM provider configuration, auto-commit integration for work items, SQL performance optimization, and fixing startup race conditions to ensure reliable project visibility and tag persistence.
 
 ## Project Facts
 
@@ -232,12 +232,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Backend module restructure completion — Consolidated workflow/ imports to agents/providers/ and memory/embeddings/; fixed import paths in workflow_runner.py, work_item_pipeline.py, and graph_runner.py for LLM provider calls
-- Backend startup race condition fix — Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug
-- Memory items and project_facts table population — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
-- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow
+- Work item pipeline role integration (2026-03-20) — Fixed hardcoded Haiku/Anthropic; now queries mng_agent_roles and respects configured LLM provider per role
+- Work item auto-commit integration (2026-03-20) — Developer output parsed for ### File: blocks; changes automatically committed with work-item/{name} branch prefix
+- SQL query optimization backlog (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis identified; requires batch refactor and pagination
+- Backend startup race condition fix (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; fixed retry logic to handle empty project list during initialization
 - Backend port binding stability — Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing
-- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow
 
 ## Active Features / Bugs / Tasks
 
@@ -291,124 +291,239 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/workflow/workflow_runner.py b/backend/workflow/workflow_runner.py
-index 7f158cd..c6decad 100644
---- a/backend/workflow/workflow_runner.py
-+++ b/backend/workflow/workflow_runner.py
-@@ -28,7 +28,7 @@ import yaml
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index c9b2d5c..7c18d80 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
- from core.config import settings
- from core.api_keys import get_key
--from core import llm_clients
-+from agents import providers as llm_clients
+ ## Recent Work
  
- # ── File helpers ──────────────────────────────────────────────────────────────
++- Work item pipeline role integration (2026-03-20) — Fixed hardcoded Haiku/Anthropic; now queries mng_agent_roles and respects configured LLM provider per role
+ - SQL query optimization (2026-03-20) — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
+-- Workflow performance optimization (2026-03-20) — Async DAG executor bottlenecks and query caching improvements needed for slow execution
+ - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion
+ - Pipeline approval workflow rendering (2026-03-20) — Old MD displayed instead of current output/progress logs; requires chat panel state management fix
+-- Backend startup race condition handling (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; timing issue during initialization
++- Backend startup race condition handling (2026-03-18) — Project visibility bug where AiCli appears in Recent but not main view; fixed retry logic to handle empty project list
+ - Memory items and project_facts table population (pending) — Tables exist but update logic unimplemented; blocks improved memory/context mechanism
+
+
+### `commit` — 2026-04-14
+
+diff --git a/ui/backend/core/work_item_pipeline.py b/ui/backend/core/work_item_pipeline.py
+index f4da741..a1fda6c 100644
+--- a/ui/backend/core/work_item_pipeline.py
++++ b/ui/backend/core/work_item_pipeline.py
+@@ -247,27 +247,56 @@ async def trigger_work_item_pipeline(
+         dev_sys, dev_provider, dev_model = _load_role("Web Developer")
+         rev_sys, rev_provider, rev_model = _load_role("Code Reviewer")
+ 
++        # Import code-commit helpers from graph_runner (reuse, don't duplicate)
++        from core.graph_runner import _parse_code_changes, _apply_code_and_commit, _get_project_code_dir
++
+         dev_output = ""
+         reviewer_feedback = ""
++        commit_hash = ""
+         for iteration in range(_MAX_ITERATIONS + 1):
+             dev_user = (
+                 f"Work item: **{name}**\n\n"
+                 f"Acceptance criteria:\n{acceptance_criteria}\n\n"
+                 f"Implementation plan:\n{implementation_plan}\n\n"
+                 f"{'Previous reviewer feedback:\n' + reviewer_feedback + chr(10) + chr(10) if reviewer_feedback and iteration > 0 else ''}"
+-                f"Implement the changes now."
++                f"Implement the changes now. Write complete file content for every file you create or modify."
+             )
+-            dev_output = await _call(dev_provider, dev_model, dev_sys, dev_user, max_tokens=2000)
++            # Developer needs generous token budget to write full files
++            dev_output = await _call(dev_provider, dev_model, dev_sys, dev_user, max_tokens=8000)
+             if not dev_output:
+                 break
+ 
+-            # Reviewer: fresh context (stateless Trycycle)
++            log.info(f"work_item_pipeline developer output: {len(dev_output)} chars, iteration={iteration}")
++
++            # Auto-commit: parse ### File: blocks and write + git commit
++            try:
++                code_dir = _get_project_code_dir(project)
++                changes = _parse_code_changes(dev_output)
++                if changes:
++                    log.info(f"work_item_pipeline: found {len(changes)} file(s) to commit")
++                    commit_hash = _apply_code_and_commit(
++                        code_dir, changes, f"work-item/{name}", work_item_id[:8]
++                    )
++                    if commit_hash and not commit_hash.startswith("error:"):
++                        log.info(f"work_item_pipeline: committed {commit_hash}")
++                    else:
++                        log.warning(f"work_item_pipeline: commit failed: {commit_hash}")
++                        commit_hash = ""
++                else:
++                    log.info("work_item_pipeline developer: no ### File: blocks found in output")
++            except Exception as _ce:
++                log.warning(f"work_item_pipeline auto_commit failed: {_ce}")
++
++            # Reviewer: fresh context — pass full dev output, summarised if very long
++            rev_preview = dev_output if len(dev_output) <= 4000 else (
++                dev_output[:2000] + "\n\n[...middle truncated...]\n\n" + dev_output[-1500:]
++            )
+             rev_user = (
+                 f"Acceptance criteria:\n{acceptance_criteria}\n\n"
+-                f"Implementation:\n{dev_output[:2000]}\n\n"
+-                f"Review now."
++                f"Implementation:\n{rev_preview}\n\n"
++                f"Review now and return JSON only."
+             )
+-            rev_text = await _call(rev_provider, rev_model, rev_sys, rev_user, max_tokens=400)
++            rev_text = await _call(rev_provider, rev_model, rev_sys, rev_user, max_tokens=500)
+             score = 8
+             passed = True
+             try:
+@@ -282,19 +311,25 @@ async def trigger_work_item_pipeline(
+                 passed = parsed.get("passed", score >= 7)
+                 if not passed and parsed.get("issues"):
+                     reviewer_feedback = "\n".join(parsed["issues"])
++                log.info(f"work_item_pipeline reviewer: score={score}, passed={passed}")
+             except Exception:
+-                pass
++                log.debug(f"work_item_pipeline reviewer JSON parse failed: {rev_text[:200]}")
+ 
+             if passed or score >= 7:
+                 break
+ 
+         # ── Store final output in work item implementation_plan ──────────────
+         if dev_output:
+-            final_plan = f"{implementation_plan}\n\n## Implementation Output\n{dev_output}"
++            commit_note = f"\n\n**Commit:** `{commit_hash}`" if commit_hash else ""
++            final_plan = (
++                f"{implementation_plan}\n\n"
++                f"## Implementation Output{commit_note}\n\n"
++                f"{dev_output}"
++            )
+             _update_fields(work_item_id, acceptance_criteria, final_plan)
+             try:
+                 _save_pipeline_doc(project, work_item_id, f"implementation_{ts}.md",
+-                                   f"# Implementation\n\n{dev_output}")
++                                   f"# Implementation{commit_note}\n\n{dev_output}")
+             except Exception:
+                 pass
  
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/workflow/work_item_pipeline.py b/backend/workflow/work_item_pipeline.py
-index f81a4bd..6d9a8ca 100644
---- a/backend/workflow/work_item_pipeline.py
-+++ b/backend/workflow/work_item_pipeline.py
-@@ -140,7 +140,7 @@ async def trigger_work_item_pipeline(
-     """Run the full 4-agent pipeline for a work item. Fully async, safe to background."""
-     from datetime import datetime, timezone
-     from core.api_keys import get_key
--    from core.llm_clients import call_claude, call_deepseek, call_gemini, call_grok
-+    from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 44077d5..3b3300e 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-03-20 22:05 UTC
++> Generated by aicli 2026-03-20 22:15 UTC
  
-     ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
+ # aicli — Shared AI Memory Platform
  
+@@ -44,4 +44,4 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
+ - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
+ - 2-pane approval chat workflow for requirement negotiation before work_item save
+-- System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)
+\ No newline at end of file
++- Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
+\ No newline at end of file
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/workflow/graph_runner.py b/backend/workflow/graph_runner.py
-index d9d1bf8..d635260 100644
---- a/backend/workflow/graph_runner.py
-+++ b/backend/workflow/graph_runner.py
-@@ -89,7 +89,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
-               "input_tokens": int, "output_tokens": int, "status": str}
-     """
-     from core.api_keys import get_key
--    from core.llm_clients import call_claude, call_deepseek, call_gemini, call_grok
-+    from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
-     from core.provider_costs import estimate_cost
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 553fd70..b61d862 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 22:05 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 22:15 UTC
  
-     node_id = node["id"]
-@@ -899,7 +899,7 @@ def _fire_background(run_id: str, project: str) -> None:
-     """
-     async def _safe_embed():
-         try:
--            from core.embeddings import embed_node_outputs
-+            from memory.embeddings import embed_node_outputs
-             await embed_node_outputs(run_id, project)
-         except Exception as _e:
-             log.debug(f"Background embed failed (non-critical): {_e}")
+ # aicli — Shared AI Memory Platform
+ 
+@@ -44,12 +44,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
+ - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
+ - 2-pane approval chat workflow for requirement negotiation before work_item save
+-- System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)
++- Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-03-20] I am testing the Pipeline - when I clicked approved I do see the old md version . I would expcet to see process and afte
+ - [2026-03-20] I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
+ - [2026-03-20] Work Item pieplien suppose to use the existing roles - PM - project manage, architect - Sr architect. can you optimize t
+ - [2026-03-20] I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w
+-- [2026-03-20] can you run /memory , also can you check why running workflow is so slow. each steps takes a while, and once step is app
+\ No newline at end of file
++- [2026-03-20] can you run /memory , also can you check why running workflow is so slow. each steps takes a while, and once step is app
++- [2026-03-20] Why work Item pipeline is not using the pre defined roles ?
+\ No newline at end of file
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/routers/workflows.py b/backend/routers/workflows.py
-index 17e146f..07f1aa8 100644
---- a/backend/routers/workflows.py
-+++ b/backend/routers/workflows.py
-@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
- from pydantic import BaseModel
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 553fd70..b61d862 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 22:05 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 22:15 UTC
  
- from core.config import settings
--from core.workflow_runner import (
-+from workflow.workflow_runner import (
-     start_run, decide, load_run, list_runs,
- )
+ # aicli — Shared AI Memory Platform
  
+@@ -44,12 +44,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
+ - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
+ - 2-pane approval chat workflow for requirement negotiation before work_item save
+-- System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)
++- Work item pipeline queries mng_agent_roles table; respects configured LLM provider and model per role instead of hardcoded Haiku
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-03-20] I am testing the Pipeline - when I clicked approved I do see the old md version . I would expcet to see process and afte
+ - [2026-03-20] I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
+ - [2026-03-20] Work Item pieplien suppose to use the existing roles - PM - project manage, architect - Sr architect. can you optimize t
+ - [2026-03-20] I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w
+-- [2026-03-20] can you run /memory , also can you check why running workflow is so slow. each steps takes a while, and once step is app
+\ No newline at end of file
++- [2026-03-20] can you run /memory , also can you check why running workflow is so slow. each steps takes a while, and once step is app
++- [2026-03-20] Why work Item pipeline is not using the pre defined roles ?
+\ No newline at end of file
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/routers/usage.py b/backend/routers/usage.py
-index 909ff52..ce53e97 100644
---- a/backend/routers/usage.py
-+++ b/backend/routers/usage.py
-@@ -21,7 +21,7 @@ from core.config import settings
- from core.auth import get_current_user
- from data.database import db
- from core.pricing import calculate_cost
--from models.user import find_by_id, list_users
-+from data.user import find_by_id, list_users
- 
- router = APIRouter()
- 
-
-
-### `commit` — 2026-04-14
-
-diff --git a/backend/routers/search.py b/backend/routers/search.py
-index c70353f..f2552ac 100644
---- a/backend/routers/search.py
-+++ b/backend/routers/search.py
-@@ -39,7 +39,7 @@ async def semantic_search(body: SearchRequest, user=Depends(get_optional_user)):
-     if not db.is_available():
-         raise HTTPException(503, "PostgreSQL + pgvector required for semantic search")
- 
--    from core.embeddings import semantic_search as _search
-+    from memory.embeddings import semantic_search as _search
-     project = body.project or settings.active_project or "default"
-     results = await _search(
-         project=project,
-@@ -137,7 +137,7 @@ async def ingest(project: str = Query(""), user=Depends(get_optional_user)):
-     p = project or settings.active_project or "default"
- 
-     async def _do_ingest():
--        from core.embeddings import ingest_history, ingest_roles
-+        from memory.embeddings import ingest_history, ingest_roles
-         h = await ingest_history(p)
-         r = await ingest_roles(p)
-         import logging
-
+Commit: chore: update system files and docs after claude session 853781c3
+Hash: ed227f10
+Code files (19):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - ui/backend/core/work_item_pipeline.py
+  - workspace/aicli/PROJECT.md
+  - workspace/aicli/documents/feature/auth/architect.md
+  - workspace/aicli/documents/feature/auth/architect_260319_203703.md
+  - workspace/aicli/documents/feature/auth/architect_260320_180801.md
+  - workspace/aicli/documents/feature/auth/architect_260320_185405.md
+  - workspace/aicli/documents/feature/auth/old/architect_260320_221915.md
+  - workspace/aicli/documents/feature/auth/pm_260319_203634.md
+  - workspace/aicli/documents/feature/auth/pm_260319_225854.md
+  - workspace/aicli/documents/feature/auth/pm_260320_161911.md
+  - workspace/aicli/documents/feature/auth/pm_260320_162059.md
+  - workspace/aicli/documents/feature/auth/pm_260320_174200.md
+  - workspace/aicli/documents/feature/auth/pm_260320_185147.md
+  - workspace/aicli/documents/feature/auth/old/pm_260320_221821.md
+  - workspace/aicli/documents/feature/auth/pm.md
+  - workspace/aicli/documents/pipelines/_work_item_pipeline/925912d3/pm.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
 
 ## AI Synthesis
 
-**Recent** `refactor` — Migrated LLM provider imports from core.llm_clients to agents.providers across workflow_runner.py, work_item_pipeline.py, and graph_runner.py; standardized module organization for provider adapters. **Recent** `refactor` — Relocated embed_node_outputs import from core.embeddings to memory.embeddings module, aligning memory synthesis infrastructure. **Established** `architecture` — Event filtering logic established: event_type IN ('prompt_batch', 'session_summary') filters mem_ai_events table to exclude per-commit and diff_file noise from event aggregation. **Established** `design` — Tag system design finalized: only user-facing tags (phase, feature, bug, source) preserved in mem_ai_events.tags JSONB; system metadata (llm, event, chunk_type, commit_hash, etc.) stripped during backfill. **In-progress** `stability` — Backend startup race condition under investigation; retry logic for empty project list on first load implemented but AiCli project visibility bug diagnosis ongoing. **In-progress** `performance` — SQL optimization backlog identified: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load. **In-progress** `feature` — Memory items and project_facts table population logic pending implementation; tables defined in schema but update mechanisms not yet wired to event pipeline. **In-progress` `ui` — Data persistence investigation: user-saved tags disappearing on session switch; unclear whether root cause is UI rendering or database save failure in tag serialization.
+**[2026-03-20]** `work_item_pipeline.py` — Refactored work item pipeline to query mng_agent_roles table and respect configured LLM provider per role, eliminating hardcoded Haiku/Anthropic assumption. **[2026-03-20]** `work_item_pipeline.py` — Integrated auto-commit feature where developer output is parsed for ### File: blocks; changes written to workspace and committed with work-item/{name} prefix and 8-char work_item_id. **[2026-03-20]** `PROJECT.md` — Identified SQL query optimization backlog: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch INSERT refactor and pagination to reduce database load. **[2026-03-20]** `work_item_pipeline.py` — Expanded developer token budget to 8000 (from 2000) to accommodate complete file content generation; added reviewer output truncation (4000 char preview) with middle ellipsis for long implementations. **[2026-03-19]** `PROJECT.md` — Documented UUID validation issue in pipeline run queries where string 'recent' passed to UUID field requires UUID object conversion. **[2026-03-18]** `PROJECT.md` — Fixed backend startup race condition where AiCli project appeared in Recent but not main view; root cause was empty project list during initialization, resolved with retry_logic_handles_empty_project_list_on_first_load pattern.

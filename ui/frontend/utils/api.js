@@ -395,6 +395,7 @@ api.workItems = {
     return _get(`/work-items/memory-items?${q}`);
   },
   extract:      (id, proj) => _post(`/work-items/${enc(id)}/extract?project=${enc(proj)}`),
+  refresh:      (id, proj) => _post(`/work-items/${enc(id)}/refresh?project=${enc(proj)}`),
 };
 
 // ── Agent Roles API ───────────────────────────────────────────────────────────

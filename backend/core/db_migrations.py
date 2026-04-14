@@ -1013,6 +1013,21 @@ def m040_backfill_event_cnt_and_tags(conn) -> None:
     )
 
 
+def m045_add_score_ai(conn) -> None:
+    """Add score_ai (0-5) to mem_ai_work_items.
+
+    AI-calculated completion score written by promote_work_item():
+      0 = not started  1 = early/unclear  2 = in progress, blockers
+      3 = good progress  4 = mostly done  5 = acceptance criteria met
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE mem_ai_work_items "
+            "ADD COLUMN IF NOT EXISTS score_ai SMALLINT NOT NULL DEFAULT 0"
+        )
+    conn.commit()
+
+
 def m044_drop_desc_ai(conn) -> None:
     """Drop desc_ai from mem_ai_work_items — merged into summary_ai.
 
@@ -1085,4 +1100,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m042_drop_source_event_id", m042_drop_source_event_id),
     ("m043_drop_status_ai_code_summary", m043_drop_status_ai_code_summary),
     ("m044_drop_desc_ai", m044_drop_desc_ai),
+    ("m045_add_score_ai", m045_add_score_ai),
 ]

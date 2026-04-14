@@ -204,6 +204,31 @@ export function renderEntities(container) {
     finally { if (btn) { btn.disabled = false; btn.textContent = '&#11041; Extract Code'; } }
   };
 
+  window._refreshWorkItem = async (id, project) => {
+    const btn = document.getElementById(`wi-refresh-btn-${id}`);
+    const statusEl = document.getElementById(`wi-extract-status-${id}`);
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+      const r = await api.workItems.refresh(id, project);
+      toast(`AI refreshed · score: ${r.score_ai ?? '?'}/5`, 'success');
+      if (statusEl) statusEl.textContent = `score: ${r.score_ai ?? '?'}/5`;
+      // Update score dots in-place
+      const scoreEl = document.getElementById(`wi-score-${id}`);
+      if (scoreEl && r.score_ai != null) {
+        const s = r.score_ai;
+        const col = s >= 4 ? '#27ae60' : s >= 2 ? '#e67e22' : '#e74c3c';
+        scoreEl.innerHTML = [1,2,3,4,5].map(i =>
+          `<span style="font-size:0.7rem;color:${i<=s?col:'var(--border)'}">${i<=s?'●':'○'}</span>`
+        ).join('') + `<span style="font-size:0.55rem;color:var(--muted);margin-left:3px">${s}/5</span>`;
+        scoreEl.title = `AI completion score ${s}/5`;
+      }
+      // Update summary_ai text if displayed
+      const summaryEl = document.getElementById(`wi-summary-${id}`);
+      if (summaryEl && r.summary_ai) summaryEl.textContent = r.summary_ai;
+    } catch (e) { toast('Refresh error: ' + e.message, 'error'); }
+    finally { if (btn) { btn.disabled = false; btn.innerHTML = '&#8635; Refresh AI'; } }
+  };
+
   window._wiBotDragStart = (e, id, name, cat) => {
     _dragWiData = { id, name_ai: name, category_ai: cat };
     e.dataTransfer.effectAllowed = 'link';
@@ -1260,6 +1285,19 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                 `<option value="${s}"${wi.status_user===s?' selected':''}>${s}</option>`).join('')}
             </select>
           </div>
+          <!-- AI Score (0-5) -->
+          <div style="display:flex;flex-direction:column;gap:0.2rem">
+            <div style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);
+                        letter-spacing:.06em">AI Score</div>
+            <div id="wi-score-${id}" style="display:flex;gap:2px;align-items:center" title="AI completion score ${wi.score_ai||0}/5">
+              ${[1,2,3,4,5].map(i => {
+                const filled = i <= (wi.score_ai||0);
+                const col = (wi.score_ai||0)>=4?'#27ae60':(wi.score_ai||0)>=2?'#e67e22':'#e74c3c';
+                return `<span style="font-size:0.7rem;color:${filled?col:'var(--border)'}">${filled?'●':'○'}</span>`;
+              }).join('')}
+              <span style="font-size:0.55rem;color:var(--muted);margin-left:3px">${wi.score_ai||0}/5</span>
+            </div>
+          </div>
         </div>
 
         <!-- Stats row -->
@@ -1271,7 +1309,7 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <span id="wi-stat-files-${id}"></span>
         </div>
 
-        <!-- Extract Code button -->
+        <!-- Actions row: Extract Code + Refresh AI -->
         <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
           <button id="wi-extract-btn-${id}"
             onclick="window._extractWorkItemCode('${id}','${project}')"
@@ -1279,6 +1317,14 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                    border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
                    color:var(--text2);font-family:var(--font);outline:none">
             &#11041; Extract Code
+          </button>
+          <button id="wi-refresh-btn-${id}"
+            onclick="window._refreshWorkItem('${id}','${project}')"
+            style="font-size:0.62rem;padding:0.22rem 0.6rem;background:var(--surface2);
+                   border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+                   color:var(--text2);font-family:var(--font);outline:none"
+            title="Re-run AI promotion — updates summary, action items, acceptance criteria, score">
+            &#8635; Refresh AI
           </button>
           <span id="wi-extract-status-${id}" style="font-size:0.57rem;color:var(--muted)"></span>
         </div>
@@ -1352,7 +1398,7 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
         <div>
           <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
                       letter-spacing:.06em;margin-bottom:0.3rem">AI Progress Summary</div>
-          <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;
+          <div id="wi-summary-${id}" style="font-size:0.65rem;color:var(--text2);line-height:1.5;
                       background:var(--surface2);padding:0.35rem 0.45rem;
                       border-radius:var(--radius)">${_esc(wi.summary_ai)}</div>
         </div>` : ''}
