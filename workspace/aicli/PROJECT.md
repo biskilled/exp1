@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
+- Schema migration: completed m038-m041 migrations dropping embedding columns and consolidating event/commit processing logic
+- Memory promotion cleanup: refactored _haiku() and MemoryEmbedding.process_item() to remove legacy diff_file_chunks and extract_commit_code paths
+- Context file consolidation: migrated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ structure with .agent-context tracking
+- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries
 - Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI
-- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, _wiPanelNewItem() creation workflow with toast feedback
-- Schema migration: merged_into UUID column added to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
-- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained user-facing tags (phase, feature, bug, source)
-- Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
+- Tag system completion: finished metadata cleanup Pass 0-2, repaired 6 corrupt session_summary events, and removed system tags from 1441 events

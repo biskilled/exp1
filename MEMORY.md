@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 14:41 UTC by aicli /memory_
+_Generated: 2026-04-14 14:42 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that captures, synthesizes, and retrieves development context using Claude Haiku dual-layer processing and PostgreSQL vector embeddings. The system combines a FastAPI backend, PostgreSQL 15+ with pgvector, and an Electron desktop UI (Vanilla JS + Cytoscape.js) to provide semantic search, workflow automation, and collaborative memory across projects. Current focus: finalizing work item merge infrastructure, cleaning up event tag metadata, and preparing production deployment via Railway + Electron-builder.
+aicli is a shared AI memory platform combining a Python/FastAPI backend with Electron desktop UI, PostgreSQL storage with pgvector embeddings, and multi-LLM provider support (Claude/OpenAI/DeepSeek/Gemini/Grok). It synthesizes development context through 4-layer memory architecture, smart code chunking, and Claude Haiku dual-layer digestion into work items and project facts. Current focus is on schema consolidation (m038-m041 migrations), tag system cleanup, and work item merge functionality for improved entity management.
 
 ## Project Facts
 
@@ -209,6 +209,7 @@ Reviewer: ```json
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
+- **schema_migrations**: m001-m041 framework with db_schema.sql as source of truth
 
 ## Key Decisions
 
@@ -223,19 +224,19 @@ Reviewer: ```json
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
 
 ## In Progress
 
-- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
+- Schema migration: completed m038-m041 migrations dropping embedding columns and consolidating event/commit processing logic
+- Memory promotion cleanup: refactored _haiku() and MemoryEmbedding.process_item() to remove legacy diff_file_chunks and extract_commit_code paths
+- Context file consolidation: migrated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ structure with .agent-context tracking
+- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries
 - Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI
-- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, _wiPanelNewItem() creation workflow with toast feedback
-- Schema migration: merged_into UUID column added to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
-- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained user-facing tags (phase, feature, bug, source)
-- Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
+- Tag system completion: finished metadata cleanup Pass 0-2, repaired 6 corrupt session_summary events, and removed system tags from 1441 events
 
 ## Active Features / Bugs / Tasks
 
@@ -286,6 +287,58 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `commit` — 2026-04-14
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 9f96448..b067896 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:22 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:24 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -61,11 +61,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+-- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
+-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
+ - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
++- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
+ - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+ - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
+ 
+ ## Recent Context (last 5 changes)
+ 
+
+
+### `commit` — 2026-04-14
+
+Commit: chore: clean up legacy _system root files and consolidate context into f
+Hash: 24d0541b
+Code files (6):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/memory/memory_promotion.py
+  - backend/routers/route_memory.py
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
+Symbols changed: _mark
+
+### `commit: 2a6b600e-9046-4d7b-88e9-ddb136d6ed65` — 2026-04-14
+
+Commits: chore: consolidate and reorganize _system context files after claude cli | chore: clean up legacy _system root files and consolidate context into f | chore: clean up stale agent context and legacy system docs after claude  | chore: remove legacy flat _system context files after claude cli session | chore: clean up legacy _system root files and consolidate context into f
+Changed: m038_drop_commits_code_embedding, MemoryEmbedding.process_item, extract_commit_code, _read_yaml_guards, m041_drop_diff_file_chunks, _haiku, MemoryEmbedding.process_commit, m039_reorder_mem_mrr_prompts, MemoryEmbedding, m040_backfill_event_cnt_and_tags
+Stats: backend/core/db_migrations.py        | 81 ++++++++++++++++++++++++++++++++++++
+ backend/core/db_schema.sql           | 10 ++---
+ backend/memory/memory_code_parser.py | 30 +------------
+ 3 files change
 
 ### `commit` — 2026-04-14
 
@@ -350,30 +403,6 @@ index 8b3b96f..0000000
 Binary files a/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libvk_swiftshader.dylib and /dev/null differ
 
 
-### `commit` — 2026-04-14
-
-diff --git a/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib b/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib
-deleted file mode 100755
-index 32dd7fd..0000000
-Binary files a/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib and /dev/null differ
-
-
-### `commit` — 2026-04-14
-
-diff --git a/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib b/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib
-deleted file mode 100755
-index e91f53e..0000000
-Binary files a/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib and /dev/null differ
-
-
-### `commit` — 2026-04-14
-
-diff --git a/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib b/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib
-deleted file mode 100755
-index d5c21d5..0000000
-Binary files a/old/ui/dist-electron/mac-arm64/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib and /dev/null differ
-
-
 ## AI Synthesis
 
-**[2026-03-14]** `project-state` — aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL 15+ with pgvector semantic search, and an Electron desktop UI. Core architecture uses a 4-layer memory system (ephemeral session → raw capture → LLM-digested events + embeddings → structured work items). Successfully completed tag system metadata cleanup (Pass 0-2), removing system-only tags from 1441 events while retaining user-facing tags (phase, feature, bug, source). Repaired 6 corrupt session_summary events with malformed JSON. Implemented work item merge functionality with merged_into column tracking, drag-drop UI in bottom panel, and API integration. Database schema remains single source of truth via db_schema.sql with 37 migrations. Deployment ready via Railway (backend) and Electron-builder (desktop: Mac/Windows/Linux). LLM provider adapters support Claude/OpenAI/DeepSeek/Gemini/Grok. DAG workflow executor with Cytoscape visualization enables approval-based task automation.
+**[2026-04-14]** `schema` — Completed migrations m038-m041 consolidating commit code extraction and event processing logic, dropping legacy embedding columns and diff_file_chunks references. **[2026-04-14]** `cleanup` — Removed system metadata tags (llm, event, chunk_type, commit_hash) from 1441 events across Pass 0-2, retaining user-facing tags (phase, feature, bug, source). **[2026-04-14]** `context` — Consolidated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ with .agent-context tracking for persistent agent state. **[2026-04-14]** `refactor` — Refactored MemoryEmbedding.process_item() and _haiku() to remove extract_commit_code and diff_file_chunks paths, simplifying event promotion pipeline. **[2026-04-14]** `bug-fixes` — Repaired 6 corrupt session_summary events with malformed JSON tag arrays, reset to empty {} baseline for data integrity. **[2026-04-14]** `features` — Implemented work item merge functionality with merged_into UUID tracking, persistent planner-wi-panel UI, and drag-drop merge support in entities.js.
