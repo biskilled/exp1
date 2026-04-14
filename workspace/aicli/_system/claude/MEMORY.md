@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 13:22 UTC by aicli /memory_
+_Generated: 2026-04-14 13:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that combines a Python CLI backend with Electron desktop UI, providing unified semantic search, event capture, memory synthesis, and workflow automation across projects. The system uses PostgreSQL with pgvector embeddings, Claude-powered memory synthesis, and async DAG workflows with visual approval panels. Current development focuses on tag system consolidation, schema stability, and rendering correctness for historical session data.
+aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL/pgvector semantic storage and an Electron desktop UI. It captures development events (commits, code changes, prompts) into a unified mem_ai_* schema with LLM-powered synthesis, work item management, and async DAG-based workflows. Currently in active development focusing on work item merge functionality, tag system cleanup, and data integrity repairs.
 
 ## Project Facts
 
@@ -222,20 +222,20 @@ Reviewer: ```json
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
 
 ## In Progress
 
-- Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
-- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic
+- Work item merge functionality: implemented POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
+- Work items bottom panel: added persistent 210px planner-wi-panel in entities.js with drag-drop merge support, unlink button, and new item creation UI
+- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, and _wiPanelNewItem() creation workflow with toast feedback
+- Schema migration for merged_into column: added merged_into UUID column to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
+- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained only user-facing tags (phase, feature, bug, source)
 - Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
-- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations
-- PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
-- History display rendering: fixed JSONB operator conflict in route_history and addressed prompt + response rendering gaps
 
 ## Active Features / Bugs / Tasks
 
@@ -289,73 +289,387 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-14
 
-Commit: chore(cli): auto-commit after AI session — 3 file(s) — 2026-03-22 01:33 UTC
-Hash: 58136c1
-Code files (1):
-  - backend/pyproject.toml
-Generated/internal files: workspace/aicli/_system/dev_runtime_state.json, workspace/aicli/_system/history.jsonl
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index 0076ce2..86f4459 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -88,7 +88,30 @@ export function renderEntities(container) {
+         </div>
+ 
+       </div>
++
++      <!-- Bottom panel: Work Items (always visible) -->
++    <div id="planner-wi-panel"
++         style="height:210px;border-top:2px solid var(--border);flex-shrink:0;
++                display:flex;flex-direction:column;background:var(--surface)">
++      <!-- Panel header -->
++      <div style="display:flex;align-items:center;gap:0.5rem;padding:3px 10px;
++                  border-bottom:1px solid var(--border);flex-shrink:0;
++                  background:var(--surface2)">
++        <span style="font-size:0.6rem;font-weight:700;color:var(--text);letter-spacing:.03em">⬡ WORK ITEMS</span>
++        <span id="wi-panel-count" style="font-size:0.55rem;color:var(--muted)"></span>
++        <span style="flex:1"></span>
++        <button id="wi-panel-add-btn"
++          style="background:var(--accent);border:none;color:#fff;font-size:0.57rem;
++                 padding:0.13rem 0.42rem;border-radius:var(--radius);cursor:pointer;
++                 font-family:var(--font);outline:none">+ New</button>
++      </div>
++      <!-- Panel list -->
++      <div id="wi-panel-list" style="flex:1;overflow-y:auto;overflow-x:hidden">
++        <div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">Loading…</div>
++      </div>
+     </div>
++
++  </div>
+   `;
+ 
+   // Wire window globals
+@@ -112,6 +135,64 @@ export function renderEntities(container) {
+   window._plannerDrawerRemoveLink = _plannerDrawerRemoveLink;
+   window._plannerGenerateSnapshot = _plannerGenerateSnapshot;
+   window._plannerDrawerMerge      = _plannerDrawerMerge;
++  window._plannerOpenWorkItemDrawer = (id, cat, proj) => _openWorkItemDrawer(id, cat, proj, null, '#4a90e2', '📋');
++  window._wiBotDragStart = (e, id, name, cat) => {
++    _dragWiData = { id, ai_name: name, ai_category: cat };
++    e.dataTransfer.effectAllowed = 'link';
++    e.dataTransfer.setData('text/plain', id);
++    e.currentTarget.style.opacity = '0.5';
++  };
++  window._wiBotDragEnd = (e) => {
++    if (e && e.currentTarget) e.currentTarget.style.opacity = '';
++    _dragWiData = null;
++    document.querySelectorAll('[data-tag-id]').forEach(r => { r.style.background = ''; r.style.outline = ''; });
++    const h = document.getElementById('planner-dnd-hint');
++    if (h) h.style.display = 'none';
++  };
++  window._wiBotItemDragOver = (e, el) => {
++    const targetId = el.dataset.wiId;
++    if (!_dragWiData || !targetId || targetId === _dragWiData.id) return;
++    e.preventDefault();
++    e.stopPropagation();
++    el.style.outline = '2px solid var(--accent)';
++    const h = document.getElementById('planner-dnd-hint');
++    if (h) { h.style.display = 'block'; h.textContent = `⊕ Merge with "${_esc(el.dataset.wiName || '')}"`;
++             h.style.left = (e.clientX+16)+'px'; h.style.top = (e.clientY+12)+'px'; }
++  };
++  window._wiBotItemDragLeave = (e, el) => { el.style.outline = ''; };
++  window._wiBotItemDrop = async (e, targetId, proj) => {
++    e.preventDefault();
++    e.stopPropagation();
++    const el = e.currentTarget;
++    el.style.outline = '';
++    if (!_dragWiData || !targetId || targetId === _dragWiData.id) return;
++    const sourceId = _dragWiData.id;
++    const sourceName = _dragWiData.ai_name;
++    _dragWiData = null;
++    try {
++      await api.workItems.merge(sourceId, targetId, proj);
++      toast(`Merged "${sourceName}" ⊕ merged`, 'success');
++      _loadWiPanel(proj);
++    } catch(err) { toast('Merge failed: ' + err.message, 'error'); }
++  };
++  window._wiUnlink = async (id, proj) => {
++    try {
++      await api.workItems.patch(id, proj, { tag_id: '' });
++      toast('Unlinked', 'success');
++      _loadWiPanel(proj);
++    } catch(err) { toast('Unlink failed: ' + err.message, 'error'); }
++  };
++  window._wiPanelNewItem = () => {
++    const { project } = _plannerState;
++    const cat = prompt('Category (bug/feature/task):');
++    if (!cat) return;
++    const name = prompt('Work item name:');
++    if (!name) return;
++    api.workItems.create(project, { ai_category: cat.toLowerCase(), ai_name: name })
++      .then(() => { toast(`Created "${name}"`, 'success'); _loadWiPanel(project); })
++      .catch(err => toast(err.message, 'error'));
++  };
++  document.getElementById('wi-panel-add-btn')?.addEventListener('click', window._wiPanelNewItem);
+ 
+   if (!project) {
+     document.getElementById('planner-tags-pane').innerHTML =
+@@ -144,6 +225,8 @@ async function _initPlanner(project) {
+     const first = cats.find(c => _isWorkItemCat(c.name) && c.id != null) || cats.find(c => c.id != null);
+     if (first) await _plannerSelectCat(first.id, first.name);
+   }
++  // Load persistent work items bottom panel
++  _loadWiPanel(project);
+ }
+ 
+ // ── Category list ─────────────────────────────────────────────────────────────
+@@ -160,7 +243,6 @@ function _renderCategoryList() {
+   const pipeline  = cats.filter(c => _isWorkItemCat(c.name));
+   const tags      = cats.filter(c => !_isWorkItemCat(c.name) && c.name !== 'ai_suggestion');
+ 
+-  const isSelWI   = _plannerState.selectedCatName === '__work_items__';
+   const isSel = (id) => _plannerState.selectedCat === id;
+   const catRow = c => `
+     <div class="planner-cat-row" data-id="${c.id}" data-cat-name="${_esc(c.name)}"
+@@ -177,52 +259,17 @@ function _renderCategoryList() {
+       <span style="font-size:0.55rem;color:var(--muted);flex-shrink:0">${getCacheValues(c.id).length}</span>
+     </div>`;
+ 
+-  // Work Items sentinel row (always shown at top)
+-  const wiSentinel = `
+-    <div class="planner-cat-row" data-cat-name="__work_items__"
+-         onclick="window._plannerSelectCat('__work_items__','__work_items__')"
+-         style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;
+-                cursor:pointer;margin-bottom:2px;transition:b
 
 ### `commit` — 2026-04-14
 
-Commit: chore: update system files and session state after claude cli session
-Hash: 31af6e01
-Code files (2):
-  - backend/core/database.py
-  - backend/main.py
-Generated/internal files: workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json, workspace/aicli/_system/history.jsonl
-Symbols changed: _ensure_shared_schema, _run_ddl_statements
+diff --git a/ui/frontend/utils/api.js b/ui/frontend/utils/api.js
+index b478745..81c2254 100644
+--- a/ui/frontend/utils/api.js
++++ b/ui/frontend/utils/api.js
+@@ -376,6 +376,10 @@ api.workItems = {
+   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+   interactions: (id, project, limit = 20) => _get(`/work-items/${enc(id)}/interactions?project=${enc(project)}&limit=${limit}`),
+   commits:      (id, project, limit = 20) => _get(`/work-items/${enc(id)}/commits?project=${enc(project)}&limit=${limit}`),
++  merge:        (id, mergeWith, project) => fetch(
++    _base() + `/work-items/${enc(id)}/merge?project=${enc(project)}`,
++    { method: 'POST', headers: _headers(), body: JSON.stringify({ merge_with: mergeWith }) }
++  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+   facts:        (project)     => _get(`/work-items/facts?project=${enc(project)}`),
+   memoryItems:  (project, scope) => {
+     const q = new URLSearchParams({ project: project || '' });
+
 
 ### `commit` — 2026-04-14
 
-Commit: chore: update system files and agent/system role routes
-Hash: 0c2ddf3d
-Code files (6):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/core/database.py
-  - backend/routers/route_agent_roles.py
-  - backend/routers/route_system_roles.py
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-Symbols changed: _require_db
+diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
+index 4d16eb9..17c3501 100644
+--- a/backend/routers/route_work_items.py
++++ b/backend/routers/route_work_items.py
+@@ -34,6 +34,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
+               w.status_user, w.status_ai, w.acceptance_criteria, w.action_items,
+               w.requirements, w.code_summary, w.summary,
+               w.tags, w.tag_id, w.ai_tag_id, w.source_event_id,
++              w.merged_into,
+               w.created_at, w.updated_at, w.seq_num,
+               tc.color, tc.icon,
+               (SELECT COUNT(*) FROM mem_mrr_prompts p
+@@ -210,6 +211,10 @@ class WorkItemCreate(BaseModel):
+     tags:                dict = {}
+ 
+ 
++class WorkItemMerge(BaseModel):
++    merge_with: str   # UUID of the other work item to merge with
++
++
+ class WorkItemPatch(BaseModel):
+     ai_name:             Optional[str] = None
+     ai_desc:             Optional[str] = None
+@@ -223,6 +228,7 @@ class WorkItemPatch(BaseModel):
+     tags:                Optional[dict] = None
+     tag_id:              Optional[str] = None
+     ai_tag_id:           Optional[str] = None
++    merged_into:         Optional[str] = None
+ 
+ 
+ # ── CRUD ─────────────────────────────────────────────────────────────────────
+@@ -269,6 +275,7 @@ async def list_work_items(
+         where.append("w.ai_category=%s"); params.append(category)
+     if status:
+         where.append("w.status_user=%s"); params.append(status)
++    where.append("w.merged_into IS NULL")   # exclude items absorbed into a merge
+     if name:
+         where.append("w.ai_name=%s"); params.append(name)
+ 
+@@ -359,6 +366,9 @@ async def patch_work_item(
+     if body.ai_tag_id           is not None:
+         fields.append("ai_tag_id=%s")
+         params.append(body.ai_tag_id if body.ai_tag_id else None)
++    if body.merged_into         is not None:
++        fields.append("merged_into=%s")
++        params.append(body.merged_into if body.merged_into else None)
+ 
+     if not fields:
+         raise HTTPException(400, "Nothing to update")
+@@ -462,6 +472,85 @@ async def get_work_item_interactions(
+     return {"interactions": rows, "work_item_id": item_id, "project": p}
+ 
+ 
++# ── Merge two work items ─────────────────────────────────────────────────────
++
++
++@router.post("/{item_id}/merge", status_code=201)
++async def merge_work_item_into(
++    item_id: str,
++    body: WorkItemMerge,
++    background_tasks: BackgroundTasks,
++    project: str | None = Query(None),
++):
++    """Merge item_id and body.merge_with into a new combined work item.
++    Both originals are marked merged_into=<new_id>, status_user='done'.
++    """
++    _require_db()
++    p = _project(project)
++    p_id = db.get_or_create_project_id(p)
++
++    with db.conn() as conn:
++        with conn.cursor() as cur:
++            cur.execute(
++                "SELECT id, ai_category, ai_name, ai_desc, requirements, action_items, "
++                "acceptance_criteria, summary, tag_id, seq_num "
++                "FROM mem_ai_work_items WHERE project_id=%s AND id=ANY(%s::uuid[])",
++                (p_id, [item_id, body.merge_with]),
++            )
++            rows = cur.fetchall()
++
++    if len(rows) < 2:
++        raise HTTPException(404, "One or both work items not found")
++
++    a = dict(zip(["id","ai_category","ai_name","ai_desc","requirements","action_items",
++                  "acceptance_criteria","summary","tag_id","seq_num"], rows[0]))
++    b = dict(zip(["id","ai_category","ai_name","ai_desc","requirements","action_items",
++                  "acceptance_criteria","summary","tag_id","seq_num"], rows[1]))
++
++    # Build merged item — combine fields, prefer non-empty values
++    import json as _json
++    new_name        = f"{a['ai_name']} + {b['ai_name']}"
++    new_desc        = f"{a['ai_desc'] or ''}\n{b['ai_desc'] or ''}".strip()
++    new_req         = f"{a['requirements'] or ''}\n{b['requirements'] or ''}".strip()
++    new_actions     = f"{a['action_items'] or ''}\n{b['action_items'] or ''}".strip()
++    new_criteria    = f"{a['acceptance_criteria'] or ''}\n{b['acceptance_criteria'] or ''}".strip()
++    new_category    = a['ai_category']  # use first item's category
++    linked_tag_id   = a['tag_id'] or b['tag_id']  # keep any linked tag
++
++    with db.conn() as conn:
++        with conn.cursor() as cur:
++            seq = next_seq(cur, p_id, new_category)
++            cur.execute(
++                """INSERT INTO mem_ai_work_items
++                       (project_id, ai_category, ai_name, ai_desc, requirements,
++                        action_items, acceptance_criteria, tag_id, status_user, status_ai, seq_num)
++                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'active','active',%s)
++                   ON CONFLICT (project_id, ai_category, ai_name) DO NOTHING
++                   RETURNING id""",
++                (p_id, new_category, new_name, new_desc, new_req,
++                 new_actions, new_criteria,
++                 str(linked_tag_id) if linked_tag_id else None, seq),
++            )
++            new_row = cur.fetchone()
++            if not new_row:
++                raise HTTPException(409, f"Merged item '{new_name}' already exists")
++            new_id = str(new_row[0])
++
++            # Mark both originals as merged
++            cur.execute(
++                "UPDATE mem_ai_work_items SET merged_into=%s::uuid, status_user='done', updated_at=NOW() "
++                "WHERE id=ANY(%s::uuid[]) AND project_id=%s",
++                (new_id, [item_id, body.merge_with], p_id),
++            )
++
++    asyncio.create_task(_embed_work_item(p_id, new_id, new_name, new_desc, new_req, ""))
++    asyncio.create_task(_trigger_memory_regen(p))
++    background_tasks.add_task(_run_matching, p, new_id)
++
++    return {"id": new_id, "ai_name": new_name, "ai_category": new_category,
++            "merged_from": [item_id, body.merge_with], "project": p}
++
++
+ # ── Commits linked to a work item ────────────────────────────────────────────
+ 
+ @router.get("/{ite
 
 ### `commit` — 2026-04-14
 
-Commit: chore: update ai system files and memory after claude session
-Hash: 9af8b1d1
-Code files (7):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/routers/route_entities.py
-  - backend/routers/route_graph_workflows.py
-  - backend/routers/route_work_items.py
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+diff --git a/backend/core/database.py b/backend/core/database.py
+index 4147e83..437afd7 100644
+--- a/backend/core/database.py
++++ b/backend/core/database.py
+@@ -397,6 +397,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
+     tags                JSONB        NOT NULL DEFAULT '{}',
+     ai_tag_id           UUID         REFERENCES planner_tags(id),
+     tag_id              UUID         REFERENCES planner_tags(id),
++    merged_into         UUID         REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
+     status_user         VARCHAR(20)  NOT NULL DEFAULT 'active',
+     status_ai           VARCHAR(20)  NOT NULL DEFAULT 'active',
+     seq_num             INT,
+@@ -1180,6 +1181,10 @@ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_sai   ON mem_ai_work_items(status_ai);
+ -- Migrate status → status_user (plain statement, no DO block needed since ADD sets DEFAULT)
+ UPDATE mem_ai_work_items SET status_user = status WHERE status IS NOT NULL AND status_user = 'active';
+ ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS status;
++-- ── 013_work_items_merge ──────────────────────────────────────────────────────
++-- merged_into: when two work items are merged, both originals point to the new item.
++ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS merged_into UUID REFERENCES mem_ai_work_items(id) ON DELETE SET NULL;
++CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_merged ON mem_ai_work_items(merged_into) WHERE merged_into IS NOT NULL;
+ """
+ 
+ 
+
 
 ### `commit` — 2026-04-14
 
-Commit: chore: update system files and memory after claude session fa708653
-Hash: 1f884ac4
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/core/database.py
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-Symbols changed: _ensure_schema, _run_ddl_statements
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 5ed5e13..d47c5dd 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-06 14:11 UTC
++> Generated by aicli 2026-04-06 14:18 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -55,9 +55,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
++- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+ - Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+-- Commit deduplication by hash with UNION consolidation; commits linked per-prompt with inline display (accent left-border)
++- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
+ - Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+ - Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
+-- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+-- PostgreSQL batch upsert with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
+\ No newline at end of file
++- Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+\ No newline at end of file
+
 
 ### `commit` — 2026-04-14
 
-Commit: chore(cli): auto-commit after AI session — 16 file(s) — 2026-03-22 02:31 UTC
-Hash: fa63f31
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index ab5e67b..e59d880 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 14:11 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 14:18 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -55,17 +55,17 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - Data persistence: load_once_on_access, update_on_save pattern; session ordering by created_at (not updated_at) to prevent reordering on tag/phase updates
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
++- Work items: dual status tracking (status_user for user control, status_ai for AI suggestions) with code_summary field for semantic embedding + planner_tags cross-matching
+ - Backend startup race condition: retry_logic_handles_empty_project_list_on_first_load; _ensure_shared_schema replaces ensure_project_schema convention
+-- Commit deduplication by hash with UNION consolidation; commits linked per-prompt with inline display (accent left-border)
++- Commit deduplication by hash with UNION consolidation; commits linked per-work-item via tags JSONB with mem_mrr_commits table
+ - Dual-hook architecture: hook-response saves LLM responses to mem_mrr_prompts.response; session-summary hook consolidates prompt/response pairs for synthesis
+ - Memory layer event-based triggering with differentiated process_item/messages handling for core memory functionality activation
+ - Deployment: Railway (Dockerfile + railway.toml) cloud; Electron-builder for desktop; local bash start_backend.sh + npm run dev
+-- PostgreSQL batch upsert with explicit ::jsonb casting for tags field to prevent duplicate row insertion on ON CONFLICT DO UPDATE
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-06] Histroy used to show promp and llm response . I currently see only prompt
+ - [2026-04-06] I have  got the following error -  cur.execute(b''.join(parts)) started  route_history line 470 - execute_values(cur, _S
+ - [2026-04-06] I still dont see the same issue in route_history line 470. cur.execute(b''.join(parts)) saying  ON CONFLICT DO UPDATE co
+ - [2026-04-06] I am checking the aiCli_memory - and it is looks likje it is not updated at all. table are not as the current one and th
+-- [2026-04-06] I would like to make sure columns are aligned in work_items. What is source_session_id usaed from in work_items? Also th
+\ No newline at end of file
++- [2026-04-06] I would like to make sure columns are aligned in work_items. What is source_session_id usaed from in work_items? Also th
++- [2026-04-06] I do see an issue - Uncaught ReferenceError: _plannerSelectAiSubtype is not defined in ERROR    | routers.route_logs    
+\ No newline at end of file
+
 
 ## AI Synthesis
 
-**2026-03-22** `commit` — Auto-commit after AI session with pyproject.toml updates and dev_runtime_state.json generation. **2026-03-22** `commit` — Updated core/database.py and main.py with symbol changes to _ensure_shared_schema and _run_ddl_statements. **2026-03-22** `commit` — Applied system rules updates across .ai/rules.md, Cursor rules, GitHub Copilot instructions, and agent/system role routes. **2026-03-14** `feature` — Tag system metadata cleanup completed: removed system tags (llm, event, chunk_type, commit_hash) from 1441 events while retaining user-facing tags (phase, feature, bug, source). **2026-03-14** `fix` — Repaired 6 corrupt session_summary events with malformed JSON tag arrays by resetting to empty object baseline. **2026-03-14** `schema` — Schema migration m037 executed: dropped deprecated importance column from mem_ai_events and completed column reordering. **In-progress** — mem_mrr_tags UPSERT redesign with per-source-type logic and event_id backfill to link raw captures to synthesized events. **In-progress** — PostgreSQL logging stability: resolved stale file handle issues with fresh log paths on backend startup. **In-progress** — History display rendering: fixed JSONB operator conflict in route_history and addressed prompt/response rendering gaps.
+**[2026-03-14]** `entities.js + route_work_items.py` — Implemented work item merge functionality with POST /work-items/{id}/merge endpoint; added merged_into UUID column to schema with list filtering to exclude absorbed items. **[2026-03-14]** `entities.js` — Built persistent 210px bottom panel (planner-wi-panel) for work items with drag-drop merge UX, unlink button, and new item creation via modal prompts. **[2026-03-14]** `api.js` — Wired api.workItems.merge() fetch method and integrated _loadWiPanel() auto-refresh after merge/creation operations with toast feedback. **[2026-03-14]** `route_work_items.py` — Merge endpoint creates new combined work item with concatenated requirements/actions/criteria, marks both originals as merged_into=new_id and status_user='done', triggers embedding + memory regen. **[Recent]** Tag system metadata cleanup — Completed Pass 0-2 removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source). **[Recent]** Event corruption fix — Repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline for consistent state.

@@ -382,6 +382,21 @@ async def embed_commits(
     n = await emb.process_commit_batch(project, min_commits=1)
     return {"events_created": n, "project": project}
 
+@router.post("/{project}/dedup-work-items")
+async def dedup_work_items(project: str):
+    """Merge duplicate work items that share the same feature or bug tag.
+
+    For each tag value that maps to multiple work items, keeps one canonical
+    item (named after the tag value) and merges all others into it.
+    Re-links mem_ai_events.work_item_id to the canonical item.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+    from memory.memory_promotion import MemoryPromotion
+    result = await MemoryPromotion().dedup_work_items(project)
+    return {"project": project, **result}
+
+
 @router.get("/{project}/pipeline-status")
 async def get_pipeline_status(project: str):
     """Return pipeline health dashboard: last-24h stats per pipeline, pending counts, recent errors."""

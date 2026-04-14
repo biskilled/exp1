@@ -173,18 +173,60 @@ _SQL_INSERT_EXTRACTED_WORK_ITEM = """
     VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::uuid,
             (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
     ON CONFLICT (project_id, category_ai, name_ai) DO UPDATE SET
-        desc_ai              = EXCLUDED.desc_ai,
+        desc_ai              = CASE WHEN EXCLUDED.desc_ai != ''
+                                    THEN EXCLUDED.desc_ai
+                                    ELSE mem_ai_work_items.desc_ai END,
         acceptance_criteria_ai = CASE WHEN EXCLUDED.acceptance_criteria_ai != ''
                                       THEN EXCLUDED.acceptance_criteria_ai
                                       ELSE mem_ai_work_items.acceptance_criteria_ai END,
-        action_items_ai      = CASE WHEN EXCLUDED.action_items_ai != ''
-                                    THEN EXCLUDED.action_items_ai
-                                    ELSE mem_ai_work_items.action_items_ai END,
+        action_items_ai      = CASE
+                                    WHEN EXCLUDED.action_items_ai = '' THEN mem_ai_work_items.action_items_ai
+                                    WHEN mem_ai_work_items.action_items_ai = '' THEN EXCLUDED.action_items_ai
+                                    ELSE mem_ai_work_items.action_items_ai || E'\n---\n' || EXCLUDED.action_items_ai
+                               END,
         tags                 = CASE WHEN EXCLUDED.tags != '{}'::jsonb
                                     THEN mem_ai_work_items.tags || EXCLUDED.tags
                                     ELSE mem_ai_work_items.tags END,
+        source_event_id      = COALESCE(mem_ai_work_items.source_event_id, EXCLUDED.source_event_id),
         updated_at           = NOW()
     RETURNING id
+"""
+
+# Link a single event row to a work item
+_SQL_LINK_EVENT_TO_WI = """
+    UPDATE mem_ai_events SET work_item_id = %s::uuid
+    WHERE id = %s::uuid AND project_id = %s
+"""
+
+# Find work items that share the same feature tag (for dedup)
+_SQL_WI_GROUPS_BY_FEATURE = """
+    SELECT
+        tags->>'feature' AS tag_val,
+        'feature'        AS tag_key,
+        array_agg(id::text ORDER BY
+            CASE WHEN tag_id_user IS NOT NULL THEN 0 ELSE 1 END ASC,
+            created_at ASC
+        ) AS ids
+    FROM mem_ai_work_items wi
+    WHERE project_id = %s
+      AND tags->>'feature' IS NOT NULL AND tags->>'feature' != ''
+    GROUP BY 1
+    HAVING COUNT(*) > 1
+"""
+
+_SQL_WI_GROUPS_BY_BUG = """
+    SELECT
+        tags->>'bug'  AS tag_val,
+        'bug'         AS tag_key,
+        array_agg(id::text ORDER BY
+            CASE WHEN tag_id_user IS NOT NULL THEN 0 ELSE 1 END ASC,
+            created_at ASC
+        ) AS ids
+    FROM mem_ai_work_items wi
+    WHERE project_id = %s
+      AND tags->>'bug' IS NOT NULL AND tags->>'bug' != ''
+    GROUP BY 1
+    HAVING COUNT(*) > 1
 """
 
 # Keys considered "user intent" tags — copied from event tags to work item tags
@@ -670,14 +712,18 @@ class MemoryPromotion:
         project: str,
         batch_size: int = 10,
     ) -> int:
-        """
-        Scan recent unprocessed events (prompt_batch + session_summary) and use
-        Haiku to identify actionable work items (tasks, bugs, features).
+        """Scan unprocessed events and map them to work items.
 
-        Each extracted item is stored in mem_ai_work_items with source_event_id
-        and source_session_id set so it's not re-extracted on the next run.
+        Priority:
+          1. User-tag first — if the event carries a 'feature' or 'bug' tag,
+             use that tag value AS the work item name.  All events with the same
+             feature/bug value are collapsed into ONE work item via the UNIQUE
+             (project_id, category_ai, name_ai) constraint.
+          2. AI fallback — only for events with no user tag. Haiku extracts
+             up to 2 slugs per event; limited to avoid explosion.
 
-        Returns count of work items created.
+        The work_item_id is set on the event row so the link is queryable.
+        Returns count of work items created (inserts only, not updates).
         """
         if not db.is_available():
             return 0
@@ -695,149 +741,248 @@ class MemoryPromotion:
         if not events:
             return 0
 
-        system_prompt = _prompts.content("work_item_extraction") or (
-            "You are a project memory analyst. Given a digest of recent development activity, "
-            "identify actionable work items: bugs to fix, features to build, tasks to complete. "
-            "Return JSON only:\n"
-            "{\"items\": [\n"
-            "  {\"category\": \"bug|feature|task\", \"name\": \"short-slug\", "
-            "\"description\": \"1-2 sentence explanation\"}\n"
-            "]}\n"
-            "Return at most 5 items. Use lowercase-hyphenated slugs for name. "
-            "Return {\"items\": []} if nothing actionable is found."
+        ai_fallback_prompt = _prompts.content("work_item_extraction") or (
+            "Given a digest of development activity, identify at most 2 actionable work items. "
+            "Return JSON only: {\"items\": [{\"category\": \"bug|feature|task\", "
+            "\"name\": \"short-slug\", \"description\": \"1-2 sentence explanation\"}]}. "
+            "Use lowercase-hyphenated slugs. Return {\"items\": []} if nothing actionable."
         )
 
         created = 0
-        updated = 0
+
         for ev_id, event_type, session_id, summary, action_items, created_at, tags in events:
             content_parts = [p for p in [summary, action_items] if p and p.strip()]
             content = "\n\n".join(content_parts)[:3000]
-            if not content.strip():
-                # Still mark as processed to avoid retrying empty events
+            ev_id_str = str(ev_id)
+
+            # Always mark processed so we don't retry
+            def _mark():
                 try:
                     with db.conn() as conn:
                         with conn.cursor() as cur:
-                            cur.execute(_SQL_MARK_EVENT_EXTRACTED, (str(ev_id),))
+                            cur.execute(_SQL_MARK_EVENT_EXTRACTED, (ev_id_str,))
                 except Exception:
                     pass
+
+            if not content.strip():
+                _mark()
                 continue
 
             event_tags = tags or {}
-            has_user_tags = bool(event_tags.get("feature") or event_tags.get("phase"))
+            # Filter to user-intent keys only
+            wi_tags: dict = {k: v for k, v in event_tags.items()
+                             if k in _USER_TAG_KEYS and v}
 
-            event_label = {
-                "session_summary": "session summary",
-                "commit": "commit",
-            }.get(event_type, "prompt batch")
-            user_msg = (
-                f"Event type: {event_label}\n"
-                f"Date: {str(created_at)[:10]}\n"
-                + (f"Session tags: {event_tags.get('phase', '')} / {event_tags.get('feature', '')}\n"
-                   if has_user_tags else "")
-                + f"\n{content}"
-            )
+            feature_val = event_tags.get("feature", "").strip()
+            bug_val     = event_tags.get("bug", "").strip()
 
-            raw = await _call_llm(system_prompt, user_msg, max_tokens=600)
+            wi_id: Optional[str] = None
 
-            # Mark event as processed regardless of LLM result
-            try:
-                with db.conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(_SQL_MARK_EVENT_EXTRACTED, (str(ev_id),))
-            except Exception:
-                pass
+            # ── Path 1: user tag exists → 1 work item per tag value ──────────
+            if feature_val or bug_val:
+                # Prefer bug over feature when both present (more specific)
+                if bug_val:
+                    category, tag_name = "bug", bug_val
+                else:
+                    category, tag_name = "feature", feature_val
 
-            if not raw:
-                continue
+                canonical_name = tag_name.lower().strip()[:200]
+                desc = f"Work related to {canonical_name}: {(summary or '')[:300]}"
 
-            parsed = _parse_json(raw)
-            if not parsed:
-                continue
-
-            # Apply AI-suggested tags to event if no user tags
-            if not has_user_tags:
-                suggested = parsed.get("suggested_tags") or {}
-                ai_phase   = (suggested.get("phase") or "").strip() or None
-                ai_feature = (suggested.get("feature") or "").strip() or None
-                if ai_phase or ai_feature:
-                    try:
-                        with db.conn() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    _SQL_UPDATE_EVENT_AI_TAGS,
-                                    (ai_phase, ai_feature, str(ev_id)),
-                                )
-                    except Exception as e:
-                        log.debug(f"event ai_tags update error: {e}")
-
-            items = parsed.get("items", [])
-            if not items:
-                continue
-
-            # Build filtered tags from source event (user-intent keys only).
-            # Commit events use ai_phase/ai_feature; session events use phase/feature.
-            merged: dict = {}
-            for k, v in event_tags.items():
-                if not v:
-                    continue
-                if k in _USER_TAG_KEYS:
-                    merged[k] = v
-                elif k == "ai_phase":
-                    merged.setdefault("phase", v)
-                elif k == "ai_feature":
-                    merged.setdefault("feature", v)
-            wi_tags = json.dumps(merged)
-
-            for item in items[:5]:
-                category = item.get("category", "task")
-                name = (item.get("name") or "").strip().lower()[:200]
-                description = (item.get("description") or "").strip()[:1000]
-                if not name or not description:
-                    continue
-                ac = (item.get("acceptance_criteria") or "").strip()[:2000]
-                ai = (item.get("action_items") or "").strip()[:2000]
                 try:
                     with db.conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute(
                                 _SQL_INSERT_EXTRACTED_WORK_ITEM,
-                                (project_id, category, name, description,
-                                 ac, ai, wi_tags,
-                                 str(ev_id), project_id),
+                                (project_id, category, canonical_name, desc,
+                                 "", action_items or "", json.dumps(wi_tags),
+                                 ev_id_str, project_id),
                             )
                             row = cur.fetchone()
                             if row:
                                 wi_id = str(row[0])
                                 created += 1
-                                # Backlink ALL events in the same session → one-to-many relationship
-                                # Events without work_item_id get assigned to this work item.
-                                cur.execute("""
-                                    UPDATE mem_ai_events
-                                    SET work_item_id = %s::uuid
-                                    WHERE session_id = (
-                                        SELECT session_id FROM mem_ai_events WHERE id = %s::uuid
-                                    )
-                                      AND project_id = %s
-                                      AND work_item_id IS NULL
-                                """, (wi_id, str(ev_id), project_id))
-                                # Queue AI tag matching + embedding for the new work item
-                                try:
-                                    import asyncio as _aio
-                                    loop = _aio.get_event_loop()
-                                    if loop.is_running():
-                                        loop.create_task(_match_new_work_item(project, wi_id))
-                                        loop.create_task(_embed_work_item(
-                                            project_id, wi_id, name, description,
-                                        ))
-                                except Exception:
-                                    pass
-                            else:
-                                updated += 1  # ON CONFLICT DO UPDATE hit an existing item
                 except Exception as e:
-                    log.debug(f"extract_work_items insert error: {e}")
+                    log.debug(f"extract_work_items tag-path insert error: {e}")
+
+            # ── Path 2: no user tag → limited AI extraction ──────────────────
+            else:
+                user_msg = (
+                    f"Event type: {event_type}\nDate: {str(created_at)[:10]}\n\n{content}"
+                )
+                raw = await _call_llm(ai_fallback_prompt, user_msg, max_tokens=400)
+                parsed = _parse_json(raw) if raw else {}
+                items = (parsed.get("items") or [])[:2]  # hard cap: 2 items max per untagged event
+
+                for item in items:
+                    name = (item.get("name") or "").strip().lower()[:200]
+                    description = (item.get("description") or "").strip()[:1000]
+                    if not name or not description:
+                        continue
+                    category = item.get("category", "task")
+                    try:
+                        with db.conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    _SQL_INSERT_EXTRACTED_WORK_ITEM,
+                                    (project_id, category, name, description,
+                                     "", "", json.dumps(wi_tags),
+                                     ev_id_str, project_id),
+                                )
+                                row = cur.fetchone()
+                                if row:
+                                    wi_id = str(row[0])
+                                    created += 1
+                    except Exception as e:
+                        log.debug(f"extract_work_items ai-path insert error: {e}")
+
+            # ── Link event → work item ────────────────────────────────────────
+            if wi_id:
+                try:
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(_SQL_LINK_EVENT_TO_WI,
+                                        (wi_id, ev_id_str, project_id))
+                    import asyncio as _aio
+                    loop = _aio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(_match_new_work_item(project, wi_id))
+                        loop.create_task(_embed_work_item(
+                            project_id, wi_id,
+                            locals().get("canonical_name") or locals().get("name") or "",
+                            locals().get("desc") or locals().get("description") or "",
+                        ))
+                except Exception as e:
+                    log.debug(f"extract_work_items link error: {e}")
+
+            _mark()
 
         log.info(
-            f"extract_work_items_from_events: created={created} updated={updated} "
+            f"extract_work_items_from_events: created={created} "
             f"events={len(events)} for '{project}'"
         )
         return created
+
+    async def dedup_work_items(self, project: str) -> dict:
+        """Merge duplicate work items that share the same feature or bug tag.
+
+        For each tag value (e.g. feature='work_items') that has multiple work items:
+          1. Pick the canonical item (prefer one with tag_id_user, then most linked events,
+             then oldest).
+          2. Rename canonical to use the tag value as name_ai (so future inserts via
+             UNIQUE (project_id, category_ai, name_ai) hit it directly).
+          3. Append action_items_ai from duplicates into the canonical.
+          4. Re-point all mem_ai_events.work_item_id from duplicates → canonical.
+          5. Delete duplicates.
+
+        Returns {"merged_groups": N, "deleted": M, "canonical_renamed": K}.
+        """
+        if not db.is_available():
+            return {"merged_groups": 0, "deleted": 0, "canonical_renamed": 0}
+
+        project_id = db.get_or_create_project_id(project)
+        merged_groups = deleted = canonical_renamed = 0
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_WI_GROUPS_BY_FEATURE, (project_id,))
+                feature_groups = cur.fetchall()
+                cur.execute(_SQL_WI_GROUPS_BY_BUG, (project_id,))
+                bug_groups = cur.fetchall()
+
+        all_groups = [(tv, tk, ids) for tv, tk, ids in feature_groups + bug_groups
+                      if tv and ids and len(ids) > 1]
+
+        for tag_val, tag_key, ids in all_groups:
+            canonical_id = ids[0]
+            dup_ids = ids[1:]
+            canonical_name = tag_val.lower().strip()[:200]
+            category = "bug" if tag_key == "bug" else "feature"
+
+            # Collect content from all duplicates
+            combined_actions: list[str] = []
+            for dup_id in dup_ids:
+                try:
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                "SELECT action_items_ai FROM mem_ai_work_items WHERE id=%s::uuid",
+                                (dup_id,),
+                            )
+                            row = cur.fetchone()
+                            if row and row[0] and row[0].strip():
+                                combined_actions.append(row[0].strip())
+
+                            # Re-link events to canonical
+                            cur.execute(
+                                "UPDATE mem_ai_events SET work_item_id=%s::uuid "
+                                "WHERE work_item_id=%s::uuid AND project_id=%s",
+                                (canonical_id, dup_id, project_id),
+                            )
+                            # Delete duplicate
+                            cur.execute(
+                                "DELETE FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
+                                (dup_id, project_id),
+                            )
+                            deleted += 1
+                except Exception as e:
+                    log.debug(f"dedup_work_items dup merge error ({dup_id}): {e}")
+
+            # Merge collected action_items into canonical and rename to tag value
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        # Check if canonical_name conflicts with another existing item
+                        cur.execute(
+                            "SELECT id FROM mem_ai_work_items "
+                            "WHERE project_id=%s AND category_ai=%s AND name_ai=%s "
+                            "AND id != %s::uuid LIMIT 1",
+                            (project_id, category, canonical_name, canonical_id),
+                        )
+                        conflict = cur.fetchone()
+                        if conflict:
+                            # There's already an item with the canonical name — merge into that one
+                            target_id = str(conflict[0])
+                            cur.execute(
+                                "UPDATE mem_ai_events SET work_item_id=%s::uuid "
+                                "WHERE work_item_id=%s::uuid AND project_id=%s",
+                                (target_id, canonical_id, project_id),
+                            )
+                            cur.execute(
+                                "DELETE FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
+                                (canonical_id, project_id),
+                            )
+                            deleted += 1
+                            canonical_id = target_id  # target is now the real canonical
+
+                        append_text = "\n---\n".join(combined_actions)
+                        cur.execute(
+                            """UPDATE mem_ai_work_items SET
+                                name_ai         = %s,
+                                category_ai     = %s,
+                                action_items_ai = CASE
+                                    WHEN %s = '' THEN action_items_ai
+                                    WHEN action_items_ai = '' OR action_items_ai IS NULL THEN %s
+                                    ELSE action_items_ai || E'\n---\n' || %s
+                                END,
+                                updated_at      = NOW()
+                               WHERE id = %s::uuid AND project_id = %s""",
+                            (canonical_name, category,
+                             append_text, append_text, append_text,
+                             canonical_id, project_id),
+                        )
+                        canonical_renamed += 1
+            except Exception as e:
+                log.debug(f"dedup_work_items canonical update error ({canonical_id}): {e}")
+
+            merged_groups += 1
+
+        log.info(
+            f"dedup_work_items: merged_groups={merged_groups} deleted={deleted} "
+            f"renamed={canonical_renamed} for '{project}'"
+        )
+        return {
+            "merged_groups": merged_groups,
+            "deleted": deleted,
+            "canonical_renamed": canonical_renamed,
+        }
