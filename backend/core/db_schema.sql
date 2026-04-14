@@ -317,12 +317,12 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id  INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    event_id   UUID,                            -- FK to mem_ai_events.id (set after digest)
     session_id TEXT,
     source_id  TEXT,                            -- external ID for deduplication
     prompt     TEXT        NOT NULL DEFAULT '',
     response   TEXT        NOT NULL DEFAULT '',
     tags       JSONB       NOT NULL DEFAULT '{}',
-    event_id   UUID,                            -- FK to mem_ai_events.id (set after digest)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_pid     ON mem_mrr_prompts(project_id);
@@ -391,15 +391,13 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits_code (
     rows_removed  INT         NOT NULL DEFAULT 0,
     diff_snippet  TEXT,
     llm_summary   TEXT,
-    embedding     VECTOR(1536),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (commit_hash, file_path, symbol_type,
             COALESCE(class_name, ''), COALESCE(method_name, ''))
 );
-CREATE INDEX IF NOT EXISTS idx_mmc_code_pid   ON mem_mrr_commits_code(project_id);
-CREATE INDEX IF NOT EXISTS idx_mmc_code_hash  ON mem_mrr_commits_code(commit_hash);
-CREATE INDEX IF NOT EXISTS idx_mmc_code_sym   ON mem_mrr_commits_code(full_symbol) WHERE full_symbol IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_mmc_code_embed ON mem_mrr_commits_code USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mmc_code_pid  ON mem_mrr_commits_code(project_id);
+CREATE INDEX IF NOT EXISTS idx_mmc_code_hash ON mem_mrr_commits_code(commit_hash);
+CREATE INDEX IF NOT EXISTS idx_mmc_code_sym  ON mem_mrr_commits_code(full_symbol) WHERE full_symbol IS NOT NULL;
 
 -- mem_mrr_items: requirements, decisions, meeting notes
 CREATE TABLE IF NOT EXISTS mem_mrr_items (

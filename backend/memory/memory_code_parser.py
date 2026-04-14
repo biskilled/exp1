@@ -39,8 +39,8 @@ _SQL_UPSERT_CODE_ROW = """
     INSERT INTO mem_mrr_commits_code
         (client_id, project_id, commit_hash, file_path, file_ext, file_language,
          file_change, symbol_type, class_name, method_name, symbol_change,
-         rows_added, rows_removed, diff_snippet, llm_summary, embedding)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::vector)
+         rows_added, rows_removed, diff_snippet, llm_summary)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     ON CONFLICT (commit_hash, file_path, symbol_type,
                  COALESCE(class_name,''), COALESCE(method_name,'')) DO NOTHING
 """
@@ -330,14 +330,6 @@ def _claude_key() -> Optional[str]:
         return None
 
 
-def _openai_key() -> Optional[str]:
-    try:
-        from data.dl_api_keys import get_key
-        return get_key("openai") or None
-    except Exception:
-        return None
-
-
 async def _haiku(system: str, user: str, max_tokens: int = 120) -> str:
     key = _claude_key()
     if not key:
@@ -355,20 +347,6 @@ async def _haiku(system: str, user: str, max_tokens: int = 120) -> str:
     except Exception as e:
         log.debug(f"_haiku error: {e}")
         return ""
-
-
-async def _embed(text: str) -> Optional[list[float]]:
-    key = _openai_key()
-    if not key:
-        return None
-    try:
-        import openai
-        client = openai.AsyncOpenAI(api_key=key)
-        resp = await client.embeddings.create(model="text-embedding-3-small", input=text[:8000])
-        return resp.data[0].embedding
-    except Exception as e:
-        log.debug(f"_embed error: {e}")
-        return None
 
 
 # ── YAML guards ────────────────────────────────────────────────────────────────
@@ -533,15 +511,12 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
 
             # LLM summary: skip if fewer than min_lines changed
             llm_summary: str | None = None
-            embedding: list[float] | None = None
             if rows_added + rows_removed >= min_lines:
                 symbol_label = f"{sym_class}.{sym_name}" if sym_class else sym_name
                 llm_summary = await _haiku(
                     haiku_system,
                     f"File: {file_path}\nSymbol: {sym_type} {symbol_label}\nDiff:\n{diff_snippet[:1000]}",
                 )
-                if llm_summary:
-                    embedding = await _embed(llm_summary)
 
             rows_to_insert.append((
                 client_id,
@@ -559,7 +534,6 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
                 rows_removed,
                 diff_snippet or None,
                 llm_summary,
-                json.dumps(embedding) if embedding else None,
             ))
 
     if not rows_to_insert:

@@ -817,6 +817,85 @@ def m037_drop_events_importance(conn) -> None:
     log.info("m037: importance dropped from mem_ai_events")
 
 
+def m038_drop_commits_code_embedding(conn) -> None:
+    """Drop unused embedding column from mem_mrr_commits_code.
+
+    The embedding was written by memory_code_parser.py but never queried.
+    All semantic search goes through mem_ai_events.embedding.
+    Frees ~4.5 MB (88% of the table).
+    """
+    with conn.cursor() as cur:
+        cur.execute("DROP INDEX IF EXISTS idx_mmc_code_embed")
+        cur.execute("ALTER TABLE mem_mrr_commits_code DROP COLUMN IF EXISTS embedding")
+    conn.commit()
+    log.info("m038: embedding dropped from mem_mrr_commits_code (~4.5 MB freed)")
+
+
+def m039_reorder_mem_mrr_prompts(conn) -> None:
+    """Reorder mem_mrr_prompts columns — move event_id next to project_id.
+
+    New order:
+        id, client_id, project_id, event_id, session_id, source_id,
+        prompt, response, tags, created_at
+    """
+    with conn.cursor() as cur:
+        # 1. Drop any leftover _old from a previous attempt
+        cur.execute("DROP TABLE IF EXISTS mem_mrr_prompts_old CASCADE")
+
+        # 2. Drop FK on mem_mrr_commits → mem_mrr_prompts
+        cur.execute("""
+            SELECT conname FROM pg_constraint
+            WHERE conrelid  = 'mem_mrr_commits'::regclass
+              AND confrelid = 'mem_mrr_prompts'::regclass
+        """)
+        for (fk_name,) in cur.fetchall():
+            cur.execute(f'ALTER TABLE mem_mrr_commits DROP CONSTRAINT IF EXISTS "{fk_name}"')
+
+        # 3. Rename current → _old
+        cur.execute("ALTER TABLE mem_mrr_prompts RENAME TO mem_mrr_prompts_old")
+
+        # 4. Create new table with target column order
+        cur.execute("""
+            CREATE TABLE mem_mrr_prompts (
+                id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id  INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+                project_id INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                event_id   UUID,
+                session_id TEXT,
+                source_id  TEXT,
+                prompt     TEXT        NOT NULL DEFAULT '',
+                response   TEXT        NOT NULL DEFAULT '',
+                tags       JSONB       NOT NULL DEFAULT '{}',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 5. Copy data
+        _cols = "id, client_id, project_id, event_id, session_id, source_id, prompt, response, tags, created_at"
+        cur.execute(f"INSERT INTO mem_mrr_prompts ({_cols}) SELECT {_cols} FROM mem_mrr_prompts_old")
+
+        # 6. Recreate indexes
+        cur.execute("CREATE INDEX        IF NOT EXISTS idx_mmrr_p_pid     ON mem_mrr_prompts(project_id)")
+        cur.execute("CREATE INDEX        IF NOT EXISTS idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(project_id, source_id) WHERE source_id IS NOT NULL")
+        cur.execute("CREATE INDEX        IF NOT EXISTS idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC)")
+        cur.execute("CREATE INDEX        IF NOT EXISTS idx_mmrr_p_tags    ON mem_mrr_prompts USING gin(tags)")
+        cur.execute("CREATE INDEX        IF NOT EXISTS idx_mmrr_p_event   ON mem_mrr_prompts(event_id) WHERE event_id IS NOT NULL")
+
+        # 7. Restore FK on mem_mrr_commits
+        cur.execute("""
+            ALTER TABLE mem_mrr_commits
+            ADD CONSTRAINT mem_mrr_commits_prompt_id_fkey
+            FOREIGN KEY (prompt_id) REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL
+        """)
+
+        # 8. Drop backup
+        cur.execute("DROP TABLE mem_mrr_prompts_old CASCADE")
+
+    conn.commit()
+    log.info("m039: mem_mrr_prompts reordered (event_id moved after project_id) and _old dropped")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -842,4 +921,6 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m035_reorder_mem_mrr_commits", m035_reorder_mem_mrr_commits),
     ("m036_reorder_mem_ai_events", m036_reorder_mem_ai_events),
     ("m037_drop_events_importance", m037_drop_events_importance),
+    ("m038_drop_commits_code_embedding", m038_drop_commits_code_embedding),
+    ("m039_reorder_mem_mrr_prompts", m039_reorder_mem_mrr_prompts),
 ]
