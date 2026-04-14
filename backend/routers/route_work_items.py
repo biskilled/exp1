@@ -58,7 +58,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
          WHERE project_id=%s AND merged_into IS NOT NULL
          GROUP BY 1
        )
-       SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
+       SELECT w.id, w.category_ai, w.name_ai,
               w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
               w.summary_ai,
               w.tags, w.tags_ai, w.tag_id_user, w.tag_id_ai,
@@ -82,7 +82,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 _SQL_UNLINKED_WORK_ITEMS = """
     WITH wi AS (
         -- Base filter; get origin session from the earliest directly-linked event
-        SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
+        SELECT w.id, w.category_ai, w.name_ai,
                w.status_user, w.summary_ai, w.tags, w.tags_ai,
                w.start_date, w.created_at, w.updated_at, w.seq_num,
                w.tag_id_ai, w.project_id,
@@ -159,10 +159,10 @@ _SQL_UNLINKED_WORK_ITEMS = """
 
 _SQL_INSERT_WORK_ITEM = (
     """INSERT INTO mem_ai_work_items
-           (project_id, category_ai, name_ai, desc_ai,
+           (project_id, category_ai, name_ai,
             acceptance_criteria_ai, action_items_ai,
             summary_ai, tags, status_user, seq_num)
-       VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)
+       VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)
        ON CONFLICT (project_id, category_ai, name_ai) DO NOTHING
        RETURNING id, name_ai, category_ai, created_at, seq_num"""
 )

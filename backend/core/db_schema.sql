@@ -494,7 +494,6 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     project_id          INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     category_ai         TEXT        NOT NULL,                           -- 'feature'|'bug'|'task'
     name_ai             TEXT        NOT NULL,
-    desc_ai             TEXT        NOT NULL DEFAULT '',
     acceptance_criteria_ai TEXT     NOT NULL DEFAULT '',
     action_items_ai     TEXT        NOT NULL DEFAULT '',
     summary_ai          TEXT        NOT NULL DEFAULT '',

@@ -1013,6 +1013,19 @@ def m040_backfill_event_cnt_and_tags(conn) -> None:
     )
 
 
+def m044_drop_desc_ai(conn) -> None:
+    """Drop desc_ai from mem_ai_work_items — merged into summary_ai.
+
+    summary_ai now covers both definition (what the item is) and
+    progress (what was done, what remains), written by promote_work_item().
+    The 3 AI text columns that remain are: summary_ai, action_items_ai,
+    acceptance_criteria_ai.
+    """
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS desc_ai")
+    conn.commit()
+
+
 def m043_drop_status_ai_code_summary(conn) -> None:
     """Drop status_ai and code_summary from mem_ai_work_items.
 
@@ -1071,4 +1084,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m041_drop_diff_file_chunks", m041_drop_diff_file_chunks),
     ("m042_drop_source_event_id", m042_drop_source_event_id),
     ("m043_drop_status_ai_code_summary", m043_drop_status_ai_code_summary),
+    ("m044_drop_desc_ai", m044_drop_desc_ai),
 ]

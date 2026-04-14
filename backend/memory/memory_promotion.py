@@ -45,14 +45,14 @@ _SQL_GET_TAG_ID = """
 """
 
 _SQL_GET_WORK_ITEM = """
-    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user, wi.acceptance_criteria_ai
+    SELECT wi.id, wi.name_ai, wi.status_user, wi.acceptance_criteria_ai
     FROM mem_ai_work_items wi
     WHERE wi.project_id=%s
     ORDER BY wi.created_at DESC LIMIT 10
 """
 
 _SQL_GET_WORK_ITEM_BY_NAME = """
-    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user, wi.acceptance_criteria_ai,
+    SELECT wi.id, wi.name_ai, wi.status_user, wi.acceptance_criteria_ai,
            wi.action_items_ai, wi.tag_id_user
     FROM mem_ai_work_items wi
     WHERE wi.project_id=%s AND wi.name_ai=%s
@@ -61,10 +61,9 @@ _SQL_GET_WORK_ITEM_BY_NAME = """
 
 _SQL_PROMOTE_WORK_ITEM_FIELDS = """
     UPDATE mem_ai_work_items SET
-        desc_ai                = CASE WHEN %s != '' THEN %s ELSE desc_ai END,
+        summary_ai             = CASE WHEN %s != '' THEN %s ELSE summary_ai END,
         acceptance_criteria_ai = CASE WHEN %s != '' THEN %s ELSE acceptance_criteria_ai END,
         action_items_ai        = CASE WHEN %s != '' THEN %s ELSE action_items_ai END,
-        summary_ai             = CASE WHEN %s != '' THEN %s ELSE summary_ai END,
         updated_at             = NOW()
     WHERE id=%s AND project_id=%s
 """
@@ -163,14 +162,11 @@ _SQL_UPDATE_EVENT_AI_TAGS = """
 
 _SQL_INSERT_EXTRACTED_WORK_ITEM = """
     INSERT INTO mem_ai_work_items
-        (project_id, category_ai, name_ai, desc_ai,
+        (project_id, category_ai, name_ai,
          acceptance_criteria_ai, action_items_ai, tags, seq_num)
-    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb,
+    VALUES (%s, %s, %s, %s, %s, %s::jsonb,
             (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
     ON CONFLICT (project_id, category_ai, name_ai) DO UPDATE SET
-        desc_ai              = CASE WHEN EXCLUDED.desc_ai != ''
-                                    THEN EXCLUDED.desc_ai
-                                    ELSE mem_ai_work_items.desc_ai END,
         acceptance_criteria_ai = CASE WHEN EXCLUDED.acceptance_criteria_ai != ''
                                       THEN EXCLUDED.acceptance_criteria_ai
                                       ELSE mem_ai_work_items.acceptance_criteria_ai END,
@@ -302,9 +298,9 @@ async def _embed_text(text: str) -> Optional[list]:
 
 
 async def _embed_work_item(project_id: int, wi_id: str, name_ai: str,
-                           desc_ai: str, summary_ai: str = "") -> None:
+                           summary_ai: str = "") -> None:
     """Embed a work item's text fields and persist to embedding column."""
-    text = " ".join(filter(None, [name_ai, desc_ai, summary_ai])).strip()
+    text = " ".join(filter(None, [name_ai, summary_ai])).strip()
     if not text:
         return
     try:
@@ -352,7 +348,7 @@ class MemoryPromotion:
             log.debug(f"promote_work_item: no work item found for '{name_ai}'")
             return None
 
-        wi_id, wi_name, desc, status_user, ac, action_items, tag_id_user = row
+        wi_id, wi_name, status_user, ac, action_items, tag_id_user = row
 
         # Fetch up to 5 linked event summaries for richer context
         linked_events: list[str] = []
@@ -369,9 +365,8 @@ class MemoryPromotion:
 
         system_prompt = _prompts.content("work_item_promotion") or (
             "Given a work item, produce a structured PM update. "
-            "Return JSON only: {\"desc_ai\": \"...\", \"acceptance_criteria_ai\": \"...\", "
-            "\"action_items_ai\": \"...\", \"summary_ai\": \"...\", "
-            "}"
+            "Return JSON only: {\"summary_ai\": \"...\", \"acceptance_criteria_ai\": \"...\", "
+            "\"action_items_ai\": \"...\"}"
         )
 
         events_section = ""
@@ -383,7 +378,6 @@ class MemoryPromotion:
         user_msg = (
             f"Work Item: {wi_name}\n"
             f"User Status: {status_user}\n"
-            f"Description: {desc or '(none)'}\n"
             f"Acceptance Criteria:\n{ac or '(none)'}\n"
             f"Action Items:\n{action_items or '(none)'}"
             + events_section
@@ -395,10 +389,9 @@ class MemoryPromotion:
             log.debug(f"promote_work_item: LLM returned no JSON for '{name_ai}'")
             return None
 
-        new_desc_ai         = (parsed.get("desc_ai") or "").strip()
-        new_ac              = (parsed.get("acceptance_criteria_ai") or "").strip()
-        new_action_items    = (parsed.get("action_items_ai") or "").strip()
-        new_summary_ai      = (parsed.get("summary_ai") or "").strip()
+        new_summary_ai   = (parsed.get("summary_ai") or "").strip()
+        new_ac           = (parsed.get("acceptance_criteria_ai") or "").strip()
+        new_action_items = (parsed.get("action_items_ai") or "").strip()
 
         try:
             with db.conn() as conn:
@@ -406,21 +399,17 @@ class MemoryPromotion:
                     cur.execute(
                         _SQL_PROMOTE_WORK_ITEM_FIELDS,
                         (
-                            new_desc_ai,      new_desc_ai,
+                            new_summary_ai,   new_summary_ai,
                             new_ac,           new_ac,
                             new_action_items, new_action_items,
-                            new_summary_ai,   new_summary_ai,
                             str(wi_id),       project_id,
                         ),
                     )
         except Exception as e:
             log.debug(f"promote_work_item: DB update failed: {e}")
 
-        # Re-embed with updated text fields
-        await _embed_work_item(
-            project_id, str(wi_id), wi_name,
-            new_desc_ai or desc, new_summary_ai,
-        )
+        # Re-embed with updated text
+        await _embed_work_item(project_id, str(wi_id), wi_name, new_summary_ai)
 
         return {
             "work_item_id": str(wi_id),
@@ -730,7 +719,8 @@ class MemoryPromotion:
         ai_fallback_prompt = _prompts.content("work_item_extraction") or (
             "Given a digest of development activity, identify at most 2 actionable work items. "
             "Return JSON only: {\"items\": [{\"category\": \"bug|feature|task\", "
-            "\"name\": \"short-slug\", \"description\": \"1-2 sentence explanation\"}]}. "
+            "\"name\": \"short-slug\", "
+            "\"acceptance_criteria\": \"- [ ] ...\", \"action_items\": \"- ...\"}]}. "
             "Use lowercase-hyphenated slugs. Return {\"items\": []} if nothing actionable."
         )
 
@@ -773,14 +763,13 @@ class MemoryPromotion:
                     category, tag_name = "feature", feature_val
 
                 canonical_name = tag_name.lower().strip()[:200]
-                desc = f"Work related to {canonical_name}: {(summary or '')[:300]}"
 
                 try:
                     with db.conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute(
                                 _SQL_INSERT_EXTRACTED_WORK_ITEM,
-                                (project_id, category, canonical_name, desc,
+                                (project_id, category, canonical_name,
                                  "", action_items or "", json.dumps(wi_tags),
                                  project_id),
                             )
@@ -802,17 +791,18 @@ class MemoryPromotion:
 
                 for item in items:
                     name = (item.get("name") or "").strip().lower()[:200]
-                    description = (item.get("description") or "").strip()[:1000]
-                    if not name or not description:
+                    if not name:
                         continue
                     category = item.get("category", "task")
+                    ac = (item.get("acceptance_criteria") or "").strip()[:1000]
+                    ai_actions = (item.get("action_items") or "").strip()[:1000]
                     try:
                         with db.conn() as conn:
                             with conn.cursor() as cur:
                                 cur.execute(
                                     _SQL_INSERT_EXTRACTED_WORK_ITEM,
-                                    (project_id, category, name, description,
-                                     "", "", json.dumps(wi_tags),
+                                    (project_id, category, name,
+                                     ac, ai_actions, json.dumps(wi_tags),
                                      project_id),
                                 )
                                 row = cur.fetchone()
@@ -836,7 +826,6 @@ class MemoryPromotion:
                         loop.create_task(_embed_work_item(
                             project_id, wi_id,
                             locals().get("canonical_name") or locals().get("name") or "",
-                            locals().get("desc") or locals().get("description") or "",
                         ))
                 except Exception as e:
                     log.debug(f"extract_work_items link error: {e}")

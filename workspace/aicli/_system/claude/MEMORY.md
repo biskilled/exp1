@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 16:18 UTC by aicli /memory_
+_Generated: 2026-04-14 16:44 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python FastAPI backend, Electron desktop UI, and PostgreSQL semantic storage to capture, synthesize, and search development context across teams. The project implements a 4-layer memory architecture (session → raw capture → LLM digests → work items) with async DAG workflow execution, dual-layer Claude synthesis, and provider-agnostic LLM adapters. Current focus is completing the backend module restructure from workflow/ to pipelines/, resolving startup race conditions affecting project visibility, and implementing pending memory persistence logic.
 
 ## Project Facts
 
@@ -290,16 +286,76 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-14
 
+diff --git a/backend/workflow/workflow_runner.py b/backend/workflow/workflow_runner.py
+index 7f158cd..c6decad 100644
+--- a/backend/workflow/workflow_runner.py
++++ b/backend/workflow/workflow_runner.py
+@@ -28,7 +28,7 @@ import yaml
+ 
+ from core.config import settings
+ from core.api_keys import get_key
+-from core import llm_clients
++from agents import providers as llm_clients
+ 
+ # ── File helpers ──────────────────────────────────────────────────────────────
+ 
+
+
+### `commit` — 2026-04-14
+
+diff --git a/backend/workflow/work_item_pipeline.py b/backend/workflow/work_item_pipeline.py
+index f81a4bd..6d9a8ca 100644
+--- a/backend/workflow/work_item_pipeline.py
++++ b/backend/workflow/work_item_pipeline.py
+@@ -140,7 +140,7 @@ async def trigger_work_item_pipeline(
+     """Run the full 4-agent pipeline for a work item. Fully async, safe to background."""
+     from datetime import datetime, timezone
+     from core.api_keys import get_key
+-    from core.llm_clients import call_claude, call_deepseek, call_gemini, call_grok
++    from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
+ 
+     ts = datetime.now(timezone.utc).strftime("%y%m%d_%H%M%S")
+ 
+
+
+### `commit` — 2026-04-14
+
+diff --git a/backend/workflow/graph_runner.py b/backend/workflow/graph_runner.py
+index d9d1bf8..d635260 100644
+--- a/backend/workflow/graph_runner.py
++++ b/backend/workflow/graph_runner.py
+@@ -89,7 +89,7 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
+               "input_tokens": int, "output_tokens": int, "status": str}
+     """
+     from core.api_keys import get_key
+-    from core.llm_clients import call_claude, call_deepseek, call_gemini, call_grok
++    from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
+     from core.provider_costs import estimate_cost
+ 
+     node_id = node["id"]
+@@ -899,7 +899,7 @@ def _fire_background(run_id: str, project: str) -> None:
+     """
+     async def _safe_embed():
+         try:
+-            from core.embeddings import embed_node_outputs
++            from memory.embeddings import embed_node_outputs
+             await embed_node_outputs(run_id, project)
+         except Exception as _e:
+             log.debug(f"Background embed failed (non-critical): {_e}")
+
+
+### `commit` — 2026-04-14
+
 diff --git a/backend/routers/workflows.py b/backend/routers/workflows.py
-index 07f1aa8..c085dca 100644
+index 17e146f..07f1aa8 100644
 --- a/backend/routers/workflows.py
 +++ b/backend/routers/workflows.py
 @@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
  from pydantic import BaseModel
  
  from core.config import settings
--from workflow.workflow_runner import (
-+from pipelines.pipeline_runner import (
+-from core.workflow_runner import (
++from workflow.workflow_runner import (
      start_run, decide, load_run, list_runs,
  )
  
@@ -307,128 +363,43 @@ index 07f1aa8..c085dca 100644
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/routers/work_items.py b/backend/routers/work_items.py
-index a244eda..10422a5 100644
---- a/backend/routers/work_items.py
-+++ b/backend/routers/work_items.py
-@@ -374,7 +374,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
-                     )
+diff --git a/backend/routers/usage.py b/backend/routers/usage.py
+index 909ff52..ce53e97 100644
+--- a/backend/routers/usage.py
++++ b/backend/routers/usage.py
+@@ -21,7 +21,7 @@ from core.config import settings
+ from core.auth import get_current_user
+ from data.database import db
+ from core.pricing import calculate_cost
+-from models.user import find_by_id, list_users
++from data.user import find_by_id, list_users
  
-             # Run in background via graph_runner
--            from workflow.graph_runner import run_graph_workflow
-+            from pipelines.pipeline_graph_runner import run_graph_workflow
- 
-             async def _run_graph():
-                 try:
-@@ -401,7 +401,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
-                         pass
-                     # Fallback: standalone pipeline
-                     try:
--                        from workflow.work_item_pipeline import trigger_work_item_pipeline
-+                        from pipelines.pipeline_work_items import trigger_work_item_pipeline
-                         await trigger_work_item_pipeline(item_id, p, name, desc, existing_ac)
-                     except Exception as fb_exc:
-                         log.error(f"Standalone fallback also failed: {fb_exc}")
-@@ -420,7 +420,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
-                 "UPDATE pr_work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid",
-                 (item_id,),
-             )
--    from workflow.work_item_pipeline import trigger_work_item_pipeline
-+    from pipelines.pipeline_work_items import trigger_work_item_pipeline
-     asyncio.create_task(trigger_work_item_pipeline(item_id, p, name, desc, existing_ac))
-     return {"status": "pipeline started", "work_item_id": item_id, "project": p}
+ router = APIRouter()
  
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/routers/graph_workflows.py b/backend/routers/graph_workflows.py
-index 6fa9c14..4f6c3fa 100644
---- a/backend/routers/graph_workflows.py
-+++ b/backend/routers/graph_workflows.py
-@@ -654,7 +654,7 @@ async def start_run(
-     user=Depends(get_optional_user),
- ):
-     _require_db()
--    from workflow.graph_runner import run_graph_workflow
-+    from pipelines.pipeline_graph_runner import run_graph_workflow
+diff --git a/backend/routers/search.py b/backend/routers/search.py
+index c70353f..f2552ac 100644
+--- a/backend/routers/search.py
++++ b/backend/routers/search.py
+@@ -39,7 +39,7 @@ async def semantic_search(body: SearchRequest, user=Depends(get_optional_user)):
+     if not db.is_available():
+         raise HTTPException(503, "PostgreSQL + pgvector required for semantic search")
  
-     p = _active_project(body.project)
-     run_id = str(uuid.uuid4())
-@@ -712,7 +712,7 @@ async def make_run_decision(
-     approved=False → stop the run
-     """
-     _require_db()
--    from workflow.graph_runner import resume_graph_workflow
-+    from pipelines.pipeline_graph_runner import resume_graph_workflow
+-    from core.embeddings import semantic_search as _search
++    from memory.embeddings import semantic_search as _search
+     project = body.project or settings.active_project or "default"
+     results = await _search(
+         project=project,
+@@ -137,7 +137,7 @@ async def ingest(project: str = Query(""), user=Depends(get_optional_user)):
+     p = project or settings.active_project or "default"
  
-     p = _active_project(project)
- 
-@@ -781,7 +781,7 @@ async def make_run_decision(
-         return {"status": "resuming", "from_node": waiting_node_id, "run_id": run_id}
- 
-     # Save approved output to documents/ with versioning (latest vs old/)
--    from workflow.graph_runner import save_approved_output as _save_approved
-+    from pipelines.pipeline_graph_runner import save_approved_output as _save_approved
-     work_item = ctx.get("_work_item")
-     approved_node_name = waiting.get("node_name", "")
-     approved_output = str(ctx.get(approved_node_name, waiting.get("output", "")))
-@@ -930,7 +930,7 @@ async def approval_chat(
- 
-     # ── Also update the in-memory LangGraph state so the next node sees the revised output ─
-     try:
--        from workflow.graph_runner import _APP_REGISTRY
-+        from pipelines.pipeline_graph_runner import _APP_REGISTRY
-         if run_id in _APP_REGISTRY:
-             app, _ = _APP_REGISTRY[run_id]
-             config = {"configurable": {"thread_id": run_id}}
+     async def _do_ingest():
+-        from core.embeddings import ingest_history, ingest_roles
++        from memory.embeddings import ingest_history, ingest_roles
+         h = await ingest_history(p)
+         r = await ingest_roles(p)
+         import logging
 
-
-### `commit` — 2026-04-14
-
-diff --git a/backend/routers/chat.py b/backend/routers/chat.py
-index 92af526..6078e20 100644
---- a/backend/routers/chat.py
-+++ b/backend/routers/chat.py
-@@ -474,7 +474,7 @@ async def _handle_run_command(pipeline_name: str, project: str, session_id: str)
-                     (run_id, project, workflow_id, f"/run {pipeline_name}"),
-                 )
- 
--        from workflow.graph_runner import run_graph_workflow
-+        from pipelines.pipeline_graph_runner import run_graph_workflow
- 
-         async def _bg():
-             try:
-
-
-### `commit` — 2026-04-14
-
-diff --git a/backend/workflow/work_item_pipeline.py b/backend/pipelines/pipeline_work_items.py
-similarity index 98%
-rename from backend/workflow/work_item_pipeline.py
-rename to backend/pipelines/pipeline_work_items.py
-index b74c871..7c999ea 100644
---- a/backend/workflow/work_item_pipeline.py
-+++ b/backend/pipelines/pipeline_work_items.py
-@@ -248,7 +248,7 @@ async def trigger_work_item_pipeline(
-         rev_sys, rev_provider, rev_model = _load_role("Code Reviewer")
- 
-         # Import code-commit helpers from graph_runner (reuse, don't duplicate)
--        from gitops.git import parse_code_changes as _parse_code_changes, apply_code_and_commit as _apply_code_and_commit, get_project_code_dir as _get_project_code_dir
-+        from pipelines.pipeline_git import parse_code_changes as _parse_code_changes, apply_code_and_commit as _apply_code_and_commit, get_project_code_dir as _get_project_code_dir
- 
-         dev_output = ""
-         reviewer_feedback = ""
-
-
-### `commit` — 2026-04-14
-
-diff --git a/backend/workflow/workflow_runner.py b/backend/pipelines/pipeline_runner.py
-similarity index 100%
-rename from backend/workflow/workflow_runner.py
-rename to backend/pipelines/pipeline_runner.py
-
-
-## AI Synthesis
-
-**[2026-03-14]** `routers/workflows.py, routers/work_items.py, routers/graph_workflows.py` — Completed backend module restructure by consolidating workflow/ imports into pipelines/ directory: updated all references from `workflow.workflow_runner`, `workflow.graph_runner`, `workflow.work_item_pipeline` to `pipelines.pipeline_runner`, `pipelines.pipeline_graph_runner`, `pipelines.pipeline_work_items` across core router endpoints. **[In Progress]** `backend startup` — Diagnosing intermittent empty project list visibility on first load; race condition retry logic in place but root cause of AiCli project non-registration still under investigation. **[In Progress]** `memory_items & project_facts` — Schema tables defined but population logic not yet implemented; blocking improved memory/context mechanism. **[In Progress]** `tag persistence` — Tags saved in UI disappearing on session switch; tracing whether failure is in UI rendering or database save during tag serialization. **[In Progress]** `backend port stability` — Port 127.0.0.1:8000 binding conflicts on restart causing intermittent failures; freePort() mitigation deployed pending test validation. **[Backlog]** `sql optimization` — Row-by-row INSERT during event migration and unbounded fetchall() in memory synthesis identified as performance bottlenecks requiring batch refactor and pagination.
