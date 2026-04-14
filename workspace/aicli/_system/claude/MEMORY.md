@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 12:41 UTC by aicli /memory_
+_Generated: 2026-04-14 13:22 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI/FastAPI backend with an Electron desktop UI, enabling teams to synthesize development context through semantic search, workflows, and LLM-powered memory synthesis. The project uses PostgreSQL with pgvector embeddings, async DAG workflows, and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok) to transform raw events and commits into structured work items and project facts. Current development focus is on data integrity (tag cleanup, event repair) and completing history display/rendering features post-schema stabilization.
+aicli is a shared AI memory platform that combines a Python CLI backend with Electron desktop UI, providing unified semantic search, event capture, memory synthesis, and workflow automation across projects. The system uses PostgreSQL with pgvector embeddings, Claude-powered memory synthesis, and async DAG workflows with visual approval panels. Current development focuses on tag system consolidation, schema stability, and rendering correctness for historical session data.
 
 ## Project Facts
 
@@ -222,7 +222,7 @@ Reviewer: ```json
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
+- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
 - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
@@ -231,11 +231,11 @@ Reviewer: ```json
 ## In Progress
 
 - Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
-- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic to link raw captures to synthesized events
+- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic
 - Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
-- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations and cleaned up _old tables
+- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations
 - PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
-- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps; fixed 2026-04-06 JSONB operator conflict in route_history
+- History display rendering: fixed JSONB operator conflict in route_history and addressed prompt + response rendering gaps
 
 ## Active Features / Bugs / Tasks
 
@@ -289,52 +289,73 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-14
 
-diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/tr.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/tr.lproj/locale.pak
-new file mode 100644
-index 0000000..81f5c1f
-Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/tr.lproj/locale.pak differ
-
-
-### `commit` — 2026-04-14
-
-diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/th.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/th.lproj/locale.pak
-new file mode 100644
-index 0000000..a6f833c
-Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/th.lproj/locale.pak differ
-
+Commit: chore(cli): auto-commit after AI session — 3 file(s) — 2026-03-22 01:33 UTC
+Hash: 58136c1
+Code files (1):
+  - backend/pyproject.toml
+Generated/internal files: workspace/aicli/_system/dev_runtime_state.json, workspace/aicli/_system/history.jsonl
 
 ### `commit` — 2026-04-14
 
-diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/te.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/te.lproj/locale.pak
-new file mode 100644
-index 0000000..e30eca7
-Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/te.lproj/locale.pak differ
-
-
-### `commit` — 2026-04-14
-
-diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ta.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ta.lproj/locale.pak
-new file mode 100644
-index 0000000..08c14a2
-Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ta.lproj/locale.pak differ
-
+Commit: chore: update system files and session state after claude cli session
+Hash: 31af6e01
+Code files (2):
+  - backend/core/database.py
+  - backend/main.py
+Generated/internal files: workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json, workspace/aicli/_system/history.jsonl
+Symbols changed: _ensure_shared_schema, _run_ddl_statements
 
 ### `commit` — 2026-04-14
 
-diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sw.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sw.lproj/locale.pak
-new file mode 100644
-index 0000000..0f0f141
-Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sw.lproj/locale.pak differ
-
+Commit: chore: update system files and agent/system role routes
+Hash: 0c2ddf3d
+Code files (6):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/core/database.py
+  - backend/routers/route_agent_roles.py
+  - backend/routers/route_system_roles.py
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+Symbols changed: _require_db
 
 ### `commit` — 2026-04-14
 
-diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sv.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sv.lproj/locale.pak
-new file mode 100644
-index 0000000..ad592b5
-Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sv.lproj/locale.pak differ
+Commit: chore: update ai system files and memory after claude session
+Hash: 9af8b1d1
+Code files (7):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/routers/route_entities.py
+  - backend/routers/route_graph_workflows.py
+  - backend/routers/route_work_items.py
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
 
+### `commit` — 2026-04-14
+
+Commit: chore: update system files and memory after claude session fa708653
+Hash: 1f884ac4
+Code files (4):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/core/database.py
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+Symbols changed: _ensure_schema, _run_ddl_statements
+
+### `commit` — 2026-04-14
+
+Commit: chore(cli): auto-commit after AI session — 16 file(s) — 2026-03-22 02:31 UTC
+Hash: fa63f31
+Code files (4):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
 
 ## AI Synthesis
 
-**2026-04-06** `internal` — Completed tag system metadata cleanup (Passes 0-2) removing system metadata from 1441 events while preserving user-facing tags (phase, feature, bug, source); repaired 6 corrupt session_summary events with malformed JSON arrays. **2026-04-06** `internal` — Redesigned mem_mrr_tags with per-source-type UPSERT logic including timestamp tracking (prompt_created/updated, commit_created/updated) and event_id backfill to link raw captures to synthesized events. **2026-04-05** `internal` — Executed schema migration m037 removing deprecated importance column from mem_ai_events and completed column reordering with cleanup of _old tables. **2026-04-04** `infrastructure` — Resolved PostgreSQL nohup logging issues by switching to fresh log file paths on backend startup, eliminating stale file handle errors. **2026-04-02** `ui` — Fixed JSONB operator conflict in route_history endpoint; identified gaps in history display rendering (prompt + response incomplete rendering, copy-to-clipboard functionality). **2026-03-28** `feature` — AI tag suggestion system in production with approve/remove button handlers; refactored chip markup and improved tooltip UX from 'No existing tag' to 'Does not exist yet'.
+**2026-03-22** `commit` — Auto-commit after AI session with pyproject.toml updates and dev_runtime_state.json generation. **2026-03-22** `commit` — Updated core/database.py and main.py with symbol changes to _ensure_shared_schema and _run_ddl_statements. **2026-03-22** `commit` — Applied system rules updates across .ai/rules.md, Cursor rules, GitHub Copilot instructions, and agent/system role routes. **2026-03-14** `feature` — Tag system metadata cleanup completed: removed system tags (llm, event, chunk_type, commit_hash) from 1441 events while retaining user-facing tags (phase, feature, bug, source). **2026-03-14** `fix` — Repaired 6 corrupt session_summary events with malformed JSON tag arrays by resetting to empty object baseline. **2026-03-14** `schema` — Schema migration m037 executed: dropped deprecated importance column from mem_ai_events and completed column reordering. **In-progress** — mem_mrr_tags UPSERT redesign with per-source-type logic and event_id backfill to link raw captures to synthesized events. **In-progress** — PostgreSQL logging stability: resolved stale file handle issues with fresh log paths on backend startup. **In-progress** — History display rendering: fixed JSONB operator conflict in route_history and addressed prompt/response rendering gaps.
