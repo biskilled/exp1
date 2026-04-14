@@ -896,6 +896,105 @@ def m039_reorder_mem_mrr_prompts(conn) -> None:
     log.info("m039: mem_mrr_prompts reordered (event_id moved after project_id) and _old dropped")
 
 
+def m040_backfill_event_cnt_and_tags(conn) -> None:
+    """Backfill event_cnt and tags on existing mem_ai_events rows.
+
+    event_cnt was added (m034) with DEFAULT 0 — old rows were never updated.
+    This migration sets the correct count:
+      - prompt_batch (chunk=0): count of mem_mrr_prompts linked via event_id
+      - commit (chunk=0, hash source_id): 1 per commit
+      - commit diff_file chunks (chunk>0): 1 (sub-slice of one commit)
+      - session_summary / memory_item / role: 1
+      - commit batch events (batch_ prefix): already correct — skip
+
+    Tags backfill for prompt_batch events whose tags are empty:
+      source_id = last prompt UUID in the group, so we can look up that prompt's
+      user-intent tags and copy them to the event.
+    """
+    with conn.cursor() as cur:
+        # 1. prompt_batch chunk=0: count linked prompts (if any back-propagated)
+        cur.execute("""
+            UPDATE mem_ai_events mae
+            SET event_cnt = sub.cnt
+            FROM (
+                SELECT p.event_id, COUNT(*) AS cnt
+                FROM mem_mrr_prompts p
+                WHERE p.event_id IS NOT NULL
+                GROUP BY p.event_id
+            ) sub
+            WHERE mae.id = sub.event_id
+              AND mae.event_type = 'prompt_batch'
+              AND mae.chunk = 0
+              AND mae.event_cnt = 0
+        """)
+        linked_pb = cur.rowcount
+
+        # 2. prompt_batch chunk=0 still at 0 (old events with no back-propagation): set to 1
+        cur.execute("""
+            UPDATE mem_ai_events
+            SET event_cnt = 1
+            WHERE event_type = 'prompt_batch' AND chunk = 0 AND event_cnt = 0
+        """)
+        unlinked_pb = cur.rowcount
+
+        # 3. commit chunk=0 with hash source_id (40 hex chars): set to 1
+        cur.execute("""
+            UPDATE mem_ai_events
+            SET event_cnt = 1
+            WHERE event_type = 'commit'
+              AND chunk = 0
+              AND source_id NOT LIKE 'batch_%'
+              AND event_cnt = 0
+        """)
+        single_commits = cur.rowcount
+
+        # 4. commit diff_file chunks (chunk>0): set to 1
+        cur.execute("""
+            UPDATE mem_ai_events
+            SET event_cnt = 1
+            WHERE event_type = 'commit' AND chunk > 0 AND event_cnt = 0
+        """)
+        diff_chunks = cur.rowcount
+
+        # 5. session_summary / memory_item / role: set to 1
+        cur.execute("""
+            UPDATE mem_ai_events
+            SET event_cnt = 1
+            WHERE event_type IN ('session_summary', 'memory_item', 'role', 'item', 'message')
+              AND event_cnt = 0
+        """)
+        other_types = cur.rowcount
+
+        # 6. Tags backfill for prompt_batch events with empty tags:
+        #    source_id = last prompt UUID → copy user-intent keys from that prompt
+        cur.execute("""
+            UPDATE mem_ai_events mae
+            SET tags = (
+                SELECT COALESCE(
+                    jsonb_object_agg(kv.key, kv.value)
+                      FILTER (WHERE kv.key = ANY(ARRAY['phase','feature','bug','source'])),
+                    '{}'::jsonb
+                )
+                FROM jsonb_each(p.tags) AS kv
+            )
+            FROM mem_mrr_prompts p
+            WHERE mae.event_type = 'prompt_batch'
+              AND mae.chunk = 0
+              AND mae.tags = '{}'::jsonb
+              AND mae.source_id = p.id::text
+              AND p.tags != '{}'::jsonb
+        """)
+        tags_backfilled = cur.rowcount
+
+    conn.commit()
+    log.info(
+        f"m040: event_cnt backfilled — "
+        f"prompt_batch linked={linked_pb} unlinked={unlinked_pb} "
+        f"single_commits={single_commits} diff_chunks={diff_chunks} other={other_types}; "
+        f"tags backfilled for {tags_backfilled} prompt_batch events"
+    )
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -923,4 +1022,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m037_drop_events_importance", m037_drop_events_importance),
     ("m038_drop_commits_code_embedding", m038_drop_commits_code_embedding),
     ("m039_reorder_mem_mrr_prompts", m039_reorder_mem_mrr_prompts),
+    ("m040_backfill_event_cnt_and_tags", m040_backfill_event_cnt_and_tags),
 ]
