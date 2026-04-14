@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 11:28 UTC by aicli /memory_
+_Generated: 2026-04-14 11:29 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI backend (FastAPI) with an Electron desktop UI, enabling multi-client collaboration through unified PostgreSQL storage with semantic search via pgvector embeddings. The system captures work context across sessions, commits, and prompts into a 4-layer memory architecture (ephemeral → raw mirror tables → digested AI events → structured work items), with Claude-powered synthesis, tagging workflows, and async DAG-based pipeline execution for complex AI agent orchestration.
+aicli is a shared AI memory platform providing semantic search, memory synthesis, and workflow execution across distributed AI agents and users. It combines a Python FastAPI backend (PostgreSQL + pgvector) with an Electron desktop UI, featuring Claude Haiku-powered dual-layer memory digestion, event-driven tag management (mem_mrr_* mirroring to mem_ai_* synthesis), and async DAG workflow execution. Currently stabilizing event metadata cleanup, tag mirroring architecture, and database schema migrations toward Phase 2 production readiness.
 
 ## Project Facts
 
@@ -177,7 +177,7 @@ Reviewer: ```json
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)
-- **database_schema**: Unified (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features); Per-project (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}); Shared (users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories)
+- **database_schema**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features (unified); mem_mrr_commits_code, mem_mrr_tags (mirroring); per-project tables; shared users/usage_logs/transactions/session_tags/entity_categories tables
 - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
@@ -186,7 +186,7 @@ Reviewer: ```json
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+
+- **database**: PostgreSQL 15+ with pgvector extension
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ + Electron-builder; Vite dev server
@@ -213,21 +213,21 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- mem_mrr_tags per-source UPSERT strategy: one row per (tag, source) combination with ON CONFLICT backfill of event_id/work_item_id when available
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata (llm, chunk_type, commit_hash, etc.) stripped; only phase/feature/bug/source user tags retained
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
+- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
-- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
-- Session source tracking: session_src_id and session_src_desc (e.g., 'claude_cli') capture origin context in mem_mrr_tags for multi-client coordination
+- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
 
 ## In Progress
 
-- Tag system metadata cleanup (2026-04-13): Stripped system metadata from 1441 events; retained only user tags (phase, feature, bug, source); fixed 6 corrupt session_summary events with JSON array→object conversion
-- mem_mrr_tags per-source UPSERT refactoring (2026-04-13): Implemented separate ON CONFLICT strategies for prompt/commit/item/message sources; added session context (session_src_id, session_src_desc) tracking
-- Event summary consolidation design: mem_ai_events unified table with event_summary schema replacing fragmented prompt + commit event handling
-- History display enhancement (2026-04-06): Fixing incomplete prompt + response rendering and copy-to-clipboard functionality in frontend history view
-- PostgreSQL schema migration stability: Execution of m001-m037 migration chain with nohup logging and column reordering validation
-- Backend startup race condition mitigation (2026-03-18): Retry logic for empty projects list; aicli project visibility in main list improved but selection blocking persists
+- Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
+- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking (prompt_created/updated, commit_created/updated, etc.) and event_id backfill logic
+- Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
+- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations and cleaned up _old tables
+- PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
+- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps identified; 2026-04-06 JSONB operator conflict in route_history fixed
 
 ## Active Features / Bugs / Tasks
 
@@ -598,12 +598,4 @@ index fa53830..bf2bbd4 100644
 
 ## AI Synthesis
 
-**[2026-04-13]** `claude_cli` — Completed multi-pass tag system cleanup: Pass 0 fixed 6 corrupt session_summary events (JSON array→object); Pass 1 stripped system metadata (llm, chunk_type, commit_hash, etc.) from 1441 events, retaining only user tags (phase, feature, bug, source); Pass 2+ focused on event digest consolidation.
-
-**[2026-04-13]** `system` — Refactored mem_mrr_tags architecture to per-source UPSERT strategy with four separate ON CONFLICT blocks (prompt/commit/item/message) for reliable backfill of event_id and work_item_id when available; added session_src_id and session_src_desc context fields.
-
-**[2026-04-06]** `system` — Fixed PostgreSQL JSONB operator conflict in route_history (line 466-470) causing batch upsert failures; identified and resolved null byte stale file handle issue with nohup logging.
-
-**[2026-04-06]** `system` — Prioritized history display enhancement: incomplete prompt + response rendering and copy-to-clipboard functionality gaps reported by users.
-
-**[2026-03-18]** `system` — Partially resolved backend startup race condition: AiCli now appears in Recent projects but remains unavailable as selectable current project; acknowledged as dev environment delay requiring retry logic on empty projects list.
+**[2026-04-13]** `claude_cli` — Completed multi-pass event tag cleanup: Pass 0 fixed 6 corrupt session_summary events with malformed JSON arrays; Pass 1 stripped system metadata (llm, event, chunk_type, commit_hash, etc.) from 1441 events, retaining only user tags (phase, feature, bug, source); Pass 2 validation pending. **[2026-04-13]** `schema_migration` — Migration m037 dropped deprecated importance column from mem_ai_events; executed column reordering with _old table cleanup to reclaim space. **[2026-04-13]** `tag_mirroring` — Redesigned mem_mrr_tags with per-source-type UPSERT statements (prompt/commit/item/message); added timestamp tracking (_created/_updated per source) and event_id backfill logic to link raw captures to synthesized events. **[2026-04-13]** `postgresql_logging` — Resolved nohup null byte output by switching to fresh log file paths, avoiding stale file handle conflicts. **[2026-04-06]** `history_display` — Identified incomplete prompt + response rendering and copy-to-clipboard gaps; fixed JSONB operator conflict (||) in route_history causing batch upsert failures at line 466-470. **[2026-03-18]** `backend_startup` — Resolved race condition with retry logic for empty projects list on initial load; aicli project now visible in Recent projects list.

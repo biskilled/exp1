@@ -35,12 +35,12 @@ You are a senior Python software architect with deep expertise in:
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- mem_mrr_tags per-source UPSERT strategy: one row per (tag, source) combination with ON CONFLICT backfill of event_id/work_item_id when available
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata (llm, chunk_type, commit_hash, etc.) stripped; only phase/feature/bug/source user tags retained
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
+- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
-- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
-- Session source tracking: session_src_id and session_src_desc (e.g., 'claude_cli') capture origin context in mem_mrr_tags for multi-client coordination
+- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
 
 ---
 

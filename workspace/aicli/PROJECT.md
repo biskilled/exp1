@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Schema cleanup completed: m037 migration dropped deprecated importance column from mem_ai_events table (2026-04-13)
-- Table migration with column reordering: executing migrations using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
-- PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
-- History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
-- PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
-- Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)
+- Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
+- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking (prompt_created/updated, commit_created/updated, etc.) and event_id backfill logic
+- Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
+- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations and cleaned up _old tables
+- PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
+- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps identified; 2026-04-06 JSONB operator conflict in route_history fixed

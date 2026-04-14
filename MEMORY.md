@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-13 18:11 UTC by aicli /memory_
+_Generated: 2026-04-14 11:29 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that fuses developer workflows with LLM-powered memory synthesis. It captures code commits, session interactions, and project events into a unified PostgreSQL schema with vector embeddings, then synthesizes them via Claude Haiku into structured memory artifacts (work items, project facts, features). The platform provides a Python CLI + Electron desktop UI with workflow automation via async DAG pipelines, MCP tools for semantic search, and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok).
+aicli is a shared AI memory platform providing semantic search, memory synthesis, and workflow execution across distributed AI agents and users. It combines a Python FastAPI backend (PostgreSQL + pgvector) with an Electron desktop UI, featuring Claude Haiku-powered dual-layer memory digestion, event-driven tag management (mem_mrr_* mirroring to mem_ai_* synthesis), and async DAG workflow execution. Currently stabilizing event metadata cleanup, tag mirroring architecture, and database schema migrations toward Phase 2 production readiness.
 
 ## Project Facts
 
@@ -177,7 +177,7 @@ Reviewer: ```json
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)
-- **database_schema**: Unified (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features); Per-project (commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}); Shared (users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories)
+- **database_schema**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features (unified); mem_mrr_commits_code, mem_mrr_tags (mirroring); per-project tables; shared users/usage_logs/transactions/session_tags/entity_categories tables
 - **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
@@ -197,7 +197,7 @@ Reviewer: ```json
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027)
+- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m037)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
@@ -218,16 +218,16 @@ Reviewer: ```json
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
-- mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
+- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
 
 ## In Progress
 
-- Schema cleanup completed: m037 migration dropped deprecated importance column from mem_ai_events table (2026-04-13)
-- Table migration with column reordering: executing migrations using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
-- PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
-- History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
-- PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
-- Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)
+- Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
+- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking (prompt_created/updated, commit_created/updated, etc.) and event_id backfill logic
+- Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
+- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations and cleaned up _old tables
+- PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
+- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps identified; 2026-04-06 JSONB operator conflict in route_history fixed
 
 ## Active Features / Bugs / Tasks
 
@@ -281,171 +281,321 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-13
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index f9f77a7..be64af7 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 13:58 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 15:35 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -21,7 +21,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
- - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
- - **memory_synthesis**: Claude Haiku dual-layer with 5 output files
--- **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-+- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
- - **mcp**: Stdio MCP server with 12+ tools
- - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
- - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
-@@ -34,7 +34,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
- - **database**: PostgreSQL 15+
--- **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
-+- **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
- - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
-
-
-### `commit` — 2026-04-13
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index f9f77a7..be64af7 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 13:58 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 15:35 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -21,7 +21,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
- - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
- - **memory_synthesis**: Claude Haiku dual-layer with 5 output files
--- **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
-+- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
- - **mcp**: Stdio MCP server with 12+ tools
- - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
- - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
-@@ -34,7 +34,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
- - **database**: PostgreSQL 15+
--- **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
-+- **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
- - **database_version**: PostgreSQL 15+
- - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
- - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
-
-
-### `commit` — 2026-04-13
-
-Commit: chore: update system state and memory after claude session d7be5539
-Hash: ef4064ff
-Code files (14):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/agents/mcp/server.py
-  - backend/agents/tools/tool_workitems.py
-  - backend/core/database.py
-  - backend/memory/memory_files.py
-  - backend/memory/memory_promotion.py
-  - backend/memory/memory_tagging.py
-  - backend/migrations/001_consolidation.sql
-  - backend/routers/route_entities.py
-  - backend/routers/route_tags.py
-  - backend/routers/route_work_items.py
-  - workspace/aicli/PROJECT.md
-Generated/internal files: MEMORY.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/MEMORY.md
-Symbols changed: WorkItemCreate, MemoryTagging, promote_source_tags_to_event, get_relations, link_to_mirroring, RelationCreateByName, ValuePatch, _propagate_tags_phase4, TagUpdate, TagMerge, SourceTagCreate, get_tag_tree, delete_relation, upsert_relations_from_list, _vector_search_tags
-
-### `commit` — 2026-04-13
-
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 2ab6e53..f7403b5 100644
+index 04056ad..f711bfe 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
--- Memory file auto-generation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md fully regenerated with timestamp tracking from mem_ai_project_facts and mem_ai_work_items
-+- Memory file auto-generation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md fully regenerated with timestamp tracking from mem_ai_project_facts and mem_ai_work_items (last run 2026-04-01T13:58:46Z)
- - Unified event table consolidation: mem_ai_events schema validated; deprecated event_summary_tags array and metadata columns removed; data persistence across session switches confirmed
- - Backend startup race condition resolved: retry logic implemented to handle empty project list on first load, preventing AiCli project from appearing unselectable in Recent
- - Tag persistence bug fixed: mem_ai_tags_relations now properly maintains row ID linking and cache invalidation during DB reload operations
- - Schema documentation updated: project_state.json and rules.md aligned with mem_ai_* unified naming; legacy database_schema field conflicts removed
--- Frontend UI refinement: lifecycle button section removed from entities.js drawer (_LIFECYCLE_ORDER, _LIFECYCLE_COLORS, _plannerCycleLifecycle) to reduce clutter and align with feature scope
-+- Frontend UI refinement: lifecycle button section removed from entities.js drawer to reduce clutter and align with feature scope
+-- Memory table population design review: memory_items and project_facts tables not being populated per design spec; requires clarification on intended behavior before Phase 2 embedding refactor
+-- Backend startup race condition partially resolved: AiCli now appears in Recent projects but remains unavailable as selectable current project; acknowledged as dev environment delay
+-- Data persistence validation: tags disappearing on session switch—root cause under investigation (UI rendering vs. database save failure); /memory audit endpoint testing pending
+-- Embedding logic refactoring planned: Phase 2 work blocked pending clarification on memory table update logic and completion of existing issues
+-- Port binding stability confirmed: 127.0.0.1:8000 conflicts resolved; bash start_backend.sh initialization sequence documented
+-- User-client schema relationship confirmed: hierarchical structure validated (clients have multiple users); schema modification status unclear, may require database migration
++- Table consolidation design: pr_embeddings and pr_memory_events merging into single mem_ai_events table with event summary schema
++- Memory table population logic: memory_items and project_facts tables require clarification on intended update behavior before Phase 2 embedding refactor
++- Data persistence validation: tags disappearing on session switch—root cause under investigation (UI rendering vs. database save failure)
++- Backend startup race condition: AiCli appears in Recent projects but remains unavailable as selectable project; dev environment delay acknowledged
++- Embedding logic refactoring blocked: Phase 2 work pending clarification on memory table update logic and table consolidation design
++- Port binding stability: 127.0.0.1:8000 conflicts resolved; bash start_backend.sh initialization sequence documented
 
 
 ### `commit` — 2026-04-13
 
-diff --git a/backend/memory/memory_files.py b/backend/memory/memory_files.py
-index 8356335..cd4ae20 100644
---- a/backend/memory/memory_files.py
-+++ b/backend/memory/memory_files.py
-@@ -154,6 +154,7 @@ class MemoryFiles:
-             "blockers":         [],      # (from_name, relation, to_name, note)
-             "all_relations":    [],
-             "features":         {},      # tag_name → snapshot dict
-+            "feature_details":  [],      # list of dicts from planner_tags inline fields
-             "blocked_tags":     [],      # (name, description)
-             "ts":               datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-         }
-@@ -203,20 +204,20 @@ class MemoryFiles:
-                         for r in cur.fetchall()
-                     ]
+diff --git a/backend/routers/route_tags.py b/backend/routers/route_tags.py
+index d2f7af0..f5395b6 100644
+--- a/backend/routers/route_tags.py
++++ b/backend/routers/route_tags.py
+@@ -105,8 +105,10 @@ _SQL_GET_TAG_SOURCES = """
+ """
  
--                    # Feature snapshots
-+                    # Feature snapshots (inline on planner_tags)
-                     cur.execute(_SQL_FEATURE_SNAPSHOTS, (project,))
--                    for reqs, action, design, code_sum, wi_status, tag_name in cur.fetchall():
--                        ctx["features"][tag_name] = {
--                            "requirements":    reqs or "",
-+                    for t_id, t_name, t_project, summary, action, design, code_sum in cur.fetchall():
-+                        ctx["features"][t_name] = {
-+                            "requirements":    summary or "",
-                             "action_items":    action or "",
-                             "design":          design or {},
-                             "code_summary":    code_sum or {},
--                            "work_item_status": wi_status or "",
-+                            "work_item_status": "",
-                         }
+ _SQL_INSERT_SOURCE_TAG = """
+-    INSERT INTO mem_mrr_tags (tag_id, prompt_id, commit_id, item_id, message_id, auto_tagged)
+-    VALUES (%s::uuid, %s, %s, %s, %s, %s)
++    INSERT INTO mem_mrr_tags
++           (tag_id, session_id, session_src_id, session_src_desc,
++            prompt_id, commit_id, item_id, message_id, auto_tagged)
++    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
+     RETURNING id
+ """
  
--                    # Blocked tags
-+                    # Blocked/active tags (short_desc inline on planner_tags)
-                     cur.execute(_SQL_BLOCKED_TAGS, (project,))
--                    ctx["blocked_tags"] = [(r[0], r[1]) for r in cur.fetchall()]
-+                    ctx["blocked_tags"] = [(r[1], r[3] or "") for r in cur.fetchall()]
+@@ -182,6 +184,9 @@ class TagMerge(BaseModel):
  
-         except Exception as e:
-             log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
+ class SourceTagCreate(BaseModel):
+     tag_id: str
++    session_id: Optional[str] = None
++    session_src_id: Optional[str] = None
++    session_src_desc: Optional[str] = None
+     prompt_id: Optional[str] = None
+     commit_id: Optional[int] = None
+     item_id: Optional[str] = None
+@@ -409,8 +414,8 @@ async def add_source_tag(body: SourceTagCreate):
+         with conn.cursor() as cur:
+             cur.execute(
+                 _SQL_INSERT_SOURCE_TAG,
+-                (body.tag_id, body.prompt_id, body.commit_id,
+-                 body.item_id, body.message_id, body.auto_tagged),
++                (body.tag_id, body.session_id, body.session_src_id, body.session_src_desc,
++                 body.prompt_id, body.commit_id, body.item_id, body.message_id, body.auto_tagged),
+             )
+             row = cur.fetchone()
+     if not row:
+
+
+### `commit` — 2026-04-13
+
+diff --git a/backend/memory/memory_tagging.py b/backend/memory/memory_tagging.py
+index 01f4d42..9a95300 100644
+--- a/backend/memory/memory_tagging.py
++++ b/backend/memory/memory_tagging.py
+@@ -9,7 +9,9 @@ Public API::
+ 
+     tagging = MemoryTagging()
+     tag_id = tagging.get_or_create_tag(project, name, category_id)
+-    tagging.link_to_mirroring(tag_id, session_id, prompt_id=uuid)
++    tagging.link_to_mirroring(tag_id, session_id, session_src_desc='claude_cli', prompt_id=uuid)
++    tagging.link_to_mirroring(tag_id, session_id, commit_id=42, commit_created=ts, event_id=evt_uuid)
++    tagging.update_event_id_for_prompts(event_id, [prompt_uuid1, prompt_uuid2])
+     tagging.link_to_event(event_id, tag_id)
+     tagging.add_relation(from_tag_id, 'depends_on', to_tag_id)
+     tree = tagging.get_tag_tree(project)
+@@ -47,23 +49,113 @@ _SQL_INSERT_TAG = """
+     RETURNING id
+ """
+ 
+-_SQL_INSERT_MRR_TAG = """
++# Per-source-type UPSERT SQL — one row per (tag, source) combination.
++# ON CONFLICT updates the *_updated timestamp and backfills event_id/work_item_id when available.
++_SQL_UPSERT_MRR_TAG_PROMPT = """
+     INSERT INTO mem_mrr_tags
+            (tag_id, session_id, session_src_id, session_src_desc,
+-            prompt_id, prompt_created,
+-            commit_id, commit_created,
+-            item_id, item_created,
+-            message_id, message_created,
+-            work_item_id, auto_tagged)
+-       VALUES (%s::uuid, %s, %s, %s,
+-               %s, %s,
+-               %s, %s,
+-               %s::uuid, %s,
+-               %s::uuid, %s,
+-               %s::uuid, %s)
++            prompt_id, prompt_created, prompt_updated,
++            work_item_id, work_item_created, work_item_updated,
++            event_id, event_created, event_updated, auto_tagged)
++    VALUES (%s::uuid, %s, %s, %s,
++            %s::uuid, %s, %s,
++            %s::uuid, %s, %s,
++            %s::uuid, %s, %s, %s)
++    ON CONFLICT (tag_id, prompt_id) WHERE prompt_id IS NOT NULL
++    DO UPDATE SET
++        prompt_updated    = COALESCE(EXCLUDED.prompt_updated,    NOW()),
++        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
++        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
++        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
++        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
++        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
++        updated_at        = NOW()
+     RETURNING id
+ """
+ 
++_SQL_UPSERT_MRR_TAG_COMMIT = """
++    INSERT INTO mem_mrr_tags
++           (tag_id, session_id, session_src_id, session_src_desc,
++            commit_id, commit_created, commit_updated,
++            work_item_id, work_item_created, work_item_updated,
++            event_id, event_created, event_updated, auto_tagged)
++    VALUES (%s::uuid, %s, %s, %s,
++            %s, %s, %s,
++            %s::uuid, %s, %s,
++            %s::uuid, %s, %s, %s)
++    ON CONFLICT (tag_id, commit_id) WHERE commit_id IS NOT NULL
++    DO UPDATE SET
++        commit_updated    = COALESCE(EXCLUDED.commit_updated,    NOW()),
++        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
++        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
++        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
++        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
++        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
++        updated_at        = NOW()
++    RETURNING id
++"""
++
++_SQL_UPSERT_MRR_TAG_ITEM = """
++    INSERT INTO mem_mrr_tags
++           (tag_id, session_id, session_src_id, session_src_desc,
++            item_id, item_created, item_updated,
++            work_item_id, work_item_created, work_item_updated,
++            event_id, event_created, event_updated, auto_tagged)
++    VALUES (%s::uuid, %s, %s, %s,
++            %s::uuid, %s, %s,
++            %s::uuid, %s, %s,
++            %s::uuid, %s, %s, %s)
++    ON CONFLICT (tag_id, item_id) WHERE item_id IS NOT NULL
++    DO UPDATE SET
++        item_updated      = COALESCE(EXCLUDED.item_updated,      NOW()),
++        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
++        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
++        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
++        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
++        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
++        updated_at        = NOW()
++    RETURNING id
++"""
++
++_SQL_UPSERT_MRR_TAG_MESSAGE = """
++    INSERT INTO mem_mrr_tags
++           (tag_id, session_id, session_src_id, session_src_desc,
++            message_id, message_created, message_updated,
++            work_item_id, work_item_created, work_item_updated,
++            event_id, event_created, event_updated, auto_tagged)
++    VALUES (%s::uuid, %s, %s, %s,
++            %s::uuid, %s, %s,
++            %s::uuid, %s, %s,
++            %s::uuid, %s, %s, %s)
++    ON CONFLICT (tag_id, message_id) WHERE message_id IS NOT NULL
++    DO UPDATE SET
++        message_updated   = COALESCE(EXCLUDED.message_updated,   NOW()),
++        event_id          = COALESCE(EXCLUDED.event_id,          mem_mrr_tags.event_id),
++        event_updated     = COALESCE(EXCLUDED.event_updated,     mem_mrr_tags.event_updated),
++        work_item_id      = COALESCE(EXCLUDED.work_item_id,      mem_mrr_tags.work_item_id),
++        work_item_updated = COALESCE(EXCLUDED.work_item_updated, mem_mrr_tags.work_item_updated),
++        session_src_desc  = COALESCE(EXCLUDED.session_src_desc,  mem_mrr_tags.session_src_desc),
++        updated_at        = NOW()
++  
+
+### `commit` — 2026-04-13
+
+diff --git a/backend/core/database.py b/backend/core/database.py
+index 7f0d53d..7ba4f6b 100644
+--- a/backend/core/database.py
++++ b/backend/core/database.py
+@@ -708,6 +708,11 @@ CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_tag     ON mem_mrr_tags(tag_id);
+ CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_session ON mem_mrr_tags(session_id);
+ CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_prompt  ON mem_mrr_tags(prompt_id);
+ CREATE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit  ON mem_mrr_tags(commit_id);
++-- Partial unique indexes enable UPSERT per source type (one row per tag+source combination)
++CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_prompt_uniq  ON mem_mrr_tags(tag_id, prompt_id)   WHERE prompt_id  IS NOT NULL;
++CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_commit_uniq  ON mem_mrr_tags(tag_id, commit_id)   WHERE commit_id  IS NOT NULL;
++CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_item_uniq    ON mem_mrr_tags(tag_id, item_id)     WHERE item_id    IS NOT NULL;
++CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_mrr_tags_message_uniq ON mem_mrr_tags(tag_id, message_id)  WHERE message_id IS NOT NULL;
+ 
+ -- ── AI tags on embedding events ──────────────────────────────────────────────
+ CREATE TABLE IF NOT EXISTS mem_ai_tags (
+@@ -824,6 +829,7 @@ END $$;
+ # ─── Column additions to existing tables (memory infra) ──────────────────────
+ 
+ _DDL_MEMORY_INFRA_ALTERS = """
++ALTER TABLE planner_tags         ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ ALTER TABLE mem_mrr_commits      ADD COLUMN IF NOT EXISTS prompt_id UUID REFERENCES mem_mrr_prompts(id);
+ ALTER TABLE mem_mrr_commits      ADD COLUMN IF NOT EXISTS diff_summary TEXT NOT NULL DEFAULT '';
+ ALTER TABLE pr_work_items        ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES planner_tags(id);
 
 
 ### `commit` — 2026-04-13
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 0a83758..ef4ef3f 100644
+index 24ed10e..4aea9ab 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-01 15:35 UTC
-+> Generated by aicli 2026-04-01 18:01 UTC
+-> Generated by aicli 2026-03-31 16:36 UTC
++> Generated by aicli 2026-03-31 16:55 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - ui_components: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
+ - storage_primary: PostgreSQL 15+ with per-project schema
+ - storage_semantic: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+-- db_schema: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
++- db_schema: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys
+ - authentication: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+ - llm_providers: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+ - workflow_engine: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
+@@ -37,6 +37,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - node_modules_build: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
+ - database_version: PostgreSQL 15+
+ - build_tooling: npm 8+ with webpack/Electron-builder; Vite dev server on localhost
++- db_consolidation: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
+ 
+ ## Architectural Decisions
+ 
+@@ -49,9 +50,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); reduces token overhead
+ - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
+ - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
+-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
+ - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
+ - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
+ - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
+ - Embeddings linked to tags: tag metadata captures context (auth→all authentication prompts; feature/bug→relevant code changes)
+-- Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
+\ No newline at end of file
++- Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
++- pr_embeddings and pr_memory_events tables to be merged into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)
+\ No newline at end of file
+
+
+### `commit` — 2026-04-13
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index fa53830..bf2bbd4 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 16:36 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 16:55 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
+ - **storage_primary**: PostgreSQL 15+ with per-project schema
+ - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
++- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys
+ - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+ - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+ - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
+@@ -37,6 +37,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
+ - **database_version**: PostgreSQL 15+
+ - **build_tooling**: npm 8+ with webpack/Electron-builder; Vite dev server on localhost
++- **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
+ 
+ ## Key Decisions
+ 
+@@ -49,17 +50,17 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); reduces token overhead
+ - Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}
+ - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
+-- SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
+ - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
+ - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
+ - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
+ - Embeddings linked to tags: tag metadata captures context (auth→all authentication prompts; feature/bug→relevant code changes)
+ - Backend modular: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
++- pr_embeddings and pr_memory_events tables to be merged into single mem_ai_events table (id, project_id, session_id, session_desc, event_summary)
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-03-18] it looks like it is a bit broken, I have got an error - '_Database' object has no attribute 'ensure_project_schema'. Did
+ - [2026-03-18] There are some error - on the first load, it lookls like Backend is failing (after thay it succeed). I have tried to run
+ - [2026-03-18] Looks beter. there are some minor issue - in project page, I do see in Recent aiCli, but I do not see that As a project 
+ - [2026-03-18] Few more strucure - users are also part of client (client can have mutiple users). Also I would like to understand if yo
+-- [2026-03-31] Is it makes more sense, before I continue to the secopnd phase (refactor embedding logic) . is there is anything else yo
+\ No newline at end of file
++- [2026-03-31] Is it makes more sense, before I continue to the secopnd phase (refactor embedding logic) . is there is anything else yo
++- [2026-03-31] Yes please fix that. about pr_embedding. in the prevous prompts I have mention the following: pr_embeddings,pr_memory_ev
+\ No newline at end of file
 
 
 ## AI Synthesis
 
-**[2026-04-13]** `m037 migration` — Dropped deprecated `importance` column from `mem_ai_events` table; schema now simpler with importance semantically relevant only for work_items. **[2026-04-13]** `schema consolidation` — Completed column reordering in table migrations; confirmed all 14 code files updated with consistency checks passing. **[2026-04-06]** `PostgreSQL JSONB fix` — Resolved `jsonb ||` operator conflict in route_history (lines 466-470) that caused batch upsert failures on event_tags merging. **[2026-04-06]** `UI/UX improvements` — Addressed incomplete prompt+response rendering in history display and added copy-to-clipboard functionality throughout chat interface. **[2026-03-18]** `backend startup robustness` — Implemented retry logic for empty projects list on first load; fixed aicli project visibility in main navigation.
+**[2026-04-13]** `claude_cli` — Completed multi-pass event tag cleanup: Pass 0 fixed 6 corrupt session_summary events with malformed JSON arrays; Pass 1 stripped system metadata (llm, event, chunk_type, commit_hash, etc.) from 1441 events, retaining only user tags (phase, feature, bug, source); Pass 2 validation pending. **[2026-04-13]** `schema_migration` — Migration m037 dropped deprecated importance column from mem_ai_events; executed column reordering with _old table cleanup to reclaim space. **[2026-04-13]** `tag_mirroring` — Redesigned mem_mrr_tags with per-source-type UPSERT statements (prompt/commit/item/message); added timestamp tracking (_created/_updated per source) and event_id backfill logic to link raw captures to synthesized events. **[2026-04-13]** `postgresql_logging` — Resolved nohup null byte output by switching to fresh log file paths, avoiding stale file handle conflicts. **[2026-04-06]** `history_display` — Identified incomplete prompt + response rendering and copy-to-clipboard gaps; fixed JSONB operator conflict (||) in route_history causing batch upsert failures at line 466-470. **[2026-03-18]** `backend_startup` — Resolved race condition with retry logic for empty projects list on initial load; aicli project now visible in Recent projects list.
