@@ -56,11 +56,11 @@
     "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
     "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
-    "Work item embedding integration: _embed_work_item() persists 1536-dim vectors during /memory command execution",
-    "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order",
-    "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
     "Tag system: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)",
-    "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
+    "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix)",
+    "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
+    "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
+    "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -89,12 +89,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Backend startup race condition fix: retry logic handles empty project list on first load during initialization",
-    "PostgreSQL agent roles initialization: router mapping queries correct tables per project; removed fallback workarounds",
-    "Planner tags UI completion: categories uploaded to Planner tab; investigating missing tags display per category and tag filtering workflow",
-    "Tag system metadata cleanup: retained user-facing tags (phase, feature, bug, source); stripped system metadata from 1441+ events during Pass 0-2",
-    "Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries",
-    "AI tag suggestion feature: approved/removed tag handlers (_wiPanelApproveTag/_wiPanelRemoveTag) with category inference and tooltip improvements"
+    "Backend module restructure completion \u2014 Moved agents/tools/ and agents/mcp/ to correct locations; verified all imports resolve cleanly; fixed stray auth.py import reference",
+    "Backend startup race condition fix \u2014 Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug",
+    "Memory items and project_facts table population \u2014 Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism",
+    "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow",
+    "Backend port binding stability \u2014 Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing",
+    "SQL query optimization backlog \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -126,7 +126,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T15:54:13Z",
+  "last_memory_run": "2026-04-14T16:15:08Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -139,19 +139,19 @@
       "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
       "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise",
-      "Work item embedding integration: _embed_work_item() persists 1536-dim vectors during /memory command execution",
-      "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order",
-      "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
       "Tag system: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)",
-      "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
+      "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix)",
+      "MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table",
+      "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order"
     ],
     "in_progress": [
-      "Backend startup race condition fix: retry logic handles empty project list on first load during initialization",
-      "PostgreSQL agent roles initialization: router mapping queries correct tables per project; removed fallback workarounds",
-      "Planner tags UI completion: categories uploaded to Planner tab; investigating missing tags display per category and tag filtering workflow",
-      "Tag system metadata cleanup: retained user-facing tags (phase, feature, bug, source); stripped system metadata from 1441+ events during Pass 0-2",
-      "Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries",
-      "AI tag suggestion feature: approved/removed tag handlers (_wiPanelApproveTag/_wiPanelRemoveTag) with category inference and tooltip improvements"
+      "Backend module restructure completion \u2014 Moved agents/tools/ and agents/mcp/ to correct locations; verified all imports resolve cleanly; fixed stray auth.py import reference",
+      "Backend startup race condition fix \u2014 Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug",
+      "Memory items and project_facts table population \u2014 Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism",
+      "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow",
+      "Backend port binding stability \u2014 Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing",
+      "SQL query optimization backlog \u2014 Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -166,11 +166,12 @@
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "database_version": "PostgreSQL 15+ with pgvector extensions",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)",
-      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth"
+      "database": "PostgreSQL 15+ with pgvector extensions",
+      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
+      "config_management": "config.py + YAML pipelines + pyproject.toml"
     },
-    "project_summary": "aicli is a shared AI memory platform that combines a Python FastAPI backend with an Electron desktop client to enable AI-assisted development workflows. It uses PostgreSQL with pgvector for semantic search, Claude/OpenAI LLMs for memory synthesis, and a unified event/work-item storage model with embedded tagging and workflow automation via async DAG execution. Current focus is stabilizing tag management, work item merging, and AI-driven tag suggestions while ensuring robust startup behavior and clean data lineage.",
-    "memory_digest": "**[2026-03-21]** `infrastructure` \u2014 Backend startup race condition addressed with retry logic for empty project lists on first load; PostgreSQL agent roles initialization corrected with proper per-project table routing.\n**[2026-03-21]** `ui` \u2014 Planner tags UI expanded with category uploads; ongoing investigation into missing tags display per category and tag filtering workflow integration.\n**[2026-03-21]** `data-quality` \u2014 Tag system metadata cleanup completed: user-facing tags (phase, feature, bug, source) retained across 1441+ events; system metadata (llm, event, chunk_type, commit_hash) stripped during backfill passes.\n**[2026-03-21]** `features` \u2014 Work item merge functionality implemented via POST /work-items/{id}/merge with merged_into UUID tracking; filtered list queries prevent merged items from appearing in main view.\n**[2026-03-21]** `ai-features` \u2014 AI tag suggestion feature: approved/removed tag handlers refactored with category inference logic and improved tooltips (changed from 'No existing tag' to 'Does not exist yet').\n**[2026-03-14]** `schema` \u2014 Database schema standardized to prefix_noun_adjective column naming convention (commit_hash_short not commit_short_hash); m001-m041 migration framework with db_schema.sql as single source of truth.\n**[2026-03-14]** `memory` \u2014 4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts; work item vectors persisted on /memory execution.\n**[2026-03-14]** `filtering` \u2014 Event filtering logic finalized: event_type IN ('prompt_batch', 'session_summary') filters work item digests; per-commit and diff_file noise excluded from event_count aggregation.\n**[2026-03-14]** `deployment` \u2014 Railway backend deployment with Dockerfile + railway.toml; Electron-builder desktop clients (Mac dmg, Windows nsis, Linux AppImage+deb) configured."
+    "project_summary": "aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL with pgvector) with an Electron desktop UI for managing project context, workflows, and AI-driven memory synthesis. It implements a 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 work items) with smart code chunking, semantic search, and async DAG-based workflow execution. Current focus is stabilizing backend initialization, fixing data persistence issues, and completing memory table population logic.",
+    "memory_digest": "**[2026-03-21]** `backend` \u2014 Completed backend module restructure: agents/tools/ and agents/mcp/ moved to correct locations with all imports verified; stray auth.py reference fixed. **[2026-03-21]** `backend` \u2014 Startup race condition partially mitigated with retry logic for empty project list on first load; AiCli project visibility bug requires further root cause diagnosis. **[2026-03-21]** `schema` \u2014 Memory items and project_facts tables defined but update logic not yet implemented; needed for improved memory/context mechanisms in 4-layer architecture. **[2026-03-21]** `frontend` \u2014 Data persistence bug identified: tags saved in UI disappearing on session switch; unclear if frontend rendering or database save failure in tag serialization workflow. **[2026-03-21]** `backend` \u2014 Port binding stability issue: intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation implemented but needs testing. **[2026-03-21]** `database` \u2014 SQL optimization backlog: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce load."
   }
 }

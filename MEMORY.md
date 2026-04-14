@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 15:53 UTC by aicli /memory_
+_Generated: 2026-04-14 16:14 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that combines a Python FastAPI backend with an Electron desktop client to enable AI-assisted development workflows. It uses PostgreSQL with pgvector for semantic search, Claude/OpenAI LLMs for memory synthesis, and a unified event/work-item storage model with embedded tagging and workflow automation via async DAG execution. Current focus is stabilizing tag management, work item merging, and AI-driven tag suggestions while ensuring robust startup behavior and clean data lineage.
+aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL with pgvector) with an Electron desktop UI for managing project context, workflows, and AI-driven memory synthesis. It implements a 4-layer memory architecture (ephemeral → raw capture → LLM digests → work items) with smart code chunking, semantic search, and async DAG-based workflow execution. Current focus is stabilizing backend initialization, fixing data persistence issues, and completing memory table population logic.
 
 ## Project Facts
 
@@ -223,20 +223,20 @@ Reviewer: ```json
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors during /memory command execution
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
-- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 - Tag system: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix)
+- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
 
 ## In Progress
 
-- Backend startup race condition fix: retry logic handles empty project list on first load during initialization
-- PostgreSQL agent roles initialization: router mapping queries correct tables per project; removed fallback workarounds
-- Planner tags UI completion: categories uploaded to Planner tab; investigating missing tags display per category and tag filtering workflow
-- Tag system metadata cleanup: retained user-facing tags (phase, feature, bug, source); stripped system metadata from 1441+ events during Pass 0-2
-- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries
-- AI tag suggestion feature: approved/removed tag handlers (_wiPanelApproveTag/_wiPanelRemoveTag) with category inference and tooltip improvements
+- Backend module restructure completion — Moved agents/tools/ and agents/mcp/ to correct locations; verified all imports resolve cleanly; fixed stray auth.py import reference
+- Backend startup race condition fix — Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug
+- Memory items and project_facts table population — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
+- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow
+- Backend port binding stability — Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing
+- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
 
 ## Active Features / Bugs / Tasks
 
@@ -290,283 +290,96 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-14
 
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 26ca053..224288f 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-03-21 23:10 UTC
-+> Generated by aicli 2026-03-21 23:27 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit` — 2026-04-14
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 3dd3e1c..e8e0de0 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:10 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:27 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -52,8 +52,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-03-21] There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen
- - [2026-03-21] Is there is a reason to have tools under mcp as well ?
- - [2026-03-21] Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - currently there is o
- - [2026-03-21] I do see provider files unde data , I do see also provider_usage folder under data (which might make sense) and do see s
--- [2026-03-21] What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty
-\ No newline at end of file
-+- [2026-03-21] What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty
-+- [2026-03-21] The backend is used for code only, it wont have any read permissions... any file data will be updated and used as data h
-\ No newline at end of file
-
-
-### `commit` — 2026-04-14
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 3dd3e1c..e8e0de0 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:10 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-21 23:27 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -52,8 +52,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-03-21] There is agents and tools and under tools there agent_tools - I think it will be cleaner to movee agent_tools under agen
- - [2026-03-21] Is there is a reason to have tools under mcp as well ?
- - [2026-03-21] Ok. we will fix that latter, files under tools can you rename to have prefix tool_ also under mcp - currently there is o
- - [2026-03-21] I do see provider files unde data , I do see also provider_usage folder under data (which might make sense) and do see s
--- [2026-03-21] What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty
-\ No newline at end of file
-+- [2026-03-21] What is anthropic.jsonl , openai,jsonl and local_recalculate.jsonl, they are currently empty
-+- [2026-03-21] The backend is used for code only, it wont have any read permissions... any file data will be updated and used as data h
-\ No newline at end of file
-
-
-### `commit` — 2026-04-14
-
-Commit: chore: update system context and memory files post-session
-Hash: 978f5227
-Code files (3):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-
-### `commit` — 2026-04-14
-
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 3e0ac40..7dea092 100644
+index 422c9dd..335d54f 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
-+- Database schema consolidation (2026-03-21) — Identified that pricing.json and coupon data should migrate from JSON files to SQL tables; api_keys.json remains as file (needed pre-DB connection); mng_users and mng_users_logs can be merged into single table
- - Provider storage consolidation (2026-03-21) — Consolidated all provider runtime data to data/provider_usage/; confirmed empty JSON files (anthropic.jsonl, openai.jsonl, local_recalculate.jsonl) are gitignored and local-only
- - Tool naming convention completion (2026-03-21) — Renamed agents/tools/ files to tool_ prefix; verified import paths functional post-relocation
- - Backend module restructure validation (2026-03-21) — Confirmed agents/tools/ and agents/mcp/ import paths functional; cleaned up empty directories
- - Project visibility bug investigation (ongoing) — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause unresolved
- - Data persistence issue triage (pending) — Tags saved in UI disappearing on session switch; requires investigation into UI rendering vs. database save failure
--- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination
+-- Pipeline engine refactoring (2026-03-21) — Consolidate pipeline engine under workflows/ with pipeline_ prefix on all files for consistency and better visibility; verify zero stale imports across all modules
+-- File naming convention refactor (2026-03-21) — Completed rename of provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified config.py as primary for externalized backend settings
+-- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points; former writes files then commits, latter commits existing working tree changes
+-- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized
+-- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
++- Backend module restructure completion (2026-03-21) — Moved agents/tools/ and agents/mcp/ from tools/ folder; verified all imports resolve cleanly; fixed stray auth.py import
++- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
+ - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
++- Memory items and project_facts table population — Tables defined but update logic not yet implemented; required for improved memory/context mechanism
++- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure
++- Backend port binding stability — Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/routers/billing.py b/backend/routers/billing.py
-index 9f854ff..e03d8e5 100644
---- a/backend/routers/billing.py
-+++ b/backend/routers/billing.py
-@@ -7,15 +7,13 @@ GET  /billing/history        → last 50 transactions
- POST /billing/add-payment    → placeholder (Stripe not yet integrated)
+diff --git a/backend/agents/tools/git_tool.py b/backend/agents/tools/tool_git.py
+similarity index 100%
+rename from backend/agents/tools/git_tool.py
+rename to backend/agents/tools/tool_git.py
+
+
+### `commit` — 2026-04-14
+
+diff --git a/backend/agents/tools/file_tool.py b/backend/agents/tools/tool_file.py
+similarity index 100%
+rename from backend/agents/tools/file_tool.py
+rename to backend/agents/tools/tool_file.py
+
+
+### `commit` — 2026-04-14
+
+diff --git a/backend/agents/tools/__init__.py b/backend/agents/tools/__init__.py
+index bd0ad98..6cbf2c1 100644
+--- a/backend/agents/tools/__init__.py
++++ b/backend/agents/tools/__init__.py
+@@ -6,8 +6,8 @@ invoke_tool(name, args) dispatches a tool call and returns a string result.
  """
+ from __future__ import annotations
  
--import json
- from datetime import datetime, timezone
--from pathlib import Path
+-from agents.tools.git_tool import GIT_TOOL_DEFS, GIT_HANDLERS
+-from agents.tools.file_tool import FILE_TOOL_DEFS, FILE_HANDLERS
++from agents.tools.tool_git import GIT_TOOL_DEFS, GIT_HANDLERS
++from agents.tools.tool_file import FILE_TOOL_DEFS, FILE_HANDLERS
  
- from fastapi import APIRouter, Depends, HTTPException
- from pydantic import BaseModel
+ # Master registry
+ AGENT_TOOLS: dict[str, dict] = {}
+
+
+### `commit` — 2026-04-14
+
+diff --git a/backend/agents/mcp/tools/__init__.py b/backend/agents/mcp/tools/__init__.py
+deleted file mode 100644
+index e69de29..0000000
+
+
+### `commit` — 2026-04-14
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 0d6fd88..c89e497 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-03-21 22:52 UTC
++> Generated by aicli 2026-03-21 23:00 UTC
  
--from core.config import settings
- from core.auth import get_current_user
-+from data.database import db
- from agents.providers.pr_pricing import load_pricing
- from data.user import find_by_id, update_user
+ # aicli — Shared AI Memory Platform
  
-@@ -24,57 +22,90 @@ router = APIRouter()
- 
- # ── Transaction helpers ────────────────────────────────────────────────────────
- 
--def _tx_path(user_id: str) -> Path:
--    p = Path(settings.data_dir) / "transactions" / f"{user_id}.jsonl"
--    p.parent.mkdir(parents=True, exist_ok=True)
--    return p
-+def _append_transaction(user_id: str, tx_type: str, amount_usd: float, description: str, ref: str = "") -> None:
-+    if not db.is_available():
-+        return
-+    try:
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                cur.execute(
-+                    """INSERT INTO mng_transactions (user_id, type, amount_usd, description, ref)
-+                       VALUES (%s, %s, %s, %s, %s)""",
-+                    (user_id, tx_type, amount_usd, description, ref),
-+                )
-+    except Exception:
-+        pass
- 
- 
- def _load_transactions(user_id: str) -> list[dict]:
--    path = _tx_path(user_id)
--    if not path.exists():
-+    if not db.is_available():
-+        return []
-+    try:
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                cur.execute(
-+                    """SELECT type, amount_usd, description, ref, created_at
-+                       FROM mng_transactions WHERE user_id=%s
-+                       ORDER BY created_at DESC LIMIT 50""",
-+                    (user_id,),
-+                )
-+                return [
-+                    {
-+                        "type":        r[0],
-+                        "amount_usd":  float(r[1]),
-+                        "description": r[2],
-+                        "ref":         r[3],
-+                        "ts":          r[4].isoformat() if r[4] else None,
-+                    }
-+                    for r in cur.fetchall()
-+                ]
-+    except Exception:
-         return []
--    records = []
--    for line in path.read_text(encoding="utf-8").splitlines():
--        line = line.strip()
--        if line:
--            try:
--                records.append(json.loads(line))
--            except json.JSONDecodeError:
--                pass
--    return records
--
--
--def _append_transaction(user_id: str, tx_type: str, amount_usd: float, description: str, ref: str = "") -> None:
--    record = {
--        "ts": datetime.now(timezone.utc).isoformat(),
--        "type": tx_type,
--        "amount_usd": amount_usd,
--        "description": description,
--        "ref": ref,
--    }
--    with open(_tx_path(user_id), "a", encoding="utf-8") as f:
--        f.write(json.dumps(record) + "\n")
- 
- 
- # ── Coupon helpers ─────────────────────────────────────────────────────────────
- 
--def _coupons_path() -> Path:
--    return Path(settings.data_dir) / "coupons.json"
--
--
--def _load_coupons() -> list[dict]:
--    path = _coupons_path()
--    if not path.exists():
--        return []
-+def _get_coupon(code: str) -> dict | None:
-+    if not db.is_available():
-+        return None
-     try:
--        return json.loads(path.read_text(encoding="utf-8"))
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                cur.execute(
-+                    """SELECT code,amount_usd,max_uses,used_count,used_by,expires_at
-+                       FROM mng_coupons WHERE client_id=1 AND code=%s""",
-+                    (code,),
-+                )
-+                r = cur.fetchone()
-+                if not r:
-+                    return None
-+                return {
-+                    "code":       r[0],
-+                    "amount_usd": float(r[1]),
-+                    "max_uses":   r[2],
-+                    "used_count": r[3],
-+                    "used_by":    r[4] or [],
-+                    "expires_at": r[5].isoformat() if r[5] else None,
-+                }
-     except Exception:
--        return []
-+        return None
- 
- 
--def _save_coupons(coupons: list[dict]) -> None:
--    _coupons_path().write_text(json.dumps(coupons, indent=2), encoding="utf-8")
-+def _mark_coupon_used(code: str, user_id: str) -> None:
-+    if not db.is_available():
-+        return
-+    try:
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                cur.execute(
-+                    """UPDATE mng_coupons
-+                       SET used_count = used_count + 1,
-+                           used_by    = used_by || %s::jsonb
-+                       WHERE client_id=1 AND code=%s""",
-+                    (f'["{user_id}"]', code),
-+                )
-+    except Exception:
-+        pass
- 
- 
- # ── Routes ────────────────────────────────────────────────────────────────────
-@@ -82,7 +113,6 @@ def _save_coupons(coupons: list[dict]) -> None:
- @router.get("/balance")
- async def get_balance(current_user: dict = Depends(get_current_user)):
-     user_id = current_user.get("sub") or current_user.get("id")
--    # dev admin — synthetic response
-     if user_id == "dev-admin":
-         return {
-             "role": "admin",
-@@ -134,20 +164,16 @@ async def apply_coupon(body: CouponBody, current_user: dict = Depends(get_curren
-         raise HTTPException(status_code=404, detail="User not found")
- 
-     code = body.code.upper().strip()
--    coupons = _load_coupons()
--    coupon = next((c for c in coupons if c["code"] == code), None)
-+    coupon = _get_coupon(code)
-     if not coupon:
-         raise HTTPException(status_code=4
+@@ -45,6 +45,6 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
+ - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
+ - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
+-- Pipelines (formerly workflow engine) centralized under workflows/ with pipeline_ prefix for consistency and visibility
+-- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table
+-- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
+\ No newline at end of file
++- Pipelines centralized under workflows/ with pipeline_ prefix; respects configured LLM provider/model per role via mng_agent_roles table
++- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
++- Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
+\ No newline at end of file
+
 
 ## AI Synthesis
 
-**[2026-03-21]** `infrastructure` — Backend startup race condition addressed with retry logic for empty project lists on first load; PostgreSQL agent roles initialization corrected with proper per-project table routing.
-**[2026-03-21]** `ui` — Planner tags UI expanded with category uploads; ongoing investigation into missing tags display per category and tag filtering workflow integration.
-**[2026-03-21]** `data-quality` — Tag system metadata cleanup completed: user-facing tags (phase, feature, bug, source) retained across 1441+ events; system metadata (llm, event, chunk_type, commit_hash) stripped during backfill passes.
-**[2026-03-21]** `features` — Work item merge functionality implemented via POST /work-items/{id}/merge with merged_into UUID tracking; filtered list queries prevent merged items from appearing in main view.
-**[2026-03-21]** `ai-features` — AI tag suggestion feature: approved/removed tag handlers refactored with category inference logic and improved tooltips (changed from 'No existing tag' to 'Does not exist yet').
-**[2026-03-14]** `schema` — Database schema standardized to prefix_noun_adjective column naming convention (commit_hash_short not commit_short_hash); m001-m041 migration framework with db_schema.sql as single source of truth.
-**[2026-03-14]** `memory` — 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts; work item vectors persisted on /memory execution.
-**[2026-03-14]** `filtering` — Event filtering logic finalized: event_type IN ('prompt_batch', 'session_summary') filters work item digests; per-commit and diff_file noise excluded from event_count aggregation.
-**[2026-03-14]** `deployment` — Railway backend deployment with Dockerfile + railway.toml; Electron-builder desktop clients (Mac dmg, Windows nsis, Linux AppImage+deb) configured.
+**[2026-03-21]** `backend` — Completed backend module restructure: agents/tools/ and agents/mcp/ moved to correct locations with all imports verified; stray auth.py reference fixed. **[2026-03-21]** `backend` — Startup race condition partially mitigated with retry logic for empty project list on first load; AiCli project visibility bug requires further root cause diagnosis. **[2026-03-21]** `schema` — Memory items and project_facts tables defined but update logic not yet implemented; needed for improved memory/context mechanisms in 4-layer architecture. **[2026-03-21]** `frontend` — Data persistence bug identified: tags saved in UI disappearing on session switch; unclear if frontend rendering or database save failure in tag serialization workflow. **[2026-03-21]** `backend` — Port binding stability issue: intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation implemented but needs testing. **[2026-03-21]** `database` — SQL optimization backlog: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce load.
