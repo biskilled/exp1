@@ -30,7 +30,7 @@
     "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
     "database": "PostgreSQL 15+ with pgvector extensions",
     "node_modules_build": "npm 8+ with Electron-builder; Vite dev server",
-    "database_version": "PostgreSQL 15+",
+    "database_version": "PostgreSQL 15+ with pgvector extensions",
     "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
     "db_consolidation": "mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)",
     "db_tables_unified": "mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features",
@@ -126,7 +126,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T15:35:43Z",
+  "last_memory_run": "2026-04-14T15:54:13Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -159,17 +159,18 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database": "PostgreSQL 15+ with pgvector extensions",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
+      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_backend": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
-      "config_management": "config.py + YAML pipelines + pyproject.toml"
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
+      "database_version": "PostgreSQL 15+ with pgvector extensions",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
+      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI for semantic project context capture, work item management, and AI-powered workflow execution. Currently at v2.2.0, the project is addressing backend initialization robustness, PostgreSQL role management, and Planner UI tag display while maintaining a dual-layer memory synthesis system (Claude Haiku) that converts raw events into semantic work items and project facts.",
-    "memory_digest": "**[2026-03-22]** PostgreSQL initialization issue resolved: agent roles now properly initialized with real IDs; router mapping queries correct tables per project, eliminating fallback workarounds. **[2026-03-22]** Backend startup race condition fixed: retry logic handles empty project list during first load to prevent initialization failures. **[2026-03-22]** Planner tags UI progressing: categories successfully uploaded to Planner tab; investigating missing tags display per category and tag filtering workflow. **[2026-03-22]** Tag system metadata cleanup completed: user-facing tags (phase, feature, bug, source) retained; system metadata (llm, event, chunk_type, commit_hash) stripped from 1441+ events across Passes 0-2. **[2026-03-22]** Work item merge functionality implemented: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries for planner bottom panel. **[2026-03-22]** AI tag suggestion UX refined: approve/remove button handlers (_wiPanelApproveTag/_wiPanelRemoveTag) with category inference; tooltip improved from 'No existing tag' to 'Does not exist yet'. **[2026-03-14]** Project version updated to 2.2.0 with memory synthesis improvements and unified database schema consolidation."
+    "project_summary": "aicli is a shared AI memory platform that combines a Python FastAPI backend with an Electron desktop client to enable AI-assisted development workflows. It uses PostgreSQL with pgvector for semantic search, Claude/OpenAI LLMs for memory synthesis, and a unified event/work-item storage model with embedded tagging and workflow automation via async DAG execution. Current focus is stabilizing tag management, work item merging, and AI-driven tag suggestions while ensuring robust startup behavior and clean data lineage.",
+    "memory_digest": "**[2026-03-21]** `infrastructure` \u2014 Backend startup race condition addressed with retry logic for empty project lists on first load; PostgreSQL agent roles initialization corrected with proper per-project table routing.\n**[2026-03-21]** `ui` \u2014 Planner tags UI expanded with category uploads; ongoing investigation into missing tags display per category and tag filtering workflow integration.\n**[2026-03-21]** `data-quality` \u2014 Tag system metadata cleanup completed: user-facing tags (phase, feature, bug, source) retained across 1441+ events; system metadata (llm, event, chunk_type, commit_hash) stripped during backfill passes.\n**[2026-03-21]** `features` \u2014 Work item merge functionality implemented via POST /work-items/{id}/merge with merged_into UUID tracking; filtered list queries prevent merged items from appearing in main view.\n**[2026-03-21]** `ai-features` \u2014 AI tag suggestion feature: approved/removed tag handlers refactored with category inference logic and improved tooltips (changed from 'No existing tag' to 'Does not exist yet').\n**[2026-03-14]** `schema` \u2014 Database schema standardized to prefix_noun_adjective column naming convention (commit_hash_short not commit_short_hash); m001-m041 migration framework with db_schema.sql as single source of truth.\n**[2026-03-14]** `memory` \u2014 4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts; work item vectors persisted on /memory execution.\n**[2026-03-14]** `filtering` \u2014 Event filtering logic finalized: event_type IN ('prompt_batch', 'session_summary') filters work item digests; per-commit and diff_file noise excluded from event_count aggregation.\n**[2026-03-14]** `deployment` \u2014 Railway backend deployment with Dockerfile + railway.toml; Electron-builder desktop clients (Mac dmg, Windows nsis, Linux AppImage+deb) configured."
   }
 }

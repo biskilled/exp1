@@ -61,7 +61,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
        SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
               w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
               w.code_summary, w.summary_ai,
-              w.tags, w.tags_ai, w.tag_id_user, w.tag_id_ai, w.source_event_id,
+              w.tags, w.tags_ai, w.tag_id_user, w.tag_id_ai,
               w.merged_into, w.start_date,
               w.created_at, w.updated_at, w.seq_num,
               tc.color, tc.icon,
@@ -81,33 +81,33 @@ _SQL_LIST_WORK_ITEMS_BASE = (
 
 _SQL_UNLINKED_WORK_ITEMS = """
     WITH wi AS (
-        -- Base filter; join source event once to get session_id + event_type
+        -- Base filter; get origin session from the earliest directly-linked event
         SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
                w.status_user, w.status_ai, w.summary_ai, w.tags, w.tags_ai,
                w.start_date, w.created_at, w.updated_at, w.seq_num,
-               w.tag_id_ai, w.source_event_id, w.project_id,
+               w.tag_id_ai, w.project_id,
                e.event_type  AS src_event_type,
                e.session_id  AS src_session_id,
                e.source_id   AS src_source_id
         FROM mem_ai_work_items w
-        LEFT JOIN mem_ai_events e ON e.id = w.source_event_id
+        LEFT JOIN LATERAL (
+            SELECT event_type, session_id, source_id
+            FROM mem_ai_events
+            WHERE work_item_id = w.id
+            ORDER BY created_at ASC
+            LIMIT 1
+        ) e ON true
         WHERE w.project_id = %s AND w.tag_id_user IS NULL AND w.status_user != 'done'
     ),
-    -- prompt_batch/session_summary events in the source session
-    -- (all items extracted from the same batch share this session → all get same count)
+    -- events directly linked to this work item
     event_ct AS (
-        SELECT wi.id::text AS wi_id, COUNT(DISTINCT e.id) AS cnt
-        FROM wi
-        JOIN mem_ai_events e
-          ON e.project_id = wi.project_id
-         AND e.event_type IN ('prompt_batch', 'session_summary')
-         AND (
-               (wi.src_session_id IS NOT NULL AND e.session_id = wi.src_session_id)
-            OR  e.work_item_id = wi.id          -- fallback for directly linked events
-         )
-        GROUP BY wi.id
+        SELECT e.work_item_id::text AS wi_id, COUNT(DISTINCT e.id) AS cnt
+        FROM mem_ai_events e
+        JOIN wi ON wi.id = e.work_item_id
+        WHERE e.event_type IN ('prompt_batch', 'session_summary', 'commit')
+        GROUP BY e.work_item_id
     ),
-    -- raw prompts in the source session
+    -- raw prompts in the origin session
     prompt_ct AS (
         SELECT wi.id::text AS wi_id, COUNT(DISTINCT p.id) AS cnt
         FROM wi
@@ -117,15 +117,14 @@ _SQL_UNLINKED_WORK_ITEMS = """
          AND p.session_id = wi.src_session_id
         GROUP BY wi.id
     ),
-    -- commits from source session (prompt-sourced) OR the source commit (commit-sourced)
-    -- Note: src_source_id is the short commit hash stored in mem_ai_events.source_id
+    -- commits linked via events.work_item_id OR from the origin commit event
     commit_ct AS (
         SELECT wi.id::text AS wi_id, COUNT(DISTINCT mc.commit_hash) AS cnt
         FROM wi
         JOIN mem_mrr_commits mc
           ON mc.project_id = wi.project_id
          AND (
-               (wi.src_session_id IS NOT NULL AND mc.session_id = wi.src_session_id)
+               mc.event_id IN (SELECT id FROM mem_ai_events WHERE work_item_id = wi.id)
             OR (wi.src_event_type = 'commit' AND wi.src_source_id IS NOT NULL
                 AND mc.commit_hash_short = wi.src_source_id)
          )
@@ -172,7 +171,7 @@ _SQL_GET_WORK_ITEM = (
     """SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
               w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
               w.code_summary, w.summary_ai,
-              w.tags, w.tag_id_user, w.tag_id_ai, w.source_event_id,
+              w.tags, w.tag_id_user, w.tag_id_ai,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
        WHERE w.project_id=%s AND w.id=%s::uuid"""
@@ -378,7 +377,7 @@ def _persist_matches(work_item_id: str, matches: list) -> None:
 
 
 async def _backlink_events_to_work_item(project_id: int, work_item_id: str) -> None:
-    """Set work_item_id on all mem_ai_events in the same session as the work item's source_event.
+    """Set work_item_id on all mem_ai_events in the same session as already-linked events.
 
     Implements one-to-many: one work_item → many events.
     Only assigns events that don't already have a work_item_id set.
@@ -387,15 +386,17 @@ async def _backlink_events_to_work_item(project_id: int, work_item_id: str) -> N
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    UPDATE mem_ai_events e
+                    UPDATE mem_ai_events
                     SET work_item_id = %s::uuid
-                    FROM mem_ai_events src
-                    WHERE src.id = (SELECT source_event_id FROM mem_ai_work_items WHERE id = %s::uuid)
-                      AND e.session_id = src.session_id
-                      AND e.project_id = %s
-                      AND e.work_item_id IS NULL
-                      AND src.session_id IS NOT NULL
-                """, (work_item_id, work_item_id, project_id))
+                    WHERE project_id = %s
+                      AND work_item_id IS NULL
+                      AND session_id = (
+                          SELECT session_id FROM mem_ai_events
+                          WHERE work_item_id = %s::uuid
+                            AND session_id IS NOT NULL
+                          LIMIT 1
+                      )
+                """, (work_item_id, project_id, work_item_id))
                 log.debug(f"_backlink_events_to_work_item: {cur.rowcount} events linked "
                           f"work_item={work_item_id[:8]}")
     except Exception as e:
@@ -405,8 +406,8 @@ async def _backlink_events_to_work_item(project_id: int, work_item_id: str) -> N
 async def _backlink_tag_to_events(project_id: int, work_item_id: str, tag_id_user: str) -> None:
     """When a work item is linked to a planner tag, propagate that tag to related events.
 
-    Finds the session from source_event_id, then updates all events in that session
-    to include the tag name in their tags JSONB (using the category-appropriate key).
+    Gets the session from directly-linked events (work_item_id FK), then updates
+    all events in that session to include the tag name in their tags JSONB.
     Only writes if the event doesn't already have a user tag for that key.
     """
     try:
@@ -423,13 +424,15 @@ async def _backlink_tag_to_events(project_id: int, work_item_id: str, tag_id_use
                 if not tag_row:
                     return
                 tag_name, tag_cat = tag_row
-                # Map category to events tags key
                 tag_key = 'bug' if tag_cat == 'bug' else 'phase' if tag_cat == 'phase' else 'feature'
 
-                # Get session_id from source_event_id
+                # Get session_id from the earliest linked event
                 cur.execute("""
                     SELECT session_id FROM mem_ai_events
-                    WHERE id = (SELECT source_event_id FROM mem_ai_work_items WHERE id=%s::uuid)
+                    WHERE work_item_id = %s::uuid
+                      AND session_id IS NOT NULL
+                    ORDER BY created_at ASC
+                    LIMIT 1
                 """, (work_item_id,))
                 sess_row = cur.fetchone()
                 if not sess_row or not sess_row[0]:

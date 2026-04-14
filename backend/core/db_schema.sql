@@ -507,7 +507,6 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     status_user         VARCHAR(20) NOT NULL DEFAULT 'active',
     status_ai           VARCHAR(20) NOT NULL DEFAULT 'active',
     seq_num             INT,
-    source_event_id     UUID,
     start_date          TIMESTAMPTZ,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),

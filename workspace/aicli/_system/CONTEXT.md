@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 15:35 UTC — do not edit manually.
+> Auto-generated 2026-04-14 16:09 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 518
-- **Last active**: 2026-04-14T15:35:16Z
+- **Sessions**: 519
+- **Last active**: 2026-04-14T15:53:44Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,7 +40,7 @@
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ with pgvector extensions
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
-- **database_version**: PostgreSQL 15+
+- **database_version**: PostgreSQL 15+ with pgvector extensions
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
 - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 - **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features

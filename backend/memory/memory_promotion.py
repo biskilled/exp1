@@ -168,9 +168,8 @@ _SQL_UPDATE_EVENT_AI_TAGS = """
 _SQL_INSERT_EXTRACTED_WORK_ITEM = """
     INSERT INTO mem_ai_work_items
         (project_id, category_ai, name_ai, desc_ai,
-         acceptance_criteria_ai, action_items_ai, tags,
-         source_event_id, seq_num)
-    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::uuid,
+         acceptance_criteria_ai, action_items_ai, tags, seq_num)
+    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb,
             (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
     ON CONFLICT (project_id, category_ai, name_ai) DO UPDATE SET
         desc_ai              = CASE WHEN EXCLUDED.desc_ai != ''
@@ -187,7 +186,6 @@ _SQL_INSERT_EXTRACTED_WORK_ITEM = """
         tags                 = CASE WHEN EXCLUDED.tags != '{}'::jsonb
                                     THEN mem_ai_work_items.tags || EXCLUDED.tags
                                     ELSE mem_ai_work_items.tags END,
-        source_event_id      = COALESCE(mem_ai_work_items.source_event_id, EXCLUDED.source_event_id),
         updated_at           = NOW()
     RETURNING id
 """
@@ -796,7 +794,7 @@ class MemoryPromotion:
                                 _SQL_INSERT_EXTRACTED_WORK_ITEM,
                                 (project_id, category, canonical_name, desc,
                                  "", action_items or "", json.dumps(wi_tags),
-                                 ev_id_str, project_id),
+                                 project_id),
                             )
                             row = cur.fetchone()
                             if row:
@@ -827,7 +825,7 @@ class MemoryPromotion:
                                     _SQL_INSERT_EXTRACTED_WORK_ITEM,
                                     (project_id, category, name, description,
                                      "", "", json.dumps(wi_tags),
-                                     ev_id_str, project_id),
+                                     project_id),
                                 )
                                 row = cur.fetchone()
                                 if row:

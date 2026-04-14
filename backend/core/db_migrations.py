@@ -1013,6 +1013,20 @@ def m040_backfill_event_cnt_and_tags(conn) -> None:
     )
 
 
+def m042_drop_source_event_id(conn) -> None:
+    """Drop redundant source_event_id from mem_ai_work_items.
+
+    The one-to-many relationship work_item → events is already captured by
+    mem_ai_events.work_item_id FK.  source_event_id was only ever used to
+    retrieve session_id, which can now be read directly from the linked events.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS source_event_id"
+        )
+    conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -1042,4 +1056,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m039_reorder_mem_mrr_prompts", m039_reorder_mem_mrr_prompts),
     ("m040_backfill_event_cnt_and_tags", m040_backfill_event_cnt_and_tags),
     ("m041_drop_diff_file_chunks", m041_drop_diff_file_chunks),
+    ("m042_drop_source_event_id", m042_drop_source_event_id),
 ]
